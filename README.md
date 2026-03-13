@@ -83,7 +83,7 @@ cd ai-opensoc
 
 > **Note:** Docker must be running before you start. The startup script handles everything else: creates the Python virtual environment, installs dependencies, starts PostgreSQL, initializes the database with a default admin user, installs frontend packages, and launches both backend and frontend servers.
 
-Auth bypass is enabled by default (`DEV_MODE=true`) for quick development.
+Auth bypass is enabled by default (`DEV_MODE=true`) for quick development. Full auth is WIP and while it will turn on it is untested. To activate auth set `DEV_MODE=false`.
 
 ### Prerequisites
 
