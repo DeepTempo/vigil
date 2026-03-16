@@ -19,6 +19,26 @@ if [ -d ".git" ]; then
     fi
 fi
 
+# Build a filtered requirements file, skipping submodule editable installs
+# whose directories aren't yet initialized (missing setup.py / pyproject.toml)
+_filtered_reqs() {
+    local tmp
+    tmp=$(mktemp)
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^-e[[:space:]]+\. ]]; then
+            local dir="${line#*-e }"
+            dir="${dir#*-e	}"   # handle tab separator
+            if [ -f "$dir/setup.py" ] || [ -f "$dir/pyproject.toml" ]; then
+                echo "$line"
+            fi
+            # else: submodule not initialized — skip silently
+        else
+            echo "$line"
+        fi
+    done < requirements.txt > "$tmp"
+    echo "$tmp"
+}
+
 # Check if venv exists
 if [ ! -d "venv" ]; then
     echo "Virtual environment not found. Creating..."
@@ -32,16 +52,20 @@ source venv/bin/activate
 echo ""
 echo "Checking Python dependencies..."
 pip install -q --upgrade pip
-if pip install -r requirements.txt; then
+_reqs=$(_filtered_reqs)
+if pip install -q -r "$_reqs"; then
     echo "✓ Python dependencies installed"
 else
     echo "⚠️  Some packages failed to install. Core functionality should work."
 fi
+rm -f "$_reqs"
 
 # Verify uvicorn is available
 if ! command -v uvicorn &> /dev/null; then
     echo "❌ uvicorn not found after pip install. Retrying..."
-    pip install uvicorn[standard] fastapi
+    _reqs=$(_filtered_reqs)
+    pip install -q -r "$_reqs" || true
+    rm -f "$_reqs"
     if ! command -v uvicorn &> /dev/null; then
         echo "❌ Critical: uvicorn still not available. Check requirements.txt"
         exit 1

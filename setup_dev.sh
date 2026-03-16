@@ -39,8 +39,28 @@ echo ""
 echo "📦 Installing Python dependencies..."
 source venv/bin/activate
 pip install -q --upgrade pip
-pip install -q -r requirements.txt
-echo "✅ Python dependencies installed"
+
+# Build a filtered requirements file, skipping submodule editable installs
+# whose directories aren't yet initialized (missing setup.py / pyproject.toml)
+_REQS=$(mktemp)
+while IFS= read -r line; do
+    if [[ "$line" =~ ^-e[[:space:]]+\. ]]; then
+        dir="${line#*-e }"
+        dir="${dir#*-e	}"   # handle tab separator
+        if [ -f "$dir/setup.py" ] || [ -f "$dir/pyproject.toml" ]; then
+            echo "$line"
+        fi
+    else
+        echo "$line"
+    fi
+done < requirements.txt > "$_REQS"
+
+if pip install -q -r "$_REQS"; then
+    echo "✅ Python dependencies installed"
+else
+    echo "⚠️  Some packages failed to install. Core functionality should work."
+fi
+rm -f "$_REQS"
 
 # Step 4: Install frontend dependencies
 echo ""
