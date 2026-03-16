@@ -69,19 +69,20 @@ _filtered_reqs() {
 if [ ! -d "venv" ]; then
     echo "Virtual environment not found. Creating..."
     "$PYTHON" -m venv venv
-    source venv/bin/activate
-    echo "Installing Python dependencies..."
-    pip install -q --upgrade pip
-    _reqs=$(_filtered_reqs)
-    if pip install -q -r "$_reqs"; then
-        echo "✓ Python dependencies installed"
-    else
-        echo "⚠️  Some packages failed. Core functionality should work."
-    fi
-    rm -f "$_reqs"
-else
-    source venv/bin/activate
 fi
+
+source venv/bin/activate
+
+echo ""
+echo "Checking Python dependencies..."
+pip install -q --upgrade pip
+_reqs=$(_filtered_reqs)
+if pip install -q -r "$_reqs"; then
+    echo "✓ Python dependencies installed"
+else
+    echo "⚠️  Some packages failed. Core functionality should work."
+fi
+rm -f "$_reqs"
 
 # Verify uvicorn is available
 if ! command -v uvicorn &> /dev/null; then
@@ -134,6 +135,19 @@ if command -v docker &> /dev/null; then
         done
     fi
     
+    # Start Redis (LLM job queue)
+    if docker ps --format '{{.Names}}' | grep -q "deeptempo-redis"; then
+        echo "✓ Redis is already running"
+    else
+        echo "Starting Redis (LLM job queue)..."
+        cd docker
+        docker-compose up -d redis
+        cd ..
+        echo "Waiting for Redis..."
+        sleep 2
+        echo "✓ Redis started"
+    fi
+
     # Initialize default admin user
     echo ""
     echo "Initializing default admin user..."
@@ -187,7 +201,7 @@ fi
 if [ -d "frontend/node_modules" ]; then
     echo "Starting frontend server..."
     cd frontend
-    nohup npm run dev > ../logs/frontend.log 2>&1 &
+    nohup npm run dev > ../logs/frontend-app.log 2>&1 &
     FRONTEND_PID=$!
     cd ..
     echo $FRONTEND_PID > logs/frontend.pid
@@ -196,7 +210,7 @@ if [ -d "frontend/node_modules" ]; then
     if ps -p $FRONTEND_PID > /dev/null; then
         echo "✅ Frontend started (PID: $FRONTEND_PID)"
     else
-        echo "⚠️  Frontend failed. Check logs/frontend.log"
+        echo "⚠️  Frontend failed. Check logs/frontend-app.log"
     fi
 fi
 
@@ -216,7 +230,7 @@ echo ""
 echo "📝 View logs:"
 echo "   Backend:  tail -f logs/backend.log"
 echo "   Daemon:   tail -f logs/daemon.log"
-echo "   Frontend: tail -f logs/frontend.log"
+echo "   Frontend: tail -f logs/frontend-app.log"
 echo ""
 echo "🛑 Stop servers:"
 echo "   ./shutdown_all.sh"
