@@ -1,12 +1,31 @@
-# Vigil SOC
+# Vigil 
 
-AI-powered Security Operations Center built on three pillars: **Data Sources** for ingesting and analyzing security telemetry, **Skills** for orchestrated multi-agent workflows, and **MCP** for extensible tool integration across your entire security stack.
+Vigil is a community built AI-Native Security Operations Center built on three pillars: **Agents** for performing specific capabilities, **Workflows** for orchestrated multi-agent workflows, and **Integrations** for data integestion, tools and integrations to other open source projects.  Actuall the most important pillar is you - this is your project, please contribute via feedback, code, a repo star, memes on Discord or otherwise.  
 
 ---
 
-## Skills — One-Click Multi-Agent Workflows
+## 12 Specialized AI Agents
 
-Skills are the operational core of AI SOC. Each skill chains multiple specialized AI agents into an end-to-end playbook that executes with a single command. No manual hand-offs, no copy-pasting between tools — the agents coordinate automatically.
+Every agent has access to 19 backend tools via Agent SDK and 100+ additional tools via MCP. Agents are the building blocks that Workflows orchestrate.
+
+| Agent | Role | Thinking | Key Capability |
+|-------|------|----------|----------------|
+| **Triage** | Rapid alert assessment | Fast | Severity scoring, false-positive filtering, escalation decisions |
+| **Investigator** | Root cause analysis | Deep | Evidence collection, timeline reconstruction, cross-source correlation |
+| **Threat Hunter** | Proactive hunting | Deep | Hypothesis-driven anomaly detection, pattern intelligence from 7,200+ rules |
+| **Correlator** | Multi-signal linking | Deep | Campaign identification, attack chain reconstruction, entity mapping |
+| **Responder** | Containment actions | Fast | NIST IR containment, blast radius assessment, confidence-scored approval requests |
+| **Reporter** | Documentation | Balanced | Executive summaries, technical reports, audience-tailored content |
+| **MITRE Analyst** | ATT&CK mapping | Deep | Technique identification, coverage analysis, gap prioritization, detection templates |
+| **Forensics** | Digital forensics | Deep | Artifact analysis, chain of custody, multi-domain examination |
+| **Threat Intel** | IOC enrichment | Deep | Actor attribution, campaign tracking, OSINT integration |
+| **Compliance** | Regulatory checks | Balanced | NIST, ISO, PCI-DSS, HIPAA, GDPR, SOC 2 assessment |
+| **Malware Analyst** | Malware examination | Deep | Static/dynamic analysis, family classification, C2 identification |
+| **Network Analyst** | Traffic analysis | Deep | Flow analysis, protocol anomalies, lateral movement detection |
+
+## Workflows — One-Click Multi-Agent Workflows
+
+Workflows are the operational core of Vigil. Each worfklow chains multiple specialized AI agents into an end-to-end playbook that executes with a single command. No manual hand-offs, no copy-pasting between tools — the agents coordinate automatically.  
 
 | Skill | Agents | What It Does |
 |-------|--------|-------------|
@@ -17,7 +36,7 @@ Skills are the operational core of AI SOC. Each skill chains multiple specialize
 
 **How it works:** Say `"Run incident response on finding f-20260215-abc123"` and the system sequences four agents — triage scores the alert, investigator digs into root cause, responder submits containment actions with confidence-based approval, and reporter generates the final documentation.
 
-Skills are defined as `SKILL.md` files in the `skills/` directory and are fully customizable. Create your own by defining the agent sequence, tools used, and phase-by-phase instructions.
+Agents are defined as `SKILL.md` files in the `skills/` directory and are fully customizable. Create your own by defining the agent sequence, tools used, and phase-by-phase instructions.
 
 ```
 skills/
@@ -29,9 +48,9 @@ skills/
 
 ---
 
-## MCP — 30+ Integrations Across Your Security Stack
+## Integrations - 
 
-AI SOC uses the [Model Context Protocol](https://modelcontextprotocol.io/) to connect agents to your existing tools. MCP servers give every agent real-time access to your SIEM, EDR, threat intel, sandbox, ticketing, and communication platforms — all through a unified interface.
+Vigil uses the [Model Context Protocol](https://modelcontextprotocol.io/) to connect agents to your existing tools. These MCP servers give every agent real-time access to your SIEM, EDR, threat intel, sandbox, ticketing, and communication platforms — all through a unified interface.
 
 | Category | Integrations | Tools |
 |----------|-------------|-------|
@@ -48,28 +67,7 @@ AI SOC uses the [Model Context Protocol](https://modelcontextprotocol.io/) to co
 
 **Coming soon:** AWS Security Hub, Azure Sentinel, GCP Security, Okta, Microsoft Defender, SentinelOne, Carbon Black, PagerDuty.
 
-MCP servers live in `mcp-servers/` and are configured via the Settings UI or `mcp_config.json`. Add a new integration by dropping an MCP server into the `tools/` directory — or use the built-in Custom Integration Builder to generate one from API docs.
-
----
-
-## 12 Specialized AI Agents
-
-Every agent has access to 19 backend tools via Agent SDK and 100+ extended tools via MCP. Agents are the building blocks that Skills orchestrate.
-
-| Agent | Role | Thinking | Key Capability |
-|-------|------|----------|----------------|
-| **Triage** | Rapid alert assessment | Fast | Severity scoring, false-positive filtering, escalation decisions |
-| **Investigator** | Root cause analysis | Deep | Evidence collection, timeline reconstruction, cross-source correlation |
-| **Threat Hunter** | Proactive hunting | Deep | Hypothesis-driven anomaly detection, pattern intelligence from 7,200+ rules |
-| **Correlator** | Multi-signal linking | Deep | Campaign identification, attack chain reconstruction, entity mapping |
-| **Responder** | Containment actions | Fast | NIST IR containment, blast radius assessment, confidence-scored approval requests |
-| **Reporter** | Documentation | Balanced | Executive summaries, technical reports, audience-tailored content |
-| **MITRE Analyst** | ATT&CK mapping | Deep | Technique identification, coverage analysis, gap prioritization, detection templates |
-| **Forensics** | Digital forensics | Deep | Artifact analysis, chain of custody, multi-domain examination |
-| **Threat Intel** | IOC enrichment | Deep | Actor attribution, campaign tracking, OSINT integration |
-| **Compliance** | Regulatory checks | Balanced | NIST, ISO, PCI-DSS, HIPAA, GDPR, SOC 2 assessment |
-| **Malware Analyst** | Malware examination | Deep | Static/dynamic analysis, family classification, C2 identification |
-| **Network Analyst** | Traffic analysis | Deep | Flow analysis, protocol anomalies, lateral movement detection |
+MCP servers live in `mcp-servers/` and are configured via the Settings UI or `mcp_config.json`. Add a new integration by dropping an MCP server into the `tools/` directory — or use the built-in Custom Integration Builder to generate one from API docs.  If you build an integration that you find useful, chances are someone else will as well.  Please contribute!
 
 ---
 
@@ -232,7 +230,7 @@ python daemon/main.py
 
 ---
 
-## Additional Features
+## Additional Features 
 
 - **Chat-Driven Case Management** — Build cases through natural language. Say "add this to case XYZ" and the system handles findings, activities, timelines, and MITRE tagging. [Learn more](docs/CHAT_CASE_MANAGEMENT.md)
 - **Detection Engineering** — 7,200+ detection rules (Sigma, Splunk, Elastic, KQL) with coverage analysis, gap identification, and AI-assisted template generation. [Learn more](docs/DETECTION_ENGINEERING.md)
@@ -245,7 +243,7 @@ python daemon/main.py
 
 ```
 ai-opensoc/
-├── skills/            # SKILL.md workflow definitions (4 built-in)
+├── skills/            # SKILL.md definitions (4 built-in)
 ├── mcp-servers/       # MCP server implementations (30+)
 ├── backend/           # FastAPI backend API + Agent SDK tools
 ├── frontend/          # React + MUI frontend
@@ -261,7 +259,7 @@ ai-opensoc/
 
 ## Example Usage
 
-### Run a Skill
+### Run a Workflow
 ```
 You: "Run incident response on finding f-20260215-abc123"
 Claude: [triage] Severity: Critical — confirmed C2 beaconing from HOST-42
@@ -361,7 +359,7 @@ python scripts/export_postgres_to_splunk.py \
 
 ## Contributing
 
-Contributions are welcome! Whether you're fixing bugs, adding new MCP integrations, improving agent prompts, or building new skills — we'd love your help.
+Contributions are welcome! Whether you're fixing bugs, adding new MCP integrations, improving agent prompts, or building new workflows or agents — we'd love your help and leadership.
 
 **Join the community:** Connect with the DeepTempo community on [Discord](https://discord.gg/Kw68sPJU) to discuss ideas, get help, and collaborate with other contributors.
 
