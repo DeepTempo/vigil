@@ -60,11 +60,11 @@ Security-Detections-MCP provides:
 
 ### Configuration
 
-Automatically configured during `./setup_dev.sh`. Detection repositories are cloned to `~/security-detections/`.
+Automatically configured during `./scripts/setup_dev.sh`. Detection repositories are cloned to `~/security-detections/`.
 
 To skip automatic installation:
 ```bash
-SKIP_DETECTION_REPOS=true ./setup_dev.sh
+SKIP_DETECTION_REPOS=true ./scripts/setup_dev.sh
 ```
 
 To update repositories:
@@ -290,7 +290,7 @@ Benefits:
 - Route data to multiple destinations
 
 ```
-Data Sources -> Cribl Stream -> DeepTempo LogLM
+Data Sources -> Cribl Stream -> Vigil Ingestion API
                             -> Splunk
                             -> S3/Data Lake
 ```

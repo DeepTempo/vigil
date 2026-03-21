@@ -218,7 +218,7 @@ export default function Skills() {
     try {
       const response = await skillsApi.getSkill(skillId)
       setDetailSkill(response.data)
-    } catch (err: any) {
+    } catch (_err: unknown) {
       setSnackbar({
         open: true,
         message: 'Failed to load skill details',

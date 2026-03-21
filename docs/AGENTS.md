@@ -1,6 +1,6 @@
 # SOC AI Agents
 
-12 specialized AI agents for different security operations tasks.
+13 specialized AI agents for different security operations tasks.
 
 ## Tool Access
 
@@ -109,10 +109,8 @@ The backend discovers skills automatically on startup. Use `POST /api/skills/rel
 - Kill chain analysis
 - TTP mapping
 - Framework contextualization
-- **Detection coverage analysis** (71+ new tools)
-- **Gap identification and prioritization**
-- **Detection template generation**
-- **Tribal knowledge documentation**
+- Detection coverage analysis via `analyze_coverage` and `identify_gaps`
+- Gap identification and prioritization
 
 ### Forensics Agent
 - Artifact analysis
@@ -163,43 +161,19 @@ All agents can submit actions to the approval queue:
 
 ## Backend Tools by Agent (Agent SDK)
 
-All agents use these tools via Claude API function calling:
+All 13 agents share access to the same 23 backend tools via Claude API function calling. Agents are differentiated by their system prompt, specialization, and reasoning style — not by having different tool access.
 
-| Agent | Primary Backend Tools |
-|-------|----------------------|
-| Triage | `list_findings`, `get_finding`, `create_case` |
-| Investigator | All backend tools, `nearest_neighbors`, detection search |
-| Threat Hunter | `nearest_neighbors`, detection search, pattern intelligence |
-| Correlator | `nearest_neighbors`, `technique_rollup`, `attack_layer` |
-| Responder | `create_approval_action`, `list_approval_actions`, template generation |
-| Reporter | `create_attack_layer`, case export |
-| MITRE Analyst | `technique_rollup`, `get_findings_by_technique`, coverage analysis, gap identification |
-| Forensics | `search_findings`, evidence tools, detection search |
-| Threat Intel | Detection search, IOC analysis tools |
-| Malware Analyst | Detection search, pattern analysis |
-| Network Analyst | Detection search, traffic pattern tools |
-| Auto-Responder | `correlate_and_create_action`, approval tools, detection validation |
+| Tool Category | Tools | Primary Users |
+|---------------|-------|---------------|
+| Findings | `list_findings`, `search_findings`, `get_findings_stats`, `get_finding`, `nearest_neighbors` | All agents |
+| Cases | `list_cases`, `get_case`, `create_case`, `add_finding_to_case`, `update_case`, `add_resolution_step` | All agents |
+| Detection Rules | `analyze_coverage`, `search_detections`, `identify_gaps`, `get_coverage_stats`, `get_detection_count` | Triage, Investigator, MITRE Analyst, Threat Hunter |
+| ATT&CK | `get_attack_layer`, `get_technique_rollup` | MITRE Analyst, Reporter, Correlator |
+| Approvals | `list_pending_approvals`, `get_approval_action`, `approve_action`, `reject_action`, `get_approval_stats` | Responder, Auto-Responder |
 
-### Optional MCP Tools
+For extended integrations (Splunk, VirusTotal, Shodan, CrowdStrike, etc.), see [INTEGRATIONS.md](INTEGRATIONS.md).
 
-For advanced workflows requiring external integrations (Splunk, VirusTotal, Shodan, etc.), see the MCP configuration guide in [INTEGRATIONS.md](INTEGRATIONS.md).
-
-### Detection Engineering Tools (Security-Detections-MCP)
-
-All agents have access to 71+ new detection engineering tools:
-
-| Category | Available To | Tools Count |
-|----------|--------------|-------------|
-| Coverage Analysis | MITRE Analyst, Investigator, Responder | 6 |
-| Detection Search | All Agents | 12 |
-| Pattern Intelligence | Threat Hunter, MITRE Analyst | 15 |
-| Template Generation | MITRE Analyst, Responder | 8 |
-| Tribal Knowledge | All Agents | 20 |
-| Analytics & Reporting | MITRE Analyst, Reporter | 10 |
-
-**Total Tools**: 71 detection engineering tools + 27 existing integrations = **98+ tools available**
-
-See [DETECTION_ENGINEERING.md](DETECTION_ENGINEERING.md) for detailed tool descriptions and workflows.
+See [DETECTION_ENGINEERING.md](DETECTION_ENGINEERING.md) for detection coverage workflows.
 
 ## Usage Tips
 

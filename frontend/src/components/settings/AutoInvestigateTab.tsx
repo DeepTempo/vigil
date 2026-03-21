@@ -13,7 +13,7 @@ import {
   Alert,
   InputAdornment,
   CircularProgress,
-  Grid,
+  Grid2,
 } from '@mui/material'
 import {
   Save as SaveIcon,
@@ -240,17 +240,17 @@ export default function AutoInvestigateTab({ onMessage, showConfirm }: Props) {
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>Agent Limits</Typography>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 4 }}>
+          <Grid2 container spacing={2}>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Max concurrent agents', 'max_concurrent_agents', { min: 1, max: 10, helperText: '1-10 simultaneous agents' })}
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </Grid2>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Max iterations per agent', 'max_iterations_per_agent', { min: 1, max: 500, helperText: 'Claude calls per investigation' })}
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </Grid2>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Max runtime (seconds)', 'max_runtime_per_investigation', { min: 60, max: 86400, suffix: 's', helperText: `${Math.round(config.max_runtime_per_investigation / 60)} minutes` })}
-            </Grid>
-          </Grid>
+            </Grid2>
+          </Grid2>
         </CardContent>
       </Card>
 
@@ -258,17 +258,17 @@ export default function AutoInvestigateTab({ onMessage, showConfirm }: Props) {
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>Cost Guardrails</Typography>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 4 }}>
+          <Grid2 container spacing={2}>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Per investigation limit', 'max_cost_per_investigation', { min: 0.5, max: 100, prefix: '$', helperText: 'Max spend per investigation' })}
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </Grid2>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Hourly cost limit', 'max_total_hourly_cost', { min: 1, max: 500, prefix: '$', helperText: 'Pause intake if exceeded' })}
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </Grid2>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Daily cost limit', 'max_total_daily_cost', { min: 1, max: 1000, prefix: '$', helperText: 'Hard daily ceiling' })}
-            </Grid>
-          </Grid>
+            </Grid2>
+          </Grid2>
         </CardContent>
       </Card>
 
@@ -276,28 +276,28 @@ export default function AutoInvestigateTab({ onMessage, showConfirm }: Props) {
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>Timing &amp; Advanced</Typography>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 4 }}>
+          <Grid2 container spacing={2}>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Loop interval', 'loop_interval', { min: 10, max: 600, suffix: 's', helperText: 'Orchestrator check interval' })}
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </Grid2>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Agent loop delay', 'agent_loop_delay', { min: 1, max: 30, suffix: 's', helperText: 'Pause between agent iterations' })}
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </Grid2>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Stale threshold', 'stale_threshold', { min: 60, max: 3600, suffix: 's', helperText: 'Kill idle agents after this' })}
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </Grid2>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Dedup window', 'dedup_window_minutes', { min: 5, max: 1440, suffix: 'min', helperText: 'Overlap detection window' })}
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </Grid2>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               {numField('Context max chars', 'context_max_chars', { min: 1000, max: 100000, helperText: 'Max context.md in prompt' })}
-            </Grid>
-          </Grid>
+            </Grid2>
+          </Grid2>
 
           <Divider sx={{ my: 2 }} />
 
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 4 }}>
+          <Grid2 container spacing={2}>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               <TextField
                 fullWidth
                 label="Plan model"
@@ -307,8 +307,8 @@ export default function AutoInvestigateTab({ onMessage, showConfirm }: Props) {
                 helperText="Claude model for agent work"
                 sx={{ mb: 2 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </Grid2>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               <TextField
                 fullWidth
                 label="Review model"
@@ -318,8 +318,8 @@ export default function AutoInvestigateTab({ onMessage, showConfirm }: Props) {
                 helperText="Claude model for master review"
                 sx={{ mb: 2 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            </Grid2>
+            <Grid2 size={{ xs: 12, sm: 4 }}>
               <TextField
                 fullWidth
                 label="Working directory"
@@ -329,8 +329,8 @@ export default function AutoInvestigateTab({ onMessage, showConfirm }: Props) {
                 helperText="Base path for investigation files"
                 sx={{ mb: 2 }}
               />
-            </Grid>
-          </Grid>
+            </Grid2>
+          </Grid2>
         </CardContent>
       </Card>
 

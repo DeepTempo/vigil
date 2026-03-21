@@ -318,10 +318,10 @@ gh secret set SLACK_WEBHOOK_URL -b "https://hooks.slack.com/..."
 **Manual Rollback**:
 ```bash
 ssh user@staging-host
-cd /opt/ai-opensoc
-docker-compose down
+cd /opt/vigil
+docker compose down
 git checkout previous-commit
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Production Deployment
@@ -357,9 +357,9 @@ git push origin v1.2.3
   if: failure()
   run: |
     ssh $VM_USER@$VM_HOST '
-      cd /opt/ai-opensoc &&
-      docker-compose down &&
-      docker-compose up -d --force-recreate
+      cd /opt/vigil &&
+      docker compose down &&
+      docker compose up -d --force-recreate
     '
 ```
 
@@ -369,12 +369,12 @@ git push origin v1.2.3
 ssh prod-user@prod-host
 
 # View available images
-docker images | grep ai-opensoc
+docker images | grep vigil
 
 # Rollback to previous version
-cd /opt/ai-opensoc
+cd /opt/vigil
 export IMAGE_TAG=v1.2.2  # Previous version
-docker-compose up -d --force-recreate
+docker compose up -d --force-recreate
 ```
 
 ---
@@ -518,11 +518,11 @@ Actions → Failed workflow → test-unit-backend → Logs
 ```bash
 # SSH to VM and check logs
 ssh user@host
-cd /opt/ai-opensoc
-docker-compose logs --tail=100 backend
+cd /opt/vigil
+docker compose logs --tail=100 backend
 
 # Check service status
-docker-compose ps
+docker compose ps
 ```
 
 ### Common Issues

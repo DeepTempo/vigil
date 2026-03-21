@@ -155,9 +155,19 @@ class FindingUpdate(BaseModel):
     severity: Optional[str] = None
     status: Optional[str] = None
     anomaly_score: Optional[float] = None
-    entity_context: Optional[Dict[str, Any]] = None
     cluster_id: Optional[str] = None
     evidence_links: Optional[List[str]] = None
+    # Canonical entity fields
+    src_ip: Optional[str] = None
+    dst_ip: Optional[str] = None
+    hostname: Optional[str] = None
+    username: Optional[str] = None
+    process_name: Optional[str] = None
+    file_hash: Optional[str] = None
+    alert_category: Optional[str] = None
+    raw_fields: Optional[Dict[str, Any]] = None
+    # Legacy blob (still accepted for backward compat)
+    entity_context: Optional[Dict[str, Any]] = None
 
 
 class BulkEnrichmentRequest(BaseModel):
@@ -372,30 +382,26 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
         predicted_techniques = finding.get('predicted_techniques') or []
         anomaly_score = float(finding.get('anomaly_score') or 0)
         
-        # Build entity context string (handles both singular and plural field formats)
+        # Build entity context string from canonical fields (with entity_context fallback)
         entity_str = ""
-        if entity_context:
-            src_ips = entity_context.get('src_ips') or []
-            if not src_ips and entity_context.get('src_ip'):
-                src_ips = [entity_context['src_ip']]
-            dst_ips = entity_context.get('dst_ips') or entity_context.get('dest_ips') or []
-            if not dst_ips and entity_context.get('dst_ip'):
-                dst_ips = [entity_context['dst_ip']]
-            hostnames = entity_context.get('hostnames') or []
-            if not hostnames and entity_context.get('hostname'):
-                hostnames = [entity_context['hostname']]
-            users = entity_context.get('users') or entity_context.get('usernames') or []
-            if not users and entity_context.get('user'):
-                users = [entity_context['user']]
-            
-            if src_ips:
-                entity_str += f"Source IPs: {', '.join(str(ip) for ip in src_ips[:5])}\n"
-            if dst_ips:
-                entity_str += f"Destination IPs: {', '.join(str(ip) for ip in dst_ips[:5])}\n"
-            if hostnames:
-                entity_str += f"Hostnames: {', '.join(str(h) for h in hostnames[:5])}\n"
-            if users:
-                entity_str += f"Users: {', '.join(str(u) for u in users[:5])}\n"
+        src_ip   = finding.get('src_ip') or entity_context.get('src_ip') or entity_context.get('src_ips', [None])[0] if entity_context else None
+        dst_ip   = finding.get('dst_ip') or entity_context.get('dst_ip') or entity_context.get('dst_ips', [None])[0] if entity_context else None
+        hostname = finding.get('hostname') or entity_context.get('hostname') if entity_context else None
+        username = finding.get('username') or entity_context.get('username') or entity_context.get('user') if entity_context else None
+        if src_ip:
+            entity_str += f"Source IP: {src_ip}\n"
+        if dst_ip:
+            entity_str += f"Destination IP: {dst_ip}\n"
+        if hostname:
+            entity_str += f"Hostname: {hostname}\n"
+        if username:
+            entity_str += f"User: {username}\n"
+        if finding.get('process_name'):
+            entity_str += f"Process: {finding['process_name']}\n"
+        if finding.get('file_hash'):
+            entity_str += f"File Hash: {finding['file_hash']}\n"
+        if finding.get('alert_category'):
+            entity_str += f"Alert Category: {finding['alert_category']}\n"
         
         # Build MITRE techniques string
         techniques_str = ""

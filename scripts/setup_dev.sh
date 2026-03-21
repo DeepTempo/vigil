@@ -3,9 +3,13 @@
 # AI SOC - Quick Development Setup
 # =============================================================================
 # This script sets up the environment for local development with auth bypass.
-# Perfect for fresh clones! Just run: ./setup_dev.sh
+# Perfect for fresh clones! Just run: ./scripts/setup_dev.sh
 
 set -e  # Exit on error
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
 
 echo "=========================================="
 echo "🚀 AI SOC - Development Setup"
@@ -95,10 +99,10 @@ cd ..
 echo ""
 echo "🗄️  Starting PostgreSQL database..."
 if command -v docker &> /dev/null; then
-    ./start_database.sh
+    "$SCRIPT_DIR/start_database.sh"
     echo "✅ Database started"
 else
-    echo "⚠️  Docker not found. Please install Docker and run: ./start_database.sh"
+    echo "⚠️  Docker not found. Please install Docker and run: ./scripts/start_database.sh"
 fi
 
 # Step 5.5: Setup detection rule repositories
@@ -111,7 +115,7 @@ if [ "${SKIP_DETECTION_REPOS}" != "true" ]; then
     
     if [ ! -d "$HOME/security-detections" ]; then
         echo "📥 Cloning detection repositories to ~/security-detections/..."
-        ./scripts/setup_detection_repos.sh
+        "$SCRIPT_DIR/setup_detection_repos.sh"
         echo "✅ Detection repositories installed"
     else
         echo "✅ Detection repositories already exist"
@@ -132,8 +136,8 @@ echo "⚡ DEV_MODE is ENABLED - Authentication bypassed"
 echo "   No login required! Perfect for rapid development."
 echo ""
 echo "🚀 Start the application:"
-echo "   ./start_web.sh          - Interactive mode (keeps terminal open)"
-echo "   ./start_daemon.sh       - Background mode (frees terminal)"
+echo "   ./start_web.sh                  - Interactive mode (keeps terminal open)"
+echo "   ./scripts/start_daemon.sh       - Background mode (frees terminal)"
 echo ""
 echo "🌐 Access points:"
 echo "   Frontend: http://localhost:6988"
@@ -142,10 +146,9 @@ echo "   API Docs: http://localhost:6987/docs"
 echo ""
 echo "📚 Learn more:"
 echo "   DEV_MODE.md       - Auth bypass details"
-echo "   QUICKSTART.md     - Full quick start guide"
 echo ""
 echo "🛑 Stop services:"
-echo "   ./shutdown_all.sh"
+echo "   ./scripts/shutdown_all.sh"
 echo ""
 echo "=========================================="
 

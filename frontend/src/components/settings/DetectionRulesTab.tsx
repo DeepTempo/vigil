@@ -23,7 +23,6 @@ import {
   InputLabel,
   CircularProgress,
   alpha,
-  useTheme,
 } from '@mui/material'
 import {
   Refresh as RefreshIcon,
@@ -66,6 +65,8 @@ interface Stats {
   }>
 }
 
+type DetectionFormat = 'sigma' | 'splunk' | 'elastic' | 'kql' | 'auto'
+
 const FORMAT_COLORS: Record<string, string> = {
   sigma: '#2196f3',
   splunk: '#4caf50',
@@ -82,7 +83,6 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 }
 
 export default function DetectionRulesTab() {
-  const theme = useTheme()
   const [sources, setSources] = useState<Source[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(false)
@@ -97,7 +97,7 @@ export default function DetectionRulesTab() {
   const [newSource, setNewSource] = useState({
     name: '',
     source_type: 'git' as 'git' | 'local',
-    format: 'sigma' as string,
+    format: 'sigma' as DetectionFormat,
     url: '',
     path: '',
     subdirectory: '',
@@ -382,7 +382,7 @@ export default function DetectionRulesTab() {
               <Select
                 value={newSource.format}
                 label="Rule Format"
-                onChange={(e) => setNewSource({ ...newSource, format: e.target.value })}
+                onChange={(e) => setNewSource({ ...newSource, format: e.target.value as DetectionFormat })}
               >
                 <MenuItem value="sigma">Sigma (YAML)</MenuItem>
                 <MenuItem value="splunk">Splunk ESCU (YAML)</MenuItem>

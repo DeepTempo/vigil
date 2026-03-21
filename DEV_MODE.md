@@ -34,7 +34,7 @@ DEV_MODE is a development-only feature that **completely bypasses authentication
 **⚡ EASIEST: Use the setup script**
 
 ```bash
-./setup_dev.sh
+./scripts/setup_dev.sh
 ```
 
 This script copies the `.env` file with DEV_MODE enabled by default!
@@ -67,7 +67,7 @@ DEV_MODE=true
 # Then restart services
 ./start_web.sh
 # OR
-./start_daemon.sh
+./scripts/start_daemon.sh
 ```
 
 **Option 2: Docker Compose**
@@ -123,7 +123,7 @@ echo "DEV_MODE=true" >> .env
 
 ```bash
 # Restart API
-docker-compose restart soc-api
+docker compose restart soc-api
 
 # Restart frontend (if running)
 cd frontend
@@ -235,7 +235,7 @@ cat .env | grep DEV_MODE
 **Check Backend:**
 ```bash
 # Check if backend sees DEV_MODE
-docker-compose exec soc-api env | grep DEV_MODE
+docker compose exec soc-api env | grep DEV_MODE
 
 # Should show: DEV_MODE=true
 ```
@@ -248,7 +248,7 @@ echo "DEV_MODE=true" >> .env
 # Restart both services
 ./start_web.sh
 # OR
-docker-compose restart soc-api
+docker compose restart soc-api
 cd frontend && npm run dev
 ```
 
@@ -258,7 +258,7 @@ This means backend DEV_MODE is not enabled.
 
 **Check logs:**
 ```bash
-docker-compose logs soc-api | grep "DEV_MODE"
+docker compose logs soc-api | grep "DEV_MODE"
 
 # Should see: "⚠️  DEV_MODE is ENABLED"
 ```
@@ -269,7 +269,7 @@ docker-compose logs soc-api | grep "DEV_MODE"
 DEV_MODE=true
 
 # Restart
-docker-compose restart soc-api
+docker compose restart soc-api
 ```
 
 ### Problem: Frontend Still Shows Login Page
@@ -309,7 +309,7 @@ DEV_MODE=false
 # Restart services (both backend and frontend will use auth)
 ./start_web.sh
 # OR
-docker-compose restart soc-api
+docker compose restart soc-api
 
 cd frontend
 npm run dev
@@ -459,7 +459,7 @@ echo "DEV_MODE=true" >> .env
 # 2. Start all services
 ./start_web.sh
 # OR
-docker-compose up -d
+docker compose up -d
 cd frontend && npm run dev
 
 # 3. Develop freely without auth barriers

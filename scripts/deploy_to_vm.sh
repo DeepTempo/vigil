@@ -64,7 +64,7 @@ run_remote "
     cd $DEPLOY_DIR &&
     mkdir -p backups &&
     timestamp=\$(date +%Y%m%d_%H%M%S) &&
-    docker-compose ps > backups/pre-deploy-\$timestamp.txt &&
+    docker compose ps > backups/pre-deploy-\$timestamp.txt &&
     echo 'Backup created: backups/pre-deploy-\$timestamp.txt'
 "
 
@@ -76,7 +76,7 @@ run_remote "
     docker pull $REGISTRY/$IMAGE_NAME-daemon:$IMAGE_TAG
 "
 
-# Step 3: Update docker-compose configuration
+# Step 3: Update Compose stack configuration
 echo -e "\n${YELLOW}Step 3: Updating configuration...${NC}"
 run_remote "
     cd $DEPLOY_DIR &&
@@ -89,7 +89,7 @@ run_remote "
 echo -e "\n${YELLOW}Step 4: Running database migrations...${NC}"
 run_remote "
     cd $DEPLOY_DIR &&
-    docker-compose run --rm backend alembic upgrade head || echo 'Migration completed'
+    docker compose run --rm backend alembic upgrade head || echo 'Migration completed'
 "
 
 # Step 5: Rolling restart services
@@ -99,9 +99,9 @@ echo -e "\n${YELLOW}Step 5: Performing rolling restart...${NC}"
 echo "Restarting daemon..."
 run_remote "
     cd $DEPLOY_DIR &&
-    docker-compose stop soc-daemon &&
-    docker-compose rm -f soc-daemon &&
-    docker-compose up -d soc-daemon
+    docker compose stop soc-daemon &&
+    docker compose rm -f soc-daemon &&
+    docker compose up -d soc-daemon
 "
 check_health "soc-daemon"
 
@@ -109,9 +109,9 @@ check_health "soc-daemon"
 echo "Restarting backend..."
 run_remote "
     cd $DEPLOY_DIR &&
-    docker-compose stop backend &&
-    docker-compose rm -f backend &&
-    docker-compose up -d backend
+    docker compose stop backend &&
+    docker compose rm -f backend &&
+    docker compose up -d backend
 "
 check_health "backend"
 
@@ -127,7 +127,7 @@ if [ "$api_health" = "200" ]; then
 else
     echo -e "${RED}✗ API health check failed (HTTP $api_health)${NC}"
     echo -e "${YELLOW}Initiating rollback...${NC}"
-    run_remote "cd $DEPLOY_DIR && docker-compose down && docker-compose up -d"
+    run_remote "cd $DEPLOY_DIR && docker compose down && docker compose up -d"
     exit 1
 fi
 
@@ -151,10 +151,10 @@ echo -e "\n${YELLOW}Step 8: Verifying deployment...${NC}"
 run_remote "
     cd $DEPLOY_DIR &&
     echo '--- Running Services ---' &&
-    docker-compose ps &&
+    docker compose ps &&
     echo '' &&
     echo '--- Recent Logs ---' &&
-    docker-compose logs --tail=20 backend
+    docker compose logs --tail=20 backend
 "
 
 # Success!

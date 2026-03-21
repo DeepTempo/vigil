@@ -141,7 +141,7 @@ Tool schemas are defined in `backend/schemas/tool_schemas.py`:
 ```python
 from backend.schemas.tool_schemas import ALL_TOOLS
 
-# Contains 19 tools total:
+# Contains 23 tools total:
 # - 5 security detection tools
 # - 7 findings/case tools  
 # - 2 attack layer tools
@@ -196,7 +196,7 @@ python tests/test_integration_backend_tools.py
 
 ### Expected Results
 
-- All 19 tools should load successfully
+- All 23 tools should load successfully
 - Coverage analysis should work with 6,700+ rules
 - Finding/case queries should work with database
 - Approval workflow should work with pending actions

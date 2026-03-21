@@ -17,13 +17,13 @@ class ServiceAction(BaseModel):
 
 def run_docker_compose_command(service: str, action: str, profile: Optional[str] = None) -> Dict:
     """
-    Run a docker-compose command for a service.
-    
+    Run a `docker compose` (Compose V2 plugin) command for a service.
+
     Args:
         service: Service name (e.g., 'splunk', 'postgres')
         action: Action to perform ('up', 'down', 'restart', 'ps')
-        profile: Optional docker-compose profile to use
-    
+        profile: Optional Compose profile to use
+
     Returns:
         Dict with success status and output/error message
     """
@@ -37,9 +37,8 @@ def run_docker_compose_command(service: str, action: str, profile: Optional[str]
                 "message": "Docker directory not found"
             }
         
-        # Build command
-        cmd = ['docker-compose']
-        
+        cmd = ['docker', 'compose']
+
         if profile:
             cmd.extend(['--profile', profile])
         
@@ -82,7 +81,7 @@ def run_docker_compose_command(service: str, action: str, profile: Optional[str]
             "message": f"Command timed out after 60 seconds"
         }
     except Exception as e:
-        logger.error(f"Error running docker-compose: {e}")
+        logger.error(f"Error running docker compose: {e}")
         return {
             "success": False,
             "message": f"Error: {str(e)}"

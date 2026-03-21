@@ -1,6 +1,6 @@
 #!/bin/bash
 # Complete shutdown for Vigil SOC v2.0
-# Usage: ./shutdown_all.sh [-d|--docker] [--full]
+# Usage: ./scripts/shutdown_all.sh [-d|--docker] [--full]
 #   -d, --docker : Also shutdown Docker containers
 #   --full       : When used with --docker, removes containers and volumes (clean slate)
 
@@ -18,7 +18,7 @@ for arg in "$@"; do
             ;;
         *)
             echo "Unknown option: $arg"
-            echo "Usage: ./shutdown_all.sh [-d|--docker] [--full]"
+            echo "Usage: ./scripts/shutdown_all.sh [-d|--docker] [--full]"
             exit 1
             ;;
     esac
@@ -92,33 +92,26 @@ if [ "$DOCKER_SHUTDOWN" == "true" ]; then
         if [ -d "docker" ]; then
             cd docker
             
-            # Check which compose command to use
-            if command -v docker-compose &> /dev/null; then
-                DOCKER_COMPOSE="docker-compose"
-            else
-                DOCKER_COMPOSE="docker compose"
-            fi
-            
             # Stop all services
             if [ "$FULL_CLEANUP" == "true" ]; then
                 echo "   Stopping and removing Docker containers..."
-                $DOCKER_COMPOSE down 2>/dev/null || echo "   No Docker services running"
+                docker compose down 2>/dev/null || echo "   No Docker services running"
                 echo "   ✓ Docker containers removed"
                 
                 # Ask about volumes
                 read -p "   Also remove database volumes (⚠️  deletes all data)? (y/N) " -n 1 -r
                 echo
                 if [[ $REPLY =~ ^[Yy]$ ]]; then
-                    $DOCKER_COMPOSE down -v 2>/dev/null
+                    docker compose down -v 2>/dev/null
                     echo "   ✓ Docker volumes removed (database wiped)"
                 else
                     echo "   ℹ️  Database volumes kept"
                 fi
             else
                 echo "   Stopping Docker services..."
-                $DOCKER_COMPOSE stop 2>/dev/null || echo "   No Docker services running"
+                docker compose stop 2>/dev/null || echo "   No Docker services running"
                 echo "   ✓ Docker services stopped (containers kept)"
-                echo "   ℹ️  For full cleanup: ./shutdown_all.sh --docker --full"
+                echo "   ℹ️  For full cleanup: ./scripts/shutdown_all.sh --docker --full"
             fi
             
             cd ..
@@ -160,12 +153,7 @@ if command -v docker &> /dev/null && [ -d "docker" ]; then
         echo "Docker status (not modified):"
     fi
     cd docker
-    if command -v docker-compose &> /dev/null; then
-        DOCKER_COMPOSE="docker-compose"
-    else
-        DOCKER_COMPOSE="docker compose"
-    fi
-    $DOCKER_COMPOSE ps --format table 2>/dev/null || echo "  No Docker services"
+    docker compose ps --format table 2>/dev/null || echo "  No Docker services"
     cd ..
 fi
 
@@ -186,11 +174,11 @@ fi
 echo ""
 echo "To restart:"
 echo "  ./start_web.sh          - Interactive (keeps terminal)"
-echo "  ./start_daemon.sh       - Background (frees terminal)"
+echo "  ./scripts/start_daemon.sh       - Background (frees terminal)"
 echo ""
 echo "Shutdown options:"
-echo "  ./shutdown_all.sh              - Stop native processes only (current)"
-echo "  ./shutdown_all.sh -d           - Stop native processes + Docker"
-echo "  ./shutdown_all.sh -d --full    - Stop + remove containers and volumes"
+echo "  ./scripts/shutdown_all.sh              - Stop native processes only (current)"
+echo "  ./scripts/shutdown_all.sh -d           - Stop native processes + Docker"
+echo "  ./scripts/shutdown_all.sh -d --full    - Stop + remove containers and volumes"
 echo ""
 

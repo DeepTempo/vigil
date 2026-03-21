@@ -96,13 +96,13 @@ curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 sudo usermod -aG docker $USER
 
-# Install Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
+# Install Docker Compose V2 plugin (not the deprecated standalone docker compose binary)
+sudo apt-get update
+sudo apt-get install -y docker-compose-plugin
 
 # Verify installation
 docker --version
-docker-compose --version
+docker compose version
 
 # Logout and login again for group changes
 ```
@@ -127,12 +127,12 @@ chmod 600 ~/.ssh/authorized_keys
 
 ```bash
 # As deployer user
-sudo mkdir -p /opt/ai-opensoc
-sudo chown deployer:deployer /opt/ai-opensoc
-cd /opt/ai-opensoc
+sudo mkdir -p /opt/vigil
+sudo chown deployer:deployer /opt/vigil
+cd /opt/vigil
 
 # Clone repository
-git clone https://github.com/your-org/ai-opensoc.git .
+git clone https://github.com/your-org/vigil.git .
 
 # Create necessary directories
 mkdir -p logs evidence backups
@@ -200,14 +200,14 @@ git push origin v1.2.3
 
 ```bash
 # On deployment machine
-cd /opt/ai-opensoc
+cd /opt/vigil
 
 # Pull latest code
 git pull origin main
 
 # Set environment variables
 export REGISTRY=ghcr.io
-export IMAGE_NAME=your-org/ai-opensoc
+export IMAGE_NAME=your-org/vigil
 export IMAGE_TAG=latest
 
 # Run deployment script
@@ -219,20 +219,20 @@ chmod +x scripts/deploy_to_vm.sh
 
 ```bash
 # On deployment machine
-cd /opt/ai-opensoc
+cd /opt/vigil
 
 # Set environment variables in .env file
 cp env.example .env
 vi .env  # Edit configuration
 
 # Pull images
-docker-compose pull
+docker compose pull
 
 # Start services
-docker-compose up -d
+docker compose up -d
 
 # Check status
-docker-compose ps
+docker compose ps
 ```
 
 ---
@@ -241,7 +241,7 @@ docker-compose ps
 
 ### Environment Variables
 
-**File**: `/opt/ai-opensoc/.env`
+**File**: `/opt/vigil/.env`
 
 ```bash
 # Database
@@ -271,7 +271,7 @@ SLACK_DEFAULT_CHANNEL=#soc-alerts
 
 ### Docker Compose Configuration
 
-**File**: `/opt/ai-opensoc/docker-compose.yml`
+**File**: `/opt/vigil/docker-compose.yml`
 
 ```yaml
 version: '3.8'
@@ -321,7 +321,7 @@ volumes:
 
 ### Nginx Reverse Proxy (Optional)
 
-**File**: `/etc/nginx/sites-available/ai-opensoc`
+**File**: `/etc/nginx/sites-available/vigil`
 
 ```nginx
 server {
@@ -351,7 +351,7 @@ server {
     
     # Frontend
     location / {
-        root /opt/ai-opensoc/frontend/build;
+        root /opt/vigil/frontend/build;
         try_files $uri $uri/ /index.html;
     }
 }
@@ -371,11 +371,11 @@ curl http://localhost:6987/health
 curl http://localhost:9090/metrics
 
 # Docker container status
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f backend
-docker-compose logs -f soc-daemon
+docker compose logs -f backend
+docker compose logs -f soc-daemon
 ```
 
 ### Log Management
@@ -383,13 +383,13 @@ docker-compose logs -f soc-daemon
 **View Logs**:
 ```bash
 # All services
-docker-compose logs --tail=100
+docker compose logs --tail=100
 
 # Specific service
-docker-compose logs -f backend
+docker compose logs -f backend
 
 # Save logs to file
-docker-compose logs > logs/deployment-$(date +%Y%m%d).log
+docker compose logs > logs/deployment-$(date +%Y%m%d).log
 ```
 
 **Log Rotation**:
@@ -436,17 +436,17 @@ docker run -d -p 3000:3000 grafana/grafana
 **Automated Daily Backups**:
 ```bash
 # Create backup script
-vi /opt/ai-opensoc/scripts/backup.sh
+vi /opt/vigil/scripts/backup.sh
 ```
 
 ```bash
 #!/bin/bash
-BACKUP_DIR="/opt/ai-opensoc/backups"
+BACKUP_DIR="/opt/vigil/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="$BACKUP_DIR/deeptempo_$DATE.sql"
 
 # Create backup
-docker-compose exec -T postgres pg_dump -U deeptempo deeptempo_soc > $BACKUP_FILE
+docker compose exec -T postgres pg_dump -U deeptempo deeptempo_soc > $BACKUP_FILE
 
 # Compress
 gzip $BACKUP_FILE
@@ -463,33 +463,33 @@ echo "Backup completed: ${BACKUP_FILE}.gz"
 crontab -e
 
 # Add daily backup at 2 AM
-0 2 * * * /opt/ai-opensoc/scripts/backup.sh >> /opt/ai-opensoc/logs/backup.log 2>&1
+0 2 * * * /opt/vigil/scripts/backup.sh >> /opt/vigil/logs/backup.log 2>&1
 ```
 
 ### Database Restore
 
 ```bash
 # Stop services
-docker-compose stop backend soc-daemon
+docker compose stop backend soc-daemon
 
 # Restore from backup
-gunzip -c backups/deeptempo_20260127.sql.gz | docker-compose exec -T postgres psql -U deeptempo deeptempo_soc
+gunzip -c backups/deeptempo_20260127.sql.gz | docker compose exec -T postgres psql -U deeptempo deeptempo_soc
 
 # Start services
-docker-compose start backend soc-daemon
+docker compose start backend soc-daemon
 ```
 
 ### Update Deployment
 
 ```bash
 # Pull latest images
-docker-compose pull
+docker compose pull
 
 # Recreate containers
-docker-compose up -d --force-recreate
+docker compose up -d --force-recreate
 
 # Verify
-docker-compose ps
+docker compose ps
 ```
 
 ### Certificate Renewal (Let's Encrypt)
@@ -513,30 +513,30 @@ sudo certbot certificates
 
 ```bash
 # Check logs
-docker-compose logs backend
+docker compose logs backend
 
 # Check configuration
-docker-compose config
+docker compose config
 
 # Restart service
-docker-compose restart backend
+docker compose restart backend
 
 # Rebuild and restart
-docker-compose up -d --build --force-recreate backend
+docker compose up -d --build --force-recreate backend
 ```
 
 ### Database Connection Issues
 
 ```bash
 # Check PostgreSQL status
-docker-compose ps postgres
+docker compose ps postgres
 
 # Test connection
-docker-compose exec postgres psql -U deeptempo -d deeptempo_soc -c "SELECT 1;"
+docker compose exec postgres psql -U deeptempo -d deeptempo_soc -c "SELECT 1;"
 
 # Check network
 docker network ls
-docker network inspect ai-opensoc_default
+docker network inspect vigil_default
 ```
 
 ### High Memory Usage
@@ -546,7 +546,7 @@ docker network inspect ai-opensoc_default
 docker stats
 
 # Restart memory-heavy service
-docker-compose restart soc-daemon
+docker compose restart soc-daemon
 
 # Increase Docker memory limit
 # Edit /etc/docker/daemon.json
@@ -570,10 +570,10 @@ df -h
 docker system prune -a --volumes
 
 # Remove old images
-docker images | grep ai-opensoc | grep -v latest | awk '{print $3}' | xargs docker rmi
+docker images | grep vigil | grep -v latest | awk '{print $3}' | xargs docker rmi
 
 # Cleanup old logs
-find /opt/ai-opensoc/logs -name "*.log" -mtime +7 -delete
+find /opt/vigil/logs -name "*.log" -mtime +7 -delete
 ```
 
 ---
@@ -630,12 +630,12 @@ sudo systemctl start fail2ban
 
 ```bash
 # Stop current deployment
-docker-compose down
+docker compose down
 
 # Pull previous version
 export IMAGE_TAG=v1.2.2
-docker-compose pull
-docker-compose up -d
+docker compose pull
+docker compose up -d
 
 # Verify
 curl http://localhost:6987/health
@@ -645,20 +645,20 @@ curl http://localhost:6987/health
 
 ```bash
 # 1. Stop services
-docker-compose down
+docker compose down
 
 # 2. Restore database backup
-gunzip -c backups/pre-v1.2.3.sql.gz | docker-compose exec -T postgres psql -U deeptempo deeptempo_soc
+gunzip -c backups/pre-v1.2.3.sql.gz | docker compose exec -T postgres psql -U deeptempo deeptempo_soc
 
 # 3. Revert code
 git checkout v1.2.2
 
 # 4. Deploy previous version
 export IMAGE_TAG=v1.2.2
-docker-compose up -d
+docker compose up -d
 
 # 5. Verify
-docker-compose ps
+docker compose ps
 curl http://localhost:6987/health
 ```
 

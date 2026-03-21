@@ -875,7 +875,7 @@ CONVERSATION ({len(conversation_text)} chars):
 
 Provide a structured summary preserving all critical context."""
     
-    def _summarize_messages_sync(self, messages: List[Dict], model: str = "claude-sonnet-4-20250514") -> Optional[str]:
+    def _summarize_messages_sync(self, messages: List[Dict], model: str = "claude-sonnet-4-6") -> Optional[str]:
         """
         Synchronously summarize a list of messages using a lightweight Claude call.
         
@@ -910,7 +910,7 @@ Provide a structured summary preserving all critical context."""
             logger.error(f"❌ Auto-summarization failed: {e}")
             return None
     
-    async def _summarize_messages_async(self, messages: List[Dict], model: str = "claude-sonnet-4-20250514") -> Optional[str]:
+    async def _summarize_messages_async(self, messages: List[Dict], model: str = "claude-sonnet-4-6") -> Optional[str]:
         """
         Asynchronously summarize a list of messages using a lightweight Claude call.
         
@@ -946,7 +946,7 @@ Provide a structured summary preserving all critical context."""
             return None
     
     def _prepare_context_sync(self, messages: List[Dict], system_prompt: Optional[str] = None,
-                               model: str = "claude-sonnet-4-20250514",
+                               model: str = "claude-sonnet-4-6",
                                max_context_tokens: int = 180000) -> tuple:
         """
         Prepare messages for API call, auto-summarizing if context is too long.
@@ -992,7 +992,7 @@ Provide a structured summary preserving all critical context."""
             return to_keep, len(to_summarize)
     
     async def _prepare_context_async(self, messages: List[Dict], system_prompt: Optional[str] = None,
-                                      model: str = "claude-sonnet-4-20250514",
+                                      model: str = "claude-sonnet-4-6",
                                       max_context_tokens: int = 180000) -> tuple:
         """
         Prepare messages for API call, auto-summarizing if context is too long.
@@ -1403,7 +1403,7 @@ Provide a structured summary preserving all critical context."""
         return tool_results
     
     def chat(self, message: Union[str, List[Dict]], system_prompt: Optional[str] = None,
-             context: Optional[List[Dict]] = None, model: str = "claude-sonnet-4-5-20250929",
+             context: Optional[List[Dict]] = None, model: str = "claude-sonnet-4-6",
              images: Optional[List[Dict]] = None, prefill: Optional[str] = None,
              max_tokens: int = 4096, enable_thinking: Optional[bool] = None,
              thinking_budget: Optional[int] = None) -> Optional[str]:
@@ -1726,7 +1726,7 @@ Provide a structured summary preserving all critical context."""
             raise ValueError(f"Invalid source_type: {source_type}. Use 'url' or 'base64'.")
     
     async def chat_stream(self, message: Union[str, List[Dict]], system_prompt: Optional[str] = None,
-                         context: Optional[List[Dict]] = None, model: str = "claude-sonnet-4-5-20250929",
+                         context: Optional[List[Dict]] = None, model: str = "claude-sonnet-4-6",
                          images: Optional[List[Dict]] = None, prefill: Optional[str] = None,
                          max_tokens: int = 4096, enable_thinking: Optional[bool] = None,
                          thinking_budget: Optional[int] = None) -> AsyncIterator[str]:
@@ -1999,7 +1999,7 @@ Provide a structured summary preserving all critical context."""
         
         message = f"Analyze this security finding:\n\n{finding_text}\n\nProvide a detailed analysis."
         
-        return self.chat(message, system_prompt=system_prompt, model="claude-sonnet-4-5-20250929")
+        return self.chat(message, system_prompt=system_prompt, model="claude-sonnet-4-6")
     
     def correlate_findings(self, findings: List[Dict]) -> str:
         """
@@ -2025,7 +2025,7 @@ Provide a structured summary preserving all critical context."""
         
         message = f"Correlate these security findings:\n\n{findings_text}\n\nProvide correlation analysis."
         
-        return self.chat(message, system_prompt=system_prompt, model="claude-sonnet-4-5-20250929")
+        return self.chat(message, system_prompt=system_prompt, model="claude-sonnet-4-6")
     
     def generate_case_summary(self, case: Dict, findings: List[Dict]) -> str:
         """
@@ -2061,7 +2061,7 @@ Provide a structured summary preserving all critical context."""
             f"Provide a comprehensive case summary."
         )
         
-        return self.chat(message, system_prompt=system_prompt, model="claude-sonnet-4-5-20250929")
+        return self.chat(message, system_prompt=system_prompt, model="claude-sonnet-4-6")
     
     async def generate_event_analysis(self, event_data: Dict, related_events: List[Dict], 
                                      finding_data: Optional[Dict] = None) -> Dict[str, Any]:
@@ -2192,7 +2192,7 @@ Provide only the JSON, no additional text."""
         
         try:
             # Use chat method to get analysis
-            response = self.chat(prompt, system_prompt=system_prompt, model="claude-sonnet-4-5-20250929")
+            response = self.chat(prompt, system_prompt=system_prompt, model="claude-sonnet-4-6")
             
             # Parse JSON response
             # Claude might wrap it in markdown code blocks, so handle that
@@ -2245,7 +2245,7 @@ Provide only the JSON, no additional text."""
     async def agent_query(self, prompt: str, system_prompt: Optional[str] = None,
                          allowed_tools: Optional[List[str]] = None,
                          max_turns: int = 10, session_id: Optional[str] = None,
-                         model: str = "claude-sonnet-4-5-20250929") -> AsyncIterator[Dict[str, Any]]:
+                         model: str = "claude-sonnet-4-6") -> AsyncIterator[Dict[str, Any]]:
         """
         Run an agentic workflow using Claude Agent SDK with streaming.
         
@@ -2437,7 +2437,7 @@ Provide only the JSON, no additional text."""
         system_prompt = config.get('system_prompt')
         allowed_tools = config.get('allowed_tools')
         max_turns = config.get('max_turns', 10)
-        model = config.get('model', 'claude-sonnet-4-5-20250929')
+        model = config.get('model', 'claude-sonnet-4-6')
         
         results = {
             "task": task,

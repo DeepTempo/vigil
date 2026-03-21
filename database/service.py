@@ -60,11 +60,21 @@ class DatabaseService:
                     timestamp=timestamp,
                     data_source=data_source,
                     description=kwargs.get('description'),
+                    # Canonical entity fields
+                    src_ip=kwargs.get('src_ip'),
+                    dst_ip=kwargs.get('dst_ip'),
+                    hostname=kwargs.get('hostname'),
+                    username=kwargs.get('username'),
+                    process_name=kwargs.get('process_name'),
+                    file_hash=kwargs.get('file_hash'),
+                    alert_category=kwargs.get('alert_category'),
+                    raw_fields=kwargs.get('raw_fields'),
+                    # Legacy blob retained for backward compat
                     entity_context=kwargs.get('entity_context'),
                     evidence_links=kwargs.get('evidence_links'),
                     cluster_id=kwargs.get('cluster_id'),
                     severity=kwargs.get('severity'),
-                    status=kwargs.get('status', 'new')
+                    status=kwargs.get('status', 'new'),
                 )
                 session.add(finding)
                 session.flush()

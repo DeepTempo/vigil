@@ -138,7 +138,7 @@ const EntityGraph = memo(function EntityGraph({
   highlightedNodes = [],
   maxNodes = 500,
 }: EntityGraphProps) {
-  const graphRef = useRef<ForceGraphMethods<NodeObject<GraphNode>, LinkObject<GraphNode, GraphLink>>>()
+  const graphRef = useRef<ForceGraphMethods<NodeObject<GraphNode>, LinkObject<GraphNode, GraphLink>> | undefined>(undefined)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
   const [layout, setLayout] = useState<'force' | 'spread' | 'tight'>('force')

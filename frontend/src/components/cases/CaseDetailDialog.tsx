@@ -146,7 +146,7 @@ export default function CaseDetailDialog({
           try {
             const resp = await findingsApi.getById(id)
             return resp.data
-          } catch (error) {
+          } catch {
             return null
           }
         })
@@ -208,7 +208,7 @@ export default function CaseDetailDialog({
       setEditMode(false)
       onUpdate?.()
       await loadCase()
-    } catch (error) {
+    } catch {
       setSnackbar({
         open: true,
         message: 'Failed to update case',

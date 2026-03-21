@@ -58,7 +58,7 @@ AI-OpenSOC uses **backend tool integration via Claude Agent SDK**. No desktop ap
 ### Backend
 - FastAPI (Python 3.10+)
 - Claude API integration
-- Backend tools (19 tools)
+- Backend tools (23 tools)
 - Port: 6987
 
 ### Database
@@ -74,35 +74,39 @@ AI-OpenSOC uses **backend tool integration via Claude Agent SDK**. No desktop ap
 ## Tool Categories
 
 ### 1. Security Detection Tools (5)
-Access to detection rule database:
+Access to 7,200+ detection rules across Sigma, Splunk, Elastic, and KQL formats:
 - `analyze_coverage` - Coverage by MITRE technique
 - `search_detections` - Keyword search across rules
-- `identify_gaps` - Gap analysis
-- `get_coverage_stats` - Statistics
-- `get_detection_count` - Counts by source
+- `identify_gaps` - Gap analysis for a given threat context
+- `get_coverage_stats` - Overall statistics by format
+- `get_detection_count` - Rule counts by source
 
-### 2. Finding & Case Tools (7)
+### 2. Finding & Case Tools (11)
 SOC investigation workflow:
-- `list_findings` - Query findings
-- `get_finding` - Get specific finding
-- `nearest_neighbors` - Similar findings
+- `list_findings` - Query findings with filters and pagination
+- `search_findings` - Full-text search across findings
+- `get_findings_stats` - Aggregate statistics
+- `get_finding` - Get specific finding details
+- `nearest_neighbors` - Similar findings by embedding
 - `list_cases` - Query cases
 - `get_case` - Get specific case
 - `create_case` - Create new case
-- `add_finding_to_case` - Associate findings
+- `add_finding_to_case` - Associate findings with a case
+- `update_case` - Update case title, status, priority
+- `add_resolution_step` - Document containment/remediation actions
 
 ### 3. MITRE ATT&CK Tools (2)
 Technique mapping and visualization:
-- `get_attack_layer` - Generate Navigator layer
-- `get_technique_rollup` - Technique statistics
+- `get_attack_layer` - Generate ATT&CK Navigator layer JSON
+- `get_technique_rollup` - Technique statistics across findings
 
 ### 4. Approval Tools (5)
 Autonomous response workflow:
-- `list_pending_approvals` - Pending actions
+- `list_pending_approvals` - Pending actions awaiting approval
 - `get_approval_action` - Action details
-- `approve_action` - Approve action
-- `reject_action` - Reject action
-- `get_approval_stats` - Statistics
+- `approve_action` - Approve action for execution
+- `reject_action` - Reject action with reason
+- `get_approval_stats` - Approval statistics
 
 ## Request Flow
 
@@ -145,8 +149,7 @@ ELASTIC_PATHS="${HOME}/security-detections/detection-rules/rules"
 KQL_PATHS="${HOME}/security-detections/Hunting-Queries-Detection-Rules"
 
 # Database
-DATABASE_PATH="${PWD}/data/deeptempo.db"
-POSTGRESQL_CONNECTION_STRING=postgresql://user:pass@localhost:5432/deeptempo
+DATABASE_URL=postgresql://deeptempo:password@localhost:5432/deeptempo_soc
 ```
 
 ### Backend Tool Initialization
@@ -156,10 +159,7 @@ All backend API endpoints use:
 ```python
 from services.claude_service import ClaudeService
 
-claude_service = ClaudeService(
-    use_backend_tools=True,   # ✅ Backend tools
-    use_mcp_tools=False       # ❌ No MCP
-)
+claude_service = ClaudeService(use_backend_tools=True)
 ```
 
 ## Deployment
@@ -168,7 +168,7 @@ claude_service = ClaudeService(
 
 ```bash
 # Terminal 1: Database
-cd docker && docker-compose up -d postgres
+cd docker && docker compose up -d postgres
 
 # Terminal 2: Backend
 source venv/bin/activate
@@ -182,7 +182,7 @@ cd frontend && npm run dev
 
 ```bash
 cd docker
-docker-compose up -d
+docker compose up -d
 ```
 
 Includes:
@@ -233,12 +233,10 @@ curl http://localhost:6987/api/storage/status
 
 ### Logs
 
-```bash
-# Backend logs
-tail -f ~/.deeptempo/api.log
+Backend logs are written to stdout when running via `start_web.sh`. In production (Docker), view with:
 
-# Tool execution (debug)
-tail -f ~/.deeptempo/api.log | grep "Executed backend tool"
+```bash
+docker logs deeptempo-api -f
 ```
 
 ## Security
@@ -254,28 +252,6 @@ tail -f ~/.deeptempo/api.log | grep "Executed backend tool"
 - Rate limiting on API endpoints
 - Authentication required (configurable)
 
-## Comparison: Previous vs Current Architecture
-
-### Before (MCP-Based)
-```
-Web UI → Backend → MCP Client → MCP Servers (stdio)
-                                     ↓
-                              Tool Implementations
-```
-- Required desktop application for local use
-- Complex MCP server configuration
-- Not web UI compatible
-- Higher latency (protocol overhead)
-
-### Now (Agent SDK)
-```
-Web UI → Backend → Claude Agent SDK → Backend Tools → Services
-```
-- Autonomous tool execution via Agent SDK
-- Simple configuration
-- Production-ready
-- Lower latency
-
 ## Troubleshooting
 
 ### "No tools loaded"
@@ -285,7 +261,7 @@ Web UI → Backend → Claude Agent SDK → Backend Tools → Services
 from services.claude_service import ClaudeService
 claude = ClaudeService(use_backend_tools=True)
 print(f"Loaded: {len(claude.backend_tools)} tools")
-# Should show: 19
+# Should show: 23
 ```
 
 ### "Detection rules not found"
@@ -306,7 +282,7 @@ ls -la ~/security-detections/
 docker ps | grep postgres
 
 # Check connection string
-echo $POSTGRESQL_CONNECTION_STRING
+echo $DATABASE_URL
 ```
 
 ## Development
@@ -366,10 +342,4 @@ pytest tests/unit/
 - [Integrations](INTEGRATIONS.md) - Backend tool integration overview
 - [API Reference](../backend/main.py) - FastAPI documentation
 
-## Support
-
-For issues or questions:
-- GitHub Issues: https://github.com/deeptempo/ai-opensoc/issues
-- Label: `backend-tools`
-- Include: Backend logs, tool name, error message
 

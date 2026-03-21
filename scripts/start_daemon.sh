@@ -28,7 +28,7 @@ mkdir -p logs
 # Check if already running
 if pgrep -f "uvicorn backend.main:app" > /dev/null; then
     echo "⚠️  Backend already running!"
-    echo "   To stop: ./shutdown_all.sh"
+    echo "   To stop: ./scripts/shutdown_all.sh"
     echo "   To view logs: tail -f logs/backend.log"
     exit 1
 fi
@@ -119,7 +119,7 @@ if command -v docker &> /dev/null; then
     else
         echo "Starting PostgreSQL..."
         cd docker
-        docker-compose up -d postgres
+        docker compose up -d postgres
         cd ..
         
         echo "Waiting for PostgreSQL..."
@@ -141,7 +141,7 @@ if command -v docker &> /dev/null; then
     else
         echo "Starting Redis (LLM job queue)..."
         cd docker
-        docker-compose up -d redis
+        docker compose up -d redis
         cd ..
         echo "Waiting for Redis..."
         sleep 2
@@ -233,7 +233,7 @@ echo "   Daemon:   tail -f logs/daemon.log"
 echo "   Frontend: tail -f logs/frontend-app.log"
 echo ""
 echo "🛑 Stop servers:"
-echo "   ./shutdown_all.sh"
+echo "   ./scripts/shutdown_all.sh"
 echo ""
 echo "🔄 Hot-reload enabled!"
 if [ "$DEV_MODE" == "true" ]; then

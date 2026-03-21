@@ -2,7 +2,7 @@
 
 ## Overview
 
-The SLA Policy Management API provides comprehensive CRUD operations for managing Service Level Agreement policies in ai-opensoc.
+The SLA Policy Management API provides comprehensive CRUD operations for managing Service Level Agreement policies in Vigil SOC.
 
 **Base URL**: `/api/sla-policies`
 

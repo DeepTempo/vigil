@@ -46,9 +46,22 @@ class Finding(Base):
     # Human-readable description (populated from ingestion or synthesized from entity_context)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
-    # Entity context (optional fields)
+    # Canonical entity fields — promoted out of entity_context for indexing and correlation.
+    # Source-specific fields that don't fit here go into raw_fields (replaces entity_context).
+    src_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    dst_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    hostname: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    process_name: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    file_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    alert_category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    # Raw source-specific fields (replaces entity_context; keep both columns during migration)
+    raw_fields: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    # Retained for backward compat — new writes use raw_fields
     entity_context: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    
+
     # Evidence links
     evidence_links: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
     
@@ -99,6 +112,12 @@ class Finding(Base):
         Index('idx_finding_cluster_id', 'cluster_id'),
         Index('idx_finding_anomaly_score', 'anomaly_score'),
         Index('idx_finding_description', 'description', postgresql_ops={'description': 'gin_trgm_ops'}, postgresql_using='gin'),
+        # Canonical entity field indexes
+        Index('idx_finding_src_ip', 'src_ip'),
+        Index('idx_finding_dst_ip', 'dst_ip'),
+        Index('idx_finding_hostname', 'hostname'),
+        Index('idx_finding_username', 'username'),
+        Index('idx_finding_alert_category', 'alert_category'),
     )
     
     def to_dict(self) -> dict:
@@ -109,6 +128,17 @@ class Finding(Base):
             'description': self.description,
             'mitre_predictions': self.mitre_predictions,
             'anomaly_score': self.anomaly_score,
+            # Canonical entity fields
+            'src_ip': self.src_ip,
+            'dst_ip': self.dst_ip,
+            'hostname': self.hostname,
+            'username': self.username,
+            'process_name': self.process_name,
+            'file_hash': self.file_hash,
+            'alert_category': self.alert_category,
+            # Raw source-specific blob
+            'raw_fields': self.raw_fields,
+            # Legacy blob (retained for backward compat)
             'entity_context': self.entity_context,
             'evidence_links': self.evidence_links,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,

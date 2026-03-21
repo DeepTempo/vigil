@@ -119,7 +119,7 @@ if command -v docker &> /dev/null; then
     else
         echo "Starting PostgreSQL..."
         cd docker
-        docker-compose up -d postgres
+        docker compose up -d postgres
         cd ..
         
         echo "Waiting for PostgreSQL..."
@@ -141,7 +141,7 @@ if command -v docker &> /dev/null; then
     else
         echo "Starting Redis (LLM job queue)..."
         cd docker
-        docker-compose up -d redis
+        docker compose up -d redis
         cd ..
         echo "Waiting for Redis..."
         sleep 2
@@ -204,7 +204,7 @@ cleanup() {
     echo "✓ Servers stopped"
     echo ""
     echo "Database and Redis are still running. To stop:"
-    echo "  cd docker && docker-compose stop postgres redis"
+    echo "  cd docker && docker compose stop postgres redis"
     exit 0
 }
 

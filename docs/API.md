@@ -9,7 +9,7 @@ Primary security observation with embeddings and MITRE predictions.
 ```json
 {
   "finding_id": "f-2024-01-15-001",
-  "embedding": [0.123, -0.456, ...],
+  "embedding": [0.123, -0.456, "..."],
   "mitre_predictions": {"T1071.001": 0.85, "T1048.003": 0.72},
   "anomaly_score": 0.92,
   "entity_context": {
@@ -37,8 +37,8 @@ Investigation grouping related findings.
   "status": "investigating",
   "priority": "high",
   "assignee": "analyst@example.com",
-  "notes": [...],
-  "timeline": [...],
+  "notes": [],
+  "timeline": [],
   "created_at": "2024-01-15T15:00:00Z"
 }
 ```
@@ -54,90 +54,54 @@ combined = (anomaly_score * 0.6) + (max_mitre_confidence * 0.4)
 <  0.4: low
 ```
 
-## MCP Tools - DeepTempo Findings
+## Backend Tools — Findings (11 tools)
 
-### `get_finding`
-
-```json
-{ "finding_id": "f-xxx" }
-```
+These are the actual tools available to Claude via Agent SDK function calling (defined in `backend/schemas/tool_schemas.py`).
 
 ### `list_findings`
 
 ```json
 {
-  "filters": { "severity": "high", "data_source": "flow" },
-  "limit": 50,
+  "severity": "high",
+  "data_source": "sysmon",
+  "status": "new",
   "sort_by": "timestamp",
-  "sort_order": "desc"
+  "sort_order": "desc",
+  "offset": 0,
+  "limit": 20
 }
+```
+
+### `search_findings`
+
+Full-text search across finding IDs, descriptions, and entity context.
+
+```json
+{
+  "query": "mimikatz lateral movement",
+  "severity": "high",
+  "limit": 20
+}
+```
+
+### `get_findings_stats`
+
+Returns aggregate counts by severity, data source, status, and top MITRE techniques. No parameters required.
+
+### `get_finding`
+
+```json
+{ "finding_id": "f-20260209-001" }
 ```
 
 ### `nearest_neighbors`
 
-Find similar findings by embedding.
+Find similar findings by embedding similarity.
 
 ```json
 {
-  "query": "f-xxx",
-  "k": 10,
-  "filters": {
-    "data_source": "flow",
-    "min_anomaly_score": 0.5,
-    "techniques": ["T1071"]
-  }
-}
-```
-
-### `technique_rollup`
-
-MITRE technique aggregation.
-
-```json
-{
-  "time_window": { "start": "2024-01-15T00:00:00Z", "end": "2024-01-15T23:59:59Z" },
-  "min_confidence": 0.5
-}
-```
-
-Returns:
-
-```json
-{
-  "techniques": [
-    {
-      "technique_id": "T1071.001",
-      "technique_name": "Application Layer Protocol: Web Protocols",
-      "finding_count": 15,
-      "avg_confidence": 0.82
-    }
-  ]
-}
-```
-
-## MCP Tools - Case Management
-
-### `create_case`
-
-```json
-{
-  "title": "Investigation title",
-  "finding_ids": ["f-xxx", "f-yyy"],
-  "priority": "high",
-  "description": "Case description"
-}
-```
-
-### `update_case`
-
-```json
-{
-  "case_id": "case-xxx",
-  "updates": {
-    "status": "in_progress",
-    "add_findings": ["f-zzz"],
-    "add_tags": ["ransomware"]
-  }
+  "finding_id": "f-20260209-001",
+  "limit": 10
 }
 ```
 
@@ -146,7 +110,7 @@ Returns:
 ```json
 {
   "status": "in_progress",
-  "priority": "high",
+  "severity": "high",
   "limit": 50
 }
 ```
@@ -154,81 +118,167 @@ Returns:
 ### `get_case`
 
 ```json
+{ "case_id": "case-xxx" }
+```
+
+Returns full case details including findings, timeline, activities, and MITRE techniques.
+
+### `create_case`
+
+```json
+{
+  "title": "Investigation title",
+  "description": "Case description",
+  "severity": "high",
+  "finding_ids": ["f-xxx", "f-yyy"]
+}
+```
+
+### `add_finding_to_case`
+
+```json
 {
   "case_id": "case-xxx",
-  "include_findings": true
+  "finding_id": "f-xxx"
 }
 ```
 
-## MCP Tools - Approval
-
-### `create_approval_action`
+### `update_case`
 
 ```json
 {
-  "action_type": "isolate_host",
-  "title": "Isolate compromised host",
-  "target": "192.168.1.100",
-  "confidence": 0.85,
-  "reason": "Confirmed ransomware activity",
-  "evidence": ["f-xxx"]
+  "case_id": "case-xxx",
+  "title": "Updated title",
+  "status": "resolved",
+  "priority": "critical"
 }
 ```
 
-### `list_approval_actions`
+Status values: `open`, `investigating`, `resolved`, `closed`
+
+### `add_resolution_step`
+
+Document a containment, eradication, or recovery action.
 
 ```json
 {
-  "status": "pending",
-  "action_type": "isolate_host"
+  "case_id": "case-xxx",
+  "description": "What needs to be done",
+  "action_taken": "Specific action taken or recommended",
+  "result": "Outcome or expected outcome"
 }
 ```
 
-## MCP Tools - Attack Layer
+## Backend Tools — Detection Rules (5 tools)
+
+Access to 7,200+ rules across Sigma, Splunk ESCU, Elastic, and KQL formats.
+
+### `analyze_coverage`
+
+```json
+{ "techniques": ["T1059.001", "T1071.001"] }
+```
+
+### `search_detections`
+
+```json
+{
+  "query": "powershell base64",
+  "source_type": "sigma",
+  "limit": 20
+}
+```
+
+`source_type`: `sigma`, `splunk`, `elastic`, `kql` (optional, searches all if omitted)
+
+### `identify_gaps`
+
+```json
+{ "context": "ransomware" }
+```
+
+### `get_coverage_stats`
+
+```json
+{ "source_type": "splunk" }
+```
+
+### `get_detection_count`
+
+```json
+{ "source_type": "elastic" }
+```
+
+## Backend Tools — MITRE ATT&CK (2 tools)
 
 ### `get_attack_layer`
 
 Returns ATT&CK Navigator layer JSON.
 
+```json
+{ "layer_type": "coverage" }
+```
+
+`layer_type`: `coverage`, `findings`, `detections`
+
 ### `get_technique_rollup`
 
 ```json
-{ "min_confidence": 0.5 }
+{ "tactic": "initial-access" }
 ```
 
-### `get_findings_by_technique`
+## Backend Tools — Approvals (5 tools)
+
+### `list_pending_approvals`
 
 ```json
-{ "technique_id": "T1071.001" }
+{ "limit": 50 }
 ```
 
-### `create_attack_layer`
+### `get_approval_action`
+
+```json
+{ "action_id": "action-20260209-001" }
+```
+
+### `approve_action`
 
 ```json
 {
-  "name": "Investigation Layer",
-  "finding_ids": ["f-xxx", "f-yyy"]
+  "action_id": "action-xxx",
+  "approved_by": "analyst_name"
 }
 ```
 
-## Access Tiers
+### `reject_action`
 
-| Tier | Description | Rate Limit |
-|------|-------------|------------|
-| 1 | Findings, embeddings, aggregations | 100/min |
-| 2 | Evidence snippets (redacted) | 20/min |
-| 3 | Raw log export (disabled default) | 5/min |
+```json
+{
+  "action_id": "action-xxx",
+  "reason": "False positive confirmed",
+  "rejected_by": "analyst_name"
+}
+```
 
-## Error Codes
+### `get_approval_stats`
 
-| Code | Description |
-|------|-------------|
-| `NOT_FOUND` | Resource not found |
-| `INVALID_PARAMETER` | Invalid parameter |
-| `ACCESS_DENIED` | Insufficient permissions |
-| `RATE_LIMITED` | Too many requests |
+No parameters. Returns total, pending, approved, rejected, and executed counts.
 
-Error response format:
+## REST API Endpoints
+
+The FastAPI backend exposes REST endpoints for direct use. Full interactive documentation is available at `http://localhost:6987/docs`.
+
+Key endpoint groups:
+- `/api/findings` — Finding CRUD and search
+- `/api/cases` — Case management
+- `/api/claude` — Chat interface and tool invocation
+- `/api/attack` — MITRE ATT&CK layers
+- `/api/ai` — AI decision approvals
+- `/api/skills` — Workflow execution
+- `/api/mcp` — MCP server management
+- `/api/ingest` — Data ingestion
+
+## Error Format
 
 ```json
 {
@@ -238,6 +288,13 @@ Error response format:
   }
 }
 ```
+
+| Code | Description |
+|------|-------------|
+| `NOT_FOUND` | Resource not found |
+| `INVALID_PARAMETER` | Invalid parameter |
+| `ACCESS_DENIED` | Insufficient permissions |
+| `RATE_LIMITED` | Too many requests |
 
 ## Entity Context by Data Source
 
@@ -277,10 +334,3 @@ Error response format:
   "rule_category": "SQL Injection"
 }
 ```
-
-## JSON Schemas
-
-Available in `data/schemas/`:
-- `finding.schema.json`
-- `case.schema.json`
-- `attack-layer.schema.json`

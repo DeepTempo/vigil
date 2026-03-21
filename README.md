@@ -139,14 +139,14 @@ cd ..
 ./start_web.sh
 
 # OR background mode (frees terminal)
-./start_daemon.sh
+./scripts/start_daemon.sh
 ```
 
 **Option B: Manual (separate terminals)**
 
 ```bash
 # Terminal 1: Start database (Docker must be running)
-cd docker && docker-compose up -d postgres
+cd docker && docker compose up -d postgres
 
 # Terminal 2: Initialize admin user and generate demo data
 source venv/bin/activate
@@ -165,9 +165,9 @@ cd frontend && npm run dev
 ### Shutdown
 
 ```bash
-./shutdown_all.sh              # Stop native processes only (Docker keeps running)
-./shutdown_all.sh -d           # Stop native processes + Docker containers
-./shutdown_all.sh -d --full    # Stop + remove containers and volumes
+./scripts/shutdown_all.sh              # Stop native processes only (Docker keeps running)
+./scripts/shutdown_all.sh -d           # Stop native processes + Docker containers
+./scripts/shutdown_all.sh -d --full    # Stop + remove containers and volumes
 ```
 
 ### Access
@@ -179,7 +179,7 @@ cd frontend && npm run dev
 ### Run with Docker (Full Stack)
 
 ```bash
-cd docker && docker-compose up -d
+cd docker && docker compose up -d
 ```
 
 Starts PostgreSQL, Backend API, and SOC Daemon.

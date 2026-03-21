@@ -23,6 +23,101 @@ from io import StringIO
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# MITRE tactic → alert_category mapping (lowercase, hyphenated)
+# ---------------------------------------------------------------------------
+_TACTIC_TO_CATEGORY: Dict[str, str] = {
+    'Initial Access':        'initial-access',
+    'Execution':             'execution',
+    'Persistence':           'persistence',
+    'Privilege Escalation':  'privilege-escalation',
+    'Defense Evasion':       'defense-evasion',
+    'Credential Access':     'credential-access',
+    'Discovery':             'discovery',
+    'Lateral Movement':      'lateral-movement',
+    'Collection':            'collection',
+    'Command and Control':   'c2',
+    'Exfiltration':          'exfiltration',
+    'Impact':                'impact',
+    'Reconnaissance':        'reconnaissance',
+}
+
+
+def extract_canonical_fields(
+    source: Dict[str, Any],
+    mitre_predictions: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Extract canonical entity fields from a heterogeneous source dict.
+
+    Handles all known key aliases written by the various ingest paths and
+    returns a dict with exactly the canonical key names.  Unknown / extra
+    fields that don't map to a canonical column are returned under
+    ``raw_fields`` so no data is lost.
+
+    Args:
+        source: entity_context blob or a flat finding dict.
+        mitre_predictions: Optional MITRE predictions used to derive
+            alert_category when not explicitly set.
+
+    Returns:
+        Dict with keys: src_ip, dst_ip, hostname, username, process_name,
+        file_hash, alert_category, raw_fields.
+    """
+    if not source:
+        return {
+            'src_ip': None, 'dst_ip': None, 'hostname': None,
+            'username': None, 'process_name': None, 'file_hash': None,
+            'alert_category': None, 'raw_fields': None,
+        }
+
+    def _first(*keys) -> Optional[str]:
+        for k in keys:
+            v = source.get(k)
+            if v:
+                # If it's a list, take the first element
+                if isinstance(v, list) and v:
+                    return str(v[0])
+                return str(v)
+        return None
+
+    src_ip        = _first('src_ip', 'src_ips', 'focal_ip', 'source_ip', 'IP1', 'ip1')
+    dst_ip        = _first('dst_ip', 'dst_ips', 'dest_ips', 'engaged_ip', 'dest_ip', 'destination_ip', 'IP2', 'ip2')
+    hostname      = _first('hostname', 'hostnames', 'host', 'device_hostname', 'computer_name', 'ComputerName')
+    username      = _first('username', 'users', 'usernames', 'user', 'account_name', 'AccountName', 'user_name')
+    process_name  = _first('process_name', 'process', 'ProcessName', 'Image', 'process_image')
+    file_hash     = _first('file_hash', 'sha256', 'md5', 'sha1', 'hash', 'FileHash')
+
+    # alert_category: explicit field takes precedence, then derive from top MITRE tactic
+    alert_category = _first('alert_category', 'category', 'alert_type', 'threat_category')
+    if not alert_category and mitre_predictions:
+        top_tactic = max(mitre_predictions, key=lambda k: mitre_predictions.get(k, 0), default=None)
+        if top_tactic:
+            alert_category = _TACTIC_TO_CATEGORY.get(top_tactic, top_tactic.lower().replace(' ', '-'))
+
+    # Everything that doesn't map to a canonical column goes into raw_fields
+    _CANONICAL_KEYS = {
+        'src_ip', 'src_ips', 'focal_ip', 'source_ip', 'IP1', 'ip1',
+        'dst_ip', 'dst_ips', 'dest_ips', 'engaged_ip', 'dest_ip', 'destination_ip', 'IP2', 'ip2',
+        'hostname', 'hostnames', 'host', 'device_hostname', 'computer_name', 'ComputerName',
+        'username', 'users', 'usernames', 'user', 'account_name', 'AccountName', 'user_name',
+        'process_name', 'process', 'ProcessName', 'Image', 'process_image',
+        'file_hash', 'sha256', 'md5', 'sha1', 'hash', 'FileHash',
+        'alert_category', 'category', 'alert_type', 'threat_category',
+    }
+    raw_fields = {k: v for k, v in source.items() if k not in _CANONICAL_KEYS} or None
+
+    return {
+        'src_ip':         src_ip,
+        'dst_ip':         dst_ip,
+        'hostname':       hostname,
+        'username':       username,
+        'process_name':   process_name,
+        'file_hash':      file_hash,
+        'alert_category': alert_category,
+        'raw_fields':     raw_fields,
+    }
+
+
 MITRE_TACTIC_MAP = {
     0: 'Impact', 1: 'Execution', 2: 'Reconnaissance', 3: 'Credential Access',
     4: 'Initial Access', 5: 'Persistence', 6: 'Discovery', 7: 'Command and Control',
@@ -145,20 +240,38 @@ class IngestionService:
                 # Parse timestamp
                 timestamp = self.parse_timestamp(finding_data.get('timestamp'))
                 
+                # Extract canonical fields from entity_context / raw source dict
+                entity_ctx = finding_data.get('entity_context') or {}
+                mitre_preds = finding_data.get('mitre_predictions', {})
+                canonical = extract_canonical_fields(entity_ctx, mitre_preds)
+                # Allow finding_data to override individual canonical fields directly
+                for field in ('src_ip', 'dst_ip', 'hostname', 'username',
+                              'process_name', 'file_hash', 'alert_category'):
+                    if finding_data.get(field):
+                        canonical[field] = finding_data[field]
+
                 # Create finding in database
                 finding = self.db_service.create_finding(
                     finding_id=finding_id,
                     embedding=finding_data.get('embedding', [0.0] * 768),
-                    mitre_predictions=finding_data.get('mitre_predictions', {}),
+                    mitre_predictions=mitre_preds,
                     anomaly_score=float(finding_data.get('anomaly_score', 0.0)),
                     timestamp=timestamp,
                     data_source=finding_data.get('data_source', 'imported'),
                     description=finding_data.get('description'),
-                    entity_context=finding_data.get('entity_context'),
+                    entity_context=entity_ctx,
+                    raw_fields=canonical.get('raw_fields'),
                     evidence_links=finding_data.get('evidence_links'),
                     cluster_id=finding_data.get('cluster_id'),
                     severity=finding_data.get('severity'),
-                    status=finding_data.get('status', 'new')
+                    status=finding_data.get('status', 'new'),
+                    src_ip=canonical.get('src_ip'),
+                    dst_ip=canonical.get('dst_ip'),
+                    hostname=canonical.get('hostname'),
+                    username=canonical.get('username'),
+                    process_name=canonical.get('process_name'),
+                    file_hash=canonical.get('file_hash'),
+                    alert_category=canonical.get('alert_category'),
                 )
                 
                 if finding:
@@ -309,16 +422,16 @@ class IngestionService:
             f.seek(0)
             
             if peek == b'{':
-                for item in ijson.items(f, 'findings.item'):
+                for item in ijson.items(f, 'findings.item', use_float=True):
                     self.stats['findings_total'] += 1
                     self.ingest_finding(item)
                 f.seek(0)
-                for item in ijson.items(f, 'cases.item'):
+                for item in ijson.items(f, 'cases.item', use_float=True):
                     self.stats['cases_total'] += 1
                     self.ingest_case(item)
             elif peek == b'[':
                 first_key = None
-                for item in ijson.items(f, 'item'):
+                for item in ijson.items(f, 'item', use_float=True):
                     if first_key is None:
                         first_key = 'finding' if 'finding_id' in item else 'case' if 'case_id' in item else 'finding'
                     if first_key == 'finding':

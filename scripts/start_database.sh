@@ -14,17 +14,10 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Check Docker Compose
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo "❌ Docker Compose not installed"
+# Docker Compose V2 (plugin: `docker compose`)
+if ! docker compose version &> /dev/null; then
+    echo "❌ Docker Compose V2 not available (need \`docker compose\` — install Docker Desktop or the compose plugin)"
     exit 1
-fi
-
-# Determine compose command
-if command -v docker-compose &> /dev/null; then
-    DOCKER_COMPOSE="docker-compose"
-else
-    DOCKER_COMPOSE="docker compose"
 fi
 
 # Load env vars
@@ -39,7 +32,7 @@ fi
 echo ""
 echo "Starting PostgreSQL..."
 cd docker
-$DOCKER_COMPOSE up -d postgres
+docker compose up -d postgres
 cd ..
 
 # Wait for ready
@@ -52,7 +45,7 @@ for i in {1..30}; do
     fi
     if [ $i -eq 30 ]; then
         echo "❌ PostgreSQL failed to start in 30s"
-        echo "   Check logs: cd docker && $DOCKER_COMPOSE logs postgres"
+        echo "   Check logs: cd docker && docker compose logs postgres"
         exit 1
     fi
     echo -n "."
@@ -86,8 +79,8 @@ echo "Database:   deeptempo"
 echo "User:       postgres"
 echo ""
 echo "Useful commands:"
-echo "  View logs:      cd docker && $DOCKER_COMPOSE logs -f postgres"
-echo "  Stop database:  cd docker && $DOCKER_COMPOSE stop postgres"
+echo "  View logs:      cd docker && docker compose logs -f postgres"
+echo "  Stop database:  cd docker && docker compose stop postgres"
 echo "  Connect:        docker exec -it deeptempo-postgres psql -U postgres -d deeptempo"
 echo ""
 

@@ -64,6 +64,9 @@ from api.detection_rules import router as detection_rules_router
 # Orchestrator router
 from api.orchestrator import router as orchestrator_router
 
+# LLM queue management router
+from api.llm_queue import router as llm_queue_router
+
 from core.rate_limit import rate_limit_dependency
 
 # Configure logging
@@ -139,6 +142,9 @@ app.include_router(skills_router, prefix="/api", tags=["skills"])
 
 # Autonomous orchestrator
 app.include_router(orchestrator_router, prefix="/api/orchestrator", tags=["orchestrator"])
+
+# LLM queue management
+app.include_router(llm_queue_router, prefix="/api", tags=["llm-queue"])
 
 # Enhanced case management routers
 app.include_router(case_templates_router, prefix="/api/cases/templates", tags=["case-templates"])

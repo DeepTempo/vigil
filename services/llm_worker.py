@@ -1,12 +1,23 @@
 """ARQ worker that processes LLM requests from the queue.
 
-Run with:
-    python -m arq services.llm_worker.WorkerSettings
+Each priority tier runs as a separate worker process, started via::
 
-This worker consumes jobs from three priority queues (triage > investigation
-> chat). All Claude API calls go through the global rate-limiter semaphore
-so we never exceed the Anthropic rate limit regardless of how many callers
-are enqueuing concurrently.
+    LLM_WORKER_QUEUE=arq:llm:triage       python -m arq services.llm_worker.WorkerSettings
+    LLM_WORKER_QUEUE=arq:llm:investigation python -m arq services.llm_worker.WorkerSettings
+    LLM_WORKER_QUEUE=arq:llm:chat         python -m arq services.llm_worker.WorkerSettings
+    LLM_WORKER_QUEUE=arq:llm:insights     python -m arq services.llm_worker.WorkerSettings
+
+Or use scripts/start_llm_workers.sh to start all four.
+
+Per-queue max concurrency is controlled by LLM_MAX_CONCURRENT_<TYPE>:
+  LLM_MAX_CONCURRENT_TRIAGE=3       (default 3)
+  LLM_MAX_CONCURRENT_INVESTIGATION=2 (default 2)
+  LLM_MAX_CONCURRENT_CHAT=3         (default 3)
+  LLM_MAX_CONCURRENT_INSIGHTS=1     (default 1)
+
+On Anthropic 429 errors the worker backs off exponentially (base 2s, max 60s)
+before retrying. Permanently failed jobs are written to the dead-letter queue
+(Redis key arq:llm:dlq) for later inspection and replay via the API.
 """
 
 import asyncio
@@ -14,23 +25,40 @@ import json
 import logging
 import os
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from arq.connections import RedisSettings
 
-# Ensure project root is importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from services.llm_gateway import (
-    QUEUE_NAME,
+    QUEUE_TRIAGE,
+    QUEUE_INVESTIGATION,
+    QUEUE_CHAT,
+    QUEUE_INSIGHTS,
+    DLQ_KEY,
     RedisSessionStore,
 )
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_REDIS_URL = "redis://localhost:6379/0"
-MAX_CONCURRENT_LLM_CALLS = int(os.getenv("LLM_MAX_CONCURRENT", "5"))
+
+# Per-queue concurrency limits
+_CONCURRENCY = {
+    "triage":        int(os.getenv("LLM_MAX_CONCURRENT_TRIAGE",        "3")),
+    "investigation": int(os.getenv("LLM_MAX_CONCURRENT_INVESTIGATION", "2")),
+    "chat":          int(os.getenv("LLM_MAX_CONCURRENT_CHAT",          "3")),
+    "insights":      int(os.getenv("LLM_MAX_CONCURRENT_INSIGHTS",      "1")),
+}
+
+# Backoff settings for Anthropic 429 rate-limit errors
+_429_BASE_DELAY = float(os.getenv("LLM_BACKOFF_BASE", "2.0"))   # seconds
+_429_MAX_DELAY  = float(os.getenv("LLM_BACKOFF_MAX",  "60.0"))  # seconds
+_429_MAX_TRIES  = int(os.getenv("LLM_BACKOFF_MAX_TRIES", "5"))
 
 
 def _redis_settings() -> RedisSettings:
@@ -43,6 +71,35 @@ def _redis_settings() -> RedisSettings:
         database=int(parsed.path.lstrip("/") or 0),
         password=parsed.password,
     )
+
+
+# ---------------------------------------------------------------------------
+# 429 backoff helper
+# ---------------------------------------------------------------------------
+
+async def _call_with_backoff(fn, *args, **kwargs) -> Any:
+    """Run *fn* (sync, called via to_thread) with exponential backoff on 429."""
+    delay = _429_BASE_DELAY
+    for attempt in range(1, _429_MAX_TRIES + 1):
+        try:
+            return await asyncio.to_thread(fn, *args, **kwargs)
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            is_429 = (
+                "ratelimit" in exc_str
+                or "rate_limit" in exc_str
+                or "429" in exc_str
+                or "overloaded" in exc_str
+            )
+            if is_429 and attempt < _429_MAX_TRIES:
+                logger.warning(
+                    "Anthropic rate-limit hit (attempt %d/%d), backing off %.1fs",
+                    attempt, _429_MAX_TRIES, delay,
+                )
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, _429_MAX_DELAY)
+                continue
+            raise
 
 
 # ---------------------------------------------------------------------------
@@ -60,46 +117,47 @@ async def llm_call(
     thinking_budget: int,
     tools: Optional[List[Dict]],
     temperature: Optional[float],
+    job_type: str = "chat",
 ) -> Any:
     """Execute a single LLM call through the shared ClaudeService.
 
-    This is the primary worker function.  It:
-      1. Acquires the rate-limit semaphore
-      2. Optionally loads session history from Redis
-      3. Calls the Anthropic API
-      4. Saves updated session history
-      5. Returns the response content
+    1. Acquires the per-type concurrency semaphore
+    2. Optionally loads session history from Redis
+    3. Calls the Anthropic API (with 429 backoff)
+    4. Saves updated session history
+    5. Returns the response content; writes to DLQ on permanent failure
     """
-    rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
+    semaphores: Dict[str, asyncio.Semaphore] = ctx["semaphores"]
     claude_service = ctx["claude_service"]
     session_store: RedisSessionStore = ctx["session_store"]
 
-    # Load session history if applicable
+    sem = semaphores.get(job_type) or semaphores["chat"]
+
     if session_id:
         history = await session_store.load(session_id)
         if history:
             messages = history + messages
 
-    await rate_limiter.acquire()
-    try:
-        response = await asyncio.to_thread(
-            _sync_claude_call,
-            claude_service,
-            messages=messages,
-            model=model,
-            max_tokens=max_tokens,
-            system_prompt=system_prompt,
-            enable_thinking=enable_thinking,
-            thinking_budget=thinking_budget,
-            tools=tools,
-            temperature=temperature,
-        )
-    finally:
-        rate_limiter.release()
+    async with sem:
+        try:
+            response = await _call_with_backoff(
+                _sync_claude_call,
+                claude_service,
+                messages=messages,
+                model=model,
+                max_tokens=max_tokens,
+                system_prompt=system_prompt,
+                enable_thinking=enable_thinking,
+                thinking_budget=thinking_budget,
+                tools=tools,
+                temperature=temperature,
+            )
+        except Exception as exc:
+            await _write_dlq(ctx, job_type=job_type, messages=messages, error=str(exc))
+            raise
 
     result = _extract_result(response)
 
-    # Persist session
     if session_id:
         updated = messages + [{"role": "assistant", "content": result.get("content", "")}]
         await session_store.save(session_id, updated)
@@ -116,33 +174,66 @@ async def llm_call_raw(
     thinking_budget: int,
     tools: Optional[List[Dict]],
     temperature: Optional[float],
+    job_type: str = "investigation",
 ) -> Dict[str, Any]:
     """Execute a raw multi-turn LLM call (used by AgentRunner tool loop).
 
-    Unlike ``llm_call``, this does NOT manage sessions -- the caller
+    Unlike ``llm_call``, this does NOT manage sessions — the caller
     provides the full message list including assistant/tool_result turns.
     Returns the raw Anthropic response as a serialisable dict.
     """
-    rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
+    semaphores: Dict[str, asyncio.Semaphore] = ctx["semaphores"]
     claude_service = ctx["claude_service"]
 
-    await rate_limiter.acquire()
-    try:
-        response = await asyncio.to_thread(
-            _sync_claude_raw,
-            claude_service,
-            messages=messages,
-            model=model,
-            max_tokens=max_tokens,
-            enable_thinking=enable_thinking,
-            thinking_budget=thinking_budget,
-            tools=tools,
-            temperature=temperature,
-        )
-    finally:
-        rate_limiter.release()
+    sem = semaphores.get(job_type) or semaphores["investigation"]
+
+    async with sem:
+        try:
+            response = await _call_with_backoff(
+                _sync_claude_raw,
+                claude_service,
+                messages=messages,
+                model=model,
+                max_tokens=max_tokens,
+                enable_thinking=enable_thinking,
+                thinking_budget=thinking_budget,
+                tools=tools,
+                temperature=temperature,
+            )
+        except Exception as exc:
+            await _write_dlq(ctx, job_type=job_type, messages=messages, error=str(exc))
+            raise
 
     return _serialize_raw_response(response)
+
+
+# ---------------------------------------------------------------------------
+# Dead-letter queue helper
+# ---------------------------------------------------------------------------
+
+async def _write_dlq(
+    ctx: Dict[str, Any],
+    *,
+    job_type: str,
+    messages: List[Dict],
+    error: str,
+):
+    try:
+        redis = ctx["redis"]
+        entry = json.dumps(
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "job_type": job_type,
+                "error": error,
+                "messages": messages,
+            },
+            default=str,
+        )
+        await redis.lpush(DLQ_KEY, entry)
+        await redis.ltrim(DLQ_KEY, 0, 999)
+        logger.error("Job written to DLQ (type=%s): %s", job_type, error)
+    except Exception as dlq_exc:
+        logger.error("Failed to write to DLQ: %s", dlq_exc)
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +252,6 @@ def _sync_claude_call(
     tools: Optional[List[Dict]],
     temperature: Optional[float],
 ) -> Any:
-    """Call ClaudeService.chat() synchronously."""
     current_message = messages[-1]["content"] if messages else ""
     context = messages[:-1] if len(messages) > 1 else None
 
@@ -187,7 +277,6 @@ def _sync_claude_raw(
     tools: Optional[List[Dict]],
     temperature: Optional[float],
 ) -> Any:
-    """Make a direct client.messages.create() call for multi-turn tool loops."""
     kwargs: Dict[str, Any] = {
         "model": model,
         "max_tokens": max_tokens,
@@ -211,7 +300,6 @@ def _sync_claude_raw(
 # ---------------------------------------------------------------------------
 
 def _extract_result(response: Any) -> Dict[str, Any]:
-    """Normalise ClaudeService.chat() output to a serialisable dict."""
     if response is None:
         return {"content": "", "type": "error", "error": "Empty response"}
     if isinstance(response, str):
@@ -224,7 +312,6 @@ def _extract_result(response: Any) -> Dict[str, Any]:
 
 
 def _serialize_raw_response(response: Any) -> Dict[str, Any]:
-    """Convert an Anthropic Message object into a JSON-safe dict."""
     try:
         content_blocks = []
         for block in response.content:
@@ -250,7 +337,7 @@ def _serialize_raw_response(response: Any) -> Dict[str, Any]:
             "output_tokens": response.usage.output_tokens,
         }
     except Exception as e:
-        logger.error(f"Failed to serialise raw response: {e}")
+        logger.error("Failed to serialise raw response: %s", e)
         return {
             "content": [],
             "stop_reason": "error",
@@ -265,11 +352,15 @@ def _serialize_raw_response(response: Any) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 async def on_startup(ctx: Dict[str, Any]):
-    """Initialise shared resources when the ARQ worker boots."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+
+    queue = os.getenv("LLM_WORKER_QUEUE", QUEUE_CHAT)
+    # Determine job_type from queue name (arq:llm:<type>)
+    job_type = queue.rsplit(":", 1)[-1] if ":" in queue else "chat"
+    concurrency = _CONCURRENCY.get(job_type, _CONCURRENCY["chat"])
 
     from services.claude_service import ClaudeService
 
@@ -281,33 +372,54 @@ async def on_startup(ctx: Dict[str, Any]):
         thinking_budget=8000,
     )
     ctx["claude_service"] = claude_service
-    ctx["rate_limiter"] = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
+    # One semaphore per type, shared across all jobs processed by this worker
+    ctx["semaphores"] = {t: asyncio.Semaphore(c) for t, c in _CONCURRENCY.items()}
     ctx["session_store"] = RedisSessionStore(ctx["redis"])
+    ctx["job_type"] = job_type
 
     logger.info(
-        f"LLM worker started (max_concurrent={MAX_CONCURRENT_LLM_CALLS})"
+        "LLM worker started (queue=%s, job_type=%s, concurrency=%d)",
+        queue, job_type, concurrency,
     )
 
 
 async def on_shutdown(ctx: Dict[str, Any]):
-    logger.info("LLM worker shutting down")
+    logger.info("LLM worker shutting down (queue=%s)", ctx.get("job_type", "?"))
 
 
 # ---------------------------------------------------------------------------
 # ARQ WorkerSettings
+#
+# The active queue is selected at startup via LLM_WORKER_QUEUE env var.
+# Run one process per queue for true priority isolation.
 # ---------------------------------------------------------------------------
+
+def _active_queue() -> str:
+    return os.getenv("LLM_WORKER_QUEUE", QUEUE_CHAT)
+
+
+def _active_max_jobs() -> int:
+    queue = _active_queue()
+    job_type = queue.rsplit(":", 1)[-1] if ":" in queue else "chat"
+    return _CONCURRENCY.get(job_type, _CONCURRENCY["chat"])
+
 
 class WorkerSettings:
     """ARQ worker configuration.
 
-    Queues are listed in priority order -- ARQ polls them left-to-right,
-    so ``triage`` jobs are always consumed before ``investigation``, which
-    are consumed before ``chat``.
+    Start one process per priority tier::
+
+        LLM_WORKER_QUEUE=arq:llm:triage       python -m arq services.llm_worker.WorkerSettings
+        LLM_WORKER_QUEUE=arq:llm:investigation python -m arq services.llm_worker.WorkerSettings
+        LLM_WORKER_QUEUE=arq:llm:chat         python -m arq services.llm_worker.WorkerSettings
+        LLM_WORKER_QUEUE=arq:llm:insights     python -m arq services.llm_worker.WorkerSettings
+
+    Or use scripts/start_llm_workers.sh.
     """
     functions = [llm_call, llm_call_raw]
     redis_settings = _redis_settings()
-    queue_name = QUEUE_NAME
-    max_jobs = MAX_CONCURRENT_LLM_CALLS
+    queue_name = _active_queue()
+    max_jobs = _active_max_jobs()
     job_timeout = 180
     retry_jobs = True
     max_tries = 3

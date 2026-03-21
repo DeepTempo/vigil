@@ -9,7 +9,7 @@ on:
 
 env:
   PYTHON_VERSION: '3.10'
-  NODE_VERSION: '18'
+  NODE_VERSION: '20'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 

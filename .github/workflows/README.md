@@ -57,8 +57,8 @@ After the CI builds your images, you can run them anywhere:
 docker pull ghcr.io/deeptempo/ai-opensoc-backend:main
 docker pull ghcr.io/deeptempo/ai-opensoc-daemon:main
 
-# Run with docker-compose
-docker-compose up -d
+# Run with Docker Compose V2
+docker compose up -d
 ```
 
 ## Future: Enabling Deployment

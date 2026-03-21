@@ -14,7 +14,7 @@ chmod 600 ~/.deeptempo/.env
 | Variable | Description |
 |----------|-------------|
 | `CLAUDE_API_KEY` | Anthropic Claude API key ([get one](https://console.anthropic.com/)) |
-| `POSTGRESQL_CONNECTION_STRING` | PostgreSQL connection (default in docker-compose) |
+| `POSTGRESQL_CONNECTION_STRING` | PostgreSQL connection (default in Compose stack / `docker/docker-compose.yml`) |
 
 ### Optional Integrations
 
@@ -108,7 +108,7 @@ postgresql://deeptempo:deeptempo_secure_password_change_me@localhost:5432/deepte
 Start database:
 
 ```bash
-docker-compose up -d postgres
+docker compose up -d postgres
 ```
 
 ## Security Best Practices

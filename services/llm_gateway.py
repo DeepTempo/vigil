@@ -3,9 +3,10 @@
 All components (daemon processor, agent runner, backend API, AI insights)
 enqueue LLM requests here instead of calling Claude directly. This provides:
   - Priority queuing (triage > investigation > chat > insights)
-  - Global Anthropic rate-limit enforcement
+  - Per-queue concurrency limits enforced by separate workers
+  - Global Anthropic rate-limit enforcement with exponential backoff on 429s
   - Persistent chat session isolation via Redis
-  - Job persistence and automatic retries
+  - Dead-letter queue (DLQ) for failed jobs with replay support
 """
 
 import asyncio
@@ -20,14 +21,28 @@ from arq.connections import ArqRedis, RedisSettings
 
 logger = logging.getLogger(__name__)
 
-QUEUE_NAME = "arq:llm"
+# ---------------------------------------------------------------------------
+# Queue name constants — each maps to a dedicated worker process.
+# Workers are started with LLM_WORKER_QUEUE=<name> (see WorkerSettings below).
+# Priority order: triage > investigation > chat > insights
+# ---------------------------------------------------------------------------
+
+QUEUE_TRIAGE      = "arq:llm:triage"
+QUEUE_INVESTIGATION = "arq:llm:investigation"
+QUEUE_CHAT        = "arq:llm:chat"
+QUEUE_INSIGHTS    = "arq:llm:insights"
+
+# Legacy alias so imports of QUEUE_NAME keep working
+QUEUE_NAME = QUEUE_CHAT
+
+# Dead-letter queue key (Redis list, not an ARQ queue)
+DLQ_KEY = "arq:llm:dlq"
 
 DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 
 
 def _redis_settings() -> RedisSettings:
     url = os.getenv("REDIS_URL", DEFAULT_REDIS_URL)
-    # Parse redis://host:port/db
     from urllib.parse import urlparse
     parsed = urlparse(url)
     return RedisSettings(
@@ -79,6 +94,38 @@ class RedisSessionStore:
 
 
 # ---------------------------------------------------------------------------
+# Dead-letter queue helpers
+# ---------------------------------------------------------------------------
+
+class DeadLetterQueue:
+    """Stores permanently-failed LLM jobs for inspection and replay."""
+
+    MAX_ENTRIES = 1000  # Cap to avoid unbounded growth
+
+    def __init__(self, redis: ArqRedis):
+        self._redis = redis
+
+    async def push(self, job_meta: Dict[str, Any]):
+        """Record a failed job."""
+        entry = json.dumps(job_meta, default=str)
+        pipe = self._redis.pipeline()
+        pipe.lpush(DLQ_KEY, entry)
+        pipe.ltrim(DLQ_KEY, 0, self.MAX_ENTRIES - 1)
+        await pipe.execute()
+
+    async def list(self, limit: int = 50) -> List[Dict]:
+        """Return up to *limit* most-recent DLQ entries."""
+        raw_items = await self._redis.lrange(DLQ_KEY, 0, limit - 1)
+        return [json.loads(r) for r in raw_items]
+
+    async def clear(self):
+        await self._redis.delete(DLQ_KEY)
+
+    async def length(self) -> int:
+        return await self._redis.llen(DLQ_KEY)
+
+
+# ---------------------------------------------------------------------------
 # Gateway -- singleton entry point used by all callers
 # ---------------------------------------------------------------------------
 
@@ -86,7 +133,7 @@ class RedisSessionStore:
 class LLMRequest:
     """Describes a single LLM call to be queued."""
     messages: List[Dict]
-    model: str = "claude-sonnet-4-5-20250929"
+    model: str = "claude-sonnet-4-6"
     max_tokens: int = 4096
     system_prompt: Optional[str] = None
     session_id: Optional[str] = None
@@ -100,6 +147,16 @@ class LLMRequest:
 class LLMGateway:
     """Enqueues LLM requests into ARQ priority queues.
 
+    Each priority tier is a separate named queue consumed by a dedicated
+    worker process.  Start workers with::
+
+        LLM_WORKER_QUEUE=arq:llm:triage      python -m arq services.llm_worker.WorkerSettings
+        LLM_WORKER_QUEUE=arq:llm:investigation python -m arq services.llm_worker.WorkerSettings
+        LLM_WORKER_QUEUE=arq:llm:chat         python -m arq services.llm_worker.WorkerSettings
+        LLM_WORKER_QUEUE=arq:llm:insights     python -m arq services.llm_worker.WorkerSettings
+
+    Or use ``scripts/start_llm_workers.sh`` which starts all four.
+
     Usage::
 
         gateway = await LLMGateway.create()
@@ -109,6 +166,7 @@ class LLMGateway:
     def __init__(self, redis_pool: ArqRedis):
         self._pool = redis_pool
         self.session_store = RedisSessionStore(redis_pool)
+        self.dlq = DeadLetterQueue(redis_pool)
 
     @classmethod
     async def create(cls, settings: Optional[RedisSettings] = None) -> "LLMGateway":
@@ -126,7 +184,7 @@ class LLMGateway:
         self,
         prompt: str,
         *,
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str = "claude-sonnet-4-6",
         max_tokens: int = 2048,
         timeout: int = 90,
     ) -> Optional[str]:
@@ -142,7 +200,8 @@ class LLMGateway:
             thinking_budget=0,
             tools=None,
             temperature=None,
-            _queue_name=QUEUE_NAME,
+            job_type="triage",
+            _queue_name=QUEUE_TRIAGE,
         )
         return await job.result(timeout=timeout)
 
@@ -151,18 +210,14 @@ class LLMGateway:
         inv_id: str,
         prompt: str,
         *,
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str = "claude-sonnet-4-6",
         max_tokens: int = 4096,
         enable_thinking: bool = True,
         thinking_budget: int = 8000,
         tools: Optional[List[Dict]] = None,
         timeout: int = 180,
     ) -> Dict[str, Any]:
-        """Enqueue an investigation LLM call (medium priority).
-
-        Returns the full response dict including token counts so the
-        agent runner can track cost.
-        """
+        """Enqueue an investigation LLM call (high priority)."""
         job = await self._pool.enqueue_job(
             "llm_call",
             messages=[{"role": "user", "content": prompt}],
@@ -174,7 +229,8 @@ class LLMGateway:
             thinking_budget=thinking_budget,
             tools=tools,
             temperature=None,
-            _queue_name=QUEUE_NAME,
+            job_type="investigation",
+            _queue_name=QUEUE_INVESTIGATION,
         )
         return await job.result(timeout=timeout)
 
@@ -183,18 +239,14 @@ class LLMGateway:
         inv_id: str,
         messages: List[Dict],
         *,
-        model: str = "claude-sonnet-4-5-20250929",
+        model: str = "claude-sonnet-4-6",
         max_tokens: int = 16000,
         enable_thinking: bool = True,
         thinking_budget: int = 8000,
         tools: Optional[List[Dict]] = None,
         timeout: int = 180,
     ) -> Dict[str, Any]:
-        """Enqueue a multi-turn investigation call with explicit messages.
-
-        Used by AgentRunner's tool-use loop where messages contain
-        assistant + tool_result turns.
-        """
+        """Enqueue a multi-turn investigation call with explicit messages."""
         job = await self._pool.enqueue_job(
             "llm_call_raw",
             messages=messages,
@@ -204,7 +256,8 @@ class LLMGateway:
             thinking_budget=thinking_budget,
             tools=tools,
             temperature=None,
-            _queue_name=QUEUE_NAME,
+            job_type="investigation",
+            _queue_name=QUEUE_INVESTIGATION,
         )
         return await job.result(timeout=timeout)
 
@@ -213,7 +266,7 @@ class LLMGateway:
         messages: List[Dict],
         *,
         session_id: Optional[str] = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         max_tokens: int = 4096,
         system_prompt: Optional[str] = None,
         enable_thinking: bool = False,
@@ -232,7 +285,8 @@ class LLMGateway:
             thinking_budget=thinking_budget,
             tools=None,
             temperature=None,
-            _queue_name=QUEUE_NAME,
+            job_type="chat",
+            _queue_name=QUEUE_CHAT,
         )
         return await job.result(timeout=timeout)
 
@@ -240,7 +294,7 @@ class LLMGateway:
         self,
         prompt: str,
         *,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         max_tokens: int = 2000,
         temperature: float = 0.3,
         timeout: int = 90,
@@ -257,7 +311,8 @@ class LLMGateway:
             thinking_budget=0,
             tools=None,
             temperature=temperature,
-            _queue_name=QUEUE_NAME,
+            job_type="insights",
+            _queue_name=QUEUE_INSIGHTS,
         )
         return await job.result(timeout=timeout)
 

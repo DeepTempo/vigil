@@ -121,10 +121,10 @@ npm test src/utils/api.test.ts
 
 ```bash
 # Run the automated test script
-./run_tests.sh
+./scripts/run-tests.sh
 
 # Run with verbose output
-./run_tests.sh --verbose
+./scripts/run-tests.sh --verbose
 ```
 
 ---
@@ -534,7 +534,7 @@ See [CI_CD_GUIDE.md](./CI_CD_GUIDE.md) for details.
 **Solution**: Ensure you're running from project root and PYTHONPATH is set
 
 **Issue**: Database tests failing
-**Solution**: Ensure PostgreSQL is running: `docker-compose up -d postgres`
+**Solution**: Ensure PostgreSQL is running: `docker compose up -d postgres`
 
 **Issue**: Async tests timing out
 **Solution**: Increase timeout in pytest.ini or use `@pytest.mark.timeout(30)`

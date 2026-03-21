@@ -79,7 +79,7 @@ export default function Timesketch() {
         const sketchRes = await timesketchApi.listSketches()
         setSketches(sketchRes.data.sketches || [])
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to load Timesketch data' })
     } finally {
       setLoading(false)
