@@ -174,6 +174,15 @@ if [ -d "frontend" ]; then
     fi
 fi
 
+# Install copilot-runtime dependencies and apply patches if needed
+if [ -d "copilot-runtime" ] && [ -f "copilot-runtime/package.json" ]; then
+    if [ ! -d "copilot-runtime/node_modules" ]; then
+        echo "Installing copilot-runtime dependencies..."
+        cd copilot-runtime && npm install --silent && cd ..
+        echo "✓ Copilot-runtime patches applied"
+    fi
+fi
+
 # Function to cleanup on exit
 cleanup() {
     echo ""

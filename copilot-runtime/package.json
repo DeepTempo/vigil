@@ -1,0 +1,9 @@
+{
+  "name": "vigil-copilot-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CopilotKit runtime for Vigil SOC",
+  "scripts": {
+    "postinstall": "node patches/apply-patches.js"
+  }
+}

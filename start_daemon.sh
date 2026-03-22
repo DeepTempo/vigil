@@ -208,6 +208,15 @@ if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
     fi
 fi
 
+# Install copilot-runtime dependencies and apply patches if needed
+if [ -d "copilot-runtime" ] && [ -f "copilot-runtime/package.json" ]; then
+    if [ ! -d "copilot-runtime/node_modules" ]; then
+        echo "Installing copilot-runtime dependencies..."
+        cd copilot-runtime && npm install --silent && cd ..
+        echo "✓ Copilot-runtime patches applied"
+    fi
+fi
+
 # Start frontend if available
 if [ -d "frontend/node_modules" ]; then
     echo "Starting frontend server..."
