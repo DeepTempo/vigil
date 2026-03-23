@@ -31,6 +31,26 @@ Document each resolution step with:
 
 Generate professional case reports with full timeline, findings, and resolution steps.
 
+### Board Brief
+
+One-page risk posture report designed for boards and CEOs. Triggered by saying "Generate board brief" or "Create board report" in the Vigil chat.
+
+| Section | Contents |
+|---------|----------|
+| Risk posture | Red/yellow/green indicator with one-line summary |
+| Key metrics | Validated kill chains, detection coverage %, MTTR, open criticals |
+| Top 3 action items | Each with risk description, fix type (budget/policy/technical), and impact |
+| 30/60/90 day trend | Exposure count direction — improving, stable, or degrading |
+
+The board brief uses non-technical language throughout — no CVE numbers or ATT&CK IDs in the main body. All metrics are pulled from actual findings and case data.
+
+The template is customizable at `docs/templates/board-brief.md`. Output is markdown in chat, with optional PDF export via the existing report pipeline.
+
+**Quick commands:**
+- "Generate board brief"
+- "Create board report for last 30 days"
+- "Generate risk posture report"
+
 ## Approval Workflow
 
 Human-in-the-loop for autonomous actions.
@@ -165,6 +185,7 @@ AI-powered investigation assistant.
 - "Search Splunk for IP x.x.x.x"
 - "What MITRE techniques are detected?"
 - "Enrich this IOC"
+- "Generate board brief"
 
 ## Desktop Notifications
 

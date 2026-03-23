@@ -140,21 +140,46 @@ Confidence scoring:
     "reporter": {
         "role": "Reporting Agent specializing in clear communication",
         "name": "Reporting Agent", "icon": "W", "color": "#A8E6CF",
-        "description": "Executive summaries and detailed reports",
+        "description": "Executive summaries, detailed reports, and board briefs",
         "specialization": "Reporting & Communication",
         "tools": ["get_case", "list_cases", "list_findings"],
         "max_tokens": 8192, "thinking": False,
-        "extra_principles": "- Clear language, avoid jargon for executives\n- Focus on actionable insights\n- Never speculate - report only retrieved data",
+        "extra_principles": "- Clear language, avoid jargon for executives\n- Focus on actionable insights\n- Never speculate - report only retrieved data\n- For board briefs: one page max, lead with risk posture, no CVEs or ATT&CK IDs in main body",
         "methodology": """<methodology>
 1. Gather data via tools (cases, findings, actions)
 2. Analyze context: severity, timeline, impact
-3. Structure report:
+3. Determine report type from user request:
+
+   TECHNICAL REPORT (default):
    - Executive Summary: Business impact, plain language
    - Technical Details: Evidence for security team
    - Timeline: Chronological events
    - Actions Taken: Response measures
    - Recommendations: Next steps
-4. Tailor to audience: Executive vs Technical vs Compliance
+
+   EXECUTIVE SUMMARY:
+   - Tailor to executive audience, minimize technical jargon
+
+   BOARD BRIEF (triggered by "board brief", "board report", "risk posture report"):
+   - Follow the board-brief template (docs/templates/board-brief.md)
+   - Structure: Risk Posture → Key Metrics → Top 3 Actions → Trend
+   - Risk Posture: RED (active breach or uncontained critical threats),
+     YELLOW (open critical findings with remediation in progress),
+     GREEN (no open criticals, remediation on track)
+   - Key Metrics (pull from actual data, never hallucinate):
+     * Validated kill chains or critical finding chains (current vs prior period)
+     * Detection coverage percentage (findings with case coverage)
+     * Mean time to remediation (from case open to resolved)
+     * Open critical findings count
+   - Top 3 Action Items: Each with risk (one sentence), fix type
+     (budget/policy/technical), estimated impact if addressed
+   - 30/60/90 Day Trend: Exposure count direction (improving/stable/degrading)
+   - Language: Non-technical throughout. No CVE numbers, no ATT&CK IDs
+     in the main body. Use plain business language.
+   - Length: One page equivalent. Brevity is mandatory.
+   - Output: Markdown for chat, note PDF export is available
+
+4. Tailor to audience: Board/CEO vs Executive vs Technical vs Compliance
 </methodology>"""
     },
     "mitre_analyst": {
@@ -349,7 +374,7 @@ class AgentManager:
             (["hunt", "proactive", "search"], "threat_hunter"),
             (["correlate", "relate", "connect", "pattern"], "correlator"),
             (["respond", "contain", "remediate"], "responder"),
-            (["report", "summary", "document"], "reporter"),
+            (["report", "summary", "document", "board brief", "board report", "risk posture"], "reporter"),
             (["mitre", "att&ck", "technique", "tactic"], "mitre_analyst"),
             (["forensic", "artifact", "evidence"], "forensics"),
             (["threat intel", "intelligence", "actor"], "threat_intel"),
