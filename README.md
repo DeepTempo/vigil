@@ -74,7 +74,7 @@ MCP servers live in `mcp-servers/` and are configured via the Settings UI or `mc
 ## Quick Start
 
 ```bash
-git clone --recurse-submodules https://github.com/Vigil-Soc/vigil.git
+git clone --recurse-submodules https://github.com/Vigil-SOC/vigil.git
 cd vigil
 ./start_web.sh
 ```
@@ -107,8 +107,8 @@ Auth bypass is enabled by default (`DEV_MODE=true`) for quick development. Full 
 
 ```bash
 # Clone with submodules
-git clone --recurse-submodules https://github.com/deeptempo/ai-opensoc.git
-cd ai-opensoc
+git clone --recurse-submodules https://github.com/Vigil-SOC/vigil.git
+cd vigil
 
 # If you already cloned without --recurse-submodules:
 git submodule update --init --recursive
@@ -232,6 +232,7 @@ python daemon/main.py
 
 ## Additional Features 
 
+- **Auto-Contributor** — Automated competitive research against proprietary AI security platforms. Analyzes a vendor's capabilities, maps gaps versus Vigil and the open-source ecosystem, and generates ready-to-file GitHub issues with acceptance criteria. The goal: make Vigil a superset of every proprietary AI SOC, one contribution at a time. See [`contrib/auto-contributor/`](contrib/README.md)
 - **Chat-Driven Case Management** — Build cases through natural language. Say "add this to case XYZ" and the system handles findings, activities, timelines, and MITRE tagging. [Learn more](docs/CHAT_CASE_MANAGEMENT.md)
 - **Detection Engineering** — 7,200+ detection rules (Sigma, Splunk, Elastic, KQL) with coverage analysis, gap identification, and AI-assisted template generation. [Learn more](docs/DETECTION_ENGINEERING.md)
 - **Case Management** — Full lifecycle tracking with PDF reports
@@ -242,8 +243,9 @@ python daemon/main.py
 ## Project Structure
 
 ```
-ai-opensoc/
+vigil/
 ├── workflows/         # WORKFLOW.md definitions (4 built-in)
+├── contrib/           # Community tools: auto-contributor, benchmarking
 ├── mcp-servers/       # MCP server implementations (30+)
 ├── backend/           # FastAPI backend API + Agent SDK tools
 ├── frontend/          # React + MUI frontend
@@ -305,6 +307,8 @@ Claude: ✓ Found 3 similar findings via embedding search
 | [docs/API.md](docs/API.md) | MCP tool contracts, data models |
 | [docs/README.md](docs/README.md) | Architecture overview |
 | [docs/SPLUNK_TESTING_GUIDE.md](docs/SPLUNK_TESTING_GUIDE.md) | Splunk test data and integration testing |
+| [contrib/auto-contributor/](contrib/auto-contributor/SKILL.md) | Competitive research and contribution planning tool |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute, auto-contributor workflow, DCO |
 
 ## Testing with Splunk & Claude
 
@@ -361,14 +365,16 @@ python scripts/export_postgres_to_splunk.py \
 
 Contributions are welcome! Whether you're fixing bugs, adding new MCP integrations, improving agent prompts, or building new workflows or agents — we'd love your help and leadership.
 
-**Join the community:** Connect with the DeepTempo community on [Discord](https://discord.gg/Kw68sPJU) to discuss ideas, get help, and collaborate with other contributors.
+**Find meaningful work automatically:** Vigil includes an [auto-contributor](contrib/README.md) tool that researches proprietary AI security platforms, identifies capability gaps, and generates ready-to-file GitHub issues. Pick a vendor, run the tool, and you'll have a scoped contribution spec in minutes.
+
+**Join the community:** Connect with the Vigil community on [Discord](https://discord.gg/Kw68sPJU) to discuss ideas, get help, and collaborate with other contributors.
 
 To contribute:
 1. Fork the repo and create a feature branch
 2. Make your changes and test them
 3. Submit a pull request with a clear description
 
-See [QuickStart](https://github.com/DeepTempo/vigil/blob/main/README.md#quick-start) to get your local environment running.
+See the [Quick Start](#quick-start) to get your local environment running, and [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
 
 ---
 
@@ -378,6 +384,7 @@ Apache 2.0 — See [LICENSE](LICENSE)
 
 ## References
 
-- [DeepTempo](https://deeptempo.ai) — AI for security operations
+- [Vigil](https://vigilsoc.org/) — Project homepage
+- [DeepTempo](https://deeptempo.ai) — Vigil sponsor; LogLM connects via MCP as an AI-native detection layer
 - [Model Context Protocol](https://modelcontextprotocol.io/) — MCP specification
 - [ATT&CK Navigator](https://mitre-attack.github.io/attack-navigator/) — MITRE visualization
