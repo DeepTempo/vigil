@@ -270,6 +270,22 @@ Usage: "Run detection-lifecycle for quarterly review"
 
 ## Agent Integration
 
+### Detection Rule Generator Agent
+
+Automatically generates detection rules from observed findings.
+
+Supports:
+- Sigma
+- Splunk SPL
+- Elastic KQL
+
+Includes:
+- AI-powered rule generation with fallback validation
+- MITRE ATT&CK mapping
+- False positive guidance
+- Coverage updates
+- Optional deployment
+
 ### MITRE Analyst Agent (Primary User)
 
 The MITRE Analyst agent is the primary consumer of detection engineering tools:
