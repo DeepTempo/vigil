@@ -26,6 +26,82 @@ Detection engineering features:
 - Expert workflow prompts
 - Requires MCP server configuration
 
+---
+
+## 🚀 Detection Engineering Engine
+
+The **Detection Engineering Engine** is the institutional-grade core of Vigil's autonomous detection capability. It transitions the SOC from a reactive posture to a proactive, closed-loop system by automatically generating, validating, and persisting high-fidelity detection logic from raw attack telemetry.
+
+### System Positioning
+The engine closes the "Detection Gap" by automating the most time-consuming phase of the security lifecycle:
+1.  **Attack Observation**: Real attack telemetry (Findings) is ingested.
+2.  **Logic Synthesis**: The engine analyzes the behavior and synthesizes Sigma/SPL/KQL logic.
+3.  **Verification**: Rules are strictly validated against production schemas and scored for confidence.
+4.  **Operationalization**: Validated rules are persisted and ready for human-in-the-loop approval.
+
+### 📊 System Architecture
+
+#### Data Flow (Left → Right)
+```mermaid
+graph LR
+    Finding[Security Finding] --> Sanitization[Hardened Sanitization]
+    Sanitization --> LLMGateway[Vigil LLM Gateway]
+    LLMGateway --> Validation[Strict Schema Validation]
+    Validation --> Formatter[Rule Formatter]
+    Formatter --> PostgreSQL[(PostgreSQL Persistence)]
+    PostgreSQL --> Coverage[MITRE Coverage Update]
+```
+
+#### Request Lifecycle
+```mermaid
+sequenceDiagram
+    participant API as Detection API
+    participant Engine as Detection Engineering Engine
+    participant LLM as LLM Gateway (Claude 3.5)
+    participant DB as PostgreSQL
+    
+    API->>Engine: generate_rule(finding)
+    Engine->>Engine: Sanitize & Truncate (Injection Protection)
+    Engine->>LLM: Enhanced Prompt (JSON Contract)
+    LLM-->>Engine: Sigma JSON + Reasoning
+    Engine->>Engine: validate_sigma_detailed() (Hallucination Gating)
+    Engine->>Engine: Calculate Hybrid Confidence (System + AI)
+    Engine->>DB: Store Rule + Metadata (Idempotency Check)
+    Engine-->>API: DetectionRule Object
+```
+
+---
+
+## 🛡️ Security & Threat Model
+
+Vigil treats detection engineering as a high-integrity process. The following threat model informs the multi-layer security posture of the engine:
+
+| Threat | Description | Mitigation Strategy |
+| :--- | :--- | :--- |
+| **Prompt Injection** | Malicious findings manipulate LLM output to bypass controls. | **Whitelisting**: Only specific fields are processed. **Truncation**: Input length is strictly capped. |
+| **Query Injection** | Generated SPL/KQL contains malicious operators or sub-searches. | **Sanitization**: The `RuleFormatter` escapes quotes and strips dangerous operators (e.g., `|`, `delete`). |
+| **LLM Hallucination** | The LLM generates invalid or logically flawed detection rules. | **Validation Barrier**: Every rule must pass a strict schema validation check before persistence. |
+| **Unauthorized Deployment** | Unreviewed rules are pushed directly to production SIEMs. | **Manual Gating**: Rule deployment is explicitly disabled and requires a Human-in-the-Loop (HITL) approval. |
+
+---
+
+## 📈 Hybrid Confidence Scoring
+
+To ensure institutional reliability, the engine uses a **Hybrid Scoring Model** (0-100) to evaluate rule quality:
+
+1.  **System-Derived Score (Primary)**:
+    - **Structural Integrity**: +30 points for valid Sigma schema and critical field presence.
+    - **Contextual Alignment**: +20 points if the generated logic matches the source data source.
+    - **Logic Complexity**: +30 points for multi-field selection logic (higher specificity).
+    - **Validation Bonus**: +20 points for passing detailed schema validation.
+2.  **AI Insight (Reasoning)**:
+    - The LLM provides a `confidence_reasoning` string explaining the efficacy of the generated logic.
+
+> [!NOTE]
+> Confidence metrics are currently stored as backend metadata and are not exposed to end-users to allow for further heuristic tuning.
+
+---
+
 ## Quick Start
 
 ### Installation
@@ -269,6 +345,22 @@ Usage: "Run detection-lifecycle for quarterly review"
 ```
 
 ## Agent Integration
+
+### Detection Rule Generator Agent
+
+Automatically generates detection rules from observed findings.
+
+Supports:
+- Sigma
+- Splunk SPL
+- Elastic KQL
+
+Includes:
+- AI-powered rule generation with fallback validation
+- MITRE ATT&CK mapping
+- False positive guidance
+- Coverage updates
+- Optional deployment
 
 ### MITRE Analyst Agent (Primary User)
 
@@ -649,6 +741,15 @@ Clean old checkouts if needed:
 cd ~/security-detections/
 git gc --aggressive --prune=all
 ```
+
+## 📅 Future Roadmap
+
+The Detection Engineering Engine is evolving toward a fully autonomous "Closed Loop" system:
+
+- **Rule Effectiveness Tracking**: Implement feedback loops to track real-world trigger rates and false positive counts.
+- **Automated Prompt Retraining**: Periodically refine generation prompts based on human-approved vs. rejected rules.
+- **MITRE Analyst Integration**: Explicitly wire the engine to the MITRE Analyst agent for proactive gap fulfillment.
+- **Real-Time Data Streaming**: Migrate persistence to a high-throughput event bus (e.g., Kafka or Redis) for real-time detection engineering.
 
 ## Resources
 
