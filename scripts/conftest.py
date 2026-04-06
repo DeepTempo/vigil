@@ -1,4 +1,6 @@
 """
+Pytest configuration for scripts directory.
+
 conftest.py for scripts/.
 Provides the 'config' pytest fixture used by test_splunk_claude_integration.py,
 and a database initialization fixture for SLA assignment tests.
@@ -38,6 +40,7 @@ def initialize_db():
     # Restore original state to avoid polluting other tests
     db_manager._engine = original_engine
     db_manager._session_factory = original_factory
+
 
 
 @pytest.fixture
