@@ -3,7 +3,7 @@
 from typing import List, Optional, Dict, Union, Any
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, File, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import json
 import logging
 import base64
@@ -25,6 +25,13 @@ class ChatMessage(BaseModel):
     """Chat message model."""
     role: str  # user or assistant
     content: Union[str, List[ContentBlock]]  # Can be string or list of content blocks
+
+    @field_validator("content")
+    @classmethod
+    def content_not_empty(cls, v: Union[str, List]) -> Union[str, List]:
+        if isinstance(v, str) and not v.strip():
+            raise ValueError("message content must not be empty")
+        return v
 
 
 class ChatRequest(BaseModel):

@@ -29,6 +29,7 @@ def test_client():
 
 
 @pytest.fixture
+
 def mock_llm_gateway():
     """Mock the LLM gateway to avoid Redis connection attempts."""
     with patch('services.llm_gateway.get_llm_gateway') as mock_gateway_fn:
@@ -47,6 +48,7 @@ def mock_claude_service(mock_llm_gateway):
         mock_service = Mock()
         mock_service_class.return_value = mock_service
         mock_service.has_api_key.return_value = True
+        mock_gw_fn.return_value = mock_gateway
         yield mock_service
 
 
@@ -111,6 +113,7 @@ class TestChatEndpoint:
         
         assert response.status_code == 200
     
+
     def test_chat_endpoint_no_api_key(self, test_client, mock_llm_gateway):
         """Test chat request when API key is not configured."""
         with patch('api.claude.ClaudeService') as mock_service_class:
