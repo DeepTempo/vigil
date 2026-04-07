@@ -15,6 +15,16 @@
       }
     },
 
+    "_comment_memory": "--- Persistent Memory Layer ---",
+
+    "mempalace": {
+      "command": "python3",
+      "args": ["-m", "mempalace.mcp_server"],
+      "env": {
+        "MEMPALACE_PALACE_PATH": "${MEMPALACE_PALACE_PATH:-${HOME}/.vigil/mempalace/palace}"
+      }
+    },
+
     "_comment_internal": "--- DeepTempo Internal Servers ---",
 
     "deeptempo-findings": {
