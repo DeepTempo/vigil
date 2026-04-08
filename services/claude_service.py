@@ -2872,8 +2872,8 @@ Provide only the JSON, no additional text."""
 
         options = ClaudeAgentOptions(**agent_options_kwargs)
 
-        # Track session context
-        context = self.sessions.get(session_id, []) if session_id else []
+        # Track session context — use get_session() to trigger L2 MemPalace restore
+        context = (self.get_session(session_id) or []) if session_id else []
 
         try:
             async for message in agent_query(prompt=prompt, options=options):
