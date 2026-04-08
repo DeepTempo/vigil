@@ -66,6 +66,9 @@ from api.detection_rules import router as detection_rules_router
 from api.orchestrator import router as orchestrator_router
 
 from core.rate_limit import rate_limit_dependency
+from monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
+if PROMETHEUS_AVAILABLE:
+    from monitoring import PrometheusMiddleware
 
 # Initialize telemetry before creating the FastAPI app so instrumentation
 # is registered before the first request handler is defined.
@@ -79,6 +82,9 @@ except Exception as _tel_err:
     )
 
 logger = logging.getLogger(__name__)
+
+# Initialize Sentry as early as possible (no-op if SENTRY_DSN is unset)
+init_sentry()
 
 # Create FastAPI app
 app = FastAPI(
@@ -111,6 +117,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-MFA-Required"],
 )
+
+if PROMETHEUS_AVAILABLE:
+    app.add_middleware(PrometheusMiddleware)
 
 # Include API routers
 
@@ -388,6 +397,13 @@ async def shutdown_event():
         shutdown_telemetry()
     except Exception as e:
         logger.warning("Telemetry shutdown error (non-fatal): %s", e)
+
+
+# Prometheus metrics endpoint
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Expose Prometheus metrics for scraping."""
+    return get_metrics_response()
 
 
 # Health check endpoint
