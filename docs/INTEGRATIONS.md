@@ -36,7 +36,7 @@ Backend tools are automatically enabled for web UI users via the Claude Agent SD
 | Core | deeptempo-findings, approval, attack-layer, tempo-flow | Implemented |
 | Community | GitHub, PostgreSQL | Active |
 | Detection Engineering | Security-Detections-MCP | Implemented |
-| SIEM | Splunk | Implemented |
+| SIEM | Splunk, Elastic Security | Implemented |
 | Timeline | Timesketch | Implemented |
 | Threat Intel | VirusTotal, Shodan, AlienVault OTX, MISP, URL Analysis, IP Geolocation | Implemented |
 | EDR | CrowdStrike | Implemented |
@@ -158,6 +158,42 @@ Settings > Integrations > Splunk:
 | `search_by_username` | Quick user search |
 | `natural_language_search` | Generate and execute |
 | `get_splunk_indexes` | List available indexes |
+
+## Elastic Security
+
+Elasticsearch SIEM with detection alert ingestion, bi-directional case sync, and IOC enrichment.
+
+### Configuration
+
+```bash
+ELASTIC_HOST="https://elasticsearch.example.com:9200"
+ELASTIC_KIBANA_URL="https://kibana.example.com:5601"
+ELASTIC_API_KEY="your_api_key"
+# Or use basic auth:
+# ELASTIC_USERNAME="elastic"
+# ELASTIC_PASSWORD="your_password"
+```
+
+Settings > Integrations > Elastic Security (SIEM):
+- Elasticsearch URL
+- Kibana URL (required for detection alerts and case sync)
+- API Key or Username/Password
+- Alert Index Pattern (default: `.alerts-security.alerts-default`)
+
+### MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `elastic_search_logs` | Search Elasticsearch with query DSL |
+| `elastic_search_by_ioc` | Search by IOC (IP, hash, username, hostname) |
+| `elastic_get_indices` | List available indices |
+| `elastic_get_detection_alerts` | Fetch recent detection alerts |
+
+### Features
+
+- **Alert Ingestion**: Daemon poller fetches detection alerts from Kibana Detections API
+- **Bi-directional Sync**: Case status changes in Vigil sync back to Elastic Security alerts
+- **IOC Enrichment**: Agents query Elasticsearch indices for logs matching case IOCs
 
 ## Timesketch
 
