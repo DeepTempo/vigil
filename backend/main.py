@@ -66,21 +66,25 @@ from api.detection_rules import router as detection_rules_router
 from api.orchestrator import router as orchestrator_router
 
 from core.rate_limit import rate_limit_dependency
+from monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
+if PROMETHEUS_AVAILABLE:
+    from monitoring import PrometheusMiddleware
 
-# Configure logging
-log_dir = Path.home() / '.deeptempo'
-log_dir.mkdir(parents=True, exist_ok=True)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(log_dir / 'api.log')
-    ]
-)
+# Initialize telemetry before creating the FastAPI app so instrumentation
+# is registered before the first request handler is defined.
+try:
+    from core.telemetry import init_telemetry
+    init_telemetry("vigil-backend")
+except Exception as _tel_err:
+    logging.basicConfig(level=logging.INFO)
+    logging.getLogger(__name__).warning(
+        "Telemetry init failed (non-fatal): %s", _tel_err
+    )
 
 logger = logging.getLogger(__name__)
+
+# Initialize Sentry as early as possible (no-op if SENTRY_DSN is unset)
+init_sentry()
 
 # Create FastAPI app
 app = FastAPI(
@@ -88,6 +92,16 @@ app = FastAPI(
     description="REST API for Vigil SOC Application",
     version="1.0.0"
 )
+
+# Instrument FastAPI with OTEL tracing (health + metrics endpoints excluded)
+try:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentation
+    FastAPIInstrumentation().instrument_app(
+        app,
+        excluded_urls="api/health,metrics",
+    )
+except Exception as _inst_err:
+    logger.debug("FastAPI OTEL instrumentation skipped: %s", _inst_err)
 
 # Configure CORS
 app.add_middleware(
@@ -103,6 +117,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-MFA-Required"],
 )
+
+if PROMETHEUS_AVAILABLE:
+    app.add_middleware(PrometheusMiddleware)
 
 # Include API routers
 
@@ -154,7 +171,14 @@ async def startup_event():
     logger.info("=" * 60)
     logger.info("Starting Vigil SOC Backend")
     logger.info("=" * 60)
-    
+
+    # Initialize Sentry error tracking (was never called before — bug fix)
+    try:
+        from backend.monitoring import init_sentry
+        init_sentry()
+    except Exception as e:
+        logger.warning("Sentry initialization failed (non-fatal): %s", e)
+
     # Load secrets into environment for MCP servers
     try:
         from backend.secrets_manager import get_secret
@@ -186,7 +210,27 @@ async def startup_event():
         from services.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
         import os
-        
+
+        # Defense-in-depth: ensure the SQLAlchemy-managed schema exists before
+        # any endpoint tries to query it. start_web.sh runs scripts/init_schema.py
+        # first, but this covers environments that launch uvicorn directly
+        # (e.g. Docker, systemd, CI). When DATA_BACKEND=database, a failure
+        # here is fatal — we do NOT silently fall back to JSON because that
+        # leaves the DB in an inconsistent state (some endpoints use
+        # get_db_session() directly, see backend/api/case_metrics.py).
+        data_backend_env = os.getenv('DATA_BACKEND', 'database').lower()
+        if not is_demo_mode() and data_backend_env == 'database':
+            try:
+                from database.connection import init_database
+                init_database(echo=False, create_tables=True)
+                logger.info("✓ Database schema ensured (create_all)")
+            except Exception as schema_err:
+                logger.error(
+                    "Fatal: could not initialize database schema: %s",
+                    schema_err,
+                )
+                raise
+
         # Check for demo mode first
         if is_demo_mode():
             logger.info("=" * 40)
@@ -351,13 +395,13 @@ async def shutdown_event():
     logger.info("Shutting down MCP connections...")
     try:
         from services.mcp_client import get_mcp_client
-        
+
         mcp_client = get_mcp_client()
         if mcp_client:
             # Close all MCP sessions
             await mcp_client.close_all()
             logger.info("All MCP connections closed")
-            
+
             # Stop all MCP server processes managed by MCPService
             mcp_service = mcp_client.mcp_service
             if mcp_service:
@@ -366,6 +410,20 @@ async def shutdown_event():
                 logger.info(f"Stopped {stopped_count} MCP server processes")
     except Exception as e:
         logger.error(f"Error during shutdown cleanup: {e}")
+
+    # Flush and shut down OTEL providers
+    try:
+        from core.telemetry import shutdown_telemetry
+        shutdown_telemetry()
+    except Exception as e:
+        logger.warning("Telemetry shutdown error (non-fatal): %s", e)
+
+
+# Prometheus metrics endpoint
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Expose Prometheus metrics for scraping."""
+    return get_metrics_response()
 
 
 # Health check endpoint
