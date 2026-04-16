@@ -204,23 +204,10 @@ else
     echo "⚠️  SOC Daemon failed. Check logs/daemon.log"
 fi
 
-# Start LLM worker (processes queued Claude API calls via ARQ/Redis)
-LLM_WORKER_ENABLED="${LLM_WORKER_ENABLED:-true}"
-if [ "$LLM_WORKER_ENABLED" = "true" ]; then
-    echo "Starting LLM worker..."
-    nohup "${PWD}/venv/bin/python" -m services.run_llm_worker > logs/llm_worker.log 2>&1 &
-    LLM_WORKER_PID=$!
-    echo $LLM_WORKER_PID > logs/llm_worker.pid
-    sleep 2
-
-    if ps -p $LLM_WORKER_PID > /dev/null; then
-        echo "✅ LLM Worker started (PID: $LLM_WORKER_PID)"
-    else
-        echo "⚠️  LLM Worker failed. Check logs/llm_worker.log"
-    fi
-else
-    echo "ℹ️  LLM Worker disabled (LLM_WORKER_ENABLED=false)"
-fi
+# NOTE: The LLM worker (ARQ job processor for Claude API calls) is managed
+# dynamically by the SOC daemon via daemon/llm_worker_manager.py.  It starts
+# and stops automatically when the orchestrator is enabled/disabled in the
+# Settings UI — no manual startup required.
 
 # Install frontend dependencies if needed
 if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
