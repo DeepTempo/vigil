@@ -3,10 +3,11 @@
 The ARQ worker (``services.run_llm_worker``) processes queued Claude API
 calls.  Because ARQ's ``run_worker()`` blocks, it must live in a separate
 process.  This manager runs as an async task inside the daemon and polls
-the ``orchestrator_enabled`` SystemConfig key every few seconds.  When the
-orchestrator is enabled the worker subprocess is started; when disabled it
-is stopped.  If the worker crashes while enabled it is automatically
-restarted on the next poll cycle.
+the ``orchestrator.settings`` SystemConfig key every few seconds, reading
+the ``enabled`` field.  When the orchestrator is enabled the worker
+subprocess is started; when disabled it is stopped.  If the worker
+crashes while enabled it is automatically restarted on the next poll
+cycle.
 """
 
 import asyncio
@@ -64,7 +65,8 @@ class LLMWorkerManager:
     # ------------------------------------------------------------------
 
     def _sync_enabled_from_db(self):
-        """Read the orchestrator enabled state from SystemConfig."""
+        """Read the orchestrator enabled state from the single
+        ``orchestrator.settings`` SystemConfig row."""
         try:
             from database.connection import get_db_manager
             from database.models import SystemConfig
@@ -72,11 +74,11 @@ class LLMWorkerManager:
             with get_db_manager().session_scope() as session:
                 cfg = (
                     session.query(SystemConfig)
-                    .filter_by(key="orchestrator_enabled")
+                    .filter_by(key="orchestrator.settings")
                     .first()
                 )
                 if cfg and isinstance(cfg.value, dict):
-                    db_enabled = cfg.value.get("enabled", False)
+                    db_enabled = bool(cfg.value.get("enabled", False))
                     if db_enabled != self._enabled:
                         self._enabled = db_enabled
                         logger.info(

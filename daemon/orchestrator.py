@@ -177,7 +177,8 @@ class Orchestrator:
         logger.info("Orchestrator shutdown complete")
 
     def _sync_enabled_from_db(self):
-        """Read the enabled state from the database (set by the API/UI toggle)."""
+        """Read the enabled state from the single ``orchestrator.settings``
+        SystemConfig row (set by the API/UI toggle or the Settings page)."""
         try:
             from database.connection import get_db_manager
             from database.models import SystemConfig
@@ -185,11 +186,11 @@ class Orchestrator:
             with get_db_manager().session_scope() as session:
                 cfg = (
                     session.query(SystemConfig)
-                    .filter_by(key="orchestrator_enabled")
+                    .filter_by(key="orchestrator.settings")
                     .first()
                 )
                 if cfg and isinstance(cfg.value, dict):
-                    db_enabled = cfg.value.get("enabled", False)
+                    db_enabled = bool(cfg.value.get("enabled", False))
                     if db_enabled != self._enabled:
                         self._enabled = db_enabled
                         logger.info(
