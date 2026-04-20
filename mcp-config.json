@@ -110,6 +110,15 @@
       }
     },
 
+    "elastic": {
+      "command": "python3",
+      "args": ["tools/elastic.py"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "_setup_note": "Elastic Security via Elasticsearch REST API. Set ELASTIC_HOST (e.g., https://elasticsearch.example.com:9200), ELASTIC_API_KEY or ELASTIC_USERNAME/ELASTIC_PASSWORD, and optionally ELASTIC_KIBANA_URL in .env."
+      }
+    },
+
     "pagerduty": {
       "command": "uvx",
       "args": ["pagerduty-mcp", "--enable-write-tools"],
