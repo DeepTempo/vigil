@@ -64,6 +64,7 @@ import { getAllIntegrations, loadCustomIntegrations } from '../config/integratio
 import UserManagementTab from '../components/settings/UserManagementTab'
 import DetectionRulesTab from '../components/settings/DetectionRulesTab'
 import AutoInvestigateTab from '../components/settings/AutoInvestigateTab'
+import KafkaTab from '../components/settings/KafkaTab'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -94,6 +95,7 @@ const TAB_DEFS: { key: string; label: string; devOnly: boolean }[] = [
   { key: 'integrations', label: 'Integrations / MCP', devOnly: false },
   { key: 'users', label: 'Users', devOnly: false },
   { key: 'autoinvestigate', label: 'Auto Investigate', devOnly: false },
+  { key: 'kafka', label: 'Kafka', devOnly: false },
   { key: 'general', label: 'General', devOnly: false },
   { key: 'dev', label: 'Developer', devOnly: true },
 ]
@@ -1399,6 +1401,15 @@ export default function Settings() {
           <TabPanel value={currentTab} index={idx} key={tabKey}>
             <Box sx={{ maxWidth: 800 }}>
               <AutoInvestigateTab onMessage={setMessage} showConfirm={showConfirm} />
+            </Box>
+          </TabPanel>
+        )
+
+      case 'kafka':
+        return (
+          <TabPanel value={currentTab} index={idx} key={tabKey}>
+            <Box sx={{ maxWidth: 900 }}>
+              <KafkaTab onMessage={setMessage} />
             </Box>
           </TabPanel>
         )
