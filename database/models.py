@@ -1765,7 +1765,13 @@ class User(Base):
     # Session tracking
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     login_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    
+
+    # Failed-login tracking and account lockout
+    failed_login_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default='0'
+    )
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -1780,7 +1786,7 @@ class User(Base):
         onupdate=datetime.utcnow,
         server_default='now()'
     )
-    
+
     # Indexes
     __table_args__ = (
         Index('idx_user_username', 'username'),
@@ -2134,14 +2140,14 @@ class CustomWorkflow(Base):
         DateTime,
         nullable=False,
         default=datetime.utcnow,
-        server_default='now()'
+        server_default='now()',
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
-        server_default='now()'
+        server_default='now()',
     )
 
     __table_args__ = (
@@ -2166,4 +2172,155 @@ class CustomWorkflow(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class Skill(Base):
+    """Skill model - reusable, parameterized SOC capability (detection,
+    enrichment, response, reporting) that agents and workflows can invoke."""
+
+    __tablename__ = 'skills'
+
+    skill_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    # JSON Schema for skill parameters (the inputs the skill accepts).
+    input_schema: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default='{}'
+    )
+    # JSON Schema for skill output.
+    output_schema: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default='{}'
+    )
+    # MCP tool names required by this skill
+    # (e.g. ["splunk.search", "virustotal.hash_lookup"]).
+    required_tools: Mapped[List[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default='[]'
+    )
+    # LLM instructions; may contain {{param}} placeholders.
+    prompt_template: Mapped[str] = mapped_column(Text, nullable=False)
+    # Ordered execution steps (tool calls / prompts / transforms) — interpreted
+    # by the future skill-execution worker.
+    execution_steps: Mapped[List[dict]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default='[]'
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default='true'
+    )
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default='1'
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        server_default='now()',
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default='now()',
+    )
+
+    __table_args__ = (
+        Index('idx_skill_category', 'category'),
+        Index('idx_skill_is_active', 'is_active'),
+        Index(
+            'idx_skill_name_trgm',
+            'name',
+            postgresql_ops={'name': 'gin_trgm_ops'},
+            postgresql_using='gin',
+        ),
+    )
+
+    @staticmethod
+    def generate_skill_id() -> str:
+        """Generate a new skill_id in the form s-YYYYMMDD-XXXXXXXX."""
+        ts = datetime.utcnow().strftime('%Y%m%d')
+        return f"s-{ts}-{uuid.uuid4().hex[:8].upper()}"
+
+    def to_dict(self) -> dict:
+        """Convert skill to dictionary."""
+        return {
+            'skill_id': self.skill_id,
+            'name': self.name,
+            'description': self.description,
+            'category': self.category,
+            'input_schema': self.input_schema or {},
+            'output_schema': self.output_schema or {},
+            'required_tools': self.required_tools or [],
+            'prompt_template': self.prompt_template,
+            'execution_steps': self.execution_steps or [],
+            'is_active': self.is_active,
+            'created_by': self.created_by,
+            'version': self.version,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class CustomAgent(Base):
+    """User-defined SOC agent created via the Agent Builder UI."""
+
+    __tablename__ = 'custom_agents'
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    icon: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    color: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    specialization: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    extra_principles: Mapped[str] = mapped_column(Text, nullable=False, default='', server_default='')
+    methodology: Mapped[str] = mapped_column(Text, nullable=False, default='', server_default='')
+    system_prompt_override: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    recommended_tools: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default='[]')
+    max_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=4096, server_default='4096')
+    enable_thinking: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default='false')
+    model: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, server_default='now()'
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow,
+        onupdate=datetime.utcnow, server_default='now()'
+    )
+
+    __table_args__ = (
+        Index('idx_custom_agents_updated_at', 'updated_at'),
+    )
+
+    def to_dict(self) -> dict:
+        """Convert custom agent to dictionary."""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'icon': self.icon,
+            'color': self.color,
+            'specialization': self.specialization,
+            'role': self.role,
+            'extra_principles': self.extra_principles,
+            'methodology': self.methodology,
+            'system_prompt_override': self.system_prompt_override,
+            'recommended_tools': self.recommended_tools or [],
+            'max_tokens': self.max_tokens,
+            'enable_thinking': self.enable_thinking,
+            'model': self.model,
+            'created_by': self.created_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
 
