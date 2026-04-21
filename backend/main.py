@@ -70,6 +70,9 @@ from api.detection_rules import router as detection_rules_router
 # Orchestrator router
 from api.orchestrator import router as orchestrator_router
 
+# Kafka ingestion router
+from api.kafka import router as kafka_router
+
 from core.rate_limit import rate_limit_dependency
 from monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
 if PROMETHEUS_AVAILABLE:
@@ -163,6 +166,7 @@ app.include_router(workflows_router, prefix="/api", tags=["workflows"])
 
 # Autonomous orchestrator
 app.include_router(orchestrator_router, prefix="/api/orchestrator", tags=["orchestrator"])
+app.include_router(kafka_router)
 
 # Enhanced case management routers
 app.include_router(case_templates_router, prefix="/api/cases/templates", tags=["case-templates"])

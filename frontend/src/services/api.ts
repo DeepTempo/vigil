@@ -859,5 +859,23 @@ export const orchestratorApi = {
   getCost: () => api.get('/orchestrator/cost'),
 }
 
+// Kafka ingestion API
+export const kafkaApi = {
+  getConfig: () => api.get('/kafka/config'),
+  setConfig: (config: {
+    enabled: boolean
+    bootstrap_servers: string
+    consumer_group: string
+    topics: string[]
+    auto_offset_reset: string
+    security_protocol: string
+    sasl_mechanism?: string | null
+    sasl_username?: string | null
+    max_poll_records: number
+    session_timeout_ms: number
+  }) => api.put('/kafka/config', config),
+  getStatus: () => api.get('/kafka/status'),
+}
+
 export default api
 
