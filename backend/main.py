@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
+from backend.middleware.csrf import CSRFMiddleware
 from backend.middleware.rate_limit import limiter
 from backend.middleware.security_headers import SecurityHeadersMiddleware
 
@@ -149,6 +150,13 @@ app.add_middleware(
     ],
     expose_headers=["X-MFA-Required"],
 )
+
+# CSRF middleware. No-op by default (VIGIL_CSRF_ENABLED=false); PR 4 flips
+# it on once the frontend uses HttpOnly cookies and echoes X-CSRF-Token.
+# Registered between CORS and SecurityHeaders so:
+#   - SecurityHeaders (outermost) applies to any 403 CSRF rejection.
+#   - CORS (innermost of these three) still short-circuits OPTIONS preflight.
+app.add_middleware(CSRFMiddleware)
 
 # Security headers added AFTER CORS so it is the outermost middleware on the
 # response path. That way HSTS/CSP/X-Frame-Options apply to CORS preflight

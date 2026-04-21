@@ -7,6 +7,7 @@ Handles password hashing, JWT generation/validation, MFA, and session management
 import logging
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import bcrypt
@@ -125,14 +126,16 @@ class AuthService:
             hours=JWT_EXPIRATION_HOURS if token_type == "access" else JWT_REFRESH_EXPIRATION_DAYS * 24
         )
         
+        now = datetime.utcnow()
         payload = {
             "user_id": user.user_id,
             "username": user.username,
             "email": user.email,
             "role_id": user.role_id,
             "token_type": token_type,
-            "exp": datetime.utcnow() + expiration,
-            "iat": datetime.utcnow(),
+            "jti": uuid.uuid4().hex,
+            "exp": now + expiration,
+            "iat": now,
         }
         
         token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)

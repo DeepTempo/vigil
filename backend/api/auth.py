@@ -7,11 +7,16 @@ Handles login, logout, token refresh, password management, and MFA.
 import logging
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends, Request, status
+from fastapi import APIRouter, HTTPException, Depends, Header, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from backend.services.auth_service import AccountLockedError, AuthService
+from backend.services.token_blacklist import (
+    blacklist_jti,
+    is_token_revoked,
+    revoke_all_for_user,
+)
 from backend.middleware.auth import get_current_user, get_current_active_user
 from backend.middleware.rate_limit import limiter
 from database.models import User
@@ -129,16 +134,47 @@ async def login(
 
 
 @router.post("/logout")
-async def logout(current_user: User = Depends(get_current_active_user)):
+async def logout(
+    current_user: User = Depends(get_current_active_user),
+    authorization: Optional[str] = Header(None),
+):
     """
-    Logout user (client should discard tokens).
-    
+    Logout user — blacklist the current access token's JTI so replaying it
+    returns 401 for the rest of its lifetime.
+
     Args:
         current_user: Current authenticated user
-    
+        authorization: Authorization header (used to extract the JTI)
+
     Returns:
         Success message
     """
+    # Extract the current token's JTI from the Authorization header. The
+    # dependency above has already validated it, so decoding here just
+    # reads the claims we need.
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            payload = AuthService.verify_jwt_token(parts[1])
+            if payload:
+                jti = payload.get("jti")
+                exp_ts = payload.get("exp")
+                exp_dt = (
+                    datetime.utcfromtimestamp(exp_ts) if exp_ts is not None else None
+                )
+                if jti:
+                    try:
+                        await blacklist_jti(jti, exp_dt)
+                    except Exception as exc:
+                        # Redis down — logout still "succeeds" client-side
+                        # (client discards the token), but we surface the
+                        # server-side failure so ops can see it.
+                        logger.error(
+                            "Failed to blacklist token for %s: %s",
+                            current_user.username,
+                            exc,
+                        )
+
     logger.info(f"User logged out: {current_user.username}")
     return {"message": "Logged out successfully"}
 
@@ -167,6 +203,12 @@ async def refresh_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
+        )
+
+    if await is_token_revoked(payload):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked",
         )
     
     # Get user
@@ -302,6 +344,18 @@ async def change_password(
         # Update password
         current_user.password_hash = AuthService.hash_password(body.new_password)
         session.commit()
+
+        # Invalidate every outstanding token for this user. The current
+        # session is effectively logged out; the client should re-login.
+        try:
+            await revoke_all_for_user(current_user.user_id)
+        except Exception as exc:
+            logger.error(
+                "Password changed for %s but revoke_all_for_user failed: %s. "
+                "Old tokens may remain valid until natural expiry.",
+                current_user.username,
+                exc,
+            )
 
         logger.info(f"Password changed for user: {current_user.username}")
         return {"message": "Password changed successfully"}
