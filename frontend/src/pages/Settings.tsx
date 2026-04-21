@@ -62,6 +62,7 @@ import IntegrationWizard, { IntegrationMetadata } from '../components/settings/I
 import CustomIntegrationBuilder from '../components/settings/CustomIntegrationBuilder'
 import { getAllIntegrations, loadCustomIntegrations } from '../config/integrations'
 import UserManagementTab from '../components/settings/UserManagementTab'
+import AgentBuilderTab from '../components/settings/AgentBuilderTab'
 import DetectionRulesTab from '../components/settings/DetectionRulesTab'
 import AutoInvestigateTab from '../components/settings/AutoInvestigateTab'
 import SkillsTab from '../components/settings/SkillsTab'
@@ -95,6 +96,7 @@ const TAB_DEFS: { key: string; label: string; devOnly: boolean }[] = [
   { key: 's3', label: 'S3 Storage', devOnly: false },
   { key: 'integrations', label: 'Integrations / MCP', devOnly: false },
   { key: 'users', label: 'Users', devOnly: false },
+  { key: 'agents', label: 'SOC Agents', devOnly: false },
   { key: 'autoinvestigate', label: 'Auto Investigate', devOnly: false },
   { key: 'skills', label: 'Skills', devOnly: false },
   { key: 'kafka', label: 'Kafka', devOnly: false },
@@ -1395,6 +1397,13 @@ export default function Settings() {
         return (
           <TabPanel value={currentTab} index={idx} key={tabKey}>
             <UserManagementTab />
+          </TabPanel>
+        )
+
+      case 'agents':
+        return (
+          <TabPanel value={currentTab} index={idx} key={tabKey}>
+            <AgentBuilderTab onMessage={setMessage} showConfirm={showConfirm} />
           </TabPanel>
         )
 
