@@ -22,6 +22,7 @@ from database.models import (
     CaseTask, CaseTemplate, CaseRelationship, CaseMetrics, CaseAttachment,
     CaseClosureInfo, CaseEscalation, CaseAuditLog,
     User, Role, Investigation, InvestigationLog, SharedIOC, CaseNotification,
+    CustomWorkflow,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,15 +110,7 @@ class DatabaseManager:
                 pool_recycle=self.config.pool_recycle,
                 pool_pre_ping=True,  # Verify connections before using them
             )
-
-            # Instrument SQLAlchemy with OTEL tracing
-            try:
-                from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-                SQLAlchemyInstrumentor().instrument(engine=self._engine)
-                logger.debug("SQLAlchemy OTEL instrumentation enabled")
-            except Exception as _inst_err:
-                logger.debug("SQLAlchemy OTEL instrumentation skipped: %s", _inst_err)
-
+            
             # Set up event listeners
             @event.listens_for(self._engine, "connect")
             def receive_connect(dbapi_conn, connection_record):

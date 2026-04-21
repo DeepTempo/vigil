@@ -808,6 +808,79 @@ export const localServicesApi = {
   getPostgresStatus: () => api.get('/services/postgres/status'),
 }
 
+// Workflow Builder phase (used inline in the builder UI)
+export interface WorkflowPhase {
+  phase_id?: string
+  order?: number
+  agent_id: string
+  name: string
+  purpose?: string
+  tools: string[]
+  steps: string[]
+  expected_output?: string
+  timeout_seconds?: number
+  approval_required?: boolean
+  conditions?: any
+  parallel_group?: string | null
+}
+
+export interface CustomWorkflow {
+  workflow_id: string
+  name: string
+  description: string
+  use_case?: string
+  trigger_examples: string[]
+  phases: WorkflowPhase[]
+  graph_layout?: Record<string, any>
+  is_active: boolean
+  created_by?: string | null
+  version: number
+  created_at?: string
+  updated_at?: string
+}
+
+// Workflows API (file-based + database-backed custom workflows)
+export const workflowApi = {
+  // Unified list (merges file + custom)
+  listAll: () => api.get('/workflows'),
+  get: (id: string) => api.get(`/workflows/${id}`),
+  execute: (id: string, params: {
+    finding_id?: string
+    case_id?: string
+    context?: string
+    hypothesis?: string
+  }) => api.post(`/workflows/${id}/execute`, params),
+  reloadFiles: () => api.post('/workflows/reload'),
+
+  // Custom (database-backed) CRUD
+  listCustom: (activeOnly: boolean = true) =>
+    api.get('/workflows/custom', { params: { active_only: activeOnly } }),
+  getCustom: (id: string) => api.get(`/workflows/custom/${id}`),
+  createCustom: (data: {
+    name: string
+    description: string
+    use_case?: string
+    trigger_examples?: string[]
+    phases: WorkflowPhase[]
+    graph_layout?: Record<string, any>
+    created_by?: string
+  }) => api.post('/workflows/custom', data),
+  updateCustom: (id: string, data: Partial<{
+    name: string
+    description: string
+    use_case: string
+    trigger_examples: string[]
+    phases: WorkflowPhase[]
+    graph_layout: Record<string, any>
+    is_active: boolean
+  }>) => api.put(`/workflows/custom/${id}`, data),
+  deleteCustom: (id: string) => api.delete(`/workflows/custom/${id}`),
+
+  // AI generation (returns draft — does not save)
+  generate: (description: string) =>
+    api.post('/workflows/generate', { description }),
+}
+
 // Skills API (workflow skill management and execution)
 export const skillsApi = {
   // List all available skills

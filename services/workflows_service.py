@@ -80,11 +80,19 @@ def _get_frontmatter_end(content: str) -> int:
 class WorkflowDefinition:
     """Represents a parsed workflow from a WORKFLOW.md file."""
 
-    def __init__(self, workflow_id: str, file_path: Path, metadata: Dict[str, Any], body: str):
+    def __init__(
+        self,
+        workflow_id: str,
+        file_path: Optional[Path],
+        metadata: Dict[str, Any],
+        body: str,
+        source: str = "file",
+    ):
         self.id = workflow_id
         self.file_path = file_path
         self.metadata = metadata
         self.body = body
+        self.source = source  # "file" or "custom"
 
     @property
     def name(self) -> str:
@@ -129,10 +137,90 @@ class WorkflowDefinition:
             "tools_used": self.tools_used,
             "use_case": self.use_case,
             "trigger_examples": self.trigger_examples,
+            "source": self.source,
         }
         if include_body:
             result["body"] = self.body
+        # Custom workflows carry structured phases for the builder UI
+        if "phases" in self.metadata:
+            result["phases"] = self.metadata["phases"]
         return result
+
+
+def _custom_workflow_to_definition(wf: Dict[str, Any]) -> WorkflowDefinition:
+    """
+    Adapt a database-backed custom workflow dict into a WorkflowDefinition so
+    that existing execution code (build_execution_prompt, execute_workflow)
+    can consume it without changes.
+    """
+    phases = wf.get("phases") or []
+    agents: List[str] = []
+    tools: List[str] = []
+    for phase in phases:
+        agent_id = phase.get("agent_id")
+        if agent_id and agent_id not in agents:
+            agents.append(agent_id)
+        for tool in phase.get("tools", []) or []:
+            if tool not in tools:
+                tools.append(tool)
+
+    metadata = {
+        "name": wf.get("name", wf.get("workflow_id")),
+        "description": wf.get("description", ""),
+        "agents": agents,
+        "tools-used": tools,
+        "use-case": wf.get("use_case", ""),
+        "trigger-examples": wf.get("trigger_examples") or [],
+        "phases": phases,
+    }
+
+    body = _render_custom_workflow_body(wf, phases)
+    return WorkflowDefinition(
+        workflow_id=wf["workflow_id"],
+        file_path=None,
+        metadata=metadata,
+        body=body,
+        source="custom",
+    )
+
+
+def _render_custom_workflow_body(wf: Dict[str, Any], phases: List[Dict[str, Any]]) -> str:
+    """Render a markdown body from structured phases, compatible with
+    build_execution_prompt()'s template."""
+    lines: List[str] = []
+    lines.append(f"# {wf.get('name', wf.get('workflow_id'))}")
+    if wf.get("description"):
+        lines.append("")
+        lines.append(wf["description"])
+    lines.append("")
+    lines.append("## Agent Sequence")
+    lines.append("")
+    for phase in phases:
+        order = phase.get("order", "?")
+        name = phase.get("name", f"Phase {order}")
+        agent = phase.get("agent_id", "")
+        lines.append(f"### Phase {order}: {name} ({agent})")
+        if phase.get("purpose"):
+            lines.append("")
+            lines.append(f"**Purpose:** {phase['purpose']}")
+        tools = phase.get("tools") or []
+        if tools:
+            lines.append("")
+            lines.append("**Tools:** " + ", ".join(f"`{t}`" for t in tools))
+        steps = phase.get("steps") or []
+        if steps:
+            lines.append("")
+            lines.append("**Steps:**")
+            for i, step in enumerate(steps, start=1):
+                lines.append(f"{i}. {step}")
+        if phase.get("expected_output"):
+            lines.append("")
+            lines.append(f"**Output:** {phase['expected_output']}")
+        if phase.get("approval_required"):
+            lines.append("")
+            lines.append("**Approval required before executing this phase.**")
+        lines.append("")
+    return "\n".join(lines).strip()
 
 
 class WorkflowsService:
@@ -198,17 +286,49 @@ class WorkflowsService:
         """Force reload all workflows from disk."""
         self._load_workflows()
 
+    def _get_custom_workflow(self, workflow_id: str) -> Optional[WorkflowDefinition]:
+        """Fetch a single custom workflow from the database by ID."""
+        try:
+            from services.custom_workflow_service import get_custom_workflow_service
+
+            raw = get_custom_workflow_service().get(workflow_id)
+        except Exception as e:
+            logger.debug(f"Custom workflow lookup failed for {workflow_id}: {e}")
+            return None
+        if not raw or not raw.get("is_active", True):
+            return None
+        return _custom_workflow_to_definition(raw)
+
+    def _list_custom_workflows(self) -> List[WorkflowDefinition]:
+        """List active custom workflows from the database."""
+        try:
+            from services.custom_workflow_service import get_custom_workflow_service
+
+            rows = get_custom_workflow_service().list(active_only=True)
+        except Exception as e:
+            logger.debug(f"Custom workflow listing failed: {e}")
+            return []
+        return [_custom_workflow_to_definition(r) for r in rows]
+
     def list_workflows(self) -> List[Dict[str, Any]]:
-        """Return metadata for all discovered workflows."""
-        return [workflow.to_dict(include_body=False) for workflow in self._cache.values()]
+        """
+        Return metadata for all discovered workflows, merging file-based and
+        database-backed custom workflows. Custom workflows are listed first.
+        """
+        custom = [wf.to_dict(include_body=False) for wf in self._list_custom_workflows()]
+        file_based = [wf.to_dict(include_body=False) for wf in self._cache.values()]
+        return custom + file_based
 
     def get_workflow(self, workflow_id: str) -> Optional[WorkflowDefinition]:
-        """Get a specific workflow by ID."""
+        """Get a specific workflow by ID (custom workflows take precedence)."""
+        custom = self._get_custom_workflow(workflow_id)
+        if custom:
+            return custom
         return self._cache.get(workflow_id)
 
     def get_workflow_dict(self, workflow_id: str, include_body: bool = True) -> Optional[Dict[str, Any]]:
         """Get a specific workflow as a dictionary."""
-        workflow = self._cache.get(workflow_id)
+        workflow = self.get_workflow(workflow_id)
         if workflow:
             return workflow.to_dict(include_body=include_body)
         return None
