@@ -65,15 +65,19 @@ async def llm_call(
     traceparent: str = "",
     agent_id: Optional[str] = None,
     investigation_id: Optional[str] = None,
+    provider_id: Optional[str] = None,
 ) -> Any:
     """Execute a single LLM call through the shared ClaudeService.
 
     This is the primary worker function.  It:
       1. Acquires the rate-limit semaphore
       2. Optionally loads session history from Redis
-      3. Calls the Anthropic API
+      3. Calls the Anthropic API (or Bifrost, if provider routes non-Anthropic)
       4. Saves updated session history
       5. Returns the response content
+
+    When ``provider_id`` is None, routing falls back to the existing
+    ClaudeService.chat() path (pre-#88 behavior).
     """
     rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
     claude_service = ctx["claude_service"]
@@ -102,27 +106,45 @@ async def llm_call(
         if history:
             messages = history + messages
 
-    await rate_limiter.acquire()
-    try:
-        response = await asyncio.to_thread(
-            _sync_claude_call,
-            claude_service,
-            messages=messages,
-            model=model,
-            max_tokens=max_tokens,
-            system_prompt=system_prompt,
-            enable_thinking=enable_thinking,
-            thinking_budget=thinking_budget,
-            tools=tools,
-            temperature=temperature,
-            session_id=session_id,
-            agent_id=agent_id,
-            investigation_id=investigation_id,
-        )
-    finally:
-        rate_limiter.release()
-
-    result = _extract_result(response)
+    # Multi-provider routing (GH #88): if a non-default provider_id is set
+    # and the router wants the Bifrost path, dispatch there instead of
+    # hitting ClaudeService directly. provider_id=None preserves the
+    # pre-#88 Anthropic-SDK path exactly.
+    router_result = await _maybe_dispatch_via_router(
+        ctx,
+        provider_id=provider_id,
+        messages=messages,
+        system_prompt=system_prompt,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        tools=tools,
+        enable_thinking=enable_thinking,
+        thinking_budget=thinking_budget,
+    )
+    if router_result is not None:
+        result = router_result
+    else:
+        await rate_limiter.acquire()
+        try:
+            response = await asyncio.to_thread(
+                _sync_claude_call,
+                claude_service,
+                messages=messages,
+                model=model,
+                max_tokens=max_tokens,
+                system_prompt=system_prompt,
+                enable_thinking=enable_thinking,
+                thinking_budget=thinking_budget,
+                tools=tools,
+                temperature=temperature,
+                session_id=session_id,
+                agent_id=agent_id,
+                investigation_id=investigation_id,
+            )
+        finally:
+            rate_limiter.release()
+        result = _extract_result(response)
 
     if worker_span is not None:
         try:
@@ -132,8 +154,13 @@ async def llm_call(
 
     # Persist session
     if session_id:
+        # Bifrost results are always dicts; the legacy ClaudeService path
+        # can be a bare string, so guard against it.
+        assistant_content = (
+            result.get("content", "") if isinstance(result, dict) else result
+        )
         updated = messages + [
-            {"role": "assistant", "content": result.get("content", "")}
+            {"role": "assistant", "content": assistant_content}
         ]
         await session_store.save(session_id, updated)
 
@@ -152,6 +179,7 @@ async def llm_call_raw(
     traceparent: str = "",
     investigation_id: Optional[str] = None,
     agent_id: Optional[str] = None,
+    provider_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Execute a raw multi-turn LLM call (used by AgentRunner tool loop).
 
@@ -179,25 +207,39 @@ async def llm_call_raw(
     except Exception:
         worker_span = None
 
-    await rate_limiter.acquire()
-    try:
-        response = await asyncio.to_thread(
-            _sync_claude_raw,
-            claude_service,
-            messages=messages,
-            model=model,
-            max_tokens=max_tokens,
-            enable_thinking=enable_thinking,
-            thinking_budget=thinking_budget,
-            tools=tools,
-            temperature=temperature,
-            investigation_id=investigation_id,
-            agent_id=agent_id,
-        )
-    finally:
-        rate_limiter.release()
-
-    result = _serialize_raw_response(response)
+    router_result = await _maybe_dispatch_via_router(
+        ctx,
+        provider_id=provider_id,
+        messages=messages,
+        system_prompt=None,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        tools=tools,
+        enable_thinking=enable_thinking,
+        thinking_budget=thinking_budget,
+    )
+    if router_result is not None:
+        result = _adapt_router_result_to_raw(router_result)
+    else:
+        await rate_limiter.acquire()
+        try:
+            response = await asyncio.to_thread(
+                _sync_claude_raw,
+                claude_service,
+                messages=messages,
+                model=model,
+                max_tokens=max_tokens,
+                enable_thinking=enable_thinking,
+                thinking_budget=thinking_budget,
+                tools=tools,
+                temperature=temperature,
+                investigation_id=investigation_id,
+                agent_id=agent_id,
+            )
+        finally:
+            rate_limiter.release()
+        result = _serialize_raw_response(response)
 
     if worker_span is not None:
         try:
@@ -213,6 +255,106 @@ async def llm_call_raw(
             pass
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Multi-provider routing (GH #88)
+# ---------------------------------------------------------------------------
+
+async def _maybe_dispatch_via_router(
+    ctx: Dict[str, Any],
+    *,
+    provider_id: Optional[str],
+    messages: List[Dict],
+    system_prompt: Optional[str],
+    model: str,
+    max_tokens: int,
+    temperature: Optional[float],
+    tools: Optional[List[Dict]],
+    enable_thinking: bool,
+    thinking_budget: int,
+) -> Optional[Dict[str, Any]]:
+    """Return a router result dict, or None if the caller should fall back
+    to the legacy ClaudeService path.
+
+    The router path is taken only when:
+      - provider_id is explicitly set (non-None), AND
+      - the resolved provider's path selection is "bifrost"
+    Anthropic + thinking resolves to "anthropic_direct" — we still return
+    None so the existing ClaudeService path handles it (that path is where
+    prompt caching and thinking work best).
+    """
+    if provider_id is None:
+        return None
+
+    router = ctx.get("llm_router")
+    if router is None:
+        logger.debug("llm_router not initialized; falling back to ClaudeService")
+        return None
+
+    try:
+        from services.llm_router import get_provider_spec
+        spec = get_provider_spec(provider_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to resolve provider %s: %s", provider_id, exc)
+        return None
+
+    if spec is None:
+        logger.warning("Provider %s not found; falling back to ClaudeService", provider_id)
+        return None
+
+    path = router.select_path(spec, enable_thinking=enable_thinking)
+    if path == "anthropic_direct":
+        # Let the existing ClaudeService path handle it (preserves caching,
+        # backend-tool loop, session management, etc.).
+        return None
+
+    rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
+    await rate_limiter.acquire()
+    try:
+        return await router.dispatch(
+            provider=spec,
+            messages=messages,
+            system_prompt=system_prompt,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            tools=tools,
+            enable_thinking=enable_thinking,
+            thinking_budget=thinking_budget,
+        )
+    finally:
+        rate_limiter.release()
+
+
+def _adapt_router_result_to_raw(router_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Shape an LLMRouter result to match _serialize_raw_response output.
+
+    AgentRunner expects a dict with ``content`` (list of blocks),
+    ``stop_reason``, ``input_tokens``, ``output_tokens``.
+    """
+    blocks: List[Dict[str, Any]] = []
+    text = router_result.get("content") or ""
+    if text:
+        blocks.append({"type": "text", "text": text})
+    thinking = router_result.get("thinking")
+    if thinking:
+        blocks.append({"type": "thinking", "thinking": thinking})
+    for tc in router_result.get("tool_calls") or []:
+        blocks.append({
+            "type": "tool_use",
+            "id": tc.get("id"),
+            "name": tc.get("name"),
+            "input": tc.get("input") or {},
+        })
+    return {
+        "content": blocks,
+        "stop_reason": "end_turn",
+        "input_tokens": router_result.get("input_tokens", 0),
+        "output_tokens": router_result.get("output_tokens", 0),
+        "provider": router_result.get("provider"),
+        "path": router_result.get("path"),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -406,6 +548,17 @@ async def on_startup(ctx: Dict[str, Any]):
     ctx["claude_service"] = claude_service
     ctx["rate_limiter"] = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
     ctx["session_store"] = RedisSessionStore(ctx["redis"])
+
+    # Multi-provider routing (GH #88). Router is optional: if construction
+    # fails (e.g. openai not installed), worker continues in Anthropic-only
+    # mode and provider_id kwargs are silently ignored.
+    try:
+        from services.llm_router import LLMRouter
+        ctx["llm_router"] = LLMRouter()
+        logger.info("LLM router initialized (Bifrost URL=%s)", ctx["llm_router"].bifrost_url)
+    except Exception as _router_err:
+        ctx["llm_router"] = None
+        logger.warning("LLM router init skipped (non-fatal): %s", _router_err)
 
     logger.info(f"LLM worker started (max_concurrent={MAX_CONCURRENT_LLM_CALLS})")
 
