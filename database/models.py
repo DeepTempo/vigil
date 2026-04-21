@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import (
     Column, String, Integer, Float, DateTime, Text, JSON, 
-    ForeignKey, Table, Index, Boolean, ARRAY
+    ForeignKey, Table, Index, Boolean, ARRAY, UniqueConstraint
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -429,6 +429,73 @@ class AIDecisionLog(Base):
             'time_saved_minutes': self.time_saved_minutes,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
             'feedback_timestamp': self.feedback_timestamp.isoformat() if self.feedback_timestamp else None,
+        }
+
+
+class DetectionRule(Base):
+    """
+    Detection Rule - Stores AI-generated detection rules (Sigma, SPL, KQL).
+    
+    This model allows Vigil to persist and manage auto-generated rules 
+    linking specific findings to their technical detection implementations.
+    """
+    
+    __tablename__ = 'detection_rules'
+    
+    # Primary key
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    
+    # Rule identifiers
+    technique_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    
+    # Detection content
+    sigma_rule: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    spl_query: Mapped[str] = mapped_column(Text, nullable=False)
+    kql_query: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Metadata & Versioning
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default='1')
+    confidence: Mapped[int] = mapped_column(Integer, nullable=False, default=70, server_default='70')
+    confidence_reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    rule_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        server_default='now()'
+    )
+    
+    # Metadata
+    source: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default='auto-generated',
+        server_default='auto-generated'
+    )
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_detection_rule_technique', 'technique_id'),
+        Index('idx_detection_rule_created_at', 'created_at'),
+        UniqueConstraint('rule_hash', name='uq_rule_hash'),
+    )
+    
+    def to_dict(self) -> dict:
+        """Convert detection rule to dictionary."""
+        return {
+            'id': self.id,
+            'technique_id': self.technique_id,
+            'sigma_rule': self.sigma_rule,
+            'spl_query': self.spl_query,
+            'kql_query': self.kql_query,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'source': self.source,
+            'version': self.version,
+            'confidence': self.confidence,
+            'confidence_reasoning': self.confidence_reasoning,
+            'rule_hash': self.rule_hash,
         }
 
 
