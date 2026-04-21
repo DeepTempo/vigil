@@ -14,6 +14,7 @@ import Investigation from './pages/Investigation'
 import Analytics from './pages/Analytics'
 import Skills from './pages/Skills'
 import Orchestrator from './pages/Orchestrator'
+import WorkflowBuilder from './pages/WorkflowBuilder'
 
 function App() {
   return (
@@ -46,6 +47,7 @@ function App() {
             <Route path="timesketch" element={<Timesketch />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="skills" element={<Skills />} />
+            <Route path="workflow-builder" element={<WorkflowBuilder />} />
             <Route path="orchestrator" element={<Orchestrator />} />
             <Route
               path="ai-decisions"
