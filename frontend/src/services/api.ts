@@ -575,6 +575,39 @@ export const agentsApi = {
     agent_id?: string
     use_agent_sdk?: boolean
   }) => api.post('/agents/agents/run', data),
+
+  // Custom Agent Builder (issue #80)
+  listCustom: () => api.get('/agents/custom'),
+  getCustom: (agent_id: string) => api.get(`/agents/custom/${agent_id}`),
+  createCustom: (data: CustomAgentPayload) => api.post('/agents/custom', data),
+  updateCustom: (agent_id: string, data: Partial<CustomAgentPayload>) =>
+    api.patch(`/agents/custom/${agent_id}`, data),
+  deleteCustom: (agent_id: string) => api.delete(`/agents/custom/${agent_id}`),
+  getAvailableTools: () => api.get('/agents/custom/_meta/tools'),
+}
+
+export interface CustomAgentPayload {
+  name: string
+  role: string
+  description?: string | null
+  icon?: string | null
+  color?: string | null
+  specialization?: string | null
+  extra_principles?: string | null
+  methodology?: string | null
+  system_prompt_override?: string | null
+  recommended_tools?: string[]
+  max_tokens?: number
+  enable_thinking?: boolean
+  model?: string | null
+}
+
+export interface CustomAgent extends CustomAgentPayload {
+  id: string
+  created_by?: string | null
+  created_at?: string
+  updated_at?: string
+  effective_prompt?: string
 }
 
 // Config API

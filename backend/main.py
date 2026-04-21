@@ -48,6 +48,7 @@ from api.ingestion import router as ingestion_router
 from api.timeline import router as timeline_router
 from api.graph import router as graph_router
 from api.vstrike import router as vstrike_router
+from api.custom_agents import router as custom_agents_router
 
 # Enhanced case management routers
 from api.case_templates import router as case_templates_router
@@ -178,6 +179,7 @@ app.include_router(mcp_router, prefix="/api/mcp", tags=["mcp"])
 app.include_router(claude_router, prefix="/api/claude", tags=["claude"], dependencies=[Depends(rate_limit_dependency)])
 app.include_router(config_router, prefix="/api/config", tags=["config"])
 app.include_router(attack_router, prefix="/api/attack", tags=["attack"])
+app.include_router(custom_agents_router, prefix="/api", tags=["custom-agents"])
 app.include_router(agents_router, prefix="/api/agents", tags=["agents"])
 app.include_router(compatibility_router, prefix="/api/integrations", tags=["integrations"])
 app.include_router(custom_integrations_router, prefix="/api/custom-integrations", tags=["custom-integrations"])
@@ -428,6 +430,16 @@ async def startup_event():
             logger.warning("MCP client not available - MCP SDK may not be installed")
     except Exception as e:
         logger.error(f"Error during MCP initialization: {e}")
+
+    # Load custom agents from DB into the AgentManager so built-in + custom
+    # agents are visible in one merged list. Lookup misses for "custom-*" IDs
+    # also trigger a refresh at request time, so this is a convenience preload.
+    try:
+        from backend.api.agents import agent_manager
+        loaded = agent_manager.refresh_custom_agents()
+        logger.info(f"Loaded {loaded} custom agent(s) from database")
+    except Exception as e:
+        logger.warning(f"Could not preload custom agents: {e}")
 
 
 @app.on_event("shutdown")
