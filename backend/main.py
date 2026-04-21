@@ -36,6 +36,7 @@ from api import (
     ai_decisions_router,
     logs_router,
     workflows_router,
+    reasoning_router,
 )
 from api.local_services import router as local_services_router
 from api.integrations_compatibility import router as compatibility_router
@@ -143,6 +144,7 @@ app.include_router(findings_router, prefix="/api/findings", tags=["findings"])
 app.include_router(cases_router, prefix="/api/cases", tags=["cases"])
 app.include_router(mcp_router, prefix="/api/mcp", tags=["mcp"])
 app.include_router(claude_router, prefix="/api/claude", tags=["claude"], dependencies=[Depends(rate_limit_dependency)])
+app.include_router(reasoning_router, prefix="/api/reasoning", tags=["reasoning"])
 app.include_router(config_router, prefix="/api/config", tags=["config"])
 app.include_router(attack_router, prefix="/api/attack", tags=["attack"])
 app.include_router(agents_router, prefix="/api/agents", tags=["agents"])

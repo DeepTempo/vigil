@@ -85,6 +85,7 @@ class TestDatabaseMetadataRegistration:
             "roles",
             "investigations",
             "investigation_logs",
+            "llm_interaction_logs",
             "shared_iocs",
             "case_notifications",
         }
