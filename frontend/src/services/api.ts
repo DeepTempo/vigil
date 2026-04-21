@@ -27,8 +27,7 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    const isAuthEndpoint = originalRequest?.url?.startsWith('/auth/login') ||
-      originalRequest?.url?.startsWith('/auth/register')
+    const isAuthEndpoint = originalRequest?.url?.startsWith('/auth/login')
 
     if (isAuthEndpoint) {
       return Promise.reject(error)
@@ -857,6 +856,24 @@ export const orchestratorApi = {
     api.post(`/orchestrator/investigations/${id}/review`, { action, notes }),
 
   getCost: () => api.get('/orchestrator/cost'),
+}
+
+// Kafka ingestion API
+export const kafkaApi = {
+  getConfig: () => api.get('/kafka/config'),
+  setConfig: (config: {
+    enabled: boolean
+    bootstrap_servers: string
+    consumer_group: string
+    topics: string[]
+    auto_offset_reset: string
+    security_protocol: string
+    sasl_mechanism?: string | null
+    sasl_username?: string | null
+    max_poll_records: number
+    session_timeout_ms: number
+  }) => api.put('/kafka/config', config),
+  getStatus: () => api.get('/kafka/status'),
 }
 
 export default api

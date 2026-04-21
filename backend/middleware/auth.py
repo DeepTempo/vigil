@@ -13,6 +13,7 @@ from fastapi import HTTPException, Header, Depends, status
 from sqlalchemy.orm import Session
 
 from backend.services.auth_service import AuthService
+from backend.services.token_blacklist import is_token_revoked
 from database.models import User
 from database.connection import get_db_session
 
@@ -119,7 +120,16 @@ async def get_current_user(
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    # Reject revoked tokens (logout / password change / role change).
+    # Fail-open if Redis is down — see token_blacklist.is_token_revoked.
+    if await is_token_revoked(payload):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # Get user from database
     user = session.query(User).filter(User.user_id == payload["user_id"]).first()
     if not user:
