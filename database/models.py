@@ -2191,6 +2191,74 @@ class CaseNotification(Base):
         }
 
 
+class CustomWorkflow(Base):
+    """
+    Custom Workflow Model - User-created multi-agent workflow definitions.
+
+    File-based WORKFLOW.md definitions remain supported separately. This table
+    holds workflows created/edited via the Workflow Builder UI.
+    """
+
+    __tablename__ = 'custom_workflows'
+
+    workflow_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    use_case: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    trigger_examples: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default='[]'
+    )
+    phases: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default='[]'
+    )
+    graph_layout: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default='{}'
+    )
+
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        server_default='now()',
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        server_default='now()',
+    )
+
+    __table_args__ = (
+        Index('idx_custom_workflows_active', 'is_active'),
+        Index('idx_custom_workflows_created_by', 'created_by'),
+        Index('idx_custom_workflows_name', 'name'),
+    )
+
+    def to_dict(self) -> dict:
+        """Convert custom workflow to dictionary."""
+        return {
+            'workflow_id': self.workflow_id,
+            'name': self.name,
+            'description': self.description,
+            'use_case': self.use_case,
+            'trigger_examples': self.trigger_examples or [],
+            'phases': self.phases or [],
+            'graph_layout': self.graph_layout or {},
+            'is_active': self.is_active,
+            'created_by': self.created_by,
+            'version': self.version,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class Skill(Base):
     """Skill model - reusable, parameterized SOC capability (detection,
     enrichment, response, reporting) that agents and workflows can invoke."""

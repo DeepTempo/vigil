@@ -89,6 +89,7 @@ class TestDatabaseMetadataRegistration:
             "shared_iocs",
             "case_notifications",
             "custom_agents",
+            "custom_workflows",
             "skills",
         }
 

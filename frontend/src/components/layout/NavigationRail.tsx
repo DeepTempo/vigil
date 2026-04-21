@@ -24,6 +24,7 @@ import {
   Assessment as MetricsIcon,
   BarChart as AnalyticsIcon,
   AccountTree as SkillsIcon,
+  Build as BuilderIcon,
   SmartToy as OrchestratorIcon,
 } from '@mui/icons-material'
 import UserMenu from '../auth/UserMenu'
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { id: 'analytics', label: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
   { id: 'ai-decisions', label: 'AI Decisions', icon: <AIIcon />, path: '/ai-decisions' },
   { id: 'skills', label: 'Skills', icon: <SkillsIcon />, path: '/skills' },
+  { id: 'workflow-builder', label: 'Workflow Builder', icon: <BuilderIcon />, path: '/workflow-builder' },
   { id: 'orchestrator', label: 'Auto Ops', icon: <OrchestratorIcon />, path: '/orchestrator' },
   { id: 'timesketch', label: 'Timesketch', icon: <TimelineIcon />, path: '/timesketch' },
   { id: 'settings', label: 'Settings', icon: <SettingsIcon />, path: '/settings' },
