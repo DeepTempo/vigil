@@ -43,6 +43,9 @@ docs/
 archive/
 *.txt
 LICENSE
+# requirements.txt is needed by Dockerfile.backend + Dockerfile.daemon;
+# the wildcard above would otherwise exclude it.
+!requirements.txt
 
 # Logs
 logs/

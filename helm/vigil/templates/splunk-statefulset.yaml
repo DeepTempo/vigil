@@ -1,0 +1,121 @@
+{{- if .Values.splunk.enabled }}
+{{- /*
+Splunk Enterprise single-node, for testing the Splunk MCP integration
+without a real SIEM. Do NOT run this in production.
+*/ -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "vigil.fullname" . }}-splunk
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "splunk") | nindent 4 }}
+spec:
+  serviceName: {{ include "vigil.fullname" . }}-splunk
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "splunk") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vigil.componentLabels" (dict "context" . "component" "splunk") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "vigil.serviceAccountName" . }}
+      {{- include "vigil.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: splunk
+          image: "{{ .Values.splunk.image.repository }}:{{ .Values.splunk.image.tag }}"
+          imagePullPolicy: {{ .Values.splunk.image.pullPolicy | default "IfNotPresent" }}
+          env:
+            - name: SPLUNK_START_ARGS
+              value: "--accept-license"
+            - name: SPLUNK_GENERAL_TERMS
+              value: "--accept-sgt-current-at-splunk-com"
+            - name: SPLUNK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.splunk.auth.existingSecret | default (printf "%s-splunk" (include "vigil.fullname" .)) }}
+                  key: SPLUNK_PASSWORD
+            {{- with .Values.splunk.hecToken }}
+            - name: SPLUNK_HEC_TOKEN
+              value: {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: web
+              containerPort: 8000
+            - name: hec
+              containerPort: 8088
+            - name: mgmt
+              containerPort: 8089
+            - name: forwarder
+              containerPort: 9997
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 90
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 8
+          volumeMounts:
+            - name: var
+              mountPath: /opt/splunk/var
+            - name: etc
+              mountPath: /opt/splunk/etc
+          resources:
+            {{- toYaml .Values.splunk.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: var
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- if .Values.splunk.persistence.storageClassName }}
+        storageClassName: {{ .Values.splunk.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.splunk.persistence.size }}
+    - metadata:
+        name: etc
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- if .Values.splunk.persistence.storageClassName }}
+        storageClassName: {{ .Values.splunk.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vigil.fullname" . }}-splunk
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "splunk") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - { name: web,       port: 8000, targetPort: web }
+    - { name: hec,       port: 8088, targetPort: hec }
+    - { name: mgmt,      port: 8089, targetPort: mgmt }
+    - { name: forwarder, port: 9997, targetPort: forwarder }
+  selector:
+    {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "splunk") | nindent 4 }}
+{{- if not .Values.splunk.auth.existingSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "vigil.fullname" . }}-splunk
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "splunk") | nindent 4 }}
+type: Opaque
+stringData:
+  SPLUNK_PASSWORD: {{ required "splunk.auth.password or splunk.auth.existingSecret is required" .Values.splunk.auth.password | quote }}
+{{- end }}
+{{- end }}
