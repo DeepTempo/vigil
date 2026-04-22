@@ -187,17 +187,190 @@ kubectl delete namespace vigil
 PVCs are **not** auto-deleted with the release — that's a safety measure
 against accidental data loss.
 
-## Out of scope for the MVP chart
+## NetworkPolicies
 
-Tracked as separate follow-ups:
+Flip `networkPolicies.enabled=true` to lock down inter-pod traffic. The chart
+emits a default-deny policy plus per-component allow rules:
 
-- Bitnami postgresql/redis subcharts (for HA + easier point-in-time restore)
-- Native ExternalSecrets Operator templates
-- Prometheus ServiceMonitor and pre-canned Grafana dashboards
-- NetworkPolicies restricting inter-pod traffic
-- HPA based on Redis queue depth (custom metrics adapter)
-- Observability stack (OTEL Collector, Jaeger) as optional subcharts
-- Splunk / PgAdmin sidecars as profiles
+- Postgres / Redis: accept only from backend, daemon, llm-worker, and the
+  db-init Job
+- Daemon webhook (port 8081): restricted to CIDRs listed in
+  `networkPolicies.daemon.webhookAllowFrom` — empty list means
+  cluster-internal only
+- Backend: accepts traffic from the ingress controller's namespace (by
+  label selector) + cluster-internal
+
+```yaml
+networkPolicies:
+  enabled: true
+  ingressControllerNamespaceSelector:
+    kubernetes.io/metadata.name: ingress-nginx
+  daemon:
+    webhookAllowFrom:
+      - 203.0.113.0/24   # your SIEM's outbound CIDR
+```
+
+When Bitnami postgresql / redis subcharts are active, their own
+`networkPolicy.*` settings take over; the chart's NetworkPolicy for the
+corresponding data service suppresses itself.
+
+## Observability
+
+### ServiceMonitor (Prometheus Operator)
+
+```yaml
+observability:
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack  # match your Prometheus instance's selector
+```
+
+The daemon's `/metrics` endpoint only serves traffic when
+`config.VIGIL_OTEL_ENABLED=true` — flip both together.
+
+### In-chart OTEL Collector
+
+Ships the upstream `open-telemetry/opentelemetry-collector` chart as an
+optional subchart. Requires `helm dependency update` once:
+
+```bash
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+helm dependency update helm/vigil
+```
+
+Then enable:
+
+```yaml
+otelCollector:
+  enabled: true
+  # Replace the default debug exporter with whatever your stack consumes
+  config:
+    exporters:
+      otlphttp/jaeger:
+        endpoint: http://jaeger-collector:4318
+    service:
+      pipelines:
+        traces:
+          exporters: [otlphttp/jaeger]
+
+config:
+  VIGIL_OTEL_ENABLED: "true"
+  # Auto-rewritten to http://<release>-opentelemetry-collector:4317 when
+  # otelCollector.enabled=true, but you can override if needed.
+```
+
+## Autoscaling the LLM worker
+
+Two modes — pick one.
+
+### CPU-based (no extra dependencies)
+
+```yaml
+llmWorker:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+```
+
+### KEDA-based (queue-depth driven)
+
+Recommended for Vigil workloads: LLM calls are I/O-bound, so CPU is a poor
+proxy for load. KEDA watches the `arq:llm` Redis list and scales when the
+backlog grows.
+
+Prerequisite: KEDA installed on the cluster (https://keda.sh/docs/latest/deploy/).
+
+```yaml
+llmWorker:
+  autoscaling:
+    enabled: false   # disable the CPU HPA
+    keda:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 20
+      listLength: "5"   # 1 replica per 5 queued items
+```
+
+Works with all three Redis backends (in-chart, Bitnami subchart, external).
+When the Bitnami subchart is active, the chart also emits a KEDA
+`TriggerAuthentication` referencing the Bitnami-generated Secret.
+
+## Choosing a Postgres/Redis backend
+
+Three modes, mutually exclusive:
+
+| Mode | When | How |
+|---|---|---|
+| MVP in-chart StatefulSet | default, dev, small deployments | default values |
+| Bitnami subchart | production, want HA / metrics exporters / replicas | `postgresql.bitnami.enabled=true` + `redis.bitnami.enabled=true` |
+| External | managed DB (RDS, Aurora, ElastiCache, etc.) | `postgresql.enabled=false` + `postgresql.external.*` |
+
+Bitnami is opt-in because it adds ~2MB of subchart assets and requires
+`helm dependency update`. Run once after cloning:
+
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm dependency update helm/vigil
+```
+
+Then enable in values:
+
+```yaml
+postgresql:
+  enabled: false         # disable MVP StatefulSet
+  bitnami:
+    enabled: true
+    auth:
+      database: deeptempo_soc
+      username: deeptempo
+    primary:
+      persistence:
+        size: 100Gi
+      resources: { requests: { cpu: "1", memory: "2Gi" } }
+
+redis:
+  enabled: false
+  bitnami:
+    enabled: true
+    architecture: replication
+    auth:
+      enabled: true
+```
+
+## Development utilities (Splunk, pgAdmin)
+
+Off by default; flip on for demo clusters or local testing only:
+
+```yaml
+splunk:
+  enabled: true    # ClusterIP Service on 8000 (web), 8088 (HEC), 8089 (mgmt)
+  persistence:
+    size: 50Gi
+
+pgadmin:
+  enabled: true    # ClusterIP Service on port 80
+```
+
+Neither is exposed via Ingress — use `kubectl port-forward` to reach them.
+NOTES.txt warns if either is enabled alongside `config.DEV_MODE=false`.
+
+## Secrets — advanced patterns
+
+See [HELM-SECRETS.md](./HELM-SECRETS.md) for end-to-end workflows covering
+[Bitnami SealedSecrets](https://github.com/bitnami-labs/sealed-secrets) and
+[Mozilla SOPS](https://github.com/getsops/sops), plus a comparison of all
+four supported secret-management patterns.
+
+## Out of scope (today)
+
+Not yet implemented; contributions welcome:
+
+- Pre-canned Grafana dashboards
+- Vertical Pod Autoscaler (VPA) support
+- Multi-region deployment patterns
 
 ## Troubleshooting
 

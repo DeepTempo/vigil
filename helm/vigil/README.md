@@ -112,17 +112,21 @@ See `values.yaml` for the full schema. Non-obvious choices:
   is the Prometheus `/metrics` port, which is only served when
   `config.VIGIL_OTEL_ENABLED=true`.
 
-## Out of scope (today)
+## Optional features (all off by default)
 
-- Bitnami postgresql/redis subcharts
-- ExternalSecrets Operator native support (use `secrets.existingSecret` instead)
-- Prometheus ServiceMonitor
-- NetworkPolicies
-- Queue-depth HPA (CPU-based only)
-- Observability (OTEL Collector, Jaeger, Grafana)
-- Splunk / PgAdmin sidecar profiles
+| Feature | Flag | Notes |
+|---|---|---|
+| NetworkPolicies | `networkPolicies.enabled` | Default-deny + per-component allow rules |
+| Prometheus ServiceMonitor | `observability.serviceMonitor.enabled` | Requires Prometheus Operator CRDs |
+| ExternalSecrets | `secrets.externalSecret.enabled` | Pulls from AWS SM / Vault / GCP SM |
+| Bitnami postgres subchart | `postgresql.bitnami.enabled` | Run `helm dependency update` once |
+| Bitnami redis subchart | `redis.bitnami.enabled` | Same |
+| OTEL Collector subchart | `otelCollector.enabled` | In-cluster OTLP endpoint |
+| KEDA queue-depth autoscaling | `llmWorker.autoscaling.keda.enabled` | Requires KEDA operator |
+| Splunk sidecar | `splunk.enabled` | Dev/demo only |
+| pgAdmin sidecar | `pgadmin.enabled` | Dev/demo only |
 
-These are tracked as follow-ups to issue #85.
+See [docs/HELM.md](../../docs/HELM.md) for end-to-end examples of each.
 
 ## Development
 
