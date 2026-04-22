@@ -118,10 +118,29 @@ llmWorker:
       cpu: 1000m
       memory: 2Gi
   autoscaling:
+    # CPU-based HPA (classic). Mutually exclusive with keda.enabled.
     enabled: false
     minReplicas: 2
     maxReplicas: 20
     targetCPUUtilizationPercentage: 70
+    # KEDA ScaledObject (issue #116) — scales on actual Redis queue depth.
+    # Requires KEDA installed in the cluster (https://keda.sh).
+    keda:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 20
+      # Seconds of zero queue activity before scaling down. Keep high to avoid
+      # thrash when the queue is bursty.
+      cooldownPeriod: 300
+      # How often KEDA polls Redis for the queue depth.
+      pollingInterval: 15
+      # ARQ default queue name for the Vigil llm-worker (see services/llm_gateway.py).
+      queueName: "arq:llm"
+      # KEDA scales one replica per listLength items queued.
+      listLength: "5"
+      # Only used when redis.enabled=false AND redis.bitnami.enabled=false.
+      # host:port form without scheme or password.
+      redisAddress: ""
   podAnnotations: {}
   nodeSelector: {}
   tolerations: []

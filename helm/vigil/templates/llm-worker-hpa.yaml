@@ -1,4 +1,7 @@
-{{- if and .Values.llmWorker.enabled .Values.llmWorker.autoscaling.enabled }}
+{{- /* CPU HPA is suppressed when KEDA is active — the KEDA ScaledObject
+       creates its own HPA under the hood and having both on the same
+       Deployment fights. */ -}}
+{{- if and .Values.llmWorker.enabled .Values.llmWorker.autoscaling.enabled (not .Values.llmWorker.autoscaling.keda.enabled) }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
