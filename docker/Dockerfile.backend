@@ -15,7 +15,10 @@ RUN npm ci --no-audit --no-fund
 
 # Copy the rest of the frontend source and build.
 COPY frontend/ ./
-RUN npm run build
+# Cap node's heap so builds don't OOM on memory-constrained hosts
+# (Docker Desktop with <2GB, small CI runners). The SPA builds comfortably
+# under 768MB; leave the remainder for the OS and other build stages.
+RUN NODE_OPTIONS=--max-old-space-size=1536 npm run build
 
 # -----------------------------------------------------------------------------
 # Stage 2: Python backend + bundled SPA
@@ -32,8 +35,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements + editable-install sources first for better caching.
+# requirements.txt references `-e ./deeptempo-core` and `-e ./mcp-servers`,
+# so those directories must exist at pip-install time.
 COPY requirements.txt .
+COPY deeptempo-core/ ./deeptempo-core/
+COPY mcp-servers/ ./mcp-servers/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt

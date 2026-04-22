@@ -12,8 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements + editable-install sources first for better caching.
+# requirements.txt references `-e ./deeptempo-core` and `-e ./mcp-servers`,
+# so those directories must exist at pip-install time.
 COPY requirements.txt .
+COPY deeptempo-core/ ./deeptempo-core/
+COPY mcp-servers/ ./mcp-servers/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
@@ -21,9 +25,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create non-root user for security
-RUN useradd -m -u 1000 daemon && chown -R daemon:daemon /app
-USER daemon
+# Create non-root user for security. Note: python:3.11-slim ships a
+# built-in `daemon` user (UID 1), so we name ours `soc` to avoid collision.
+RUN useradd -m -u 1000 soc && chown -R soc:soc /app
+USER soc
 
 # Expose ports
 # 8081 - Webhook ingestion
