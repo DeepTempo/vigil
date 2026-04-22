@@ -296,6 +296,34 @@ containerSecurityContext:
 secrets:
   existingSecret: ""
 
+  # ExternalSecrets Operator (issue #113) — declares an ExternalSecret that
+  # materializes the K8s Secret from an external store (AWS SM, Vault, etc).
+  # When enabled, the plain secret.yaml template is skipped.
+  externalSecret:
+    enabled: false
+    refreshInterval: 1h
+    # SecretStore or ClusterSecretStore reference
+    secretStoreRef:
+      name: ""
+      kind: ClusterSecretStore
+    # Either .data (explicit per-key mapping) or .dataFrom (pull the whole
+    # remote secret and use every key as-is).
+    # .data example:
+    #   data:
+    #     ANTHROPIC_API_KEY:
+    #       remoteRef:
+    #         key: vigil/prod/anthropic-api-key
+    #     POSTGRES_PASSWORD:
+    #       remoteRef:
+    #         key: vigil/prod/postgres
+    #         property: password
+    data: {}
+    # .dataFrom example:
+    #   dataFrom:
+    #     - extract:
+    #         key: vigil/prod/all-secrets
+    dataFrom: []
+
   # Required (at least one of these must be set for the backend to do useful work).
   anthropicApiKey: ""
 
