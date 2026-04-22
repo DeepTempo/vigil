@@ -1,0 +1,81 @@
+{{- if .Values.pgadmin.enabled }}
+{{- /*
+pgAdmin 4 web UI for poking at the Postgres database. Development convenience
+only — don't expose via Ingress without a strong password + authz in front.
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vigil.fullname" . }}-pgadmin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "pgadmin") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "pgadmin") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vigil.componentLabels" (dict "context" . "component" "pgadmin") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "vigil.serviceAccountName" . }}
+      {{- include "vigil.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        fsGroup: 5050
+      containers:
+        - name: pgadmin
+          image: "{{ .Values.pgadmin.image.repository }}:{{ .Values.pgadmin.image.tag }}"
+          imagePullPolicy: {{ .Values.pgadmin.image.pullPolicy | default "IfNotPresent" }}
+          env:
+            - name: PGADMIN_DEFAULT_EMAIL
+              value: {{ .Values.pgadmin.auth.email | quote }}
+            - name: PGADMIN_DEFAULT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.pgadmin.auth.existingSecret | default (printf "%s-pgadmin" (include "vigil.fullname" .)) }}
+                  key: PGADMIN_DEFAULT_PASSWORD
+            - name: PGADMIN_CONFIG_SERVER_MODE
+              value: "False"
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /misc/ping
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.pgadmin.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vigil.fullname" . }}-pgadmin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "pgadmin") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  selector:
+    {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "pgadmin") | nindent 4 }}
+{{- if not .Values.pgadmin.auth.existingSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "vigil.fullname" . }}-pgadmin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "pgadmin") | nindent 4 }}
+type: Opaque
+stringData:
+  PGADMIN_DEFAULT_PASSWORD: {{ required "pgadmin.auth.password or pgadmin.auth.existingSecret is required" .Values.pgadmin.auth.password | quote }}
+{{- end }}
+{{- end }}

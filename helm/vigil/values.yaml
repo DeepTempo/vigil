@@ -703,6 +703,50 @@ networkPolicies:
     webhookAllowFrom: []
 
 # -----------------------------------------------------------------------------
+# Development utilities (issue #117) — off by default, not for production
+# -----------------------------------------------------------------------------
+splunk:
+  enabled: false
+  image:
+    repository: splunk/splunk
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  auth:
+    # Pre-created Secret with key SPLUNK_PASSWORD — overrides .password
+    existingSecret: ""
+    password: "changeme123"
+  # Optional HEC token (empty = Splunk generates one)
+  hecToken: ""
+  persistence:
+    size: 50Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+pgadmin:
+  enabled: false
+  image:
+    repository: dpage/pgadmin4
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  auth:
+    email: "admin@vigil.local"
+    existingSecret: ""
+    password: "admin"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# -----------------------------------------------------------------------------
 # Tests (helm test)
 # -----------------------------------------------------------------------------
 tests:

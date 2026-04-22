@@ -36,10 +36,20 @@ Change it immediately via the settings UI.
 {{- end }}
 
 {{- if not .Values.secrets.anthropicApiKey }}
-{{- if not .Values.secrets.existingSecret }}
+{{- if and (not .Values.secrets.existingSecret) (not .Values.secrets.externalSecret.enabled) }}
 
 ⚠️  WARNING: secrets.anthropicApiKey is empty. The AI-powered features of Vigil
-   will return errors until you set it (either via --set secrets.anthropicApiKey=…
-   or by pointing secrets.existingSecret at a pre-created Secret).
+   will return errors until you set it (either via --set secrets.anthropicApiKey=…,
+   by pointing secrets.existingSecret at a pre-created Secret, or by configuring
+   secrets.externalSecret for the ExternalSecrets Operator).
+{{- end }}
+{{- end }}
+
+{{- if or .Values.splunk.enabled .Values.pgadmin.enabled }}
+{{- if ne (.Values.config.DEV_MODE | toString) "true" }}
+
+⚠️  WARNING: Splunk or pgAdmin are enabled alongside DEV_MODE=false. These are
+   development utilities without production-grade auth; don't run them in a
+   shared / production cluster.
 {{- end }}
 {{- end }}
