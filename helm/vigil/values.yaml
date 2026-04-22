@@ -515,6 +515,24 @@ config:
 extraConfig: {}
 
 # -----------------------------------------------------------------------------
+# NetworkPolicies (issue #111)
+# -----------------------------------------------------------------------------
+# Off by default — flipping to true on an existing cluster may break traffic
+# that was previously implicitly allowed. Plan the rollout.
+networkPolicies:
+  enabled: false
+  # Namespace selector used to allow ingress traffic from the ingress
+  # controller's namespace. Defaults match a common nginx-ingress install;
+  # adjust if your controller runs elsewhere or lives in the same namespace.
+  ingressControllerNamespaceSelector:
+    kubernetes.io/metadata.name: ingress-nginx
+  daemon:
+    # CIDRs allowed to POST to the daemon's webhook port. Empty list means
+    # cluster-internal only. Add your SIEM/EDR outbound IPs here to let them
+    # push findings.
+    webhookAllowFrom: []
+
+# -----------------------------------------------------------------------------
 # Tests (helm test)
 # -----------------------------------------------------------------------------
 tests:

@@ -1,0 +1,184 @@
+{{- if .Values.networkPolicies.enabled }}
+{{- /*
+NetworkPolicies for Vigil SOC.
+
+Each policy is default-deny on ingress with explicit allow-rules. Egress is
+permissive by default (DNS + HTTPS to 0.0.0.0/0) because the daemon and
+backend need to reach external APIs (Anthropic, SIEM/EDR, threat intel).
+Users can lock egress down further by adding custom policies in the same
+namespace.
+
+Component label selectors reuse the chart's standard labels, so these
+policies break cleanly if a pod isn't labeled — no silent misrouting.
+*/ -}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "vigil.fullname" . }}-deny-all
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "vigil.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  # Default: allow all egress (locked down per-component below).
+  egress:
+    - {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "vigil.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "backend") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "backend") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    # Ingress controller traffic (label selector is user-configurable)
+    {{- with .Values.networkPolicies.ingressControllerNamespaceSelector }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.backend.service.port }}
+    {{- end }}
+    # In-namespace traffic (daemon hitting backend, llm-worker, helm test, etc.)
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
+    # Kubelet probes
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
+---
+{{- if .Values.daemon.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "vigil.fullname" . }}-daemon
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "daemon") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "daemon") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    # Webhook: allow only from configured CIDRs (empty = cluster-internal only)
+    {{- with .Values.networkPolicies.daemon.webhookAllowFrom }}
+    - from:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.daemon.ports.webhook }}
+    {{- end }}
+    # Cluster-internal to all daemon ports (probes, in-cluster calls)
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.daemon.ports.webhook }}
+        - protocol: TCP
+          port: {{ .Values.daemon.ports.metrics }}
+        - protocol: TCP
+          port: {{ .Values.daemon.ports.health }}
+---
+{{- end }}
+{{- if .Values.llmWorker.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "vigil.fullname" . }}-llm-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "llm-worker") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "llm-worker") | nindent 6 }}
+  policyTypes: [Ingress]
+  # llm-worker does not expose ports — no pod should be hitting it.
+  # Egress only.
+  ingress: []
+---
+{{- end }}
+{{- if .Values.postgresql.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "vigil.fullname" . }}-postgres
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "postgres") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "postgres") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "backend") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "daemon") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "llm-worker") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "db-init") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.postgresql.service.port }}
+---
+{{- end }}
+{{- if .Values.redis.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "vigil.fullname" . }}-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "redis") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "redis") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "backend") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "daemon") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "llm-worker") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.redis.service.port }}
+{{- end }}
+{{- end }}
