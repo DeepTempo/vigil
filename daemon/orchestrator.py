@@ -25,6 +25,7 @@ from daemon.config import OrchestratorConfig
 try:
     from core.telemetry import get_meter, get_tracer, inject_traceparent
     from opentelemetry.trace import SpanKind
+
     _tracer = get_tracer("vigil.daemon.orchestrator")
     _orch_meter = get_meter("vigil.daemon.orchestrator")
     _inv_created = _orch_meter.create_counter(
@@ -695,8 +696,7 @@ class Orchestrator:
     async def _create_approval_action(self, inv_id: str, action: Dict):
         """Create an approval action for proposed response."""
         try:
-            from services.approval_service import (ActionType,
-                                                   get_approval_service)
+            from services.approval_service import ActionType, get_approval_service
 
             service = get_approval_service()
 
@@ -831,13 +831,12 @@ class Orchestrator:
             )
             return None
         try:
-            data_dir = Path(
-                os.environ.get(
-                    "MEMPALACE_PALACE_PATH", str(Path.home() / ".mempalace" / "palace")
-                )
-            )
-            closed_cases_dir = data_dir / "investigations" / "closed-cases"
-            closed_cases_dir.mkdir(parents=True, exist_ok=True)
+            # Route through the single helper (#129) so the daemon,
+            # MCP server, and ClaudeService all resolve the same path.
+            from services.mempalace_paths import get_closed_cases_dir, get_palace_path
+
+            data_dir = get_palace_path()
+            get_closed_cases_dir()  # mkdir side-effect for investigation snapshots
             logger.info(f"MemPalace daemon integration enabled (data_dir={data_dir})")
             return data_dir
         except Exception as e:
