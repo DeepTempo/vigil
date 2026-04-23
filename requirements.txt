@@ -72,6 +72,11 @@ redis>=5.0.0
 # Kafka ingestion (optional; only used when KAFKA_ENABLED=true)
 aiokafka>=0.10.0
 
+# PDF report generation (chat reports, case reports). The feature ships in
+# backend/api/claude.py → /generate-chat-report; without this dep the endpoint
+# returns 503 even though the feature is wired into the UI.
+reportlab>=4.0.0
+
 # Monitoring & Observability
 sentry-sdk>=1.40.0
 prometheus-client>=0.19.0
