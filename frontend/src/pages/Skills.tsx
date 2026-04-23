@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import {
+  Autocomplete,
   Box,
   Card,
   CardContent,
@@ -35,7 +36,27 @@ import {
   Policy as InvestigateIcon,
   Info as InfoIcon,
 } from '@mui/icons-material'
-import { skillsApi } from '../services/api'
+import { skillsApi, findingsApi, casesApi } from '../services/api'
+
+interface FindingOption {
+  id: string
+  label: string
+  severity?: string
+}
+
+interface CaseOption {
+  id: string
+  label: string
+  status?: string
+  priority?: string
+}
+
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: '#f44336',
+  high: '#ff9800',
+  medium: '#ffc107',
+  low: '#4caf50',
+}
 
 interface LayoutContext {
   handleInvestigate: (findingId: string, agentId: string, prompt: string, title: string) => void
@@ -110,6 +131,12 @@ export default function Skills() {
   const [detailSkill, setDetailSkill] = useState<SkillData | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
 
+  // Target options for the Run Workflow dialog
+  const [findingOptions, setFindingOptions] = useState<FindingOption[]>([])
+  const [caseOptions, setCaseOptions] = useState<CaseOption[]>([])
+  const [loadingFindings, setLoadingFindings] = useState(false)
+  const [loadingCases, setLoadingCases] = useState(false)
+
   // Snackbar
   const [snackbar, setSnackbar] = useState<{
     open: boolean
@@ -149,10 +176,59 @@ export default function Skills() {
     }
   }
 
+  const loadFindingOptions = async () => {
+    setLoadingFindings(true)
+    try {
+      // Recent findings, newest first. Cap at 100 so we don't dump the whole
+      // table into an <Autocomplete>.
+      const response = await findingsApi.getAll({ limit: 100 })
+      const findings = response.data?.findings || []
+      setFindingOptions(
+        findings.map((f: any) => ({
+          id: f.finding_id,
+          label: f.title ? `${f.finding_id} — ${f.title}` : f.finding_id,
+          severity: f.severity,
+        }))
+      )
+    } catch (err) {
+      console.error('Failed to load findings:', err)
+      setFindingOptions([])
+    } finally {
+      setLoadingFindings(false)
+    }
+  }
+
+  const loadCaseOptions = async () => {
+    setLoadingCases(true)
+    try {
+      // Scope to non-closed cases — operators launching workflows aren't usually
+      // targeting resolved work.
+      const response = await casesApi.getAll({})
+      const cases = (response.data?.cases || []).filter(
+        (c: any) => c.status !== 'closed' && c.status !== 'resolved'
+      )
+      setCaseOptions(
+        cases.slice(0, 100).map((c: any) => ({
+          id: c.case_id,
+          label: c.title ? `${c.case_id} — ${c.title}` : c.case_id,
+          status: c.status,
+          priority: c.priority,
+        }))
+      )
+    } catch (err) {
+      console.error('Failed to load cases:', err)
+      setCaseOptions([])
+    } finally {
+      setLoadingCases(false)
+    }
+  }
+
   const handleOpenExecute = (skill: SkillData) => {
     setSelectedSkill(skill)
     setExecuteParams({ finding_id: '', case_id: '', context: '', hypothesis: '' })
     setExecuteDialogOpen(true)
+    loadFindingOptions()
+    loadCaseOptions()
   }
 
   const handleExecute = async () => {
@@ -469,23 +545,117 @@ export default function Skills() {
             Provide a target for this workflow. At least one field is required.
           </Typography>
 
-          <TextField
-            label="Finding ID"
-            placeholder="e.g., f-20260215-abc123"
-            fullWidth
+          <Autocomplete
+            freeSolo
             size="small"
+            fullWidth
+            options={findingOptions}
+            loading={loadingFindings}
             value={executeParams.finding_id}
-            onChange={(e) => setExecuteParams(prev => ({ ...prev, finding_id: e.target.value }))}
+            onChange={(_, value) => {
+              const id = typeof value === 'string' ? value : value?.id || ''
+              setExecuteParams(prev => ({ ...prev, finding_id: id }))
+            }}
+            onInputChange={(_, value, reason) => {
+              if (reason === 'input' || reason === 'clear') {
+                setExecuteParams(prev => ({ ...prev, finding_id: value }))
+              }
+            }}
+            getOptionLabel={(option) => typeof option === 'string' ? option : option.label}
+            isOptionEqualToValue={(option, value) =>
+              typeof value === 'string' ? option.id === value : option.id === value.id
+            }
+            renderOption={(props, option) => (
+              <li {...props} key={option.id}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                  {option.severity && (
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bgcolor: SEVERITY_COLORS[option.severity.toLowerCase()] || theme.palette.grey[500],
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                  <Typography variant="body2" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {option.label}
+                  </Typography>
+                </Box>
+              </li>
+            )}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Finding ID"
+                placeholder="Select or paste a finding ID"
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {loadingFindings ? <CircularProgress size={16} /> : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  ),
+                }}
+              />
+            )}
             sx={{ mb: 2 }}
           />
 
-          <TextField
-            label="Case ID"
-            placeholder="e.g., case-20260215-xyz789"
-            fullWidth
+          <Autocomplete
+            freeSolo
             size="small"
+            fullWidth
+            options={caseOptions}
+            loading={loadingCases}
             value={executeParams.case_id}
-            onChange={(e) => setExecuteParams(prev => ({ ...prev, case_id: e.target.value }))}
+            onChange={(_, value) => {
+              const id = typeof value === 'string' ? value : value?.id || ''
+              setExecuteParams(prev => ({ ...prev, case_id: id }))
+            }}
+            onInputChange={(_, value, reason) => {
+              if (reason === 'input' || reason === 'clear') {
+                setExecuteParams(prev => ({ ...prev, case_id: value }))
+              }
+            }}
+            getOptionLabel={(option) => typeof option === 'string' ? option : option.label}
+            isOptionEqualToValue={(option, value) =>
+              typeof value === 'string' ? option.id === value : option.id === value.id
+            }
+            renderOption={(props, option) => (
+              <li {...props} key={option.id}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                  <Typography variant="body2" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {option.label}
+                  </Typography>
+                  {option.status && (
+                    <Chip
+                      label={option.status}
+                      size="small"
+                      sx={{ height: 18, fontSize: '0.7rem' }}
+                    />
+                  )}
+                </Box>
+              </li>
+            )}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Case ID"
+                placeholder="Select or paste a case ID"
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {loadingCases ? <CircularProgress size={16} /> : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  ),
+                }}
+              />
+            )}
             sx={{ mb: 2 }}
           />
 
