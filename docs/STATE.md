@@ -117,6 +117,50 @@ overwritten at runtime.
 - `logs/*.log`, `logs/*.pid` — runtime logs and process pids (started
   via `start_web.sh`, `start_daemon.sh`).
 
+## MemPalace (persistent agent memory)
+
+MemPalace is Vigil's cross-session memory layer — agents write IOCs,
+investigation summaries, and knowledge-graph edges here so future
+sessions can reuse the work. It's shipped as a git submodule at
+`./mempalace` (see `.gitmodules`) and installed editable via
+`requirements.txt` (`-e ./mempalace`).
+
+**Palace location: `~/.vigil/mempalace/palace`.** Override with
+`MEMPALACE_PALACE_PATH` in `.env` if you need to relocate (shared NAS,
+different user, etc.). All three consumers — the MCP server
+(`mcp-config.json`), the daemon (`daemon/orchestrator.py`), and the
+web service (`services/claude_service.py`) — resolve the path through
+`services.mempalace_paths.get_palace_path()`, so the default can't
+drift again.
+
+**Structure:**
+
+```
+~/.vigil/mempalace/palace/
+├── chroma/                               # ChromaDB collection (vector search)
+├── investigations/closed-cases/*.json    # daemon-written investigation snapshots
+└── sessions/*.json                       # ClaudeService session transcripts
+```
+
+**Persistence guarantee.** Survives `docker compose down`,
+`./start_web.sh` restarts, `venv` rebuilds, and `git submodule update`.
+Does *not* survive `rm -rf ~/.vigil/`.
+
+**Backup.** Tar the directory as a unit:
+
+    tar -czf mempalace-backup-$(date +%Y%m%d).tar.gz ~/.vigil/mempalace/
+
+**Migrating from legacy `~/.mempalace/`.** Earlier builds of the daemon
+defaulted to `~/.mempalace/palace`. If that directory exists, move it
+once:
+
+    mv ~/.mempalace ~/.vigil/mempalace
+
+**Emergency disable.** `MEMPALACE_DAEMON_ENABLED=false` in `.env`
+skips the daemon's palace integration (investigation snapshots won't
+be written). The MCP server side is controlled via
+`mcp-config.json` / `PUT /api/mcp/servers/mempalace/enabled`.
+
 ## Docker volumes
 
 - `deeptempo-postgres` — Postgres data.
@@ -133,4 +177,6 @@ overwritten at runtime.
 | Ephemeral runtime | Redis, Postgres |
 | Investigation files | `data/investigations/` |
 | Logs, PIDs | `logs/` |
+| MemPalace palace (agent memory) | `~/.vigil/mempalace/palace/` |
 | Legacy secrets (migrate from) | `~/.deeptempo/.env` |
+| Legacy mempalace path (migrate from) | `~/.mempalace/` |

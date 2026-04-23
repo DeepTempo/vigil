@@ -32,24 +32,12 @@ class AgentProfile:
     component_category: str = "investigation"
 
 
-BASE_PROMPT = """You are a SOC {role} in the Vigil SOC platform.
-
-<entity_recognition>
-- Finding IDs (f-YYYYMMDD-XXXXXXXX): Use get_finding tool
-- Case IDs (case-YYYYMMDD-XXXXXXXX): Use get_case tool
-- IPs/domains/hashes: Use threat intel tools
-- NEVER access findings as files - use MCP tools
-</entity_recognition>
-
-<available_tools>
-Use MCP tools (server_tool format):
-- Findings: list_findings, get_finding, create_case, update_case
-- ATT&CK: get_technique_rollup, create_attack_layer
-- Approvals: create_approval_action, list_approval_actions
-- Threat Intel: virustotal, shodan, alienvault tools
-</available_tools>
-
-<memory_operations>
+# Memory-palace section is separate from BASE_PROMPT so we can omit it
+# entirely when the mempalace MCP server isn't connected (#129). Before
+# this split, agents were *always* told they had access to 14
+# mempalace_* tools even when the server was dormant — the model would
+# confidently claim capabilities it couldn't exercise.
+_MEMORY_PALACE_BLOCK = """<memory_operations>
 You have access to a persistent memory palace (mempalace MCP server) shared across all
 SOC agents and sessions. Use it to avoid redundant work and build institutional knowledge.
 
@@ -90,7 +78,55 @@ Memory tool quick reference:
 - mempalace_diary_read     — read prior agent journal entries
 - mempalace_status         — check palace health and stats
 </memory_operations>
+"""
 
+
+def _memory_palace_section() -> str:
+    """Return the memory-palace prompt block, or '' if mempalace isn't
+    connected (#129).
+
+    Checked lazily at prompt-assembly time so a server that comes up or
+    goes down between agent invocations is reflected in the next
+    prompt. Falls back to the block when connection state can't be
+    determined — the worst case is an agent being told about tools
+    that don't work, which is the status quo we already tolerate.
+    """
+    try:
+        from services.mcp_client import get_mcp_client
+
+        client = get_mcp_client()
+        if client is None:
+            return _MEMORY_PALACE_BLOCK
+        status = client.get_connection_status() or {}
+        # Explicit False means the server is known-disconnected. Missing
+        # key (never attempted) and True both keep the block — the
+        # former because we don't want to silently hide the palace
+        # during a cold start, the latter because it's actually up.
+        if status.get("mempalace") is False:
+            return ""
+        return _MEMORY_PALACE_BLOCK
+    except Exception:  # noqa: BLE001
+        return _MEMORY_PALACE_BLOCK
+
+
+BASE_PROMPT = """You are a SOC {role} in the Vigil SOC platform.
+
+<entity_recognition>
+- Finding IDs (f-YYYYMMDD-XXXXXXXX): Use get_finding tool
+- Case IDs (case-YYYYMMDD-XXXXXXXX): Use get_case tool
+- IPs/domains/hashes: Use threat intel tools
+- NEVER access findings as files - use MCP tools
+</entity_recognition>
+
+<available_tools>
+Use MCP tools (server_tool format):
+- Findings: list_findings, get_finding, create_case, update_case
+- ATT&CK: get_technique_rollup, create_attack_layer
+- Approvals: create_approval_action, list_approval_actions
+- Threat Intel: virustotal, shodan, alienvault tools
+</available_tools>
+
+{memory_operations}
 <principles>
 - Always fetch data via tools before analyzing
 - Be evidence-based and document reasoning
@@ -460,11 +496,18 @@ Confidence scoring:
 def render_base_prompt(
     role: str, extra_principles: str = "", methodology: str = ""
 ) -> str:
-    """Render BASE_PROMPT with the given fragments. Shared by built-in + custom."""
+    """Render BASE_PROMPT with the given fragments. Shared by built-in + custom.
+
+    The memory-palace block is inserted at render time based on whether
+    the mempalace MCP server is currently connected (#129). This keeps
+    the agent's self-description honest: if the palace is dormant, the
+    prompt won't advertise tools the agent can't actually call.
+    """
     return BASE_PROMPT.format(
         role=role,
         extra_principles=extra_principles or "",
         methodology=methodology or "",
+        memory_operations=_memory_palace_section(),
     )
 
 

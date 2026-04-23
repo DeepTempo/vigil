@@ -403,7 +403,10 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
         # DB-backed Skills get their own dispatch path so we don't bury
         # every one of them in this long if/elif ladder.
         try:
-            from services.skill_tools_bridge import execute_skill_tool, is_skill_tool_name
+            from services.skill_tools_bridge import (
+                execute_skill_tool,
+                is_skill_tool_name,
+            )
 
             if is_skill_tool_name(tool_name):
                 return execute_skill_tool(
@@ -700,10 +703,10 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     tools_dict = {}
 
             # If cache file didn't yield tools, fall back to in-memory cache
-            if not tools_dict:
-                from services.mcp_client import get_mcp_client
+            from services.mcp_client import get_mcp_client
 
-                mcp_client = get_mcp_client()
+            mcp_client = get_mcp_client()
+            if not tools_dict:
                 if mcp_client and mcp_client.tools_cache:
                     tools_dict = mcp_client.tools_cache
                     logger.info("✓ Using in-memory MCP tools cache")
@@ -711,11 +714,33 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     logger.warning("No MCP tools available - cache not yet populated")
                     return
 
+            # Gate on live connection status (#129). The disk cache is a
+            # warm-start artifact — a server can appear there but have
+            # failed to connect this boot (missing creds, subprocess
+            # crashed, unreachable host). Previously we'd still hand
+            # those tool schemas to Claude, and the model would confidently
+            # claim capabilities it couldn't exercise. Intersect with
+            # live-connection state so tools surface only when the
+            # underlying session is actually up.
+            connection_status: Dict[str, bool] = {}
+            if mcp_client:
+                try:
+                    connection_status = mcp_client.get_connection_status() or {}
+                except Exception as e:  # noqa: BLE001
+                    logger.debug("Could not read MCP connection status: %s", e)
+
             # Track tool names to prevent duplicates
             seen_tool_names = set()
 
             # Flatten tools from all servers with server prefix
             for server_name, server_tools in tools_dict.items():
+                if connection_status and not connection_status.get(server_name, False):
+                    logger.info(
+                        "Skipping %d tools from %s — server not connected",
+                        len(server_tools),
+                        server_name,
+                    )
+                    continue
                 for tool in server_tools:
                     # Format for Claude API with server prefix
                     tool_name = f"{server_name}_{tool['name']}"
@@ -1640,6 +1665,7 @@ Provide a structured summary preserving all critical context."""
         and falls back to the ``ANTHROPIC_PROMPT_CACHE_ENABLED`` env var.
         """
         from services.runtime_config import get_ai_operations_setting
+
         if not get_ai_operations_setting("prompt_cache_enabled", True):
             return
 
@@ -1710,6 +1736,7 @@ Provide a structured summary preserving all critical context."""
                     return cls.TOOL_RESPONSE_BUDGETS[bare]
         # GH #84 PR-F: Settings-UI value → env var → hard default.
         from services.runtime_config import get_ai_operations_setting
+
         return get_ai_operations_setting("tool_response_budget_default", 8000)
 
     def _truncate_tool_response(
@@ -3864,15 +3891,11 @@ Provide only the JSON, no additional text."""
         """
         if self._mempalace is None:
             try:
-                import os
+                # Route through the single helper (#129) so this, the
+                # daemon, and the MCP server all resolve the same path.
+                from services.mempalace_paths import get_palace_path
 
-                data_dir = Path(
-                    os.environ.get(
-                        "MEMPALACE_PALACE_PATH",
-                        str(Path.home() / ".mempalace" / "palace"),
-                    )
-                )
-                sessions_dir = data_dir / "sessions"
+                sessions_dir = get_palace_path() / "sessions"
                 sessions_dir.mkdir(parents=True, exist_ok=True)
                 self._mempalace = sessions_dir
             except Exception as e:
