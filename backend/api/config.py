@@ -1374,3 +1374,88 @@ async def get_mempalace_health():
         "memories_count": memories["count"],
         "memories_count_source": memories["source"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Secrets manager status / reinit / migration
+# ---------------------------------------------------------------------------
+
+
+class _SecretsReinitRequest(BaseModel):
+    """Optional override for the reinit endpoint.
+
+    The running process's ``os.environ`` may have a stale
+    ``SECRETS_BACKEND`` from launch time. ``write_backend`` here lets an
+    admin force the rebuilt singleton onto a specific backend without
+    bouncing uvicorn.
+    """
+
+    write_backend: Optional[str] = None
+
+
+class _SecretsMigrateRequest(BaseModel):
+    keys: Optional[List[str]] = None
+    remove_from_dotenv: bool = True
+
+
+@router.get("/secrets/status")
+async def secrets_status() -> Dict[str, Any]:
+    """Report which backend the secrets manager is using and why.
+
+    Used by the Settings UI (and `curl` debugging) to answer "why are my
+    creds not landing in ~/.vigil/secrets.enc?". Includes the chosen
+    write backend, what was expected per ``SECRETS_BACKEND`` env, whether
+    cryptography imported, and where each backend lives on disk.
+    """
+    from backend.secrets_manager import get_secrets_manager
+
+    mgr = get_secrets_manager()
+    return mgr.get_backend_status()
+
+
+@router.post("/secrets/reinit")
+async def secrets_reinit(
+    request: Optional[_SecretsReinitRequest] = None,
+) -> Dict[str, Any]:
+    """Drop the cached secrets-manager singleton and rebuild it.
+
+    Useful when the long-running process picked the wrong write backend
+    on first init (e.g. ``SECRETS_BACKEND`` was stale in os.environ when
+    the very first ``set_secret`` call ran during startup). After this
+    call the manager re-evaluates backend availability fresh.
+
+    Pass ``{"write_backend": "encrypted"}`` to force a specific backend
+    regardless of what's currently in ``os.environ`` — useful when you
+    just edited ``.env`` to switch from dotenv to encrypted but haven't
+    bounced the process.
+    """
+    from backend.secrets_manager import get_secrets_manager
+
+    write_backend = request.write_backend if request else None
+    mgr = get_secrets_manager(write_backend=write_backend, force_reload=True)
+    return {
+        "reloaded": True,
+        "status": mgr.get_backend_status(),
+    }
+
+
+@router.post("/secrets/migrate-to-encrypted")
+async def secrets_migrate_to_encrypted(
+    request: Optional[_SecretsMigrateRequest] = None,
+) -> Dict[str, Any]:
+    """Move secrets from ``~/.deeptempo/.env`` to ``~/.vigil/secrets.enc``.
+
+    Encrypted store is authoritative on conflicts: if a key exists in
+    both with different values, the dotenv entry is left in place and
+    the conflict is reported so an operator can resolve it manually.
+
+    Body is optional. Pass ``{"keys": ["FOO_BAR"]}`` to migrate only a
+    subset, or ``{"remove_from_dotenv": false}`` for a dry-copy that
+    leaves the source file alone.
+    """
+    from backend.secrets_manager import get_secrets_manager
+
+    mgr = get_secrets_manager()
+    keys = request.keys if request else None
+    remove = request.remove_from_dotenv if request else True
+    return mgr.migrate_dotenv_secrets_to_encrypted(keys=keys, remove_from_dotenv=remove)
