@@ -49,7 +49,7 @@ import {
 } from '@mui/icons-material'
 import { format } from 'date-fns'
 import { timelineApi } from '../../services/api'
-import EntityGraph from '../graph/EntityGraph'
+import EntityVisualization from '../graph/EntityVisualization'
 
 interface EventVisualizationDialogProps {
   open: boolean
@@ -342,18 +342,19 @@ export default function EventVisualizationDialog({
                     <Typography variant="h6" gutterBottom>
                       Entity Relationships
                     </Typography>
-                    {vizData.entity_graph && vizData.entity_graph.nodes?.length > 0 ? (
-                      <Box sx={{ height: 400, overflow: 'hidden', position: 'relative' }}>
-                        <EntityGraph 
-                          nodes={vizData.entity_graph.nodes || []} 
-                          links={vizData.entity_graph.links || []} 
-                          height={400}
-                          showControls={false}
-                        />
-                      </Box>
-                    ) : (
-                      <Typography color="textSecondary">No entity graph available</Typography>
-                    )}
+                    <Box sx={{ height: 400, overflow: 'hidden', position: 'relative' }}>
+                      <EntityVisualization
+                        nodes={vizData.entity_graph?.nodes || []}
+                        links={vizData.entity_graph?.links || []}
+                        height={400}
+                        showControls={false}
+                        emptyState={
+                          <Typography color="textSecondary">
+                            No entity graph available
+                          </Typography>
+                        }
+                      />
+                    </Box>
                   </Paper>
                 </Grid>
                 <Grid item xs={12} md={6}>

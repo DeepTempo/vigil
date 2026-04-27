@@ -53,7 +53,7 @@ import { casesApi, findingsApi, timelineApi, graphApi } from '../../services/api
 import ExportToTimesketchDialog from '../timesketch/ExportToTimesketchDialog'
 import JiraExportDialog from '../jira/JiraExportDialog'
 import EventTimeline from '../timeline/EventTimeline'
-import EntityGraph from '../graph/EntityGraph'
+import EntityVisualization from '../graph/EntityVisualization'
 import CaseComments from './CaseComments'
 import CaseEvidence from './CaseEvidence'
 import CaseIOCs from './CaseIOCs'
@@ -559,18 +559,19 @@ export default function CaseDetailDialog({
             <Grid item xs={12} md={6}>
               <Paper sx={{ p: 2, overflow: 'hidden' }}>
                 <Typography variant="h6" gutterBottom>Entity Graph</Typography>
-                {graphData.nodes.length > 0 ? (
-                  <Box sx={{ height: 400, width: '100%', overflow: 'hidden', position: 'relative' }}>
-                    <EntityGraph 
-                      nodes={graphData.nodes} 
-                      links={graphData.links} 
-                      height={400}
-                      showControls={false}
-                    />
-                  </Box>
-                ) : (
-                  <Typography color="text.secondary">No entities to display</Typography>
-                )}
+                <Box sx={{ height: 400, width: '100%', overflow: 'hidden', position: 'relative' }}>
+                  <EntityVisualization
+                    nodes={graphData.nodes}
+                    links={graphData.links}
+                    height={400}
+                    showControls={false}
+                    emptyState={
+                      <Typography color="text.secondary">
+                        No entities to display
+                      </Typography>
+                    }
+                  />
+                </Box>
               </Paper>
             </Grid>
             <Grid item xs={12}>
