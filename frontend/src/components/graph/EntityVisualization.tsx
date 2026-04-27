@@ -19,7 +19,7 @@
  * to the legacy graph silently.
  */
 
-import { useEffect, useState } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import { Box, CircularProgress } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
 import EntityGraph, { GraphLink, GraphNode } from './EntityGraph'
@@ -41,6 +41,12 @@ export interface EntityVisualizationProps {
   // VStrike-specific: when present, the iframe auto-loads this network
   // on mount (user can still override via the dropdown).
   vstrikeNetworkId?: string
+
+  // Rendered on the legacy (non-VStrike) path when `nodes.length === 0`.
+  // Lets call sites keep their existing empty-state copy without gating
+  // on node count themselves (which would skip the iframe path entirely
+  // when the case happens to have zero entities).
+  emptyState?: ReactNode
 }
 
 interface VStrikeReadiness {
@@ -73,6 +79,7 @@ export default function EntityVisualization(props: EntityVisualizationProps) {
   const {
     height = 500,
     vstrikeNetworkId,
+    emptyState,
     ...graphProps
   } = props
 
@@ -111,6 +118,10 @@ export default function EntityVisualization(props: EntityVisualizationProps) {
     return (
       <VStrikeIframe height={height} initialNetworkId={vstrikeNetworkId} />
     )
+  }
+
+  if (emptyState !== undefined && (!graphProps.nodes || graphProps.nodes.length === 0)) {
+    return <>{emptyState}</>
   }
 
   return <EntityGraph height={height} {...graphProps} />
