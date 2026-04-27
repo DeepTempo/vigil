@@ -680,6 +680,14 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
             total_input += response.get("input_tokens", 0)
             total_output += response.get("output_tokens", 0)
 
+            # Heartbeat: an LLM turn just returned, so the agent is making
+            # progress even though the outer iteration hasn't finished. Without
+            # this, supervisor's stale_threshold (default 300s) can fire while
+            # a long multi-turn iteration is healthy. See issue #147.
+            self._update_db_record(
+                inv_id, {"last_activity_at": datetime.utcnow().isoformat()}
+            )
+
             stop_reason = response.get("stop_reason", "end_turn")
             if stop_reason == "end_turn" or stop_reason != "tool_use":
                 break
@@ -699,6 +707,12 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
 
                 self._update_db_record(inv_id, {"current_activity": f"Calling {tool_name}"})
                 result = await self._execute_tool(inv_id, tool_name, tool_input)
+                # Heartbeat after each tool — same reason as the post-LLM update
+                # above. A burst of slow MCP calls inside one iteration must
+                # not look like staleness to the supervisor (issue #147).
+                self._update_db_record(
+                    inv_id, {"last_activity_at": datetime.utcnow().isoformat()}
+                )
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tool_block["id"],

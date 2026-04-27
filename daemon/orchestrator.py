@@ -500,7 +500,15 @@ class Orchestrator:
                         idle_seconds = (now - last_activity).total_seconds()
                         if idle_seconds > self.config.stale_threshold:
                             logger.warning(
-                                f"{inv_id}: Stale for {idle_seconds:.0f}s, killing agent"
+                                "supervisor.kill stale inv_id=%s idle_s=%.0f "
+                                "iteration=%s current_activity=%r cost_usd=%.4f "
+                                "stale_threshold=%s",
+                                inv_id,
+                                idle_seconds,
+                                inv_dict.get("iteration_count"),
+                                inv_dict.get("current_activity"),
+                                inv_dict.get("cost_usd", 0.0),
+                                self.config.stale_threshold,
                             )
                             await self.agent_runner.stop_agent(inv_id)
                             self._update_investigation_status(
@@ -527,11 +535,20 @@ class Orchestrator:
                     )
                     if cost >= max_cost:
                         logger.warning(
-                            f"{inv_id}: Cost ${cost:.2f} exceeded limit ${max_cost:.2f}"
+                            "supervisor.kill cost inv_id=%s cost_usd=%.4f "
+                            "max_cost_usd=%.4f iteration=%s current_activity=%r",
+                            inv_id,
+                            cost,
+                            max_cost,
+                            inv_dict.get("iteration_count"),
+                            inv_dict.get("current_activity"),
                         )
                         await self.agent_runner.stop_agent(inv_id)
+                        # Match agent_runner's failure_reason vocabulary so
+                        # post-mortems treat both supervisor-side and
+                        # runner-side cost kills identically. (Issue #147)
                         self._update_investigation_status(
-                            inv_id, "failed", "Cost limit exceeded"
+                            inv_id, "failed", "Cost budget exceeded"
                         )
 
                 self._track_hourly_cost()
