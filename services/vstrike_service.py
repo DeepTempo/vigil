@@ -450,27 +450,44 @@ def get_vstrike_service() -> Optional[VStrikeService]:
       - username + password (`VSTRIKE_USERNAME` / `VSTRIKE_PASSWORD`) —
         enables the MCP UI-control plane (iframe auto-login + ui-network-load).
 
-    Either or both modes may be configured. Within each, env vars take
-    precedence over the integration config persisted by the Settings UI.
+    Either or both modes may be configured. Credential lookups go through
+    Vigil's secrets manager, which checks (in priority order) the encrypted
+    store at ``~/.vigil/secrets.enc``, process env vars, ``.env`` file, and
+    the keyring (if enabled). The non-secret ``url`` and ``verify_ssl``
+    values are read from ``IntegrationConfig`` (DB) or its JSON
+    back-compat mirror via ``core.config.get_integration_config``.
     """
-    base_url = os.environ.get("VSTRIKE_BASE_URL")
-    api_key = os.environ.get("VSTRIKE_API_KEY")
-    username = os.environ.get("VSTRIKE_USERNAME")
-    password = os.environ.get("VSTRIKE_PASSWORD")
-    verify_ssl_env = os.environ.get("VSTRIKE_VERIFY_SSL", "true").lower() != "false"
+    try:
+        from backend.secrets_manager import get_secret
+    except Exception as e:  # pragma: no cover - import-time fallback
+        logger.debug("Secrets manager unavailable, using os.environ: %s", e)
 
+        def get_secret(name: str) -> Optional[str]:  # type: ignore[misc]
+            return os.environ.get(name)
+
+    base_url = get_secret("VSTRIKE_BASE_URL")
+    api_key = get_secret("VSTRIKE_API_KEY")
+    username = get_secret("VSTRIKE_USERNAME")
+    password = get_secret("VSTRIKE_PASSWORD")
+    verify_ssl_value = get_secret("VSTRIKE_VERIFY_SSL")
+    verify_ssl_env: Optional[bool] = None
+    if verify_ssl_value is not None:
+        verify_ssl_env = verify_ssl_value.lower() != "false"
+
+    # Non-secret fields (and any legacy plaintext credentials) may still
+    # live in the integration config — read it once for back-compat.
     config: Optional[Dict[str, Any]] = None
-    needs_config_lookup = not base_url or not (api_key or (username and password))
-    if needs_config_lookup:
-        try:
-            from core.config import get_integration_config
+    try:
+        from core.config import get_integration_config
 
-            config = get_integration_config("vstrike")
-        except Exception as e:
-            logger.debug("VStrike integration config not loaded: %s", e)
-            config = None
+        config = get_integration_config("vstrike")
+    except Exception as e:
+        logger.debug("VStrike integration config not loaded: %s", e)
+        config = None
 
     base_url = base_url or _config_value("url", config)
+    # Credentials should normally come from the secrets store; fall back to
+    # the integration config only for legacy installs that haven't migrated.
     api_key = api_key or _config_value("api_key", config)
     username = username or _config_value("username", config)
     password = password or _config_value("password", config)
@@ -480,9 +497,12 @@ def get_vstrike_service() -> Optional[VStrikeService]:
     if not (api_key or (username and password)):
         return None
 
-    verify_ssl = verify_ssl_env
-    if config is not None and "verify_ssl" in config:
+    if verify_ssl_env is not None:
+        verify_ssl = verify_ssl_env
+    elif config is not None and "verify_ssl" in config:
         verify_ssl = bool(config.get("verify_ssl", True))
+    else:
+        verify_ssl = True
 
     return VStrikeService(
         base_url=base_url,
