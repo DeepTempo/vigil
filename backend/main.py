@@ -66,6 +66,12 @@ from api.sla_policies import router as sla_policies_router
 # Darktrace inbound webhook receiver
 from api.darktrace_webhook import router as darktrace_webhook_router
 
+# Cloudflare Cloudy inbound webhook receiver (gated; see CLOUDY_INGESTION_ENABLED)
+from api.cloudflare_webhooks import (
+    router as cloudflare_webhooks_router,
+    cloudy_ingestion_enabled,
+)
+
 # Authentication routers
 from api.auth import router as auth_router
 from api.users import router as users_router
@@ -231,6 +237,18 @@ if os.environ.get("DARKTRACE_ENABLED", "false").lower() == "true":
         darktrace_webhook_router,
         prefix="/api/webhooks/darktrace",
         tags=["darktrace"],
+    )
+
+# Cloudflare Cloudy webhook — only mount when explicitly enabled. Hard-off by
+# default since the upstream API contract is not yet stable; flip
+# CLOUDY_INGESTION_ENABLED=true (or system_config cloudflare.cloudy.enabled)
+# once the partnership confirms the wire format. The endpoint itself also
+# checks the flag at request time, so even a misconfigured mount fails closed.
+if cloudy_ingestion_enabled():
+    app.include_router(
+        cloudflare_webhooks_router,
+        prefix="/api/webhooks/cloudflare",
+        tags=["cloudflare"],
     )
 app.include_router(sla_policies_router, prefix="/api/sla-policies", tags=["sla-policies"])
 

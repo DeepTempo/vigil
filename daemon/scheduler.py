@@ -107,6 +107,20 @@ class TaskScheduler:
                 enabled=True,
                 run_on_start=False,
             ))
+
+        # Threat-feed poller — only runs when the Cloudforce One integration is enabled.
+        try:
+            from daemon.threat_feed_poller import ThreatFeedPoller
+            if ThreatFeedPoller.is_enabled():
+                self._tasks.append(ScheduledTask(
+                    name="threat_feed_poll",
+                    func=self._run_threat_feed_poll,
+                    interval=ThreatFeedPoller.poll_interval_seconds(),
+                    enabled=True,
+                    run_on_start=True,
+                ))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Threat feed poller unavailable: {e}")
     
     def _init_services(self):
         """Initialize required services."""
@@ -393,6 +407,18 @@ class TaskScheduler:
         if stats.get("completed") or stats.get("expired") or stats.get("errors"):
             logger.info(f"Sandbox poll: {stats}")
         return stats
+
+    async def _run_threat_feed_poll(self):
+        """Pull Cloudforce One STIX/TAXII indicators into threat_indicators."""
+        try:
+            from daemon.threat_feed_poller import ThreatFeedPoller
+        except Exception as e:
+            logger.warning(f"Threat feed poller unavailable: {e}")
+            return
+        if not ThreatFeedPoller.is_enabled():
+            return
+        poller = ThreatFeedPoller()
+        return await poller.run_once()
 
     async def _run_health_check(self):
         """Run system health check."""

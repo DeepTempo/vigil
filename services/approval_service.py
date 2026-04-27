@@ -42,6 +42,9 @@ class ActionType(Enum):
     DISABLE_USER = "disable_user"
     EXECUTE_SPL_QUERY = "execute_spl_query"
     WORKFLOW_PHASE = "workflow_phase"  # #128 — phase with approval_required=True
+    WAF_BLOCK = "waf_block"  # Cloudflare WAF IP Access Rule
+    GATEWAY_BLOCK = "gateway_block"  # Cloudflare Zero Trust Gateway DNS/HTTP rule
+    ACCESS_REVOKE = "access_revoke"  # Cloudflare Zero Trust Access session revoke
     CUSTOM = "custom"
 
 

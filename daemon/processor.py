@@ -131,6 +131,17 @@ class FindingProcessor:
             except Exception as e:
                 logger.warning(f"Shodan not available: {e}")
 
+        # Cloudforce One — local threat_indicators lookup. The poller in
+        # daemon/threat_feed_poller.py keeps the table populated; this branch
+        # only flags the enrichment as available so _enrich_finding() will
+        # call into services.threat_feed_service.lookup_indicators().
+        if is_integration_enabled("cloudforce_one"):
+            try:
+                self._enrichment_services["cloudforce_one"] = {"enabled": True}
+                logger.info("Cloudforce One indicator enrichment enabled")
+            except Exception as e:
+                logger.warning(f"Cloudforce One enrichment unavailable: {e}")
+
         # Sandbox auto-submission (opt-in, disabled by default)
         try:
             from daemon.sandbox_submitter import SandboxSubmitter
@@ -459,12 +470,64 @@ REASONING: [Brief explanation]
             if submissions:
                 enrichment["sandbox_submissions"] = submissions
 
+        # Cloudforce One (and any future feed-driven sources) — batch lookup
+        # against the locally maintained threat_indicators table.
+        feed_hits = self._lookup_threat_indicators(entity_context, hashes)
+        if feed_hits:
+            enrichment["threat_indicators"] = feed_hits
+
         if enrichment:
             finding["enrichment"] = enrichment
             finding["enriched_at"] = datetime.utcnow().isoformat()
             self.stats["enriched"] += 1
 
         return finding
+
+    def _lookup_threat_indicators(
+        self, entity_context: Dict[str, Any], hashes: List[str]
+    ) -> Dict[str, Any]:
+        """Match finding IOCs against the local threat_indicators feed table."""
+        if not self._enrichment_services.get("cloudforce_one", {}).get("enabled"):
+            return {}
+        try:
+            from services.threat_feed_service import lookup_indicators
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"threat_feed_service unavailable: {e}")
+            return {}
+
+        ips = list(
+            (entity_context.get("src_ips") or [])
+            + (entity_context.get("dest_ips") or entity_context.get("dst_ips") or [])
+        )
+        if entity_context.get("src_ip"):
+            ips.append(entity_context["src_ip"])
+        if entity_context.get("dst_ip"):
+            ips.append(entity_context["dst_ip"])
+        domains = list(entity_context.get("domains") or [])
+
+        hits: Dict[str, Any] = {}
+        try:
+            if ips:
+                hits.update(self._wrap_hits("ip", lookup_indicators("ip", list(set(ips)))))
+            if domains:
+                hits.update(
+                    self._wrap_hits("domain", lookup_indicators("domain", list(set(domains))))
+                )
+            if hashes:
+                for hash_type in ("hash_sha256", "hash_sha1", "hash_md5"):
+                    rows = lookup_indicators(hash_type, list(set(hashes)))
+                    if rows:
+                        hits.update(self._wrap_hits(hash_type, rows))
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"threat_indicators lookup failed: {e}")
+            return {}
+        return hits
+
+    @staticmethod
+    def _wrap_hits(indicator_type: str, rows: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            f"{indicator_type}:{value}": data for value, data in rows.items()
+        }
 
     async def _enrich_ip(self, ip: str) -> Optional[Dict[str, Any]]:
         """Enrich IP address with threat intel."""

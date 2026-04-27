@@ -458,28 +458,41 @@ Please review and approve/reject in the SOC dashboard.
                 # Skip if already executed
                 if action.executed_at:
                     continue
-                
-                # Execute based on action type
+
+                params = action.parameters or {}
+                result: Optional[Dict] = None
+
                 if action.action_type == "isolate_host":
                     result = self._execute_isolation(
                         ip_address=action.target,
-                        hostname=action.parameters.get('hostname'),
+                        hostname=params.get('hostname'),
                         reason=action.reason,
                         confidence=action.confidence
                     )
-                    
-                    if result.get('success'):
-                        self.approval_service.mark_executed(action.action_id, result)
-                    else:
-                        self.approval_service.mark_failed(action.action_id, result.get('error', 'Unknown error'))
-                    
-                    results.append({
-                        "action_id": action.action_id,
-                        "action_type": action.action_type,
-                        "target": action.target,
-                        "result": result
-                    })
-            
+                elif action.action_type in ("waf_block", "gateway_block", "access_revoke"):
+                    result = self._execute_cloudflare_action(
+                        action_type=action.action_type,
+                        target=action.target,
+                        reason=action.reason,
+                        parameters=params,
+                    )
+
+                if result is None:
+                    # Unknown action type — leave for another executor or manual handling.
+                    continue
+
+                if result.get('success'):
+                    self.approval_service.mark_executed(action.action_id, result)
+                else:
+                    self.approval_service.mark_failed(action.action_id, result.get('error', 'Unknown error'))
+
+                results.append({
+                    "action_id": action.action_id,
+                    "action_type": action.action_type,
+                    "target": action.target,
+                    "result": result
+                })
+
             return results
         
         except Exception as e:
@@ -563,6 +576,207 @@ Please review and approve/reject in the SOC dashboard.
         except Exception as e:
             logger.error(f"Error in investigate_and_respond: {e}")
             return {"error": str(e)}
+
+    # ------------------------------------------------------------------
+    # Cloudflare action factories + executor
+    # ------------------------------------------------------------------
+
+    def create_waf_block_action(
+        self,
+        ip: str,
+        confidence: float,
+        reason: str,
+        evidence: List[str],
+        mode: str = "block",
+        correlation_data: Optional[Dict] = None,
+    ) -> Optional[Dict]:
+        """Create a Cloudflare WAF IP block action (auto-execute if confidence high)."""
+        return self._create_cloudflare_action(
+            action_type=self.ActionType.WAF_BLOCK,
+            title=f"Cloudflare WAF block: {ip}",
+            description=(
+                "Add an IP Access Rule to block this IP across the Cloudflare account. "
+                "Reversible via cf_waf_unblock_ip."
+            ),
+            target=ip,
+            confidence=confidence,
+            reason=reason,
+            evidence=evidence,
+            parameters={"ip": ip, "mode": mode, "correlation": correlation_data or {}},
+        )
+
+    def create_gateway_block_action(
+        self,
+        domain: str,
+        confidence: float,
+        reason: str,
+        evidence: List[str],
+        rule_name: Optional[str] = None,
+        correlation_data: Optional[Dict] = None,
+    ) -> Optional[Dict]:
+        """Create a Cloudflare Zero Trust Gateway domain-block action."""
+        return self._create_cloudflare_action(
+            action_type=self.ActionType.GATEWAY_BLOCK,
+            title=f"Cloudflare Gateway block: {domain}",
+            description=(
+                "Add a Zero Trust Gateway DNS+HTTP rule to block this domain for all "
+                "users routed through the Cloudflare WARP/Gateway."
+            ),
+            target=domain,
+            confidence=confidence,
+            reason=reason,
+            evidence=evidence,
+            parameters={
+                "domain": domain,
+                "rule_name": rule_name,
+                "correlation": correlation_data or {},
+            },
+        )
+
+    def create_access_revoke_action(
+        self,
+        email: str,
+        confidence: float,
+        reason: str,
+        evidence: List[str],
+        correlation_data: Optional[Dict] = None,
+    ) -> Optional[Dict]:
+        """Create a Cloudflare Access (Zero Trust) session revoke action."""
+        return self._create_cloudflare_action(
+            action_type=self.ActionType.ACCESS_REVOKE,
+            title=f"Cloudflare Access revoke: {email}",
+            description=(
+                "Revoke all active Cloudflare Zero Trust Access sessions for the given "
+                "user email. User must re-authenticate to regain access."
+            ),
+            target=email,
+            confidence=confidence,
+            reason=reason,
+            evidence=evidence,
+            parameters={"email": email, "correlation": correlation_data or {}},
+        )
+
+    def _create_cloudflare_action(
+        self,
+        action_type,
+        title: str,
+        description: str,
+        target: str,
+        confidence: float,
+        reason: str,
+        evidence: List[str],
+        parameters: Dict[str, Any],
+    ) -> Optional[Dict]:
+        if not self.approval_service:
+            return {"error": "Approval service not available"}
+        try:
+            action = self.approval_service.create_action(
+                action_type=action_type,
+                title=title,
+                description=description,
+                target=target,
+                confidence=confidence,
+                reason=reason,
+                evidence=evidence,
+                created_by="auto_responder",
+                parameters=parameters,
+            )
+
+            if action.status == "approved":
+                execution_result = self._execute_cloudflare_action(
+                    action_type=action_type.value,
+                    target=target,
+                    reason=reason,
+                    parameters=parameters,
+                )
+                if execution_result.get("success"):
+                    self.approval_service.mark_executed(action.action_id, execution_result)
+                    status = "executed"
+                else:
+                    self.approval_service.mark_failed(
+                        action.action_id, execution_result.get("error", "execution failed")
+                    )
+                    status = "failed"
+                return {
+                    "status": status,
+                    "action_id": action.action_id,
+                    "target": target,
+                    "confidence": confidence,
+                    "result": execution_result,
+                }
+
+            return {
+                "status": "pending_approval",
+                "action_id": action.action_id,
+                "target": target,
+                "confidence": confidence,
+                "requires_approval": True,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Error creating Cloudflare action {action_type}: {e}")
+            return {"error": str(e)}
+
+    def _execute_cloudflare_action(
+        self,
+        action_type: str,
+        target: str,
+        reason: str,
+        parameters: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Execute an approved Cloudflare action via the REST helpers in tools/cloudflare.py."""
+        try:
+            from core.config import get_integration_config, is_integration_enabled
+        except Exception as e:  # noqa: BLE001
+            return {"success": False, "error": f"config import failed: {e}"}
+
+        if not is_integration_enabled("cloudflare"):
+            return {
+                "success": False,
+                "error": "cloudflare_integration_disabled",
+                "message": "Enable the Cloudflare integration in Settings to execute this action.",
+            }
+
+        cfg = get_integration_config("cloudflare") or {}
+        api_token = cfg.get("api_token")
+        account_id = cfg.get("account_id")
+        if not api_token:
+            return {"success": False, "error": "cloudflare api_token not configured"}
+
+        # Lazy import to avoid forcing the MCP package on environments that
+        # never enable Cloudflare.
+        try:
+            from tools import cloudflare as cf_tool
+        except Exception as e:  # noqa: BLE001
+            return {"success": False, "error": f"tools.cloudflare unavailable: {e}"}
+
+        try:
+            if action_type == "waf_block":
+                return cf_tool._waf_block_ip(
+                    api_token=api_token,
+                    account_id=account_id,
+                    ip=parameters.get("ip") or target,
+                    reason=reason,
+                    mode=parameters.get("mode", "block"),
+                )
+            if action_type == "gateway_block":
+                return cf_tool._gateway_block_domain(
+                    api_token=api_token,
+                    account_id=account_id,
+                    domain=parameters.get("domain") or target,
+                    reason=reason,
+                    rule_name=parameters.get("rule_name"),
+                )
+            if action_type == "access_revoke":
+                return cf_tool._access_revoke_session(
+                    api_token=api_token,
+                    account_id=account_id,
+                    email=parameters.get("email") or target,
+                    reason=reason,
+                )
+            return {"success": False, "error": f"unknown cloudflare action {action_type}"}
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Cloudflare action %s failed", action_type)
+            return {"success": False, "error": str(e)}
 
 
 # Singleton instance
