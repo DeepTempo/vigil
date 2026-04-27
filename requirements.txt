@@ -72,6 +72,12 @@ redis>=5.0.0
 # Kafka ingestion (optional; only used when KAFKA_ENABLED=true)
 aiokafka>=0.10.0
 
+# STIX/TAXII threat-intel feed ingestion (optional; only used when the
+# Cloudforce One integration is enabled). Imports are lazy in
+# services/threat_feed_service.py so missing wheels do not break startup.
+taxii2-client>=2.3.0
+stix2>=3.0.1
+
 # PDF report generation (chat reports, case reports). The feature ships in
 # backend/api/claude.py → /generate-chat-report; without this dep the endpoint
 # returns 503 even though the feature is wired into the UI.

@@ -125,6 +125,7 @@ The backend discovers workflows automatically on startup. Use `POST /api/workflo
 - Actor attribution
 - Campaign tracking
 - OSINT integration
+- Cloudflare context: cites `finding.enrichment.threat_indicators` (Cloudforce One STIX hits) as ground-truth edge-observed indicators; quotes `finding.evidence.cloudy_summary` verbatim with provenance when present. MCP tools: `cf_lookup_ip_threat`, `cf_lookup_domain_threat`.
 
 ### Compliance Agent
 - NIST, ISO, PCI-DSS, HIPAA, GDPR, SOC 2
@@ -144,12 +145,14 @@ The backend discovers workflows automatically on startup. Use `POST /api/workflo
 - Protocol examination
 - Lateral movement detection
 - Exfiltration identification
+- Cloudflare context tools: `cf_lookup_ip_threat` for C2/beaconing investigations.
 
 ### Auto-Responder Agent
 - Confidence-based automation
 - Approval workflow integration
 - Autonomous containment
 - Human oversight for low-confidence
+- Cloudflare enforcement: proposes `WAF_BLOCK` (cf_waf_block_ip), `GATEWAY_BLOCK` (cf_gateway_block_domain), `ACCESS_REVOKE` (cf_access_revoke_session). All cf_* write actions route through `services/approval_service.py`; auto-approval requires confidence ≥ 0.90.
 
 ## Approval Workflow Integration
 

@@ -252,6 +252,25 @@ MISP_API_KEY="your_api_key"
 
 Tools: `misp_search`, `misp_get_event`, `misp_add_attribute`
 
+### Cloudflare Cloudforce One (STIX/TAXII)
+
+Pulls Cloudflare's Cloudforce One threat feed via TAXII 2.1 into the
+`threat_indicators` table. The daemon polls on the configured interval; the
+finding processor enriches IOCs against this table and surfaces matches
+under `finding.enrichment.threat_indicators`.
+
+```bash
+# Settings → Integrations → Cloudflare Cloudforce One
+# (env vars are fallbacks; the integration is the on/off switch)
+CLOUDFORCE_ONE_API_TOKEN="..."
+CLOUDFORCE_ONE_TAXII_SERVER_URL="https://api.cloudflare.com/client/v4/accounts/{account_id}/cloudforce-one/threat-events/taxii2/"
+CLOUDFORCE_ONE_COLLECTION_IDS="collection-uuid-1,collection-uuid-2"
+THREAT_FEED_POLL_INTERVAL="900"
+```
+
+Operates independently of the Cloudflare WAF/Zero Trust integration —
+customers can subscribe to either or both.
+
 ## Sandbox Analysis
 
 ### Hybrid Analysis
@@ -312,7 +331,47 @@ A companion scheduler task (`sandbox_poll`, default every 60s) picks up
 completed reports and writes them into the case as `CaseEvidence` plus
 extracted IOCs into `CaseIOC`. See [SANDBOX.md](./SANDBOX.md).
 
-## EDR/XDR
+## Network Security & Edge Enforcement
+
+### Cloudflare (WAF, Zero Trust Gateway, Access)
+
+Closes the loop by letting Vigil propose and (with approval) execute
+enforcement actions on Cloudflare's edge:
+
+| Action type | MCP tool | Cloudflare API |
+|---|---|---|
+| `WAF_BLOCK` | `cf_waf_block_ip` / `cf_waf_unblock_ip` | IP Access Rules (`/firewall/access_rules/rules`) |
+| `GATEWAY_BLOCK` | `cf_gateway_block_domain` | Zero Trust Gateway DNS+HTTP rule (`/gateway/rules`) |
+| `ACCESS_REVOKE` | `cf_access_revoke_session` | Access organization revoke (`/access/organizations/revoke_user`) |
+
+Read-only context tools — `cf_lookup_ip_threat` and `cf_lookup_domain_threat`
+— are wired into the Threat Intel and Network Analyst agents so investigations
+can pull edge context on demand.
+
+```bash
+# Settings → Integrations → Cloudflare
+# Required scopes: Zone:Firewall Services:Edit, Account:Zero Trust:Edit,
+#                  Account:Access:Edit, Account:Account Analytics:Read
+CLOUDFLARE_API_TOKEN="..."
+CLOUDFLARE_ACCOUNT_ID="..."   # required for Zero Trust + Access actions
+CLOUDFLARE_ZONE_ID="..."      # optional default zone for WAF rules
+```
+
+All write actions route through `services/approval_service.py`; the auto-
+responder agent only auto-approves at confidence ≥ 0.90, otherwise an analyst
+must approve in the Approvals UI before the daemon executes the call.
+
+### Cloudflare Cloudy ingestion (gated)
+
+Inbound webhook receiver at `POST /api/webhooks/cloudflare/cloudy` for
+Cloudflare-pushed events with attached Cloudy natural-language summaries.
+**Off by default** because the upstream contract is not publicly stable
+yet; the router only mounts when `CLOUDY_INGESTION_ENABLED=true` and a
+`CLOUDY_WEBHOOK_SECRET` is set for HMAC-SHA256 verification.
+
+When enabled, Cloudy summaries land on findings as
+`finding.evidence.cloudy_summary` (cited verbatim, with provenance) and
+are surfaced into the Threat Intel agent's context window.
 
 ### CrowdStrike
 

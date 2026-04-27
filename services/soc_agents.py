@@ -379,11 +379,11 @@ Confidence scoring:
         "color": "#B4A7D6",
         "description": "Threat intelligence analysis and enrichment",
         "specialization": "Threat Intelligence",
-        "tools": ["get_finding", "list_findings"],
+        "tools": ["get_finding", "list_findings", "cf_lookup_ip_threat", "cf_lookup_domain_threat"],
         "max_tokens": 16384,
         "thinking": True,
         "thinking_budget": 6000,
-        "extra_principles": "- Focus on actionable intelligence\n- State confidence in attribution\n- Query multiple threat intel sources in parallel\n- Memory: mempalace_search in threat-intel/ioc-registry before querying external APIs (avoid duplicate lookups); mempalace_add_drawer enriched IOCs and actor attributions immediately",
+        "extra_principles": "- Focus on actionable intelligence\n- State confidence in attribution\n- Query multiple threat intel sources in parallel\n- Memory: mempalace_search in threat-intel/ioc-registry before querying external APIs (avoid duplicate lookups); mempalace_add_drawer enriched IOCs and actor attributions immediately\n- Cloudflare context: when finding.enrichment.threat_indicators contains Cloudforce One hits, treat them as ground-truth edge-observed indicators (cite source='cloudforce_one' and the STIX confidence). Cloudy summaries (finding.evidence.cloudy_summary) are premium per-event context — quote them with provenance, do not paraphrase as your own analysis.",
         "methodology": """<methodology>
 1. Retrieve context and extract IOCs
 2. Enrich IOCs: IP geolocation, Shodan, VirusTotal, OTX
@@ -462,7 +462,7 @@ Confidence scoring:
         "color": "#56CCF2",
         "description": "Network traffic and protocol analysis",
         "specialization": "Network Security Analysis",
-        "tools": ["list_findings", "get_finding"],
+        "tools": ["list_findings", "get_finding", "cf_lookup_ip_threat", "cf_lookup_domain_threat"],
         "max_tokens": 16384,
         "thinking": True,
         "thinking_budget": 8000,
@@ -485,11 +485,19 @@ Confidence scoring:
         "color": "#FF6B6B",
         "description": "Autonomous threat correlation and response",
         "specialization": "Autonomous Response & Correlation",
-        "tools": ["get_finding", "create_approval_action", "list_approval_actions"],
+        "tools": [
+            "get_finding",
+            "create_approval_action",
+            "list_approval_actions",
+            "cf_waf_block_ip",
+            "cf_waf_unblock_ip",
+            "cf_gateway_block_domain",
+            "cf_access_revoke_session",
+        ],
         "max_tokens": 16384,
         "thinking": True,
         "thinking_budget": 3000,
-        "extra_principles": "- Act immediately on high-confidence threats (>=0.90)\n- Never auto-approve without strong evidence\n- Provide complete audit trail\n- Memory: mempalace_search in agent-decisions/approval-actions for prior auto-approvals on this entity; mempalace_add_drawer all approval decisions with confidence scores",
+        "extra_principles": "- Act immediately on high-confidence threats (>=0.90)\n- Never auto-approve without strong evidence\n- Provide complete audit trail\n- Memory: mempalace_search in agent-decisions/approval-actions for prior auto-approvals on this entity; mempalace_add_drawer all approval decisions with confidence scores\n- Prefer the most surgical Cloudflare action available: cf_waf_block_ip for malicious source IPs, cf_gateway_block_domain for outbound C2/exfil, cf_access_revoke_session only when an authenticated user identity is implicated. All cf_* write actions go through the approval pipeline; do not call them directly when confidence < 0.90.",
         "methodology": """<methodology>
 1. Gather data from multiple detection sources (Tempo Flow, EDR)
 2. Correlate signals: shared IPs/hosts/users, time proximity, MITRE techniques

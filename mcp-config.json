@@ -330,6 +330,16 @@
       "command": "python3",
       "args": ["tools/url_analysis.py"],
       "cwd": "${workspaceFolder}"
+    },
+
+    "cloudflare": {
+      "command": "python3",
+      "args": ["tools/cloudflare.py"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "_setup_note": "Cloudflare WAF, Zero Trust Gateway, and Access response actions plus read-only IP/domain threat lookups. Configure api_token (and optional account_id, zone_id) in Settings → Integrations. Tools are no-ops until the integration is enabled.",
+        "_note": "Cloudforce One threat-intel feeds are ingested separately by daemon/threat_feed_poller.py and enrich findings via daemon/processor.py — no MCP tool surface required for v1."
+      }
     }
   }
 }

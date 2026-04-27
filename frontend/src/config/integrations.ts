@@ -2025,7 +2025,8 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     id: 'cloudflare',
     name: 'Cloudflare',
     category: 'Network Security',
-    description: 'Cloudflare security services including WAF, DDoS protection, and Zero Trust access.',
+    description:
+      'Cloudflare WAF, Zero Trust Gateway, and Access response actions, plus read-only IP/domain threat lookups. Lets Vigil propose and (with approval) execute WAF blocks, Gateway DNS/HTTP block policies, and Zero Trust session revocations.',
     functionality_type: 'Network Protection',
     fields: [
       {
@@ -2033,24 +2034,72 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
         label: 'API Token',
         type: 'password',
         required: true,
-        helpText: 'Create API token at https://dash.cloudflare.com/profile/api-tokens',
+        helpText:
+          'Create at Cloudflare → My Profile → API Tokens. Required scopes: Zone:Firewall Services:Edit, Account:Zero Trust:Edit, Account:Access:Edit, Account:Account Analytics:Read.',
       },
       {
         name: 'account_id',
         label: 'Account ID',
         type: 'text',
         required: false,
-        helpText: 'Optional: For account-level operations',
+        helpText: 'Required for Zero Trust Gateway and Access actions.',
       },
       {
         name: 'zone_id',
-        label: 'Zone ID',
+        label: 'Default Zone ID',
         type: 'text',
         required: false,
-        helpText: 'Optional: Default zone for operations',
+        helpText:
+          'Optional default zone for WAF rules. Individual actions may override this.',
       },
     ],
     docs_url: 'https://developers.cloudflare.com/api/',
+  },
+  {
+    id: 'cloudforce_one',
+    name: 'Cloudflare Cloudforce One',
+    category: 'Threat Intelligence',
+    description:
+      'Cloudforce One STIX/TAXII 2.1 threat-intel feeds. Vigil polls configured collections, normalizes indicators, and enriches findings whose IOCs match. Operates independently of the Cloudflare WAF/Zero Trust integration so customers can subscribe to either or both.',
+    functionality_type: 'Data Enrichment',
+    fields: [
+      {
+        name: 'api_token',
+        label: 'API Token',
+        type: 'password',
+        required: true,
+        helpText:
+          'Cloudflare API token with Account:Cloudforce One:Read scope.',
+      },
+      {
+        name: 'taxii_server_url',
+        label: 'TAXII 2.1 Discovery URL',
+        type: 'url',
+        required: true,
+        default: 'https://api.cloudflare.com/client/v4/accounts/{account_id}/cloudforce-one/threat-events/taxii2/',
+        placeholder: 'https://api.cloudflare.com/.../taxii2/',
+        helpText:
+          'TAXII 2.1 discovery endpoint. Substitute {account_id} with your Cloudflare account ID.',
+      },
+      {
+        name: 'collection_ids',
+        label: 'Collection IDs',
+        type: 'text',
+        required: true,
+        placeholder: 'collection-uuid-1,collection-uuid-2',
+        helpText:
+          'Comma-separated list of TAXII collection IDs to poll. Leave empty to skip polling.',
+      },
+      {
+        name: 'poll_interval_seconds',
+        label: 'Poll Interval (seconds)',
+        type: 'number',
+        required: false,
+        default: 900,
+        helpText: 'How often Vigil pulls the latest indicators. Default 900 (15 min); minimum enforced server-side is 60.',
+      },
+    ],
+    docs_url: 'https://developers.cloudflare.com/security-center/cloudforce-one/',
   },
   {
     id: 'juniper-srx',

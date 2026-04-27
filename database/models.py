@@ -2739,3 +2739,55 @@ class AIModelConfig(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class ThreatIndicator(Base):
+    """Global threat indicator from external feeds (Cloudforce One STIX/TAXII, etc.).
+
+    Distinct from `CaseIOC` (case-scoped). Polled by `daemon/threat_feed_poller.py`
+    and joined against finding IOCs during enrichment in `daemon/processor.py`.
+    See `database/init/14_threat_indicators.sql`.
+    """
+
+    __tablename__ = "threat_indicators"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    indicator_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    indicator_value: Mapped[str] = mapped_column(String(2048), nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    collection_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    confidence: Mapped[Optional[float]] = mapped_column(Numeric(5, 2), nullable=True)
+    threat_level: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    labels: Mapped[Optional[List[str]]] = mapped_column(ARRAY(Text), nullable=True)
+    valid_from: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    valid_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    raw_stix: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    first_seen: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+    )
+    last_seen: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+    )
+
+    __table_args__ = (
+        Index("idx_threat_indicators_type_value", "indicator_type", "indicator_value"),
+        Index("idx_threat_indicators_source", "source"),
+        Index("idx_threat_indicators_last_seen", "last_seen"),
+        Index("idx_threat_indicators_valid_until", "valid_until"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "indicator_type": self.indicator_type,
+            "indicator_value": self.indicator_value,
+            "source": self.source,
+            "collection_id": self.collection_id,
+            "confidence": float(self.confidence) if self.confidence is not None else None,
+            "threat_level": self.threat_level,
+            "labels": list(self.labels or []),
+            "valid_from": self.valid_from.isoformat() if self.valid_from else None,
+            "valid_until": self.valid_until.isoformat() if self.valid_until else None,
+            "first_seen": self.first_seen.isoformat() if self.first_seen else None,
+            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+        }
