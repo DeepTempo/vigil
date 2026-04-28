@@ -430,7 +430,7 @@ async def _fetch_meta_for_row(row_dict: Dict[str, Any], discovery) -> Optional[l
                 row_dict["provider_id"],
             )
             return None
-        return await discovery.fetch_anthropic_models(key)
+        return await discovery.fetch_anthropic_models(key, base_url=base_url)
 
     if provider_type == "openai":
         key = _resolve_key()

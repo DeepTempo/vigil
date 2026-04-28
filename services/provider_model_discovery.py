@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 _CACHE_TTL_S = 60.0
 _RETRIES = 3
 _RETRY_BACKOFF_S = 2.0
-_ANTHROPIC_API_URL = "https://api.anthropic.com/v1/models"
+_ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com/v1"
 _ANTHROPIC_VERSION = "2023-06-01"
 
 
@@ -148,17 +148,26 @@ def _anthropic_caps(api_caps: Dict[str, Any]) -> Dict[str, bool]:
     }
 
 
-async def fetch_anthropic_models(api_key: str) -> List[ModelMeta]:
-    """Fetch the live Anthropic model catalog.
+async def fetch_anthropic_models(
+    api_key: str,
+    base_url: Optional[str] = None,
+) -> List[ModelMeta]:
+    """Fetch the live Anthropic (or Anthropic-compatible) model catalog.
 
     Raises on unrecoverable error so the caller can fall back to the
-    hard-coded bootstrap list. A non-200 from Anthropic (e.g. invalid
+    hard-coded bootstrap list. A non-200 from upstream (e.g. invalid
     key) raises ``httpx.HTTPStatusError``.
+
+    ``base_url`` defaults to ``https://api.anthropic.com/v1``. Override
+    for on-prem / private Anthropic-compatible deployments. The full
+    models URL is derived as ``{base_url}/models``.
     """
     if not api_key:
         raise RuntimeError("fetch_anthropic_models: api_key required")
 
-    cache_key = _cache_key("anthropic", _ANTHROPIC_API_URL, api_key)
+    base = (base_url or _ANTHROPIC_DEFAULT_BASE_URL).rstrip("/")
+    models_url = f"{base}/models"
+    cache_key = _cache_key("anthropic", models_url, api_key)
     cached = _META_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -176,9 +185,7 @@ async def fetch_anthropic_models(api_key: str) -> List[ModelMeta]:
                 params: Dict[str, Any] = {"limit": 1000}
                 if after_id:
                     params["after_id"] = after_id
-                resp = await client.get(
-                    _ANTHROPIC_API_URL, headers=headers, params=params
-                )
+                resp = await client.get(models_url, headers=headers, params=params)
                 resp.raise_for_status()
                 payload = resp.json()
                 for m in payload.get("data", []):
