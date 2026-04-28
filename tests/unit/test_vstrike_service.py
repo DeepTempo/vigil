@@ -461,6 +461,65 @@ def test_load_network_in_ui_passes_network_id():
     assert payload["params"]["arguments"] == {"networkId": "net-42"}
 
 
+def test_killchain_replay_in_ui_passes_full_payload():
+    from services.vstrike_service import VStrikeToolNotImplemented  # noqa: F401
+
+    svc = _ui_service()
+    _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
+    steps = [
+        {"node_id": "asset-1", "timestamp": "2026-04-28T11:00:00Z"},
+        {
+            "node_id": "asset-2",
+            "timestamp": "2026-04-28T11:05:00Z",
+            "technique": "T1021.002",
+        },
+    ]
+    with patch(
+        "services.vstrike_service.requests.post",
+        return_value=_mock_response(
+            200, json_body={"result": {"content": [{"type": "text", "text": "queued"}]}}
+        ),
+    ) as mock_post:
+        svc.killchain_replay_in_ui("net-7", steps, loop=True, auto_play=False)
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["params"]["name"] == "ui-killchain-replay"
+    args = payload["params"]["arguments"]
+    assert args["networkId"] == "net-7"
+    assert args["steps"] == steps
+    assert args["loop"] is True
+    assert args["auto_play"] is False
+
+
+@pytest.mark.parametrize(
+    "error_text",
+    [
+        "VStrike MCP ui-killchain-replay error: -32601 method not found",
+        "VStrike MCP ui-killchain-replay error: tool not found",
+        "VStrike MCP ui-killchain-replay error: unknown tool 'ui-killchain-replay'",
+    ],
+)
+def test_killchain_replay_in_ui_raises_tool_not_implemented(error_text):
+    """Engineer-side absence of the tool is converted to VStrikeToolNotImplemented."""
+    from services.vstrike_service import VStrikeToolNotImplemented
+
+    svc = _ui_service()
+    with patch.object(svc, "_call_mcp_tool", side_effect=RuntimeError(error_text)):
+        with pytest.raises(VStrikeToolNotImplemented):
+            svc.killchain_replay_in_ui("net-1", [{"node_id": "a", "timestamp": "t"}])
+
+
+def test_killchain_replay_in_ui_propagates_other_runtime_errors():
+    """Transport / unrelated errors surface unchanged for the caller to map."""
+    svc = _ui_service()
+    with patch.object(
+        svc, "_call_mcp_tool", side_effect=RuntimeError("connection refused")
+    ):
+        with pytest.raises(RuntimeError) as exc_info:
+            svc.killchain_replay_in_ui("net-1", [{"node_id": "a", "timestamp": "t"}])
+        assert "connection refused" in str(exc_info.value)
+
+
 def test_iframe_url_embeds_token():
     svc = _ui_service(base_url="https://vstrike.net")
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)

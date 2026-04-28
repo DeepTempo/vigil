@@ -5,6 +5,8 @@ import { Chat as ChatIcon, Brightness4, Brightness7 } from '@mui/icons-material'
 import { useTheme } from '../../contexts/ThemeContext'
 import NavigationRail, { COLLAPSED_WIDTH } from './NavigationRail'
 import ClaudeDrawer from '../claude/ClaudeDrawer'
+import VStrikeIframeHost from '../graph/VStrikeIframeHost'
+import { VStrikeIframeProvider } from '../../contexts/VStrikeIframeContext'
 import { configApi, orchestratorApi } from '../../services/api'
 
 export default function MainLayout() {
@@ -45,6 +47,7 @@ export default function MainLayout() {
   }
 
   return (
+    <VStrikeIframeProvider>
     <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
       <NavigationRail enabledIntegrations={enabledIntegrations} orchestratorEnabled={orchestratorEnabled} />
 
@@ -113,6 +116,9 @@ export default function MainLayout() {
         initialAgentId={investigationData?.agentId}
         initialTitle={investigationData?.title}
       />
+
+      <VStrikeIframeHost />
     </Box>
+    </VStrikeIframeProvider>
   )
 }
