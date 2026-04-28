@@ -164,3 +164,99 @@ def test_load_network_502_when_upstream_fails():
 
     assert exc_info.value.status_code == 502
     assert "connection refused" in str(exc_info.value.detail)
+
+
+# --------------------------------------------------------------------------- #
+# /ui/killchain-replay
+# --------------------------------------------------------------------------- #
+
+
+def _make_killchain_request(**overrides):
+    from backend.api.vstrike import (
+        VStrikeKillchainReplayRequest,
+        VStrikeKillchainStep,
+    )
+
+    return VStrikeKillchainReplayRequest(
+        network_id=overrides.get("network_id", "net-1"),
+        steps=overrides.get(
+            "steps",
+            [
+                VStrikeKillchainStep(
+                    node_id="asset-001",
+                    timestamp="2026-04-28T11:00:00Z",
+                    label="Initial Access",
+                ),
+                VStrikeKillchainStep(
+                    node_id="asset-077",
+                    timestamp="2026-04-28T11:12:00Z",
+                    technique="T1003.001",
+                    label="Target",
+                ),
+            ],
+        ),
+        loop=overrides.get("loop", False),
+        auto_play=overrides.get("auto_play", True),
+    )
+
+
+def test_killchain_replay_passes_steps_to_service():
+    from backend.api import vstrike as vstrike_module
+
+    svc = _mock_ui_service()
+    svc.killchain_replay_in_ui.return_value = {"ok": True, "queued": 2}
+    with patch.object(vstrike_module, "get_vstrike_service", return_value=svc):
+        result = asyncio.run(
+            vstrike_module.ui_killchain_replay(_make_killchain_request())
+        )
+
+    assert result["ok"] is True
+    svc.killchain_replay_in_ui.assert_called_once()
+    args, kwargs = svc.killchain_replay_in_ui.call_args
+    assert args[0] == "net-1"
+    steps = args[1]
+    assert [s["node_id"] for s in steps] == ["asset-001", "asset-077"]
+    # exclude_none must drop unset optional fields.
+    assert "technique" not in steps[0]
+    assert steps[1]["technique"] == "T1003.001"
+    assert kwargs == {"loop": False, "auto_play": True}
+
+
+def test_killchain_replay_501_when_tool_not_implemented():
+    from backend.api import vstrike as vstrike_module
+    from services.vstrike_service import VStrikeToolNotImplemented
+
+    svc = _mock_ui_service()
+    svc.killchain_replay_in_ui.side_effect = VStrikeToolNotImplemented(
+        "VStrike server does not yet implement ui-killchain-replay."
+    )
+    with patch.object(vstrike_module, "get_vstrike_service", return_value=svc):
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(vstrike_module.ui_killchain_replay(_make_killchain_request()))
+
+    assert exc_info.value.status_code == 501
+    assert "ui-killchain-replay" in str(exc_info.value.detail)
+
+
+def test_killchain_replay_502_on_other_runtime_errors():
+    from backend.api import vstrike as vstrike_module
+
+    svc = _mock_ui_service()
+    svc.killchain_replay_in_ui.side_effect = RuntimeError("transport failed")
+    with patch.object(vstrike_module, "get_vstrike_service", return_value=svc):
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(vstrike_module.ui_killchain_replay(_make_killchain_request()))
+
+    assert exc_info.value.status_code == 502
+    assert "transport failed" in str(exc_info.value.detail)
+
+
+def test_killchain_replay_503_without_ui_credentials():
+    from backend.api import vstrike as vstrike_module
+
+    svc = _mock_ui_service(has_ui_credentials=False)
+    with patch.object(vstrike_module, "get_vstrike_service", return_value=svc):
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(vstrike_module.ui_killchain_replay(_make_killchain_request()))
+
+    assert exc_info.value.status_code == 503

@@ -481,6 +481,30 @@ export const vstrikeApi = {
       '/integrations/vstrike/ui/load-network',
       { network_id },
     ),
+
+  // Kill-chain replay — instructs VStrike to walk a sequence of nodes in the
+  // active iframe session. 501 when VStrike's MCP server hasn't shipped the
+  // `ui-killchain-replay` tool yet; the caller surfaces that as a snackbar.
+  killchainReplay: (
+    network_id: string,
+    steps: Array<{
+      node_id: string
+      timestamp: string
+      technique?: string
+      label?: string
+      dwell_ms?: number
+    }>,
+    opts?: { loop?: boolean; autoPlay?: boolean },
+  ) =>
+    api.post<{ ok: boolean; result: any }>(
+      '/integrations/vstrike/ui/killchain-replay',
+      {
+        network_id,
+        steps,
+        loop: opts?.loop ?? false,
+        auto_play: opts?.autoPlay ?? true,
+      },
+    ),
 }
 
 // Claude API

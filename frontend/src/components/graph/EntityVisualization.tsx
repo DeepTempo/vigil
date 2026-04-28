@@ -3,27 +3,27 @@
  * embedded VStrike iframe based on whether VStrike is configured for the
  * UI control plane (i.e. has username + password creds).
  *
- * Behavior: when VStrike is iframe-ready, we hard-replace the EntityGraph
- * with a VStrikeIframe — no toggle, no fallback. When VStrike is not
- * configured, we render the existing EntityGraph with the original props
- * passed through, so callers don't need to know which view is active.
+ * When VStrike is iframe-ready, this component renders an empty `<div>`
+ * **anchor** and registers it with the persistent `VStrikeIframeProvider`
+ * (mounted once at MainLayout level). The actual iframe lives on the
+ * provider — never unmounts, never re-auths between case clicks. We just
+ * tell the provider "the iframe should overlay this rect now".
  *
- * The probe (`POST /api/integrations/vstrike/ui/iframe-token`) decides
- * iframe-readiness. Result is cached at module level for `STALE_TIME_MS`
- * so multiple mounts on the same page (Investigation graph + Case dialog
- * + EventVisualizationDialog opening together) share one round-trip.
+ * When VStrike is not configured, we render the existing EntityGraph with
+ * the original props passed through, so callers don't need to know which
+ * view is active.
  *
- * The component intentionally does NOT depend on `@tanstack/react-query` —
- * the rest of the app does not have a `QueryClientProvider` at the root,
- * so any react-query hook crashes the host tree. Plain `useState` +
- * `useEffect` with a module cache covers the same ground.
+ * The VStrike-readiness probe runs once per session (cached at module level
+ * for `STALE_TIME_MS`); we still need it because the provider is always
+ * mounted, but we shouldn't anchor into it on surfaces where VStrike isn't
+ * actually configured.
  */
 
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Box, CircularProgress } from '@mui/material'
 import EntityGraph, { GraphLink, GraphNode } from './EntityGraph'
-import VStrikeIframe from './VStrikeIframe'
 import { vstrikeApi } from '../../services/api'
+import { useVStrikeIframe } from '../../contexts/VStrikeIframeContext'
 
 export interface EntityVisualizationProps {
   // Legacy EntityGraph props — pass-through when VStrike is not configured.
@@ -41,10 +41,11 @@ export interface EntityVisualizationProps {
   // on mount (user can still override via the dropdown).
   vstrikeNetworkId?: string
 
+  // Optional findings list — used by the toolbar Play button to build a
+  // kill-chain step list. When omitted, Play stays disabled.
+  vstrikeFindings?: Array<Record<string, any>>
+
   // Rendered on the legacy (non-VStrike) path when `nodes.length === 0`.
-  // Lets call sites keep their existing empty-state copy without gating
-  // on node count themselves (which would skip the iframe path entirely
-  // when the case happens to have zero entities).
   emptyState?: ReactNode
 }
 
@@ -61,9 +62,6 @@ interface CachedProbe {
 
 const STALE_TIME_MS = 60_000
 
-// Module-level cache. Mounting EntityVisualization in three places at
-// once should result in ONE network call, not three. The cache is
-// process-local so a refresh / route change starts fresh.
 const _cache: { entry: CachedProbe | null } = { entry: null }
 
 async function probeVStrike(): Promise<ProbeState> {
@@ -74,7 +72,6 @@ async function probeVStrike(): Promise<ProbeState> {
     }
     return { kind: 'unavailable' }
   } catch {
-    // 503 = not configured; transport error = not ready right now.
     return { kind: 'unavailable' }
   }
 }
@@ -101,10 +98,16 @@ function getCachedOrFetch(): { state: ProbeState; promise?: Promise<ProbeState> 
 }
 
 export default function EntityVisualization(props: EntityVisualizationProps) {
-  const { height = 500, vstrikeNetworkId, emptyState, ...graphProps } = props
+  const {
+    height = 500,
+    vstrikeNetworkId,
+    vstrikeFindings,
+    emptyState,
+    ...graphProps
+  } = props
+  const vstrike = useVStrikeIframe()
+  const anchorRef = useRef<HTMLDivElement | null>(null)
 
-  // Initialize state from the cache so a remount after a recent probe
-  // doesn't flash the legacy graph for a frame.
   const [state, setState] = useState<ProbeState>(
     () => getCachedOrFetch().state,
   )
@@ -117,13 +120,39 @@ export default function EntityVisualization(props: EntityVisualizationProps) {
         if (!cancelled) setState(next)
       })
     } else {
-      // Cache hit — adopt the latest known state synchronously.
       setState(result.state)
     }
     return () => {
       cancelled = true
     }
   }, [])
+
+  // Attach the anchor to the persistent host whenever we're ready + mounted.
+  useEffect(() => {
+    if (state.kind !== 'ready') return
+    const anchor = anchorRef.current
+    if (!anchor) return
+    vstrike.attach(anchor, {
+      networkId: vstrikeNetworkId,
+      findings: vstrikeFindings,
+    })
+    return () => {
+      vstrike.detach(anchor)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.kind])
+
+  // Push opts updates without re-attaching when only the network or findings change.
+  useEffect(() => {
+    if (state.kind !== 'ready') return
+    const anchor = anchorRef.current
+    if (!anchor) return
+    vstrike.updateOpts(anchor, {
+      networkId: vstrikeNetworkId,
+      findings: vstrikeFindings,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.kind, vstrikeNetworkId, vstrikeFindings])
 
   if (state.kind === 'pending') {
     return (
@@ -142,7 +171,17 @@ export default function EntityVisualization(props: EntityVisualizationProps) {
 
   if (state.kind === 'ready') {
     return (
-      <VStrikeIframe height={height} initialNetworkId={vstrikeNetworkId} />
+      <Box
+        ref={anchorRef}
+        sx={{
+          width: '100%',
+          height,
+          // The anchor is just a positioning target — the iframe rendered by
+          // VStrikeIframeHost overlays this rect via fixed positioning.
+          position: 'relative',
+          minHeight: 0,
+        }}
+      />
     )
   }
 

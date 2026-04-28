@@ -46,6 +46,15 @@ _jwt_cache: Dict[Tuple[str, str], Tuple[str, float]] = {}
 _jwt_lock = threading.Lock()
 
 
+class VStrikeToolNotImplemented(RuntimeError):
+    """Raised when the remote VStrike MCP server doesn't expose a tool we call.
+
+    Surfaced by the API layer as a 501 with the offending message, so the
+    frontend can show a "VStrike server needs an upgrade" notice instead of
+    a generic transport error.
+    """
+
+
 def _parse_response_body(resp: requests.Response) -> Any:
     """Return the JSON body of a response, tolerating SSE framing.
 
@@ -458,6 +467,55 @@ class VStrikeService:
         WebSocket — this call only triggers that push.
         """
         return self._call_mcp_tool("ui-network-load", {"networkId": network_id})
+
+    def killchain_replay_in_ui(
+        self,
+        network_id: str,
+        steps: List[Dict[str, Any]],
+        *,
+        loop: bool = False,
+        auto_play: bool = True,
+    ) -> Any:
+        """Tell VStrike to walk a kill-chain through the active iframe.
+
+        Calls the VStrike-side ``ui-killchain-replay`` MCP tool. VStrike
+        animates the supplied step sequence over its WebSocket — node
+        highlights, edge transitions, MITRE technique labels.
+
+        Raises ``VStrikeToolNotImplemented`` when the VStrike server has
+        not shipped the tool yet (so callers can convert that to a 501
+        with a useful hint).
+        """
+        try:
+            return self._call_mcp_tool(
+                "ui-killchain-replay",
+                {
+                    "networkId": network_id,
+                    "steps": steps,
+                    "loop": loop,
+                    "auto_play": auto_play,
+                },
+            )
+        except RuntimeError as e:
+            msg = str(e).lower()
+            # JSON-RPC method-not-found → -32601. VStrike's MCP also tends
+            # to surface "tool not found" / "unknown tool" in the error
+            # text or as a tool-level isError. Treat all of those as
+            # "engineer hasn't shipped this yet".
+            if (
+                "-32601" in msg
+                or "method not found" in msg
+                or "tool not found" in msg
+                or "unknown tool" in msg
+                or "ui-killchain-replay" in msg
+                and ("not implemented" in msg or "unsupported" in msg)
+            ):
+                raise VStrikeToolNotImplemented(
+                    "VStrike server does not yet implement "
+                    "ui-killchain-replay. Update the VStrike MCP server "
+                    "to a version that ships the kill-chain tool."
+                ) from e
+            raise
 
     def iframe_url(self) -> str:
         """Build the auto-login iframe URL using a fresh ui-login-token."""

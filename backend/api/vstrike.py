@@ -27,11 +27,26 @@ from backend.schemas.vstrike import (
     VStrikePushResponse,
 )
 from services.database_data_service import DatabaseDataService
-from services.vstrike_service import get_vstrike_service
+from services.vstrike_service import VStrikeToolNotImplemented, get_vstrike_service
 
 
 class VStrikeLoadNetworkRequest(BaseModel):
     network_id: str
+
+
+class VStrikeKillchainStep(BaseModel):
+    node_id: str
+    timestamp: str
+    technique: Optional[str] = None
+    label: Optional[str] = None
+    dwell_ms: Optional[int] = None
+
+
+class VStrikeKillchainReplayRequest(BaseModel):
+    network_id: str
+    steps: list[VStrikeKillchainStep]
+    loop: bool = False
+    auto_play: bool = True
 
 
 def _ui_service_or_503():
@@ -386,5 +401,31 @@ async def ui_load_network(request: VStrikeLoadNetworkRequest) -> dict:
         result = service.load_network_in_ui(request.network_id)
     except Exception as e:
         logger.error("VStrike ui-network-load failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"ok": True, "result": result}
+
+
+@router.post("/ui/killchain-replay")
+async def ui_killchain_replay(request: VStrikeKillchainReplayRequest) -> dict:
+    """Walk a kill-chain through the active VStrike iframe session.
+
+    Returns 501 when VStrike's MCP server hasn't shipped the
+    ``ui-killchain-replay`` tool yet — the frontend surfaces that as a
+    "VStrike server needs an upgrade" notice rather than a generic error.
+    """
+    service = _ui_service_or_503()
+    steps = [step.model_dump(exclude_none=True) for step in request.steps]
+    try:
+        result = service.killchain_replay_in_ui(
+            request.network_id,
+            steps,
+            loop=request.loop,
+            auto_play=request.auto_play,
+        )
+    except VStrikeToolNotImplemented as e:
+        logger.info("VStrike killchain-replay unavailable: %s", e)
+        raise HTTPException(status_code=501, detail=str(e))
+    except Exception as e:
+        logger.error("VStrike ui-killchain-replay failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e))
     return {"ok": True, "result": result}

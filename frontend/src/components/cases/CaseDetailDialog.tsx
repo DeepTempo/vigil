@@ -565,6 +565,7 @@ export default function CaseDetailDialog({
                     links={graphData.links}
                     height={400}
                     showControls={false}
+                    vstrikeFindings={findings}
                     emptyState={
                       <Typography color="text.secondary">
                         No entities to display
