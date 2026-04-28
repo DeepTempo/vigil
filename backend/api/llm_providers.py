@@ -324,7 +324,10 @@ async def test_provider(provider_id: str, db: Session = Depends(get_db_session))
             # Must use AsyncAnthropic (not Anthropic) — this endpoint is
             # async and the sync client would block the FastAPI event loop
             # for up to the full timeout on an invalid key or slow network.
-            client = AsyncAnthropic(api_key=key, timeout=15.0)
+            anthropic_kwargs: Dict[str, Any] = {"api_key": key, "timeout": 15.0}
+            if row.base_url:
+                anthropic_kwargs["base_url"] = row.base_url
+            client = AsyncAnthropic(**anthropic_kwargs)
             await client.messages.create(
                 model=row.default_model,
                 max_tokens=1,
@@ -377,7 +380,9 @@ async def discover_models(req: DiscoverModelsRequest):
         if req.provider_type == "anthropic":
             if not req.api_key:
                 return {"models": ANTHROPIC_FALLBACK_MODELS}
-            meta = await discovery.fetch_anthropic_models(req.api_key)
+            meta = await discovery.fetch_anthropic_models(
+                req.api_key, base_url=req.base_url
+            )
         elif req.provider_type == "openai":
             if not req.api_key:
                 raise HTTPException(
