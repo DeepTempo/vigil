@@ -153,7 +153,9 @@ export default function VStrikeIframeHost() {
           left: rect.left,
           width: rect.width,
           height: rect.height,
-          zIndex: fullscreen ? 1300 : 1,
+          // Sit above MUI's modal layer (1300) so the iframe shows on top of
+          // the case dialog rather than behind it. Snackbars at 1400 still win.
+          zIndex: 1301,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -201,7 +203,9 @@ export default function VStrikeIframeHost() {
           visibility: visible ? 'visible' : 'hidden',
           pointerEvents: visible ? 'auto' : 'none',
           opacity: visible ? 1 : 0,
-          zIndex: fullscreen ? 1300 : 2,
+          // 1301 puts the iframe above MUI's modal layer (1300) so it shows
+          // through case-dialog anchors instead of being hidden behind them.
+          zIndex: 1301,
           transition: 'opacity 120ms ease',
           display: 'flex',
           flexDirection: 'column',
