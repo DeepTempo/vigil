@@ -940,17 +940,18 @@ class IngestionService:
         self,
         file_path: Path,
         fmt: str,
-        data_source: str = 'flow'
+        data_source: str = 'flow',
+        data_type: str = 'finding'
     ) -> Dict[str, Any]:
         """Dispatch a local file to the appropriate ingestion method."""
         if fmt == 'parquet':
             return self.ingest_parquet_file(file_path, data_source=data_source)
         elif fmt == 'csv':
-            return self.ingest_csv_file(file_path, data_type='finding')
+            return self.ingest_csv_file(file_path, data_type=data_type)
         elif fmt == 'json':
             return self.ingest_json_file(file_path)
         elif fmt == 'jsonl':
-            return self.ingest_jsonl_file(file_path, data_type='finding')
+            return self.ingest_jsonl_file(file_path, data_type=data_type)
         else:
             logger.warning(f"No handler for format '{fmt}', skipping {file_path}")
             return {}

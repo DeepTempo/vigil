@@ -451,18 +451,24 @@ export default function Settings() {
     setUploadResult(null)
   }
 
+  // Ingestion is a background job now, so poll it to completion.
   const handleUploadFile = async () => {
     if (!uploadFile) return
     setUploading(true)
     setUploadResult(null)
     try {
       const response = await ingestionApi.uploadFile(uploadFile)
-      setUploadResult({ success: response.data.success, message: response.data.message })
-      if (response.data.success) {
-        setMessage({ type: 'success', text: response.data.message })
-      } else {
-        setMessage({ type: 'error', text: response.data.message || 'Upload completed with issues' })
+      let job = response.data
+      while (job.status === 'running') {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        job = (await ingestionApi.getJob(job.job_id)).data
       }
+      const success = job.status === 'succeeded'
+      setUploadResult({ success, message: job.message })
+      setMessage({
+        type: success ? 'success' : 'error',
+        text: job.message || 'Upload completed with issues',
+      })
     } catch (error: any) {
       const msg = error.response?.data?.detail || 'Upload failed'
       setUploadResult({ success: false, message: msg })
