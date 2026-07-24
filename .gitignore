@@ -244,3 +244,8 @@ claude_analysis_*.txt
 
 # Autostart list, written by Settings -> Services (see services/autostart_config.py)
 .vigil-autostart
+
+# Local tooling artifacts / personal MCP config
+.mcp.json
+index.scip
+slop.toml
