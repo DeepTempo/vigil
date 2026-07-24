@@ -59,7 +59,9 @@ class AgentAIGenerator:
             )
         except ValueError as e:
             # No usable provider configured (e.g. the Anthropic path with no
-            # key) — a normal misconfiguration, not a crash.
+            # key) — a normal misconfiguration, not a crash. Log at warning
+            # (no traceback) so it stays observable without alarming noise.
+            logger.warning("Agent generation: no usable provider (%s)", e)
             return {"success": False, "draft": None, "error": str(e), "raw": ""}
         except Exception as e:
             logger.exception("Agent generation call failed")

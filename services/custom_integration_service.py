@@ -112,35 +112,54 @@ class CustomIntegrationService:
             # Create prompt for Claude to analyze the documentation
             system_prompt = "You are an expert at analyzing API documentation and generating Python MCP (Model Context Protocol) server code for security integrations."
 
-            if conversation_history:
-                # Interactive mode - continue the conversation
-                # Extract the last user message
-                last_message = (
-                    conversation_history[-1]["content"] if conversation_history else ""
-                )
-                context = (
-                    conversation_history[:-1] if len(conversation_history) > 1 else None
-                )
+            # Tight try around only the LLM call: a missing/keyless provider
+            # raises ValueError — a normal misconfiguration, returned cleanly
+            # (warning, no traceback), without swallowing later ValueErrors.
+            try:
+                if conversation_history:
+                    # Interactive mode - continue the conversation
+                    # Extract the last user message
+                    last_message = (
+                        conversation_history[-1]["content"]
+                        if conversation_history
+                        else ""
+                    )
+                    context = (
+                        conversation_history[:-1]
+                        if len(conversation_history) > 1
+                        else None
+                    )
 
-                response = await router.chat(
-                    message=last_message,
-                    context=context,
-                    system_prompt=system_prompt,
-                    model=DEFAULT_MODEL,
-                    service_config={"use_mcp_tools": False},
-                )
-            else:
-                # Initial generation - create the analysis prompt
-                prompt = self._create_analysis_prompt(
-                    documentation, integration_name, category
-                )
+                    response = await router.chat(
+                        message=last_message,
+                        context=context,
+                        system_prompt=system_prompt,
+                        model=DEFAULT_MODEL,
+                        service_config={"use_mcp_tools": False},
+                    )
+                else:
+                    # Initial generation - create the analysis prompt
+                    prompt = self._create_analysis_prompt(
+                        documentation, integration_name, category
+                    )
 
-                response = await router.chat(
-                    message=prompt,
-                    system_prompt=system_prompt,
-                    model=DEFAULT_MODEL,
-                    service_config={"use_mcp_tools": False},
-                )
+                    response = await router.chat(
+                        message=prompt,
+                        system_prompt=system_prompt,
+                        model=DEFAULT_MODEL,
+                        service_config={"use_mcp_tools": False},
+                    )
+            except ValueError as e:
+                logger.warning("Integration generation: no usable provider (%s)", e)
+                return {"success": False, "error": str(e)}
+
+            # A provider error (or an empty non-Anthropic response) can yield
+            # None; guard before the string check below.
+            if response is None:
+                return {
+                    "success": False,
+                    "error": "No response from the configured model.",
+                }
 
             # Check if Claude is asking questions or ready to generate
             if self._is_asking_questions(response):
