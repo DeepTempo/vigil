@@ -105,8 +105,10 @@ describe('Vigil Assistant resize controls', () => {
   })
 })
 
-/** Build a one-shot SSE ReadableStream-like Response for the chat endpoint. */
-function sseResponse(payloads: object[]) {
+/** SSE Response-like whose body emits `payloads` then HOLDS the stream open
+ *  (never resolves) — mirrors the backend pausing on a requires_approval tool,
+ *  so the live approval panel (gated behind `loading`) stays mounted to assert. */
+function heldSseResponse(payloads: object[]) {
   const text = payloads.map((p) => `data: ${JSON.stringify(p)}\n`).join('\n') + '\n'
   const chunk = new TextEncoder().encode(text)
   let sent = false
@@ -116,7 +118,7 @@ function sseResponse(payloads: object[]) {
       getReader() {
         return {
           read() {
-            if (sent) return Promise.resolve({ done: true, value: undefined })
+            if (sent) return new Promise(() => undefined) // hold open
             sent = true
             return Promise.resolve({ done: false, value: chunk })
           },
@@ -126,27 +128,56 @@ function sseResponse(payloads: object[]) {
   } as unknown as Response
 }
 
+function sendPrompt(text: string) {
+  const textarea = screen.getByPlaceholderText(/Ask Vigil/i)
+  fireEvent.change(textarea, { target: { value: text } })
+  fireEvent.keyDown(textarea, { key: 'Enter' })
+}
+
 describe('tool-approval notice (#413 PR3e)', () => {
-  it('surfaces an approval_required event and deep-links to the approvals queue', async () => {
+  it('shows a live approval notice and deep-links to the queue in-app', async () => {
     vi.mocked(streamFetch).mockResolvedValue(
-      sseResponse([
+      heldSseResponse([
         { type: 'approval_required', tool_name: 'isolate_host', action_id: 'ACT-1' },
-        { type: 'text', content: 'Requesting approval to isolate the host.' },
       ]),
     )
     const onNavigate = vi.fn()
     render(<Chat open onClose={vi.fn()} onNavigate={onNavigate} />)
+    sendPrompt('isolate that host')
 
-    const textarea = screen.getByPlaceholderText(/Ask Vigil/i)
-    fireEvent.change(textarea, { target: { value: 'isolate that host' } })
-    fireEvent.keyDown(textarea, { key: 'Enter' })
-
-    // The notice names the tool that paused the run...
+    // Notice appears WHILE the stream is held (not after completion).
     const notice = await screen.findByText(/needs approval/i)
     expect(notice.textContent).toMatch(/isolate_host/)
 
-    // ...and its button deep-links to the Decisions/approvals screen in-app.
     fireEvent.click(screen.getByRole('button', { name: /Pending Approvals/i }))
     expect(onNavigate).toHaveBeenCalledWith('decisions')
+  })
+
+  it('falls back to a /decisions link when onNavigate is absent', async () => {
+    vi.mocked(streamFetch).mockResolvedValue(
+      heldSseResponse([
+        { type: 'approval_required', tool_name: 'isolate_host', action_id: 'ACT-2' },
+      ]),
+    )
+    render(<Chat open onClose={vi.fn()} />)
+    sendPrompt('isolate that host')
+
+    await screen.findByText(/needs approval/i)
+    // No in-app navigator → a plain anchor to the Decisions route.
+    const link = screen.getByRole('link', { name: /Pending Approvals/i })
+    expect(link).toHaveAttribute('href', '/decisions')
+  })
+
+  it('summarizes when several tools pause in one turn', async () => {
+    vi.mocked(streamFetch).mockResolvedValue(
+      heldSseResponse([
+        { type: 'approval_required', tool_name: 'isolate_host', action_id: 'A1' },
+        { type: 'approval_required', tool_name: 'block_ip', action_id: 'A2' },
+      ]),
+    )
+    render(<Chat open onClose={vi.fn()} onNavigate={vi.fn()} />)
+    sendPrompt('contain the threat')
+
+    expect(await screen.findByText(/2 tools need approval/i)).toBeInTheDocument()
   })
 })

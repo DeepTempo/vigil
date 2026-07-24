@@ -42,7 +42,9 @@ interface ChatAgent {
   color?: string
 }
 type Role = 'user' | 'vigil' | 'error'
-/** A tool the backend held pending human approval (#413 PR3e). */
+/** A tool the backend is holding pending human approval (#413 PR3e). Shown
+ *  live while the stream is paused; not persisted onto the finished message,
+ *  since by completion the operator has already approved/rejected it. */
 interface ApprovalNotice {
   tool: string
   actionId?: string
@@ -52,8 +54,6 @@ interface ChatMsg {
   text: string
   thinking?: string
   ms?: number
-  /** Tools this turn paused on, awaiting approval in the Decisions queue. */
-  approvals?: ApprovalNotice[]
 }
 
 /* ---------- reasoning trace (GH #79 — chain-of-thought visibility) ---------- */
@@ -247,19 +247,7 @@ function ApprovalPanel({
   )
 }
 
-function VigilMessage({
-  text,
-  thinking,
-  ms,
-  approvals,
-  onNavigate,
-}: {
-  text: string
-  thinking?: string
-  ms?: number
-  approvals?: ApprovalNotice[]
-  onNavigate?: (screen: string) => void
-}) {
+function VigilMessage({ text, thinking, ms }: { text: string; thinking?: string; ms?: number }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="msg vigil">
@@ -270,9 +258,6 @@ function VigilMessage({
       )}
       {thinking && open && <div className="thinking-body">{thinking}</div>}
       <div className="body"><Markdown>{text}</Markdown></div>
-      {approvals && approvals.length > 0 && (
-        <ApprovalPanel approvals={approvals} onNavigate={onNavigate} />
-      )}
       <div className="msg-actions">
         <button title="Copy" onClick={() => navigator.clipboard?.writeText(text)}><Icon name="copy" size={15} /></button>
         <button title="More"><Icon name="more" size={15} /></button>
@@ -663,7 +648,6 @@ export default function Chat({
       let curText = ''
       let curThinking = ''
       let buf = ''
-      const pendingApprovals: ApprovalNotice[] = []
       if (reader) {
         for (;;) {
           const { done, value } = await reader.read()
@@ -692,15 +676,16 @@ export default function Chat({
             if (ev.error || ev.type === 'error')
               throw new Error(ev.error || ev.content || 'stream error')
             if (ev.type === 'approval_required') {
-              // A requires_approval tool paused the run; surface the notice
-              // (with a deep-link to the queue) and keep reading — the backend
-              // holds the stream open until an operator decides (#413 PR3e).
-              pendingApprovals.push({
-                tool: ev.tool_name || 'tool',
-                actionId: ev.action_id,
-              })
+              // A requires_approval tool paused the run; surface the live
+              // notice (with a deep-link to the queue) and keep reading — the
+              // backend holds the stream open until an operator decides
+              // (#413 PR3e). Live-only: the panel shows while `loading`, then
+              // clears when the turn completes (the decision is already made).
               setIsProcessingTools(false)
-              setStreamApprovals([...pendingApprovals])
+              setStreamApprovals((prev) => [
+                ...prev,
+                { tool: ev.tool_name || 'tool', actionId: ev.action_id },
+              ])
             } else if (ev.type === 'thinking_start') {
               setIsThinking(true)
               curThinking = ''
@@ -736,7 +721,6 @@ export default function Chat({
           text: curText || '_(no response)_',
           thinking: curThinking || undefined,
           ms,
-          approvals: pendingApprovals.length ? pendingApprovals : undefined,
         },
       ])
       // Fire a desktop notification on completion, matching the classic
@@ -1106,14 +1090,7 @@ export default function Chat({
           ) : m.role === 'error' ? (
             <div className="msg vigil err" key={i}><div className="body">{m.text}</div></div>
           ) : (
-            <VigilMessage
-              key={i}
-              text={m.text}
-              thinking={m.thinking}
-              ms={m.ms}
-              approvals={m.approvals}
-              onNavigate={onNavigate}
-            />
+            <VigilMessage key={i} text={m.text} thinking={m.thinking} ms={m.ms} />
           )
         )}
         {loading && (
