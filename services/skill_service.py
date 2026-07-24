@@ -154,18 +154,12 @@ class SkillService:
         an answer, and re-invoke with the accumulated conversation_history.
         """
         try:
-            from services.claude_service import ClaudeService
+            # #413: route through LLMRouter (provider-agnostic) rather than
+            # ClaudeService directly. No MCP tools for skill generation. A
+            # missing/keyless provider raises ValueError, caught below.
+            from services.llm_router import LLMRouter
 
-            claude = ClaudeService(use_mcp_tools=False)
-            if not claude.has_api_key():
-                return {
-                    "success": False,
-                    "error": (
-                        "Claude API is not configured. "
-                        "Please configure it in Settings."
-                    ),
-                }
-
+            router = LLMRouter()
             system_prompt = self._system_prompt()
 
             if conversation_history:
@@ -173,16 +167,18 @@ class SkillService:
                 context = (
                     conversation_history[:-1] if len(conversation_history) > 1 else None
                 )
-                response = claude.chat(
+                response = await router.chat(
                     message=last_message,
                     context=context,
                     system_prompt=system_prompt,
+                    service_config={"use_mcp_tools": False},
                 )
             else:
                 initial = self._initial_user_prompt(description, category)
-                response = claude.chat(
+                response = await router.chat(
                     message=initial,
                     system_prompt=system_prompt,
+                    service_config={"use_mcp_tools": False},
                 )
 
             if response is None:

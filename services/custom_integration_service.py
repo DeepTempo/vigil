@@ -5,9 +5,9 @@ import json
 import logging
 import os
 import re
-from pathlib import Path
-from typing import Dict, Any, Optional, List
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from services.defaults import DEFAULT_MODEL
 
@@ -102,18 +102,12 @@ class CustomIntegrationService:
             Dictionary with integration metadata and server code
         """
         try:
-            # Import Claude service
-            from services.claude_service import ClaudeService
+            # #413: route through LLMRouter (provider-agnostic) rather than
+            # ClaudeService directly. No MCP tools for code generation; a
+            # missing/keyless provider raises ValueError, caught below.
+            from services.llm_router import LLMRouter
 
-            # Initialize Claude
-            claude = ClaudeService(use_mcp_tools=False)
-
-            # Check if Claude is configured
-            if not claude.api_key or not claude.client:
-                return {
-                    "success": False,
-                    "error": "Claude API is not configured. Please configure it in Settings.",
-                }
+            router = LLMRouter()
 
             # Create prompt for Claude to analyze the documentation
             system_prompt = "You are an expert at analyzing API documentation and generating Python MCP (Model Context Protocol) server code for security integrations."
@@ -128,11 +122,12 @@ class CustomIntegrationService:
                     conversation_history[:-1] if len(conversation_history) > 1 else None
                 )
 
-                response = claude.chat(
+                response = await router.chat(
                     message=last_message,
                     context=context,
                     system_prompt=system_prompt,
                     model=DEFAULT_MODEL,
+                    service_config={"use_mcp_tools": False},
                 )
             else:
                 # Initial generation - create the analysis prompt
@@ -140,10 +135,11 @@ class CustomIntegrationService:
                     documentation, integration_name, category
                 )
 
-                response = claude.chat(
+                response = await router.chat(
                     message=prompt,
                     system_prompt=system_prompt,
                     model=DEFAULT_MODEL,
+                    service_config={"use_mcp_tools": False},
                 )
 
             # Check if Claude is asking questions or ready to generate
