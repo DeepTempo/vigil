@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "PendingApprovalError",
+    "request_tool_approval",
+    "await_tool_approval",
+    "mark_tool_action_executed",
     "NormalizedToolCall",
     "TurnResult",
     "ToolPhaseResult",
@@ -68,6 +71,176 @@ class PendingApprovalError(Exception):
     def __init__(self, message: str, action_id: Optional[str] = None):
         super().__init__(message)
         self.action_id = action_id
+
+
+# ---------------------------------------------------------------------------
+# Shared tier/approval gate (provider-agnostic) — #413 PR3e-1
+#
+# The tool-approval gate is identical for every provider: it depends only on
+# the tool name, its arguments, and the approval service — never on the
+# provider's wire format. Both TurnEngines (and OpenAIAgentService's runtime
+# hooks) drive these three primitives so the gate stays a single source of
+# truth: create a pending action, poll until an operator decides, and close the
+# action out once it runs. Execution and result-block shaping remain per-engine.
+# ---------------------------------------------------------------------------
+
+_APPROVAL_POLL_INTERVAL_S = 5.0
+_APPROVAL_WAIT_TIMEOUT_S = 600.0
+
+
+async def request_tool_approval(
+    tool_name: str,
+    arguments: Dict[str, Any],
+    *,
+    session_id: Optional[str],
+    agent_id: Optional[str],
+    created_by: str,
+) -> "tuple[str, Optional[str]]":
+    """Queue a pending approval instead of executing the tool.
+
+    Returns ``(message_for_model, action_id)``; ``action_id`` is ``None`` when
+    the request could not be created (caller must fail closed).
+    """
+    try:
+        from services.approval_service import ActionType, get_approval_service
+
+        service = get_approval_service()
+        try:
+            action_type = ActionType(tool_name)
+        except ValueError:
+            action_type = ActionType.CUSTOM
+
+        target = arguments.get(
+            "target", arguments.get("ip", arguments.get("host", "unknown"))
+        )
+        pending = await asyncio.to_thread(
+            service.create_action,
+            action_type=action_type,
+            title=f"Agent tool: {tool_name}",
+            description=(
+                f"Agent (session={session_id}, agent={agent_id}) "
+                f"requests execution of {tool_name}"
+            ),
+            target=target,
+            confidence=0.7,
+            reason=f"Agent needs to execute {tool_name}",
+            evidence=[session_id or agent_id or "chat"],
+            created_by=created_by,
+            parameters=arguments,
+        )
+        return (
+            f"Tool '{tool_name}' requires human approval before it can run. "
+            f"An approval request was created (action_id={pending.action_id}); "
+            "the run is paused until an operator decides.",
+            pending.action_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to create approval for %s: %s", tool_name, exc)
+        return (
+            f"Tool '{tool_name}' requires approval, but the approval request "
+            f"could not be created ({exc}). The action was not executed.",
+            None,
+        )
+
+
+async def await_tool_approval(
+    action_id: str,
+    *,
+    timeout: float = _APPROVAL_WAIT_TIMEOUT_S,
+    poll_interval: float = _APPROVAL_POLL_INTERVAL_S,
+) -> "tuple[str, str, float]":
+    """Poll the approval queue until an operator decides.
+
+    Returns ``(decision, detail, waited_seconds)`` where ``decision`` is
+    ``"approved"`` / ``"rejected"`` / ``"timeout"``. A vanished action reads as
+    a rejection so an uncleared action never executes.
+    """
+    from services.approval_service import ActionStatus, get_approval_service
+
+    service = get_approval_service()
+    started = time.monotonic()
+    deadline = started + timeout
+    while True:
+        try:
+            action = await asyncio.to_thread(service.get_action, action_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Approval poll failed for %s: %s", action_id, exc)
+            action = None
+        waited = time.monotonic() - started
+        if action is None:
+            return (
+                "rejected",
+                f"approval request {action_id} is no longer available",
+                waited,
+            )
+        # PendingAction.status is the ActionStatus *value*, not the enum.
+        status = str(action.status)
+        if status == ActionStatus.REJECTED.value:
+            return "rejected", action.rejection_reason or "no reason given", waited
+        if status in (ActionStatus.APPROVED.value, ActionStatus.EXECUTED.value):
+            return "approved", status, waited
+        if time.monotonic() >= deadline:
+            return (
+                "timeout",
+                f"Timed out after {timeout:.0f}s waiting for approval of "
+                f"action {action_id}. The action was not executed; the run "
+                "is stopping with the step incomplete.",
+                waited,
+            )
+        await asyncio.sleep(poll_interval)
+
+
+def mark_tool_action_executed(
+    action_id: Optional[str], result_text: str, is_error: bool
+) -> None:
+    """Close out an approved action so the queue reflects what ran."""
+    if not action_id:
+        return
+    try:
+        from services.approval_service import get_approval_service
+
+        service = get_approval_service()
+        if is_error:
+            service.mark_failed(action_id, result_text[:2000])
+        else:
+            service.mark_executed(action_id, {"result": result_text[:2000]})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not close out action %s: %s", action_id, exc)
+
+
+def _anthropic_tool_result_block(
+    tool_use_id: Optional[str], text: str, is_error: bool
+) -> Dict[str, Any]:
+    """Synthesize an Anthropic ``tool_result`` block for a tool that was NOT
+    executed (forbidden / rejected), so the assistant still sees an outcome for
+    every ``tool_use`` it emitted."""
+    return {
+        "type": "tool_result",
+        "tool_use_id": tool_use_id,
+        "content": text,
+        "is_error": is_error,
+    }
+
+
+def _summarize_tool_result_blocks(blocks: List[Dict[str, Any]]) -> "tuple[str, bool]":
+    """Flatten executed Anthropic ``tool_result`` blocks into ``(text, is_error)``
+    for the ``tool_result`` SSE preview and for closing out an approved action."""
+    texts: List[str] = []
+    is_error = False
+    for b in blocks or []:
+        if not isinstance(b, dict):
+            continue
+        is_error = is_error or bool(b.get("is_error"))
+        content = b.get("content")
+        if isinstance(content, str):
+            texts.append(content)
+        elif isinstance(content, list):
+            for c in content:
+                if isinstance(c, dict) and c.get("type") == "text":
+                    texts.append(c.get("text", ""))
+        elif content is not None:
+            texts.append(str(content))
+    return "\n".join(t for t in texts if t), is_error
 
 
 def _inter_iteration_delay(iteration: int) -> float:
@@ -530,13 +703,15 @@ class AnthropicTurnEngine:
       - ``stream_turn`` emits ``thinking_start``/``thinking``/``thinking_end`` and
         ``text`` deltas, reads final usage via ``get_final_message()``, and
         persists the reasoning trace — one interaction row per iteration.
-      - ``execute_tools`` runs the turn's tool calls as a single batch through
-        ``_process_mixed_tool_use`` and appends the Anthropic-block tool results.
+      - ``execute_tools`` runs the turn's tool calls one at a time through the
+        shared tier/approval gate (#413 PR3e-1), executing cleared/ungated calls
+        via ``_process_mixed_tool_use`` and appending the Anthropic-block tool
+        results as a single ``user`` message.
 
     Canonical history is Anthropic content-block shape (native to this engine),
-    so no conversion happens at the boundary. Approval gating is intentionally
-    absent here — it matches ``chat_stream``'s current behaviour and is unified
-    across providers in a later sub-PR.
+    so no conversion happens at the boundary. The approval gate is the same
+    provider-agnostic one the OpenAI engine uses, so a ``requires_approval``
+    tool holds the run identically on both paths.
     """
 
     def __init__(
@@ -728,19 +903,124 @@ class AnthropicTurnEngine:
     async def execute_tools(
         self, turn: TurnResult, *, iteration: int
     ) -> AsyncIterator[Union[Dict[str, Any], ToolPhaseResult]]:
-        """Batch-execute the turn's tool calls via the runtime.
+        """Execute the turn's tool calls one at a time through the shared gate.
 
-        Mirrors ``chat_stream``: one ``tool_processing`` signal, all tool_use
-        blocks routed through ``_process_mixed_tool_use``, and the results
-        appended as a single Anthropic ``user`` message. No per-tool approval
-        gate today (unified across providers in a later sub-PR).
+        Per-tool gating (#413 PR3e-1) — the same tier/approval policy the OpenAI
+        engine enforces: ``forbidden`` tools are refused, ``requires_approval``
+        tools hold the run (``approval_required`` event) until an operator
+        decides, and only cleared/ungated tools execute (via the runtime's
+        existing per-block ``_process_mixed_tool_use``). Every ``tool_use`` gets
+        exactly one ``tool_result`` block, all appended as a single Anthropic
+        ``user`` message — preserving ``chat_stream``'s history shape.
         """
-        yield {"type": "tool_processing"}
-        tool_results = await self._runtime._process_mixed_tool_use(
-            self._last_accumulated
-        )
-        self._messages.append({"role": "user", "content": tool_results})
-        yield ToolPhaseResult(halt=False, waited=0.0)
+        from services import tool_manager
+
+        tool_results: List[Dict[str, Any]] = []
+        halt = False
+        total_waited = 0.0
+
+        for block in self._last_accumulated:
+            if isinstance(block, dict):
+                btype = block.get("type")
+                tool_name = block.get("name")
+                tool_id = block.get("id")
+                tool_input = block.get("input") or {}
+            else:
+                btype = getattr(block, "type", None)
+                tool_name = getattr(block, "name", None)
+                tool_id = getattr(block, "id", None)
+                tool_input = getattr(block, "input", None) or {}
+            if btype != "tool_use" or not tool_name:
+                continue
+
+            yield {
+                "type": "tool_processing",
+                "tool_name": tool_name,
+                "tool_id": tool_id,
+            }
+
+            tier = tool_manager.get_tool_tier(tool_name)
+            result_text: Optional[str] = None
+            is_error = False
+
+            if tier == "forbidden":
+                logger.warning("Blocked forbidden tool call: %s", tool_name)
+                result_text, is_error = (
+                    f"Tool '{tool_name}' is forbidden for autonomous agents and "
+                    "was not executed.",
+                    True,
+                )
+                tool_results.append(
+                    _anthropic_tool_result_block(tool_id, result_text, is_error)
+                )
+            elif tier == "requires_approval":
+                msg, action_id = await request_tool_approval(
+                    tool_name,
+                    tool_input,
+                    session_id=self._session_id,
+                    agent_id=self._agent_id,
+                    created_by=self._agent_id or "anthropic_chat",
+                )
+                yield {
+                    "type": "approval_required",
+                    "tool_name": tool_name,
+                    "tool_id": tool_id,
+                    "action_id": action_id,
+                    "content": msg,
+                }
+                yield {"type": "text", "content": f"\n\n_{msg}_\n\n"}
+                if not action_id:
+                    # No action to poll — fail closed rather than hang.
+                    yield {"type": "error", "content": msg}
+                    halt = True
+                    break
+                decision, detail, waited = await await_tool_approval(action_id)
+                total_waited += waited
+                if decision == "approved":
+                    blocks = await self._runtime._process_mixed_tool_use([block])
+                    tool_results.extend(blocks)
+                    result_text, is_error = _summarize_tool_result_blocks(blocks)
+                    mark_tool_action_executed(action_id, result_text, is_error)
+                elif decision == "rejected":
+                    result_text, is_error = (
+                        f"Operator REJECTED this action. Reason: {detail}. "
+                        "Do not retry it; continue with another approach or "
+                        "report that the step could not be completed.",
+                        True,
+                    )
+                    tool_results.append(
+                        _anthropic_tool_result_block(tool_id, result_text, is_error)
+                    )
+                else:  # timeout
+                    yield {"type": "error", "content": detail}
+                    halt = True
+                    break
+            else:
+                blocks = await self._runtime._process_mixed_tool_use([block])
+                tool_results.extend(blocks)
+                result_text, is_error = _summarize_tool_result_blocks(blocks)
+
+            preview = (result_text or "")[:500] + (
+                "…" if result_text and len(result_text) > 500 else ""
+            )
+            yield {
+                "type": "tool_result",
+                "tool_name": tool_name,
+                "tool_id": tool_id,
+                "result": preview,
+                "is_error": is_error,
+            }
+
+        # On an early break (timeout / uncreatable), the halting block and any
+        # later blocks get no tool_result — leaving tool_use ids unanswered in
+        # the assistant message. That's safe ONLY because halt ends the run:
+        # the controller returns on halt (no further Anthropic call in-run) and
+        # chat history is persisted as text, not raw content blocks. If either
+        # ever changes, the loop must answer every remaining tool_use here or
+        # the next request 400s ("tool_use ids without tool_result").
+        if tool_results:
+            self._messages.append({"role": "user", "content": tool_results})
+        yield ToolPhaseResult(halt=halt, waited=total_waited)
 
 
 class _ToolRuntime(Protocol):

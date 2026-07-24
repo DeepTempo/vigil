@@ -619,6 +619,24 @@ async def _run_anth_turn(engine):
     return events, result
 
 
+async def _run_anth_tools(engine, turn):
+    events, phase = [], None
+    async for item in engine.execute_tools(turn, iteration=0):
+        if isinstance(item, ToolPhaseResult):
+            phase = item
+        else:
+            events.append(item)
+    return events, phase
+
+
+async def _anth_turn_and_assistant(engine):
+    """Run one streaming turn and append the assistant message (as the
+    controller would) so ``execute_tools`` sees the turn's tool_use blocks."""
+    _events, turn = await _run_anth_turn(engine)
+    engine.append_assistant(turn)
+    return turn
+
+
 class TestAnthropicStreamTurn:
     @pytest.mark.asyncio
     async def test_thinking_and_text_deltas_in_order(self):
@@ -691,8 +709,14 @@ class TestAnthropicStreamTurn:
 
 
 class TestAnthropicExecuteTools:
+    """#413 PR3e-1: per-tool gated execution (mirrors the OpenAI engine).
+
+    A ``requires_approval`` tool now holds the run behind the same shared gate
+    the OpenAI path uses, instead of the old ungated batch execution.
+    """
+
     @pytest.mark.asyncio
-    async def test_batch_executes_and_appends_user_results(self):
+    async def test_safe_tool_executes_and_appends_user_results(self):
         block = SimpleNamespace(
             type="tool_use", name="list_findings", input={}, id="toolu_9"
         )
@@ -704,26 +728,218 @@ class TestAnthropicExecuteTools:
         )
         messages = [{"role": "user", "content": "hi"}]
         engine = _anthropic_engine(rt, messages=messages)
-        # Populate _last_accumulated via a turn, then append assistant (as the
-        # controller would) before executing tools.
-        _events, turn = await _run_anth_turn(engine)
-        engine.append_assistant(turn)
+        turn = await _anth_turn_and_assistant(engine)
 
-        events, phase = [], None
-        async for item in engine.execute_tools(turn, iteration=0):
-            if isinstance(item, ToolPhaseResult):
-                phase = item
-            else:
-                events.append(item)
+        with patch("services.tool_manager.get_tool_tier", return_value="safe"):
+            events, phase = await _run_anth_tools(engine, turn)
 
-        # Single, detail-less tool_processing signal (Anthropic shape).
-        assert events == [{"type": "tool_processing"}]
-        rt._process_mixed_tool_use.assert_awaited_once()
-        # History now ends with the user tool-result message.
+        # Per-tool: a NAMED tool_processing then a tool_result (OpenAI-parity).
+        assert events[0] == {
+            "type": "tool_processing",
+            "tool_name": "list_findings",
+            "tool_id": "toolu_9",
+        }
+        assert any(
+            e["type"] == "tool_result" and e["tool_id"] == "toolu_9" for e in events
+        )
+        assert not any(e["type"] == "approval_required" for e in events)
+        rt._process_mixed_tool_use.assert_awaited_once_with([block])
+        # History still ends with ONE user tool-result message (shape preserved).
         assert messages[-1] == {"role": "user", "content": tool_results}
-        assert messages[-2] == turn.assistant_message  # assistant appended first
-        # No approval gate on this path today: never halts, never waits.
-        assert phase.halt is False and phase.waited == 0.0
+        assert messages[-2] == turn.assistant_message
+        assert phase.halt is False
+
+    @pytest.mark.asyncio
+    async def test_forbidden_tool_is_refused_without_executing(self):
+        block = SimpleNamespace(
+            type="tool_use", name="isolate_host", input={"host": "h1"}, id="toolu_f"
+        )
+        rt = _anthropic_runtime([], _final([block], "tool_use"))
+        engine = _anthropic_engine(rt)
+        turn = await _anth_turn_and_assistant(engine)
+
+        with patch("services.tool_manager.get_tool_tier", return_value="forbidden"):
+            events, phase = await _run_anth_tools(engine, turn)
+
+        rt._process_mixed_tool_use.assert_not_awaited()
+        assert not any(e["type"] == "approval_required" for e in events)
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["is_error"] is True and "forbidden" in tr["result"].lower()
+        # A tool_result block is still appended so the model sees an outcome.
+        assert engine._messages[-1]["content"][0]["is_error"] is True
+        assert phase.halt is False
+
+    @pytest.mark.asyncio
+    async def test_requires_approval_holds_then_executes_on_approve(self):
+        block = SimpleNamespace(
+            type="tool_use", name="isolate_host", input={"host": "h1"}, id="toolu_a"
+        )
+        executed = [
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_a",
+                "content": "isolated",
+                "is_error": False,
+            }
+        ]
+        rt = _anthropic_runtime(
+            [], _final([block], "tool_use"), process_result=executed
+        )
+        engine = _anthropic_engine(rt)
+        turn = await _anth_turn_and_assistant(engine)
+
+        mark = MagicMock()
+        with patch(
+            "services.tool_manager.get_tool_tier", return_value="requires_approval"
+        ), patch(
+            "services.agent_loop.request_tool_approval",
+            AsyncMock(return_value=("needs approval", "ACT-1")),
+        ), patch(
+            "services.agent_loop.await_tool_approval",
+            AsyncMock(return_value=("approved", "approved", 0.0)),
+        ), patch(
+            "services.agent_loop.mark_tool_action_executed", mark
+        ):
+            events, phase = await _run_anth_tools(engine, turn)
+
+        ar = [e for e in events if e["type"] == "approval_required"]
+        assert ar and ar[0]["action_id"] == "ACT-1" and ar[0]["tool_id"] == "toolu_a"
+        # Executed only AFTER approval, and the action is closed out.
+        rt._process_mixed_tool_use.assert_awaited_once_with([block])
+        mark.assert_called_once()
+        assert engine._messages[-1] == {"role": "user", "content": executed}
+        assert phase.halt is False
+
+    @pytest.mark.asyncio
+    async def test_requires_approval_rejected_is_not_executed(self):
+        block = SimpleNamespace(
+            type="tool_use", name="isolate_host", input={}, id="toolu_r"
+        )
+        rt = _anthropic_runtime([], _final([block], "tool_use"))
+        engine = _anthropic_engine(rt)
+        turn = await _anth_turn_and_assistant(engine)
+
+        with patch(
+            "services.tool_manager.get_tool_tier", return_value="requires_approval"
+        ), patch(
+            "services.agent_loop.request_tool_approval",
+            AsyncMock(return_value=("m", "ACT-2")),
+        ), patch(
+            "services.agent_loop.await_tool_approval",
+            AsyncMock(return_value=("rejected", "too risky", 0.0)),
+        ):
+            events, phase = await _run_anth_tools(engine, turn)
+
+        rt._process_mixed_tool_use.assert_not_awaited()
+        tr = [e for e in events if e["type"] == "tool_result"][0]
+        assert tr["is_error"] is True and "reject" in tr["result"].lower()
+        # Rejection is recoverable — the loop continues (does not halt).
+        assert phase.halt is False
+
+    @pytest.mark.asyncio
+    async def test_requires_approval_timeout_halts_the_run(self):
+        block = SimpleNamespace(
+            type="tool_use", name="isolate_host", input={}, id="toolu_t"
+        )
+        rt = _anthropic_runtime([], _final([block], "tool_use"))
+        engine = _anthropic_engine(rt)
+        turn = await _anth_turn_and_assistant(engine)
+
+        with patch(
+            "services.tool_manager.get_tool_tier", return_value="requires_approval"
+        ), patch(
+            "services.agent_loop.request_tool_approval",
+            AsyncMock(return_value=("m", "ACT-3")),
+        ), patch(
+            "services.agent_loop.await_tool_approval",
+            AsyncMock(return_value=("timeout", "timed out", 0.0)),
+        ):
+            events, phase = await _run_anth_tools(engine, turn)
+
+        rt._process_mixed_tool_use.assert_not_awaited()
+        assert any(e["type"] == "error" for e in events)
+        assert phase.halt is True
+
+    @pytest.mark.asyncio
+    async def test_requires_approval_uncreatable_fails_closed(self):
+        block = SimpleNamespace(
+            type="tool_use", name="isolate_host", input={}, id="toolu_u"
+        )
+        rt = _anthropic_runtime([], _final([block], "tool_use"))
+        engine = _anthropic_engine(rt)
+        turn = await _anth_turn_and_assistant(engine)
+
+        await_mock = AsyncMock()
+        with patch(
+            "services.tool_manager.get_tool_tier", return_value="requires_approval"
+        ), patch(
+            "services.agent_loop.request_tool_approval",
+            AsyncMock(return_value=("could not create", None)),
+        ), patch(
+            "services.agent_loop.await_tool_approval", await_mock
+        ):
+            events, phase = await _run_anth_tools(engine, turn)
+
+        # No action to poll → fail closed: error, halt, never await/execute.
+        assert any(e["type"] == "error" for e in events)
+        assert phase.halt is True
+        await_mock.assert_not_awaited()
+        rt._process_mixed_tool_use.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_multiple_tools_mixed_tiers_each_answered_once(self):
+        """A turn with several tool_use blocks: a forbidden one is refused, a
+        requires_approval one is rejected, and a later SAFE one still executes —
+        and every tool_use gets exactly one tool_result (Anthropic invariant)."""
+        b_forbid = SimpleNamespace(
+            type="tool_use", name="delete_all", input={}, id="t_forbid"
+        )
+        b_appr = SimpleNamespace(
+            type="tool_use", name="isolate_host", input={"host": "h"}, id="t_appr"
+        )
+        b_safe = SimpleNamespace(
+            type="tool_use", name="list_findings", input={}, id="t_safe"
+        )
+        safe_result = [
+            {
+                "type": "tool_result",
+                "tool_use_id": "t_safe",
+                "content": "ok",
+                "is_error": False,
+            }
+        ]
+        rt = _anthropic_runtime(
+            [],
+            _final([b_forbid, b_appr, b_safe], "tool_use"),
+            process_result=safe_result,
+        )
+        engine = _anthropic_engine(rt)
+        turn = await _anth_turn_and_assistant(engine)
+
+        tiers = {
+            "delete_all": "forbidden",
+            "isolate_host": "requires_approval",
+            "list_findings": "safe",
+        }
+        with patch(
+            "services.tool_manager.get_tool_tier", side_effect=lambda n: tiers[n]
+        ), patch(
+            "services.agent_loop.request_tool_approval",
+            AsyncMock(return_value=("m", "ACT-9")),
+        ), patch(
+            "services.agent_loop.await_tool_approval",
+            AsyncMock(return_value=("rejected", "nope", 0.0)),
+        ):
+            _events, phase = await _run_anth_tools(engine, turn)
+
+        # The safe tool executed exactly once (only for its own block)...
+        rt._process_mixed_tool_use.assert_awaited_once_with([b_safe])
+        # ...forbidden + rejected did NOT halt the run (recoverable).
+        assert phase.halt is False
+        # Every tool_use is answered exactly once — no dangling/duplicate ids.
+        appended = engine._messages[-1]["content"]
+        answered = [b["tool_use_id"] for b in appended]
+        assert sorted(answered) == ["t_appr", "t_forbid", "t_safe"]
 
 
 class TestAnthropicHeaders:

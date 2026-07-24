@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import time
 from collections import deque
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
@@ -22,6 +20,9 @@ from services.agent_loop import (
     PendingApprovalError,
     _canonical_args,
     _detect_infinite_loop,
+    await_tool_approval,
+    mark_tool_action_executed,
+    request_tool_approval,
 )
 from services.llm_format import anthropic_tools_to_openai
 from services.llm_router import ProviderSpec
@@ -267,112 +268,40 @@ class OpenAIAgentService:
         self, tool_name: str, arguments: Dict[str, Any]
     ) -> tuple[str, Optional[str]]:
         """Queue a pending approval instead of executing the tool, returning the
-        message for the model and the action id to poll (None if not created)."""
-        try:
-            from services.approval_service import ActionType, get_approval_service
+        message for the model and the action id to poll (None if not created).
 
-            service = get_approval_service()
-            try:
-                action_type = ActionType(tool_name)
-            except ValueError:
-                action_type = ActionType.CUSTOM
-
-            target = arguments.get(
-                "target", arguments.get("ip", arguments.get("host", "unknown"))
-            )
-            pending = await asyncio.to_thread(
-                service.create_action,
-                action_type=action_type,
-                title=f"Agent tool: {tool_name}",
-                description=(
-                    f"Agent (session={self._session_id}, agent={self._agent_id}) "
-                    f"requests execution of {tool_name}"
-                ),
-                target=target,
-                confidence=0.7,
-                reason=f"Agent needs to execute {tool_name}",
-                evidence=[self._session_id or self._agent_id or "chat"],
-                created_by=self._agent_id or "openai_agent",
-                parameters=arguments,
-            )
-            return (
-                f"Tool '{tool_name}' requires human approval before it can run. "
-                f"An approval request was created (action_id={pending.action_id}); "
-                "the run is paused until an operator decides.",
-                pending.action_id,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Failed to create approval for %s: %s", tool_name, exc)
-            return (
-                f"Tool '{tool_name}' requires approval, but the approval request "
-                f"could not be created ({exc}). The action was not executed.",
-                None,
-            )
+        Delegates to the shared, provider-agnostic gate (#413 PR3e-1) so the
+        Anthropic path enforces the identical policy.
+        """
+        return await request_tool_approval(
+            tool_name,
+            arguments,
+            session_id=self._session_id,
+            agent_id=self._agent_id,
+            created_by=self._agent_id or "openai_agent",
+        )
 
     async def _await_approval(
         self, action_id: str, *, timeout: float = _APPROVAL_WAIT_TIMEOUT_S
     ) -> tuple[str, str, float]:
         """Poll the approval queue until an operator decides, returning
         ``(decision, detail, waited_seconds)``. A vanished action reads as a
-        rejection so an uncleared action never executes."""
-        from services.approval_service import ActionStatus, get_approval_service
+        rejection so an uncleared action never executes.
 
-        service = get_approval_service()
-        started = time.monotonic()
-        deadline = started + timeout
-        while True:
-            try:
-                action = await asyncio.to_thread(service.get_action, action_id)
-            except Exception as exc:  # noqa: BLE001
-                logger.error("Approval poll failed for %s: %s", action_id, exc)
-                action = None
-            waited = time.monotonic() - started
-            if action is None:
-                return (
-                    "rejected",
-                    f"approval request {action_id} is no longer available",
-                    waited,
-                )
-            # PendingAction.status is the ActionStatus *value*, not the enum.
-            status = str(action.status)
-            if status == ActionStatus.REJECTED.value:
-                return (
-                    "rejected",
-                    action.rejection_reason or "no reason given",
-                    waited,
-                )
-            if status in (
-                ActionStatus.APPROVED.value,
-                ActionStatus.EXECUTED.value,
-            ):
-                return "approved", status, waited
-            if time.monotonic() >= deadline:
-                return (
-                    "timeout",
-                    f"Timed out after {timeout:.0f}s waiting for approval of "
-                    f"action {action_id}. The action was not executed; the run "
-                    "is stopping with the step incomplete.",
-                    waited,
-                )
-            await asyncio.sleep(_APPROVAL_POLL_INTERVAL_S)
+        Reads this module's poll-interval global at call time (so tests that
+        patch ``_APPROVAL_POLL_INTERVAL_S`` still take effect) and hands the
+        loop to the shared gate.
+        """
+        return await await_tool_approval(
+            action_id, timeout=timeout, poll_interval=_APPROVAL_POLL_INTERVAL_S
+        )
 
     @staticmethod
     def _mark_action_executed(
         action_id: Optional[str], result_text: str, is_error: bool
     ) -> None:
         """Close out an approved action so the queue reflects what ran."""
-        if not action_id:
-            return
-        try:
-            from services.approval_service import get_approval_service
-
-            service = get_approval_service()
-            if is_error:
-                service.mark_failed(action_id, result_text[:2000])
-            else:
-                service.mark_executed(action_id, {"result": result_text[:2000]})
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not close out action %s: %s", action_id, exc)
+        mark_tool_action_executed(action_id, result_text, is_error)
 
     async def _execute_backend_tool(
         self, tool_name: str, arguments: Dict[str, Any]
