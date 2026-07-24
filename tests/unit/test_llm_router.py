@@ -16,12 +16,8 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.llm_router import (
-    LLMRouter,
-    ProviderSpec,
-    provider_spec_from_row,
-    select_path,
-)
+from services.llm_router import (LLMRouter, ProviderSpec,
+                                 provider_spec_from_row, select_path)
 
 pytestmark = pytest.mark.unit
 
@@ -1448,3 +1444,300 @@ async def test_run_agent_stream_omits_model_when_not_given():
         _ = [ev async for ev in LLMRouter().run_agent_stream(prompt="x")]
     # Fake's agent_query default is "unset"; router left it untouched.
     assert holder["engine"].query_kwargs["model"] == "unset"
+
+
+# ---------------------------------------------------------------------------
+# #413 PR4a — unified chat() text shim + dispatch_stream() entry point
+# ---------------------------------------------------------------------------
+
+
+class _FakeChatEngine:
+    """Stand-in for ClaudeService on the chat/chat_stream delegation paths.
+
+    Records constructor kwargs and the delegated call args so the shim tests
+    can assert the Anthropic engine is driven faithfully.
+    """
+
+    def __init__(self, **kwargs):
+        self.init_kwargs = kwargs
+        self.chat_calls = []
+        self.stream_calls = []
+
+    def chat(self, message, **kwargs):  # ClaudeService.chat is synchronous
+        self.chat_calls.append((message, kwargs))
+        return "anthropic-reply"
+
+    async def chat_stream(self, **kwargs):
+        self.stream_calls.append(kwargs)
+        for ch in ({"type": "text", "content": "a"}, {"type": "text", "content": "b"}):
+            yield ch
+
+
+def _patch_chat_engine():
+    holder: dict = {}
+
+    def factory(**kwargs):
+        engine = _FakeChatEngine(**kwargs)
+        holder["engine"] = engine
+        return engine
+
+    return holder, patch("services.claude_service.ClaudeService", factory)
+
+
+class _FakeOAS:
+    """Stand-in for OpenAIAgentService on the tool-capable router stream path."""
+
+    _tools_available = True
+
+    def __init__(self, recommended_tools=None):
+        self.recommended_tools = recommended_tools
+        self.stream_kwargs = None
+
+    def tools_available(self):
+        return self._tools_available
+
+    async def stream(self, **kwargs):
+        self.stream_kwargs = kwargs
+        for ch in ({"type": "text", "content": "agent-hi"},):
+            yield ch
+
+
+def _patch_oas(tools_available=True):
+    holder: dict = {}
+
+    class _OAS(_FakeOAS):
+        pass
+
+    _OAS._tools_available = tools_available
+
+    def factory(recommended_tools=None):
+        inst = _OAS(recommended_tools=recommended_tools)
+        holder["oas"] = inst
+        return inst
+
+    return holder, patch("services.openai_agent_service.OpenAIAgentService", factory)
+
+
+def _patch_model_registry(supports_tools):
+    reg = MagicMock()
+    reg.get_model_info.return_value = SimpleNamespace(supports_tools=supports_tools)
+    return patch("services.model_registry.ModelRegistry", return_value=reg)
+
+
+# ---- chat() text shim (Contract A) ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_chat_non_anthropic_dispatches_and_returns_text():
+    router = LLMRouter()
+    router.dispatch = AsyncMock(return_value={"content": "hi there"})
+
+    out = await router.chat(
+        "analyze this", provider=_ollama_spec(), model="claude-3-opus"
+    )
+
+    assert out == "hi there"
+    _, kwargs = router.dispatch.call_args
+    assert kwargs["provider"].provider_type == "ollama"
+    # No-tools guardrail prompt used when caller gives none.
+    assert kwargs["system_prompt"].startswith("You are Vigil, a concise SOC")
+    # Stale claude-* selection pinned to the provider's own default model.
+    assert kwargs["model"] == "llama3.1:8b"
+    # Trailing user turn appended to context.
+    assert kwargs["messages"][-1] == {"role": "user", "content": "analyze this"}
+
+
+@pytest.mark.asyncio
+async def test_chat_non_anthropic_preserves_explicit_system_prompt():
+    router = LLMRouter()
+    router.dispatch = AsyncMock(return_value={"content": "ok"})
+
+    await router.chat("q", provider=_ollama_spec(), system_prompt="CUSTOM")
+
+    _, kwargs = router.dispatch.call_args
+    assert kwargs["system_prompt"] == "CUSTOM"
+
+
+@pytest.mark.asyncio
+async def test_chat_anthropic_delegates_to_engine_and_returns_str():
+    holder, p = _patch_chat_engine()
+    with p:
+        out = await LLMRouter().chat(
+            "hello",
+            provider=_anthropic_spec(),
+            system_prompt="sp",
+            context=[{"role": "user", "content": "prev"}],
+            recommended_tools=["get_case"],
+        )
+
+    assert out == "anthropic-reply"
+    msg, kwargs = holder["engine"].chat_calls[0]
+    assert msg == "hello"
+    assert kwargs["system_prompt"] == "sp"
+    assert kwargs["context"] == [{"role": "user", "content": "prev"}]
+    assert kwargs["recommended_tools"] == ["get_case"]
+    # model omitted (None) so ClaudeService's own default stands.
+    assert "model" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_chat_resolves_default_provider_when_unset():
+    router = LLMRouter()
+    router.dispatch = AsyncMock(return_value={"content": "routed"})
+    with patch(
+        "services.llm_router.get_default_provider_spec", return_value=_ollama_spec()
+    ):
+        out = await router.chat("q")
+
+    assert out == "routed"
+    assert router.dispatch.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_chat_forwards_service_config_to_engine_ctor():
+    holder, p = _patch_chat_engine()
+    with p:
+        await LLMRouter().chat(
+            "hi",
+            provider=_anthropic_spec(),
+            service_config={"use_backend_tools": True, "use_mcp_tools": False},
+        )
+
+    assert holder["engine"].init_kwargs["use_backend_tools"] is True
+    assert holder["engine"].init_kwargs["use_mcp_tools"] is False
+
+
+# ---- dispatch_stream() (Contract C) --------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dispatch_stream_anthropic_delegates_and_splits_history():
+    holder, p = _patch_chat_engine()
+    messages = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "reply"},
+        {"role": "user", "content": "current"},
+    ]
+    with p:
+        out = [
+            c
+            async for c in LLMRouter().dispatch_stream(
+                provider=_anthropic_spec(),
+                messages=messages,
+                system_prompt="sp",
+                enable_thinking=True,
+                thinking_budget=5000,
+            )
+        ]
+
+    assert out == [{"type": "text", "content": "a"}, {"type": "text", "content": "b"}]
+    sk = holder["engine"].stream_calls[0]
+    assert sk["message"] == "current"
+    assert sk["context"] == messages[:-1]
+    assert sk["enable_thinking"] is True
+
+
+@pytest.mark.asyncio
+async def test_dispatch_stream_no_provider_uses_anthropic_engine():
+    holder, p = _patch_chat_engine()
+    with p:
+        out = [
+            c
+            async for c in LLMRouter().dispatch_stream(
+                provider=None,
+                messages=[{"role": "user", "content": "hi"}],
+            )
+        ]
+    assert out == [{"type": "text", "content": "a"}, {"type": "text", "content": "b"}]
+    assert holder["engine"].stream_calls[0]["context"] is None
+
+
+@pytest.mark.asyncio
+async def test_dispatch_stream_non_anthropic_no_tools_uses_openai_stream():
+    router = LLMRouter()
+    captured = {}
+
+    async def fake_openai_stream(**kwargs):
+        captured.update(kwargs)
+        for ch in ({"type": "text", "content": "router-hi"},):
+            yield ch
+
+    router.dispatch_openai_stream = fake_openai_stream
+    with _patch_model_registry(supports_tools=False):
+        out = [
+            c
+            async for c in router.dispatch_stream(
+                provider=_ollama_spec(),
+                messages=[{"role": "user", "content": "q"}],
+                model="claude-x",
+            )
+        ]
+
+    assert out == [{"type": "text", "content": "router-hi"}]
+    assert captured["system_prompt"].startswith("You are Vigil, a concise SOC")
+    assert captured["model"] == "llama3.1:8b"  # _router_model pinned it
+
+
+@pytest.mark.asyncio
+async def test_dispatch_stream_tool_capable_uses_agent_with_guardrail():
+    holder, p_oas = _patch_oas(tools_available=True)
+    with _patch_model_registry(supports_tools=True), p_oas:
+        out = [
+            c
+            async for c in LLMRouter().dispatch_stream(
+                provider=_openai_spec(),
+                messages=[{"role": "user", "content": "look it up"}],
+                system_prompt="CALLER",
+                recommended_tools=["get_case"],
+            )
+        ]
+
+    assert out == [{"type": "text", "content": "agent-hi"}]
+    sk = holder["oas"].stream_kwargs
+    assert sk["enable_tools"] is True
+    # Guardrail prepended to the caller's own prompt.
+    assert sk["system_prompt"].startswith("You are Vigil, an AI-native SOC")
+    assert sk["system_prompt"].endswith("CALLER")
+    assert holder["oas"].recommended_tools == ["get_case"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_stream_tool_capable_but_none_loadable_falls_back():
+    router = LLMRouter()
+    captured = {}
+
+    async def fake_openai_stream(**kwargs):
+        captured.update(kwargs)
+        for ch in ({"type": "text", "content": "fallback"},):
+            yield ch
+
+    router.dispatch_openai_stream = fake_openai_stream
+    _, p_oas = _patch_oas(tools_available=False)
+    with _patch_model_registry(supports_tools=True), p_oas:
+        out = [
+            c
+            async for c in router.dispatch_stream(
+                provider=_openai_spec(),
+                messages=[{"role": "user", "content": "q"}],
+            )
+        ]
+
+    # supports_tools=True but tools_available()=False → no-tools fallback.
+    assert out == [{"type": "text", "content": "fallback"}]
+    assert captured["system_prompt"].startswith("You are Vigil, a concise SOC")
+
+
+@pytest.mark.asyncio
+async def test_dispatch_stream_forwards_service_config_to_engine_ctor():
+    holder, p = _patch_chat_engine()
+    with p:
+        _ = [
+            c
+            async for c in LLMRouter().dispatch_stream(
+                provider=None,
+                messages=[{"role": "user", "content": "hi"}],
+                service_config={"use_mcp_tools": False},
+            )
+        ]
+    assert holder["engine"].init_kwargs["use_backend_tools"] is True  # default
+    assert holder["engine"].init_kwargs["use_mcp_tools"] is False  # override
