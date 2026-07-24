@@ -1741,3 +1741,74 @@ async def test_dispatch_stream_forwards_service_config_to_engine_ctor():
         ]
     assert holder["engine"].init_kwargs["use_backend_tools"] is True  # default
     assert holder["engine"].init_kwargs["use_mcp_tools"] is False  # override
+
+
+# ---- 4a review follow-ups (test-gap closures) ----------------------------
+
+
+@pytest.mark.asyncio
+async def test_dispatch_stream_registry_error_falls_back_to_no_tools():
+    """If the model-registry lookup raises, we must not crash — treat the
+    model as tool-less and use the no-tools router stream."""
+    router = LLMRouter()
+    captured = {}
+
+    async def fake_openai_stream(**kwargs):
+        captured.update(kwargs)
+        for ch in ({"type": "text", "content": "safe"},):
+            yield ch
+
+    router.dispatch_openai_stream = fake_openai_stream
+    reg = MagicMock()
+    reg.get_model_info.side_effect = RuntimeError("registry down")
+    with patch("services.model_registry.ModelRegistry", return_value=reg):
+        out = [
+            c
+            async for c in router.dispatch_stream(
+                provider=_ollama_spec(),
+                messages=[{"role": "user", "content": "q"}],
+            )
+        ]
+
+    assert out == [{"type": "text", "content": "safe"}]
+    assert captured["system_prompt"].startswith("You are Vigil, a concise SOC")
+
+
+@pytest.mark.asyncio
+async def test_chat_anthropic_forwards_explicit_model():
+    holder, p = _patch_chat_engine()
+    with p:
+        await LLMRouter().chat(
+            "hi", provider=_anthropic_spec(), model="claude-3-5-sonnet"
+        )
+    _, kwargs = holder["engine"].chat_calls[0]
+    assert kwargs["model"] == "claude-3-5-sonnet"
+
+
+@pytest.mark.asyncio
+async def test_chat_non_anthropic_assembles_multi_turn_context():
+    router = LLMRouter()
+    router.dispatch = AsyncMock(return_value={"content": "ok"})
+    context = [
+        {"role": "user", "content": "earlier"},
+        {"role": "assistant", "content": "earlier reply"},
+    ]
+    await router.chat("now", provider=_ollama_spec(), context=context)
+
+    _, kwargs = router.dispatch.call_args
+    assert kwargs["messages"] == context + [{"role": "user", "content": "now"}]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_stream_service_config_overrides_use_backend_tools_false():
+    holder, p = _patch_chat_engine()
+    with p:
+        _ = [
+            c
+            async for c in LLMRouter().dispatch_stream(
+                provider=None,
+                messages=[{"role": "user", "content": "hi"}],
+                service_config={"use_backend_tools": False},
+            )
+        ]
+    assert holder["engine"].init_kwargs["use_backend_tools"] is False

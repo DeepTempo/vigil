@@ -656,6 +656,11 @@ class LLMRouter:
         # Anthropic SDK), so run it off the event loop.
         from services.claude_service import ClaudeService
 
+        # Inherit ClaudeService's own ctor defaults (use_backend_tools=False,
+        # etc.); the text callers this shim serves vary, so each passes its own
+        # flags via service_config. This differs from dispatch_stream, which
+        # forces use_backend_tools=True to match the streaming endpoint — the
+        # asymmetry is intentional (review L2).
         svc = ClaudeService(**(service_config or {}))
         chat_kwargs: Dict[str, Any] = {
             "system_prompt": system_prompt,
@@ -781,10 +786,21 @@ class LLMRouter:
         from services.claude_service import ClaudeService
 
         cfg = dict(service_config or {})
+        # Thinking is controlled by the method params (which also flow to
+        # chat_stream below), so drop any service_config copies — otherwise the
+        # ctor and the chat_stream call could disagree (review M2). ``bool()``
+        # matches the endpoint, which resolves enable_thinking before
+        # constructing; None here means "off" (review L1).
+        cfg.pop("enable_thinking", None)
+        cfg.pop("thinking_budget", None)
         svc = ClaudeService(
+            # use_backend_tools defaults True to mirror the streaming endpoint's
+            # ClaudeService(use_backend_tools=True, ...); the text chat() shim
+            # deliberately inherits ClaudeService's own default instead (its
+            # callers vary) — do not "harmonise" the two (review L2).
             use_backend_tools=cfg.pop("use_backend_tools", True),
-            enable_thinking=cfg.pop("enable_thinking", enable_thinking),
-            thinking_budget=cfg.pop("thinking_budget", thinking_budget),
+            enable_thinking=bool(enable_thinking),
+            thinking_budget=thinking_budget,
             **cfg,
         )
         current_message = messages[-1]["content"]
