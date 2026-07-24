@@ -972,3 +972,53 @@ async def test_stream_openai_raw_closes_client_on_early_disconnect():
         await agen.aclose()  # simulate consumer disconnect mid-stream
 
     mock_client.close.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# get_active_provider_spec (#325) — "which provider is live now", any type,
+# not preferring is_default; None on DB error / no active row.
+# ---------------------------------------------------------------------------
+def _stub_first_session(row):
+    """Fake session whose .query(...).filter(...).order_by(...).first() -> row."""
+    session = MagicMock()
+    chain = session.query.return_value.filter.return_value.order_by.return_value
+    chain.first.return_value = row
+    return session
+
+
+def test_get_active_provider_spec_returns_first_active_row():
+    from services import llm_router
+
+    row = SimpleNamespace(
+        provider_id="ollama-local",
+        provider_type="ollama",
+        base_url="http://localhost:11434",
+        api_key_ref=None,
+        default_model="llama3.1:8b",
+        config={},
+    )
+    session = _stub_first_session(row)
+    with patch("database.connection.get_db_session", return_value=session):
+        spec = llm_router.get_active_provider_spec()
+    assert spec is not None
+    assert spec.provider_id == "ollama-local"
+    assert spec.provider_type == "ollama"
+
+
+def test_get_active_provider_spec_returns_none_when_no_active_row():
+    from services import llm_router
+
+    session = _stub_first_session(None)
+    with patch("database.connection.get_db_session", return_value=session):
+        assert llm_router.get_active_provider_spec() is None
+
+
+def test_get_active_provider_spec_returns_none_on_db_error():
+    from services import llm_router
+
+    session = MagicMock()
+    session.query.side_effect = RuntimeError("db down")
+    with patch("database.connection.get_db_session", return_value=session):
+        assert llm_router.get_active_provider_spec() is None
+    # Even on error the session is closed (no leak).
+    session.close.assert_called_once()

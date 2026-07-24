@@ -692,6 +692,39 @@ def get_default_provider_spec() -> Optional[ProviderSpec]:
         session.close()
 
 
+def get_active_provider_spec() -> Optional[ProviderSpec]:
+    """Return a ProviderSpec for the first *active* provider of any type (#325).
+
+    Unlike :func:`get_default_provider_spec`, this does not prefer ``is_default``
+    — it returns the earliest-created ``is_active`` row regardless of provider
+    type or default flag. This is the canonical "which provider is live right
+    now" lookup. Returns ``None`` on any DB error or when no provider is active.
+    """
+    try:
+        from database.connection import get_db_session
+        from database.models import LLMProviderConfig
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("active provider spec DB lookup skipped: %s", exc)
+        return None
+
+    session = get_db_session()
+    try:
+        row = (
+            session.query(LLMProviderConfig)
+            .filter(LLMProviderConfig.is_active.is_(True))
+            .order_by(LLMProviderConfig.created_at)
+            .first()
+        )
+        if row is None:
+            return None
+        return provider_spec_from_row(row)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("active provider spec lookup failed: %s", exc)
+        return None
+    finally:
+        session.close()
+
+
 def discover_anthropic_api_key() -> Optional[str]:
     """Resolve an Anthropic API key from the UI-saved provider rows.
 
