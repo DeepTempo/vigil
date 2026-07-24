@@ -354,6 +354,7 @@ function SocConsoleInner() {
           onWidthCommit={commitChatWidth}
           onResizeStateChange={setChatResizing}
           onSeedConsumed={() => setChatSeed(null)}
+          onNavigate={go}
         />
       </div>
 

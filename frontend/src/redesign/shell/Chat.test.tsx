@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import Chat from './Chat'
+import { streamFetch } from '../../services/api'
 
 vi.mock('./useConversations', () => ({
   useConversations: () => ({ items: [], phase: 'ready', error: null, reload: vi.fn() }),
@@ -101,5 +102,51 @@ describe('Vigil Assistant resize controls', () => {
 
     expect(onWidthChange).toHaveBeenCalledWith(470)
     expect(onWidthCommit).toHaveBeenCalledWith(470)
+  })
+})
+
+/** Build a one-shot SSE ReadableStream-like Response for the chat endpoint. */
+function sseResponse(payloads: object[]) {
+  const text = payloads.map((p) => `data: ${JSON.stringify(p)}\n`).join('\n') + '\n'
+  const chunk = new TextEncoder().encode(text)
+  let sent = false
+  return {
+    ok: true,
+    body: {
+      getReader() {
+        return {
+          read() {
+            if (sent) return Promise.resolve({ done: true, value: undefined })
+            sent = true
+            return Promise.resolve({ done: false, value: chunk })
+          },
+        }
+      },
+    },
+  } as unknown as Response
+}
+
+describe('tool-approval notice (#413 PR3e)', () => {
+  it('surfaces an approval_required event and deep-links to the approvals queue', async () => {
+    vi.mocked(streamFetch).mockResolvedValue(
+      sseResponse([
+        { type: 'approval_required', tool_name: 'isolate_host', action_id: 'ACT-1' },
+        { type: 'text', content: 'Requesting approval to isolate the host.' },
+      ]),
+    )
+    const onNavigate = vi.fn()
+    render(<Chat open onClose={vi.fn()} onNavigate={onNavigate} />)
+
+    const textarea = screen.getByPlaceholderText(/Ask Vigil/i)
+    fireEvent.change(textarea, { target: { value: 'isolate that host' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+
+    // The notice names the tool that paused the run...
+    const notice = await screen.findByText(/needs approval/i)
+    expect(notice.textContent).toMatch(/isolate_host/)
+
+    // ...and its button deep-links to the Decisions/approvals screen in-app.
+    fireEvent.click(screen.getByRole('button', { name: /Pending Approvals/i }))
+    expect(onNavigate).toHaveBeenCalledWith('decisions')
   })
 })

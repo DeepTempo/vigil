@@ -42,11 +42,18 @@ interface ChatAgent {
   color?: string
 }
 type Role = 'user' | 'vigil' | 'error'
+/** A tool the backend held pending human approval (#413 PR3e). */
+interface ApprovalNotice {
+  tool: string
+  actionId?: string
+}
 interface ChatMsg {
   role: Role
   text: string
   thinking?: string
   ms?: number
+  /** Tools this turn paused on, awaiting approval in the Decisions queue. */
+  approvals?: ApprovalNotice[]
 }
 
 /* ---------- reasoning trace (GH #79 — chain-of-thought visibility) ---------- */
@@ -205,7 +212,54 @@ function safeJson(v: unknown): string {
   }
 }
 
-function VigilMessage({ text, thinking, ms }: { text: string; thinking?: string; ms?: number }) {
+/* Inline notice shown when the agent paused on a requires_approval tool.
+   Deep-links to the existing Pending Approvals queue (Decisions screen) where
+   the operator approves/rejects; the backend loop resumes on their decision.
+   Uses onNavigate for in-app routing when provided (SocConsole passes `go`),
+   else falls back to a plain /decisions link so the dock works standalone. */
+function ApprovalPanel({
+  approvals,
+  onNavigate,
+}: {
+  approvals: ApprovalNotice[]
+  onNavigate?: (screen: string) => void
+}) {
+  if (!approvals.length) return null
+  const tools = Array.from(new Set(approvals.map((a) => a.tool)))
+  return (
+    <div className="approval-notice" role="status">
+      <Icon name="shield" size={15} />
+      <span>
+        {tools.length === 1
+          ? `“${tools[0]}” needs approval before it can run.`
+          : `${tools.length} tools need approval before they can run.`}
+      </span>
+      {onNavigate ? (
+        <button type="button" className="btn ghost" onClick={() => onNavigate('decisions')}>
+          Review in Pending Approvals
+        </button>
+      ) : (
+        <a className="btn ghost" href="/decisions">
+          Review in Pending Approvals
+        </a>
+      )}
+    </div>
+  )
+}
+
+function VigilMessage({
+  text,
+  thinking,
+  ms,
+  approvals,
+  onNavigate,
+}: {
+  text: string
+  thinking?: string
+  ms?: number
+  approvals?: ApprovalNotice[]
+  onNavigate?: (screen: string) => void
+}) {
   const [open, setOpen] = useState(false)
   return (
     <div className="msg vigil">
@@ -216,6 +270,9 @@ function VigilMessage({ text, thinking, ms }: { text: string; thinking?: string;
       )}
       {thinking && open && <div className="thinking-body">{thinking}</div>}
       <div className="body"><Markdown>{text}</Markdown></div>
+      {approvals && approvals.length > 0 && (
+        <ApprovalPanel approvals={approvals} onNavigate={onNavigate} />
+      )}
       <div className="msg-actions">
         <button title="Copy" onClick={() => navigator.clipboard?.writeText(text)}><Icon name="copy" size={15} /></button>
         <button title="More"><Icon name="more" size={15} /></button>
@@ -235,6 +292,7 @@ export default function Chat({
   onWidthCommit,
   onResizeStateChange,
   onSeedConsumed,
+  onNavigate,
 }: {
   open: boolean
   onClose: () => void
@@ -248,12 +306,17 @@ export default function Chat({
   onWidthCommit?: (width: number) => void
   onResizeStateChange?: (resizing: boolean) => void
   onSeedConsumed?: () => void
+  /** In-app screen navigation (SocConsole passes its `go`) for deep-links such
+   *  as the Pending Approvals queue. Omitted in standalone renders/tests. */
+  onNavigate?: (screen: string) => void
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
   const [streamText, setStreamText] = useState('')
   const [streamThinking, setStreamThinking] = useState('')
+  // Tools the in-flight turn has paused on, awaiting approval (#413 PR3e).
+  const [streamApprovals, setStreamApprovals] = useState<ApprovalNotice[]>([])
   const [isThinking, setIsThinking] = useState(false)
   // true between a `tool_processing` event and the next `text` chunk — the
   // backend is executing MCP tools, mirroring the classic drawer's indicator
@@ -571,6 +634,7 @@ export default function Chat({
     setLoading(true)
     setStreamText('')
     setStreamThinking('')
+    setStreamApprovals([])
     setIsThinking(false)
     setIsProcessingTools(false)
     const start = Date.now()
@@ -599,6 +663,7 @@ export default function Chat({
       let curText = ''
       let curThinking = ''
       let buf = ''
+      const pendingApprovals: ApprovalNotice[] = []
       if (reader) {
         for (;;) {
           const { done, value } = await reader.read()
@@ -616,6 +681,8 @@ export default function Chat({
               error?: string
               windowed_messages?: number
               remaining_messages?: number
+              tool_name?: string
+              action_id?: string
             }
             try {
               ev = JSON.parse(data)
@@ -624,7 +691,17 @@ export default function Chat({
             }
             if (ev.error || ev.type === 'error')
               throw new Error(ev.error || ev.content || 'stream error')
-            if (ev.type === 'thinking_start') {
+            if (ev.type === 'approval_required') {
+              // A requires_approval tool paused the run; surface the notice
+              // (with a deep-link to the queue) and keep reading — the backend
+              // holds the stream open until an operator decides (#413 PR3e).
+              pendingApprovals.push({
+                tool: ev.tool_name || 'tool',
+                actionId: ev.action_id,
+              })
+              setIsProcessingTools(false)
+              setStreamApprovals([...pendingApprovals])
+            } else if (ev.type === 'thinking_start') {
               setIsThinking(true)
               curThinking = ''
             } else if (ev.type === 'thinking') {
@@ -652,7 +729,16 @@ export default function Chat({
         }
       }
       const ms = Date.now() - start
-      setMessages((m) => [...m, { role: 'vigil', text: curText || '_(no response)_', thinking: curThinking || undefined, ms }])
+      setMessages((m) => [
+        ...m,
+        {
+          role: 'vigil',
+          text: curText || '_(no response)_',
+          thinking: curThinking || undefined,
+          ms,
+          approvals: pendingApprovals.length ? pendingApprovals : undefined,
+        },
+      ])
       // Fire a desktop notification on completion, matching the classic
       // drawer (which notifies when an investigation-seeded thread finishes).
       // Gated inside notificationService by the `show_notifications` setting +
@@ -1020,7 +1106,14 @@ export default function Chat({
           ) : m.role === 'error' ? (
             <div className="msg vigil err" key={i}><div className="body">{m.text}</div></div>
           ) : (
-            <VigilMessage key={i} text={m.text} thinking={m.thinking} ms={m.ms} />
+            <VigilMessage
+              key={i}
+              text={m.text}
+              thinking={m.thinking}
+              ms={m.ms}
+              approvals={m.approvals}
+              onNavigate={onNavigate}
+            />
           )
         )}
         {loading && (
@@ -1042,6 +1135,9 @@ export default function Chat({
             </div>
             {isThinking && streamThinking && <div className="thinking-body">{streamThinking}</div>}
             {streamText && <div className="body"><Markdown>{streamText}</Markdown></div>}
+            {streamApprovals.length > 0 && (
+              <ApprovalPanel approvals={streamApprovals} onNavigate={onNavigate} />
+            )}
           </div>
         )}
       </div>
