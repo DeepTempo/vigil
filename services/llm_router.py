@@ -9,7 +9,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -449,6 +449,89 @@ class LLMRouter:
                 "dispatch persistence scheduling failed (non-fatal): %s", exc
             )
         return result
+
+    # ---- Agent SDK passthrough (#413 PR3d) -------------------------------
+
+    def _build_agent_sdk_engine(self, agent_config: Optional[Dict[str, Any]]):
+        """Construct the Anthropic Agent SDK engine for a single agentic run.
+
+        The Claude Agent SDK is Anthropic-only, so this passthrough always
+        builds the engine with ``use_agent_sdk=True``. Construction flags are
+        read from ``agent_config`` (falling back to the defaults today's
+        callers use — backend tools + MCP on, thinking off) so that when the
+        callers migrate in PR4 they can reproduce their exact engine setup
+        WITHOUT importing ``ClaudeService`` themselves; the extra keys are
+        ignored by ``run_agent_task``/``agent_query`` which read only their own
+        parameters. The import is lazy to keep the heavy ``claude_service``
+        module (and the Anthropic SDK) off the router's hot path and out of
+        module-load import — and it is intentional that ``llm_router`` is the
+        one place allowed to import ``claude_service`` (that is the #413
+        boundary end-state, enforced by the PR5 import contract).
+        """
+        from services.claude_service import ClaudeService
+
+        cfg = agent_config or {}
+        return ClaudeService(
+            use_backend_tools=cfg.get("use_backend_tools", True),
+            use_mcp_tools=cfg.get("use_mcp_tools", True),
+            use_agent_sdk=True,
+            enable_thinking=cfg.get("enable_thinking", False),
+            thinking_budget=cfg.get("thinking_budget", 10000),
+            provider_api_key_ref=cfg.get("provider_api_key_ref"),
+        )
+
+    async def run_agent_task(
+        self,
+        task: str,
+        agent_config: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Run an agentic task via the Anthropic Agent SDK, behind LLMRouter.
+
+        Behaviour-preserving passthrough to ``ClaudeService.run_agent_task``:
+        returns the same ``{task, tool_calls, final_result, success, error?}``
+        contract dict verbatim. Anthropic-only by design — when the SDK is
+        unavailable or no Anthropic key is configured, the engine itself
+        returns ``success=False`` with an ``error`` string; the router forwards
+        that untouched rather than raising. (Running agentic tasks on
+        non-Anthropic providers is the loop-controller path from 3a/3b, not
+        this method — see follow-up issue #445.)
+        """
+        engine = self._build_agent_sdk_engine(agent_config)
+        return await engine.run_agent_task(
+            task=task, agent_config=agent_config, session_id=session_id
+        )
+
+    async def run_agent_stream(
+        self,
+        prompt: str,
+        *,
+        system_prompt: Optional[str] = None,
+        allowed_tools: Optional[List[str]] = None,
+        max_turns: int = 10,
+        session_id: Optional[str] = None,
+        model: Optional[str] = None,
+        agent_config: Optional[Dict[str, Any]] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream an agentic task's events via the Anthropic Agent SDK.
+
+        Passthrough to ``ClaudeService.agent_query`` for the ``/agent/stream``
+        endpoint; yields the SDK event dicts verbatim. ``model`` is only
+        forwarded when provided, so we never clobber ``agent_query``'s own
+        default with ``None``.
+        """
+        engine = self._build_agent_sdk_engine(agent_config)
+        kwargs: Dict[str, Any] = {
+            "prompt": prompt,
+            "system_prompt": system_prompt,
+            "allowed_tools": allowed_tools,
+            "max_turns": max_turns,
+            "session_id": session_id,
+        }
+        if model is not None:
+            kwargs["model"] = model
+        async for event in engine.agent_query(**kwargs):
+            yield event
 
     # ---- backends --------------------------------------------------------
 

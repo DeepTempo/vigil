@@ -1238,3 +1238,213 @@ async def test_dispatch_row_omits_vk_when_enforcement_off(captured_interaction_r
         )
 
     assert captured_interaction_rows[0].virtual_key_id is None
+
+
+# ---------------------------------------------------------------------------
+# Agent SDK passthrough (#413 PR3d)
+#
+# The Claude Agent SDK path (run_agent_task + the streaming agent_query) is
+# Anthropic-only and lives in ClaudeService. 3d folds it behind LLMRouter as a
+# behaviour-preserving passthrough so callers stop importing ClaudeService
+# (caller migration itself is PR4). The router builds the SDK engine per call
+# with use_agent_sdk=True and defaults matching today's callers; construction
+# flags are overridable via agent_config so PR4 stays a mechanical swap.
+# ---------------------------------------------------------------------------
+
+
+class _FakeSDKEngine:
+    """Stand-in for ClaudeService(use_agent_sdk=True) — records construction
+    kwargs and delegated calls so the passthrough tests can assert fidelity."""
+
+    def __init__(self, **kwargs):
+        self.init_kwargs = kwargs
+        self.task_calls = []
+        self.query_kwargs = None
+
+    async def run_agent_task(self, task, agent_config=None, session_id=None):
+        self.task_calls.append((task, agent_config, session_id))
+        return {
+            "task": task,
+            "tool_calls": [{"tool": "get_case", "input": {}}],
+            "final_result": "investigation complete",
+            "success": True,
+        }
+
+    async def agent_query(
+        self,
+        prompt,
+        system_prompt=None,
+        allowed_tools=None,
+        max_turns=10,
+        session_id=None,
+        model="unset",
+    ):
+        self.query_kwargs = dict(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            allowed_tools=allowed_tools,
+            max_turns=max_turns,
+            session_id=session_id,
+            model=model,
+        )
+        for ev in (
+            {"type": "tool_use", "tool": "get_case"},
+            {"type": "result", "content": "done"},
+        ):
+            yield ev
+
+
+def _patch_sdk_engine():
+    """Patch the router's lazily-imported ClaudeService with a factory that
+    stashes the constructed fake engine for inspection."""
+    holder: dict = {}
+
+    def factory(**kwargs):
+        engine = _FakeSDKEngine(**kwargs)
+        holder["engine"] = engine
+        return engine
+
+    return holder, patch("services.claude_service.ClaudeService", factory)
+
+
+@pytest.mark.asyncio
+async def test_run_agent_task_delegates_to_anthropic_sdk_engine():
+    holder, p = _patch_sdk_engine()
+    with p:
+        out = await LLMRouter().run_agent_task(
+            task="triage finding F1",
+            agent_config={"system_prompt": "be careful", "model": "claude-x"},
+            session_id="s1",
+        )
+
+    # Contract dict returned unchanged.
+    assert out["success"] is True
+    assert out["final_result"] == "investigation complete"
+    assert out["tool_calls"] == [{"tool": "get_case", "input": {}}]
+    # Engine built with the Agent SDK on; delegation forwarded verbatim.
+    assert holder["engine"].init_kwargs["use_agent_sdk"] is True
+    assert holder["engine"].task_calls == [
+        (
+            "triage finding F1",
+            {"system_prompt": "be careful", "model": "claude-x"},
+            "s1",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_agent_task_construction_flags_come_from_config():
+    holder, p = _patch_sdk_engine()
+    with p:
+        await LLMRouter().run_agent_task(
+            task="t",
+            agent_config={
+                "use_mcp_tools": True,
+                "enable_thinking": True,
+                "use_backend_tools": True,
+            },
+        )
+    k = holder["engine"].init_kwargs
+    assert k["use_mcp_tools"] is True
+    assert k["enable_thinking"] is True
+    assert k["use_backend_tools"] is True
+    assert k["use_agent_sdk"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_agent_task_defaults_match_current_callers():
+    holder, p = _patch_sdk_engine()
+    with p:
+        await LLMRouter().run_agent_task(task="t")
+    k = holder["engine"].init_kwargs
+    # Behaviour-preserving defaults: backend tools + MCP on, thinking off.
+    assert k["use_backend_tools"] is True
+    assert k["use_mcp_tools"] is True
+    assert k["enable_thinking"] is False
+    assert k["use_agent_sdk"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_agent_task_passes_through_engine_error_dict():
+    """Anthropic-only: when the SDK/engine can't run (e.g. no API key) the
+    engine returns success=False; the router forwards it untouched — it does
+    not raise or transform (behaviour-preserving)."""
+
+    class _ErrEngine(_FakeSDKEngine):
+        async def run_agent_task(self, task, agent_config=None, session_id=None):
+            return {
+                "task": task,
+                "tool_calls": [],
+                "final_result": "",
+                "success": False,
+                "error": "API key not configured",
+            }
+
+    with patch("services.claude_service.ClaudeService", lambda **k: _ErrEngine(**k)):
+        out = await LLMRouter().run_agent_task(task="t")
+    assert out["success"] is False
+    assert out["error"] == "API key not configured"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_task_mixed_config_keys_no_collision():
+    """agent_config carries BOTH engine-construction hints and run params in a
+    single dict: the hints must reach the constructor, AND the full dict (run
+    params + hints) must still reach engine.run_agent_task untouched — no key
+    is dropped or collides."""
+    holder, p = _patch_sdk_engine()
+    cfg = {
+        "use_mcp_tools": False,
+        "enable_thinking": True,
+        "system_prompt": "sp",
+        "model": "claude-z",
+        "max_turns": 3,
+    }
+    with p:
+        await LLMRouter().run_agent_task(task="t", agent_config=cfg, session_id="s")
+
+    # Construction hints reached the constructor.
+    assert holder["engine"].init_kwargs["use_mcp_tools"] is False
+    assert holder["engine"].init_kwargs["enable_thinking"] is True
+    # The full dict (hints + run params) reached run_agent_task verbatim.
+    assert holder["engine"].task_calls == [("t", cfg, "s")]
+
+
+@pytest.mark.asyncio
+async def test_run_agent_stream_delegates_and_yields_events_verbatim():
+    holder, p = _patch_sdk_engine()
+    with p:
+        events = [
+            ev
+            async for ev in LLMRouter().run_agent_stream(
+                prompt="hunt",
+                system_prompt="sp",
+                allowed_tools=["get_case"],
+                max_turns=7,
+                session_id="s2",
+                model="claude-y",
+            )
+        ]
+
+    assert events == [
+        {"type": "tool_use", "tool": "get_case"},
+        {"type": "result", "content": "done"},
+    ]
+    qk = holder["engine"].query_kwargs
+    assert qk["prompt"] == "hunt"
+    assert qk["allowed_tools"] == ["get_case"]
+    assert qk["max_turns"] == 7
+    assert qk["session_id"] == "s2"
+    assert qk["model"] == "claude-y"
+    assert holder["engine"].init_kwargs["use_agent_sdk"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_agent_stream_omits_model_when_not_given():
+    """If no model is passed, the router must NOT override agent_query's own
+    default with None."""
+    holder, p = _patch_sdk_engine()
+    with p:
+        _ = [ev async for ev in LLMRouter().run_agent_stream(prompt="x")]
+    # Fake's agent_query default is "unset"; router left it untouched.
+    assert holder["engine"].query_kwargs["model"] == "unset"
