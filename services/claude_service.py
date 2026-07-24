@@ -1907,10 +1907,12 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             # the local LLMInteractionLog row this method writes below.
             # Bifrost captures any `x-bf-lh-*` header into LogEntry.metadata.
             _interaction_id = str(uuid.uuid4())
+            from services.llm_router import _bifrost_headers
+
             _existing_extra = api_kwargs.get("extra_headers") or {}
             api_kwargs["extra_headers"] = {
                 **_existing_extra,
-                "x-bf-lh-vigil-interaction-id": _interaction_id,
+                **_bifrost_headers(_interaction_id),
             }
 
             logger.debug(f"🚀 Making API call with {len(messages)} messages")
@@ -2147,9 +2149,11 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                         # each upstream Bifrost call gets its own log row that
                         # correlates back to the matching local interaction.
                         _round_interaction_id = str(uuid.uuid4())
+                        from services.llm_router import _bifrost_headers
+
                         api_kwargs["extra_headers"] = {
                             **(api_kwargs.get("extra_headers") or {}),
-                            "x-bf-lh-vigil-interaction-id": _round_interaction_id,
+                            **_bifrost_headers(_round_interaction_id),
                         }
                         _fr_started = _time.monotonic()
                         final_response = self.client.messages.create(**api_kwargs)

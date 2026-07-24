@@ -724,3 +724,26 @@ class TestAnthropicExecuteTools:
         assert messages[-2] == turn.assistant_message  # assistant appended first
         # No approval gate on this path today: never halts, never waits.
         assert phase.halt is False and phase.waited == 0.0
+
+
+class TestAnthropicHeaders:
+    """B (#413/PR3c-1): the Anthropic engine routes headers through the shared
+    _bifrost_headers builder, so the budget virtual-key header rides along."""
+
+    def test_build_api_kwargs_includes_vk_when_budget_enforced(self):
+        engine = _anthropic_engine(MagicMock())
+        with patch("services.budget_service.should_enforce", return_value=True), patch(
+            "services.budget_service.get_active_vk", return_value="vk-123"
+        ):
+            kw = engine._build_api_kwargs("iid-1")
+        headers = kw["extra_headers"]
+        assert headers["x-bf-lh-vigil-interaction-id"] == "iid-1"
+        assert headers["x-bf-vk"] == "vk-123"
+
+    def test_build_api_kwargs_omits_vk_when_enforcement_off(self):
+        engine = _anthropic_engine(MagicMock())
+        with patch("services.budget_service.should_enforce", return_value=False):
+            kw = engine._build_api_kwargs("iid-2")
+        headers = kw["extra_headers"]
+        assert headers["x-bf-lh-vigil-interaction-id"] == "iid-2"
+        assert "x-bf-vk" not in headers

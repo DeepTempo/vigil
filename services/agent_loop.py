@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, Union
 
 from services.llm_format import anthropic_messages_to_openai
-from services.llm_router import LLMRouter, ProviderSpec
+from services.llm_router import LLMRouter, ProviderSpec, _bifrost_headers
 
 logger = logging.getLogger(__name__)
 
@@ -596,7 +596,10 @@ class AnthropicTurnEngine:
             api_kwargs["thinking"] = self._thinking_config
         # #185: fresh interaction UUID per streaming iteration so each upstream
         # Bifrost call lands its own log row correlated with the local one.
-        api_kwargs["extra_headers"] = {"x-bf-lh-vigil-interaction-id": interaction_id}
+        # Route through the shared header builder so the budget virtual-key
+        # header (x-bf-vk) rides along too — previously this hand-rolled dict
+        # set only the interaction id and dropped x-bf-vk (R8).
+        api_kwargs["extra_headers"] = _bifrost_headers(interaction_id)
         return api_kwargs
 
     async def stream_turn(
