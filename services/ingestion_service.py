@@ -35,6 +35,36 @@ MITRE_TACTIC_MAP = {
     11: 'Privilege Escalation', 12: 'Exfiltration',
 }
 
+# 64 bits. The old 8 chars gave 32, where a 200k-row file is near-certain to
+# collide and every collision is silently reported as a duplicate.
+ID_HASH_WIDTH = 16
+
+# Columns identifying a row when the source carries no id of its own, ordered
+# most to least selective.
+PARQUET_IDENTITY_COLUMNS = (
+    'embedding', 'event_start_time', 'event_end_time', 'focal_ip', 'engaged_ip',
+)
+TEMPO_CSV_IDENTITY_COLUMNS = (
+    'event_start', 'event_end', 'IP1', 'IP2', 'mitre_tactic', 'created_at',
+)
+
+
+def row_identity_key(row: Dict[str, Any], columns: tuple) -> str:
+    """Digest a row's identifying columns, for sources with no id column.
+
+    Content-derived so re-ingesting the same file still dedupes, while rows
+    that differ in any identifying column stay distinct.
+    """
+    parts = []
+    for column in columns:
+        value = row.get(column)
+        if isinstance(value, (list, tuple)):
+            value = hashlib.sha256(
+                ','.join(repr(v) for v in value).encode()
+            ).hexdigest()
+        parts.append(f"{column}={value!r}")
+    return '|'.join(parts)
+
 
 class IngestionService:
     """Service for ingesting data from various formats into the database."""
@@ -71,7 +101,25 @@ class IngestionService:
             'cases_skipped': 0,
             'cases_errors': 0,
         }
-    
+        self._identity_warned: set = set()
+
+    def _identity_fallback(
+        self,
+        row: Dict[str, Any],
+        columns: tuple,
+        missing_column: str
+    ) -> str:
+        """Content-derived id key for a row whose id column is absent."""
+        if missing_column not in self._identity_warned:
+            self._identity_warned.add(missing_column)
+            logger.warning(
+                "No '%s' column in this source; deriving finding ids from row "
+                "content (%s). Rows identical across those columns will dedupe.",
+                missing_column,
+                ', '.join(columns),
+            )
+        return row_identity_key(row, columns)
+
     def reset_stats(self):
         """Reset ingestion statistics."""
         for key in self.stats:
@@ -538,17 +586,22 @@ class IngestionService:
             sequence_id, attack_id, IP1, IP2, mitre_tactic,
             incident_confidence, event_start, event_end, created_at, user_feedback
         """
-        sequence_id = str(row.get('sequence_id', ''))
+        sequence_id = str(row.get('sequence_id') or '').strip()
 
         # Parse event_start as timestamp
         event_start_str = row.get('event_start', '')
         event_ts = self.parse_timestamp(event_start_str) if event_start_str else datetime.utcnow()
 
-        # Generate finding_id from sequence_id + attack_id to ensure uniqueness
-        # when the same sequence appears with different attack clusters
-        attack_id = row.get('attack_id', '').strip()
-        unique_key = f"{sequence_id}_{attack_id}" if attack_id else sequence_id
-        id_hash = hashlib.sha256(unique_key.encode()).hexdigest()[:8]
+        # sequence_id + attack_id keeps the same sequence distinct across
+        # attack clusters; content identity covers rows carrying neither.
+        attack_id = (row.get('attack_id') or '').strip()
+        if sequence_id:
+            unique_key = f"{sequence_id}_{attack_id}" if attack_id else sequence_id
+        else:
+            unique_key = self._identity_fallback(
+                row, TEMPO_CSV_IDENTITY_COLUMNS, 'sequence_id'
+            )
+        id_hash = hashlib.sha256(unique_key.encode()).hexdigest()[:ID_HASH_WIDTH]
         finding_id = f"f-{event_ts.strftime('%Y%m%d')}-{id_hash}"
 
         # MITRE tactic comes as a name (e.g. "Command and Control")
@@ -729,7 +782,7 @@ class IngestionService:
         Returns:
             Finding dictionary ready for ingest_finding()
         """
-        sequence_id = str(row.get('sequence_id', ''))
+        sequence_id = str(row.get('sequence_id') or '')
 
         # Derive event timestamp from event_start_time (epoch milliseconds)
         event_start_ms = row.get('event_start_time')
@@ -738,8 +791,10 @@ class IngestionService:
         else:
             event_ts = datetime.utcnow()
 
-        # Generate finding_id: f-{YYYYMMDD}-{8-char hash of sequence_id}
-        id_hash = hashlib.sha256(sequence_id.encode()).hexdigest()[:8]
+        unique_key = sequence_id or self._identity_fallback(
+            row, PARQUET_IDENTITY_COLUMNS, 'sequence_id'
+        )
+        id_hash = hashlib.sha256(unique_key.encode()).hexdigest()[:ID_HASH_WIDTH]
         finding_id = f"f-{event_ts.strftime('%Y%m%d')}-{id_hash}"
 
         # Embedding: stored as-is regardless of dimension
