@@ -312,7 +312,7 @@ class _FakeRow:
 def _reset_registry_state():
     from services import model_registry
 
-    model_registry._MODEL_LIST_CACHE.invalidate()
+    model_registry._MODEL_LIST_CACHE.clear()
     model_registry._EXTRA_IDS.clear()
     model_registry.clear_live_meta()
 
@@ -322,10 +322,7 @@ def test_fetch_provider_models_reads_cache():
     from services import model_registry
 
     _reset_registry_state()
-    model_registry._MODEL_LIST_CACHE.set(
-        "p1",
-        ["model-a", "model-b", "model-c"],
-    )
+    model_registry._MODEL_LIST_CACHE["p1"] = ["model-a", "model-b", "model-c"]
     result = asyncio.run(model_registry.fetch_provider_models(_FakeRow("anthropic")))
     assert result == ["model-a", "model-b", "model-c"]
     _reset_registry_state()
@@ -342,10 +339,7 @@ def test_fetch_provider_models_lazy_sync_on_miss(monkeypatch):
     async def fake_sync():
         call_count["n"] += 1
         # Simulate the sync populating the cache.
-        model_registry._MODEL_LIST_CACHE.set(
-            "p1",
-            ["from-sync-a", "from-sync-b"],
-        )
+        model_registry._MODEL_LIST_CACHE["p1"] = ["from-sync-a", "from-sync-b"]
         return {"bifrost": {}, "models_by_provider": {}}
 
     # The lazy-sync import is inside the function, so patch the attribute

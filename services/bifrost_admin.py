@@ -366,7 +366,7 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
 
             # Single-writer: populate the dropdown cache with this row's
             # list. ``fetch_provider_models`` reads this same key.
-            _MODEL_LIST_CACHE.set(row_dict["provider_id"], row_ids)
+            _MODEL_LIST_CACHE[row_dict["provider_id"]] = row_ids
             per_row_models[row_dict["provider_id"]] = row_ids
 
             # Contribute to the per-type union for Bifrost.
