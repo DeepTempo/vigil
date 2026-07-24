@@ -1022,3 +1022,219 @@ def test_get_active_provider_spec_returns_none_on_db_error():
         assert llm_router.get_active_provider_spec() is None
     # Even on error the session is closed (no leak).
     session.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# dispatch() thin persistence (#413 PR3c-2 / risk R3)
+#
+# Before 3c-2 the router's single-turn dispatch() path wrote NO analytics row
+# (LLMInteractionLog was only written on the engine paths and the worker's
+# SDK-fallback path). These tests pin the new behaviour: every dispatch() —
+# chat, findings enrichment, and the daemon/worker router path — persists a
+# THIN row (provider/model/tokens/cost/interaction_id), priced by the *real*
+# provider, and can never break the request path when the DB is unavailable.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def captured_interaction_rows():
+    """Keep every dispatch test hermetic and expose persisted rows.
+
+    dispatch() now writes an LLMInteractionLog via
+    ``database.connection.get_db_manager().session_scope()``. Stub that handle
+    so no dispatch test touches a real database, and hand back the list of rows
+    added so the persistence tests can assert on them.
+    """
+    rows: list = []
+
+    class _Session:
+        def add(self, row):
+            rows.append(row)
+
+    class _Scope:
+        def __enter__(self):
+            return _Session()
+
+        def __exit__(self, *exc):
+            return False
+
+    class _Manager:
+        def session_scope(self):
+            return _Scope()
+
+    with patch("database.connection.get_db_manager", return_value=_Manager()):
+        yield rows
+
+
+def _bifrost_resp(content="hi there", model="ollama/llama3.1:8b", pt=11, ct=22):
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content=content, tool_calls=None))
+        ],
+        model=model,
+        usage=SimpleNamespace(prompt_tokens=pt, completion_tokens=ct),
+    )
+
+
+def _mock_openai_client(resp):
+    client = MagicMock()
+    client.close = AsyncMock()
+    client.chat.completions.create = AsyncMock(return_value=resp)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_dispatch_persists_thin_row_bifrost(captured_interaction_rows):
+    router = LLMRouter(bifrost_url="http://test-bifrost:8080")
+    client = _mock_openai_client(_bifrost_resp())
+    with patch("openai.AsyncOpenAI", return_value=client):
+        await router.dispatch(
+            provider=_ollama_spec(),
+            messages=[{"role": "user", "content": "hi"}],
+            interaction_id="iid-bifrost-1",
+        )
+
+    assert len(captured_interaction_rows) == 1
+    row = captured_interaction_rows[0]
+    assert row.interaction_id == "iid-bifrost-1"
+    assert row.model == "ollama/llama3.1:8b"
+    assert row.input_tokens == 11
+    assert row.output_tokens == 22
+    assert row.response_content == "hi there"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_persists_thin_row_anthropic(captured_interaction_rows):
+    router = LLMRouter(bifrost_url="http://test-bifrost:8080")
+    fake_resp = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="the answer")],
+        model="claude-sonnet-4-5-20250929",
+        usage=SimpleNamespace(
+            input_tokens=12,
+            output_tokens=34,
+            cache_read_input_tokens=5,
+            cache_creation_input_tokens=0,
+        ),
+    )
+    mock_client = MagicMock()
+    mock_client.close = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=fake_resp)
+
+    with patch("anthropic.AsyncAnthropic", return_value=mock_client), patch(
+        "services.llm_router.get_secret", return_value="sk-ant-fake"
+    ), patch.dict("os.environ", {"BIFROST_URL": "http://test-bifrost:8080"}):
+        await router.dispatch(
+            provider=_anthropic_spec(),
+            messages=[{"role": "user", "content": "ponder"}],
+            interaction_id="iid-anthropic-1",
+        )
+
+    # R3 must close for ALL providers, not just the Bifrost/OpenAI branch.
+    assert len(captured_interaction_rows) == 1
+    row = captured_interaction_rows[0]
+    assert row.interaction_id == "iid-anthropic-1"
+    assert row.model == "claude-sonnet-4-5-20250929"
+    assert row.input_tokens == 12
+    assert row.output_tokens == 34
+    assert row.cache_read_tokens == 5
+
+
+@pytest.mark.asyncio
+async def test_dispatch_generates_interaction_id_when_caller_omits_it(
+    captured_interaction_rows,
+):
+    """findings.py enrichment calls dispatch() with no interaction_id. The row
+    must still get a unique id (fresh UUID) so analytics never drops the call."""
+    router = LLMRouter(bifrost_url="http://test-bifrost:8080")
+    client = _mock_openai_client(_bifrost_resp())
+    with patch("openai.AsyncOpenAI", return_value=client):
+        await router.dispatch(
+            provider=_ollama_spec(),
+            messages=[{"role": "user", "content": "hi"}],
+        )
+
+    row = captured_interaction_rows[0]
+    # A uuid4 string is 36 chars; the point is simply "non-empty and unique".
+    assert isinstance(row.interaction_id, str) and len(row.interaction_id) >= 32
+
+
+@pytest.mark.asyncio
+async def test_dispatch_prices_row_with_real_provider_not_hardcoded_anthropic(
+    captured_interaction_rows,
+):
+    """The legacy rich helper hardcodes 'anthropic' into compute_call_cost; an
+    Ollama/OpenAI row priced that way is wrong. The router writer must pass the
+    dispatch result's real provider_type."""
+    router = LLMRouter(bifrost_url="http://test-bifrost:8080")
+    client = _mock_openai_client(_bifrost_resp())
+    ccc = MagicMock(return_value=0.0)
+    with patch("openai.AsyncOpenAI", return_value=client), patch(
+        "daemon.agent_runner.compute_call_cost", ccc
+    ):
+        await router.dispatch(
+            provider=_ollama_spec(),
+            messages=[{"role": "user", "content": "hi"}],
+            interaction_id="iid-cost",
+        )
+
+    ccc.assert_called_once()
+    # compute_call_cost(model, provider_type, input, output, ...)
+    assert ccc.call_args.args[1] == "ollama"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_persist_failure_is_non_fatal(captured_interaction_rows):
+    """Persistence is fire-and-forget: a DB error must never break dispatch."""
+    router = LLMRouter(bifrost_url="http://test-bifrost:8080")
+    client = _mock_openai_client(_bifrost_resp(content="still works"))
+    with patch("openai.AsyncOpenAI", return_value=client), patch(
+        "database.connection.get_db_manager", side_effect=RuntimeError("db down")
+    ):
+        out = await router.dispatch(
+            provider=_ollama_spec(),
+            messages=[{"role": "user", "content": "hi"}],
+            interaction_id="iid-fail",
+        )
+
+    assert out["content"] == "still works"
+    assert captured_interaction_rows == []  # nothing persisted, no crash
+
+
+@pytest.mark.asyncio
+async def test_dispatch_row_is_thin_no_request_body(captured_interaction_rows):
+    """'Thin' means we do not duplicate the heavy request body — request_messages
+    stays empty and system_prompt None. The rich engine rows keep the full body."""
+    router = LLMRouter(bifrost_url="http://test-bifrost:8080")
+    client = _mock_openai_client(_bifrost_resp())
+    with patch("openai.AsyncOpenAI", return_value=client):
+        await router.dispatch(
+            provider=_ollama_spec(),
+            messages=[{"role": "user", "content": "secret payload"}],
+            system_prompt="a long system prompt",
+            interaction_id="iid-thin",
+        )
+
+    row = captured_interaction_rows[0]
+    assert row.request_messages == []
+    assert row.system_prompt is None
+
+
+@pytest.mark.asyncio
+async def test_dispatch_row_omits_vk_when_enforcement_off(captured_interaction_rows):
+    """virtual_key_id must be NULL when budget enforcement is off (DEV_MODE /
+    LLM_BUDGET_UNLIMITED): no x-bf-vk header is sent, so no VK serviced the
+    call and the row must not misattribute spend to a default VK."""
+    router = LLMRouter(bifrost_url="http://test-bifrost:8080")
+    client = _mock_openai_client(_bifrost_resp())
+    with patch("openai.AsyncOpenAI", return_value=client), patch(
+        "services.budget_service.should_enforce", return_value=False
+    ), patch(
+        "services.budget_service.get_active_vk", return_value="vk-should-be-ignored"
+    ):
+        await router.dispatch(
+            provider=_ollama_spec(),
+            messages=[{"role": "user", "content": "hi"}],
+            interaction_id="iid-vk",
+        )
+
+    assert captured_interaction_rows[0].virtual_key_id is None

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import sys
+import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
@@ -256,6 +259,90 @@ def _pre_dispatch_sanitize(
     return wrapped, system_prompt
 
 
+def _persist_dispatch_row(
+    result: Dict[str, Any],
+    *,
+    interaction_id: Optional[str],
+    duration_ms: int,
+) -> None:
+    """Best-effort insert of a THIN ``LLMInteractionLog`` row for a single
+    ``dispatch()`` call (#413 PR3c-2, closes risk R3).
+
+    The engine paths (``chat_stream``, ``OpenAIAgentService``, the worker's
+    Anthropic-SDK fallback) already write rich rows carrying the full request
+    and response bodies. ``dispatch()`` is the provider-agnostic single-turn
+    transport, which until now persisted nothing — so its callers
+    (chat on a non-default provider, findings enrichment, and the daemon/worker
+    router path) silently produced no cost analytics. This writer records only
+    what analytics needs — provider/model, token counts, cost, and the Bifrost
+    interaction-id — and deliberately NOT the request body (that would duplicate
+    the engine rows and store the raw prompt). Cost is priced by the dispatch
+    result's *real* provider, not hardcoded to Anthropic. Failures are logged,
+    never raised, so persistence can never break the request path.
+    """
+    try:
+        from database.connection import get_db_manager
+        from database.models import LLMInteractionLog
+
+        provider = result.get("provider")
+        model = result.get("model") or ""
+        input_tokens = int(result.get("input_tokens") or 0)
+        output_tokens = int(result.get("output_tokens") or 0)
+        cache_read = int(result.get("cache_read_tokens") or 0)
+        cache_creation = int(result.get("cache_creation_tokens") or 0)
+
+        try:
+            from daemon.agent_runner import compute_call_cost
+
+            cost_usd = compute_call_cost(
+                model,
+                provider,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens=cache_read,
+                cache_creation_tokens=cache_creation,
+            )
+        except Exception:  # noqa: BLE001
+            cost_usd = 0.0
+
+        # #186: capture which Bifrost VK serviced this call for per-VK spend.
+        # Only record it when budget enforcement is on — that's exactly when a
+        # VK header (`x-bf-vk`) was actually attached (see _bifrost_headers). In
+        # DEV_MODE / LLM_BUDGET_UNLIMITED no VK services the call, so the column
+        # must stay NULL rather than misattribute spend to a default VK.
+        try:
+            from services.budget_service import get_active_vk, should_enforce
+
+            _vk = get_active_vk() if should_enforce() else None
+        except Exception:  # noqa: BLE001
+            _vk = None
+
+        row = LLMInteractionLog(
+            # Reuse the caller's interaction_id (the same UUID sent to Bifrost
+            # as x-bf-lh-vigil-interaction-id) so the local row correlates with
+            # the Bifrost log entry; fall back to a fresh UUID for callers
+            # (e.g. findings enrichment) that don't supply one.
+            interaction_id=interaction_id or str(uuid.uuid4()),
+            model=model,
+            request_messages=[],  # thin: the engine rows persist the full body
+            system_prompt=None,
+            response_content=(result.get("content") or None),
+            tool_calls=result.get("tool_calls") or [],
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read,
+            cache_creation_tokens=cache_creation,
+            cost_usd=float(cost_usd or 0.0),
+            duration_ms=int(duration_ms or 0),
+            virtual_key_id=_vk,
+        )
+        db_manager = get_db_manager()
+        with db_manager.session_scope() as session:
+            session.add(row)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("dispatch LLMInteractionLog persist failed (non-fatal): %s", exc)
+
+
 class LLMRouter:
     """Dispatches chat completions through the Bifrost gateway.
 
@@ -314,8 +401,9 @@ class LLMRouter:
         extra_headers_or_none: Optional[Dict[str, str]] = (
             extra_headers if extra_headers else None
         )
+        started = time.monotonic()
         if provider.provider_type == "anthropic":
-            return await _wrap_budget_errors(
+            result = await _wrap_budget_errors(
                 self._dispatch_anthropic(
                     provider=provider,
                     messages=messages,
@@ -328,18 +416,39 @@ class LLMRouter:
                     extra_headers=extra_headers_or_none,
                 )
             )
-        return await _wrap_budget_errors(
-            self._dispatch_bifrost_openai(
-                provider=provider,
-                messages=messages,
-                system_prompt=system_prompt,
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                tools=tools,
-                extra_headers=extra_headers_or_none,
+        else:
+            result = await _wrap_budget_errors(
+                self._dispatch_bifrost_openai(
+                    provider=provider,
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    tools=tools,
+                    extra_headers=extra_headers_or_none,
+                )
             )
-        )
+
+        # R3: persist a thin analytics row for this single-turn dispatch. The
+        # DB insert is awaited but offloaded to a worker thread so it never
+        # blocks the event loop, and it can never break the request path (the
+        # writer swallows its own errors, and we also guard the scheduling
+        # here). A single local INSERT is sub-millisecond; the daemon tool loop
+        # pays it once per turn, dwarfed by per-turn LLM latency.
+        duration_ms = int((time.monotonic() - started) * 1000)
+        try:
+            await asyncio.to_thread(
+                _persist_dispatch_row,
+                result,
+                interaction_id=interaction_id,
+                duration_ms=duration_ms,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "dispatch persistence scheduling failed (non-fatal): %s", exc
+            )
+        return result
 
     # ---- backends --------------------------------------------------------
 
