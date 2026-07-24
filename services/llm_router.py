@@ -40,39 +40,51 @@ def _classify_tier(status_code: Optional[int], body: str) -> str:
     return "unknown"
 
 
+def _maybe_budget_exceeded(exc: Exception):
+    """Translate a Bifrost budget/rate-limit error into ``BudgetExceeded``.
+
+    Returns a ``services.budget_service.BudgetExceeded`` when ``exc`` carries a
+    402/429 ``status_code`` (the Anthropic and OpenAI SDKs both expose one on
+    their ``APIStatusError`` subclasses — duck-typed so neither SDK is imported
+    here), else ``None`` so the caller can re-raise the original untouched.
+    Shared by ``_wrap_budget_errors`` (non-streaming dispatch) and the streaming
+    engines, so every provider surfaces budget blocks identically (#413 3e-3).
+    """
+    status_code = getattr(exc, "status_code", None)
+    if not _is_budget_status(status_code):
+        return None
+    # Best-effort body extraction. SDKs vary: some have .response.text,
+    # some .message, some neither.
+    body = ""
+    for attr in ("message", "body"):
+        v = getattr(exc, attr, None)
+        if v:
+            body = str(v)
+            break
+    if not body:
+        resp = getattr(exc, "response", None)
+        if resp is not None:
+            body = getattr(resp, "text", "") or ""
+    from services.budget_service import BudgetExceeded
+
+    return BudgetExceeded(
+        tier=_classify_tier(status_code, body),
+        message=body or f"Bifrost returned {status_code}",
+        status_code=status_code,
+    )
+
+
 async def _wrap_budget_errors(coro):
     """Run ``coro`` and translate Bifrost's budget/rate-limit responses
     into ``services.budget_service.BudgetExceeded``.
-
-    Both the Anthropic and OpenAI SDKs raise their own ``APIStatusError``
-    subclasses with a ``status_code`` attribute. We don't import either
-    SDK here (lazy at call sites) so the catch is duck-typed.
     """
     try:
         return await coro
     except Exception as e:
-        status_code = getattr(e, "status_code", None)
-        if not _is_budget_status(status_code):
-            raise
-        # Best-effort body extraction. SDKs vary: some have .response.text,
-        # some .message, some neither.
-        body = ""
-        for attr in ("message", "body"):
-            v = getattr(e, attr, None)
-            if v:
-                body = str(v)
-                break
-        if not body:
-            resp = getattr(e, "response", None)
-            if resp is not None:
-                body = getattr(resp, "text", "") or ""
-        from services.budget_service import BudgetExceeded
-
-        raise BudgetExceeded(
-            tier=_classify_tier(status_code, body),
-            message=body or f"Bifrost returned {status_code}",
-            status_code=status_code,
-        ) from e
+        budget = _maybe_budget_exceeded(e)
+        if budget is not None:
+            raise budget from e
+        raise
 
 
 async def _raise_async(exc: Exception):

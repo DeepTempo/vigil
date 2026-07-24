@@ -212,6 +212,48 @@ function safeJson(v: unknown): string {
   }
 }
 
+/* Raised when the backend emits a typed `budget_exceeded` error event so the
+   send() catch can render a budget banner instead of a generic error bubble. */
+class BudgetError extends Error {
+  tier?: string
+  constructor(tier: string | undefined, message: string) {
+    super(message)
+    this.name = 'BudgetError'
+    this.tier = tier
+  }
+}
+
+/* Banner shown when an LLM budget/rate-limit tier is hit (#413 PR3e-3). */
+function BudgetBanner({
+  tier,
+  message,
+  onDismiss,
+}: {
+  tier?: string
+  message?: string
+  onDismiss: () => void
+}) {
+  // A 429 is a rate limit, not a budget overage — word it accordingly.
+  const isRateLimit = tier === 'rate_limit'
+  const heading = isRateLimit
+    ? 'LLM rate limit reached'
+    : `LLM budget exceeded${tier ? ` (${tier})` : ''}`
+  const fallback = isRateLimit
+    ? 'Too many requests right now — retry shortly.'
+    : 'Requests are paused until the budget resets or is raised.'
+  return (
+    <div className="budget-banner" role="alert">
+      <Icon name="alert" size={15} />
+      <span>
+        <strong>{heading}.</strong> {message || fallback}
+      </span>
+      <button type="button" className="btn ghost" onClick={onDismiss} aria-label="Dismiss">
+        ✕
+      </button>
+    </div>
+  )
+}
+
 /* Inline notice shown when the agent paused on a requires_approval tool.
    Deep-links to the existing Pending Approvals queue (Decisions screen) where
    the operator approves/rejects; the backend loop resumes on their decision.
@@ -302,6 +344,8 @@ export default function Chat({
   const [streamThinking, setStreamThinking] = useState('')
   // Tools the in-flight turn has paused on, awaiting approval (#413 PR3e).
   const [streamApprovals, setStreamApprovals] = useState<ApprovalNotice[]>([])
+  // Set when a turn is blocked by an LLM budget/rate-limit tier (#413 PR3e-3).
+  const [budgetNotice, setBudgetNotice] = useState<{ tier?: string; message?: string } | null>(null)
   const [isThinking, setIsThinking] = useState(false)
   // true between a `tool_processing` event and the next `text` chunk — the
   // backend is executing MCP tools, mirroring the classic drawer's indicator
@@ -620,6 +664,7 @@ export default function Chat({
     setStreamText('')
     setStreamThinking('')
     setStreamApprovals([])
+    setBudgetNotice(null)
     setIsThinking(false)
     setIsProcessingTools(false)
     const start = Date.now()
@@ -667,11 +712,19 @@ export default function Chat({
               remaining_messages?: number
               tool_name?: string
               action_id?: string
+              code?: string
+              tier?: string
             }
             try {
               ev = JSON.parse(data)
             } catch {
               continue
+            }
+            if (ev.type === 'error' && ev.code === 'budget_exceeded') {
+              // Typed budget block (#413 3e-3): stop the stream and surface a
+              // budget banner rather than a generic error bubble. Pass the raw
+              // content (may be empty) so the banner picks tier-aware wording.
+              throw new BudgetError(ev.tier, ev.content || '')
             }
             if (ev.error || ev.type === 'error')
               throw new Error(ev.error || ev.content || 'stream error')
@@ -752,7 +805,10 @@ export default function Chat({
         .catch(() => {})
     } catch (e) {
       const err = e as { name?: string; message?: string }
-      if (err?.name !== 'AbortError') {
+      if (e instanceof BudgetError) {
+        // Budget/rate-limit block — show the banner, not an error bubble.
+        setBudgetNotice({ tier: e.tier, message: e.message })
+      } else if (err?.name !== 'AbortError') {
         setMessages((m) => [...m, { role: 'error', text: `Could not reach Vigil: ${err?.message || e}. Is the backend running?` }])
       }
     } finally {
@@ -792,6 +848,7 @@ export default function Chat({
     if (loading) return
     archiveCurrent()
     setMessages([])
+    setBudgetNotice(null)
     sessionRef.current = newSessionId()
     currentKeyRef.current = null
     setSessionSummary(null)
@@ -811,6 +868,7 @@ export default function Chat({
       const res = await conversationsApi.get(id)
       const detail = res.data as ConversationDetail
       setMessages(toChatMsgs(detail.messages || []))
+      setBudgetNotice(null)
       sessionRef.current = id
       currentKeyRef.current = key ?? null
       setSessionSummary(null)
@@ -1116,6 +1174,13 @@ export default function Chat({
               <ApprovalPanel approvals={streamApprovals} onNavigate={onNavigate} />
             )}
           </div>
+        )}
+        {budgetNotice && (
+          <BudgetBanner
+            tier={budgetNotice.tier}
+            message={budgetNotice.message}
+            onDismiss={() => setBudgetNotice(null)}
+          />
         )}
       </div>
 

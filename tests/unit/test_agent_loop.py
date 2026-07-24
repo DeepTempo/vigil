@@ -37,6 +37,7 @@ from services.agent_loop import (  # noqa: E402
     _canonical_args,
     _inter_iteration_delay,
 )
+from services.budget_service import BudgetExceeded  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -963,3 +964,84 @@ class TestAnthropicHeaders:
         headers = kw["extra_headers"]
         assert headers["x-bf-lh-vigil-interaction-id"] == "iid-2"
         assert "x-bf-vk" not in headers
+
+
+class _StatusError(Exception):
+    """SDK-style error carrying an HTTP status_code (as anthropic/openai raise)."""
+
+    def __init__(self, status_code, message="budget hit"):
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
+
+
+class TestBudgetErrors:
+    """#413 PR3e-3 (workstream C): a Bifrost 402/429 on the streaming path
+    surfaces as a typed budget SSE event, not an opaque error."""
+
+    @pytest.mark.asyncio
+    async def test_anthropic_stream_translates_402_to_budget_exceeded(self):
+        rt = _anthropic_runtime([], _final([], "end_turn"))
+        # The upstream streaming call raises a 402 (budget) SDK error.
+        rt.async_client.messages.stream = MagicMock(side_effect=_StatusError(402))
+        engine = _anthropic_engine(rt)
+        with pytest.raises(BudgetExceeded) as ei:
+            await _run_anth_turn(engine)
+        assert ei.value.status_code == 402
+        assert ei.value.tier == "virtual_key"
+
+    @pytest.mark.asyncio
+    async def test_anthropic_stream_reraises_non_budget_errors_untouched(self):
+        rt = _anthropic_runtime([], _final([], "end_turn"))
+        rt.async_client.messages.stream = MagicMock(side_effect=_StatusError(500))
+        engine = _anthropic_engine(rt)
+        with pytest.raises(_StatusError):
+            await _run_anth_turn(engine)
+
+    @pytest.mark.asyncio
+    async def test_controller_emits_typed_budget_event(self):
+        class _BudgetEngine:
+            provider_type = "anthropic"
+            model = "m"
+            model_label = "anthropic/m"
+
+            async def stream_turn(self, *, iteration):
+                raise BudgetExceeded(
+                    tier="virtual_key", message="over budget", status_code=402
+                )
+                yield  # pragma: no cover — makes this an async generator
+
+            def append_assistant(self, turn):
+                pass
+
+            async def execute_tools(self, turn, *, iteration):
+                yield ToolPhaseResult()
+
+        events = await _drive(_BudgetEngine())
+        errs = [e for e in events if e["type"] == "error"]
+        assert errs, "expected an error event"
+        assert errs[0]["code"] == "budget_exceeded"
+        assert errs[0]["tier"] == "virtual_key"
+        assert errs[0]["status_code"] == 402
+
+    @pytest.mark.asyncio
+    async def test_controller_generic_error_has_no_budget_code(self):
+        class _BoomEngine:
+            provider_type = "anthropic"
+            model = "m"
+            model_label = "anthropic/m"
+
+            async def stream_turn(self, *, iteration):
+                raise RuntimeError("kaboom")
+                yield  # pragma: no cover
+
+            def append_assistant(self, turn):
+                pass
+
+            async def execute_tools(self, turn, *, iteration):
+                yield ToolPhaseResult()
+
+        events = await _drive(_BoomEngine())
+        errs = [e for e in events if e["type"] == "error"]
+        assert errs and "code" not in errs[0]
+        assert "kaboom" in errs[0]["content"]

@@ -36,7 +36,12 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, Union
 
 from services.llm_format import anthropic_messages_to_openai
-from services.llm_router import LLMRouter, ProviderSpec, _bifrost_headers
+from services.llm_router import (
+    LLMRouter,
+    ProviderSpec,
+    _bifrost_headers,
+    _maybe_budget_exceeded,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -790,39 +795,57 @@ class AnthropicTurnEngine:
         final_message = None
         stop_reason = None
 
-        async with self._runtime.async_client.messages.stream(**api_kwargs) as stream:
-            async for event in stream:
-                if not hasattr(event, "type"):
-                    continue
-                event_type = event.type
+        # Translate a Bifrost budget/rate-limit block (402/429) raised anywhere
+        # in the streaming call into BudgetExceeded, so the controller can emit
+        # a typed budget SSE event instead of an opaque error (#413 3e-3). The
+        # non-streaming dispatch() path already does this via _wrap_budget_errors;
+        # the streaming path calls messages.stream directly, so wrap it here.
+        try:
+            async with self._runtime.async_client.messages.stream(
+                **api_kwargs
+            ) as stream:
+                async for event in stream:
+                    if not hasattr(event, "type"):
+                        continue
+                    event_type = event.type
 
-                if event_type == "content_block_start":
-                    block = getattr(event, "content_block", None)
-                    if block is not None and getattr(block, "type", None) == "thinking":
-                        in_thinking = True
-                        current_thinking_block = []
-                        yield {"type": "thinking_start"}
+                    if event_type == "content_block_start":
+                        block = getattr(event, "content_block", None)
+                        if (
+                            block is not None
+                            and getattr(block, "type", None) == "thinking"
+                        ):
+                            in_thinking = True
+                            current_thinking_block = []
+                            yield {"type": "thinking_start"}
 
-                elif event_type == "content_block_delta":
-                    delta = getattr(event, "delta", None)
-                    delta_type = getattr(delta, "type", None) if delta else None
-                    if delta_type == "thinking_delta" and hasattr(delta, "thinking"):
-                        thinking_text = getattr(delta, "thinking", "")
-                        current_thinking_block.append(thinking_text)
-                        yield {"type": "thinking", "content": thinking_text}
-                    elif delta_type == "text_delta" and hasattr(delta, "text"):
-                        if not in_thinking:
-                            text = getattr(delta, "text", "")
-                            yield {"type": "text", "content": text}
+                    elif event_type == "content_block_delta":
+                        delta = getattr(event, "delta", None)
+                        delta_type = getattr(delta, "type", None) if delta else None
+                        if delta_type == "thinking_delta" and hasattr(
+                            delta, "thinking"
+                        ):
+                            thinking_text = getattr(delta, "thinking", "")
+                            current_thinking_block.append(thinking_text)
+                            yield {"type": "thinking", "content": thinking_text}
+                        elif delta_type == "text_delta" and hasattr(delta, "text"):
+                            if not in_thinking:
+                                text = getattr(delta, "text", "")
+                                yield {"type": "text", "content": text}
 
-                elif event_type == "content_block_stop":
-                    if in_thinking:
-                        in_thinking = False
-                        yield {"type": "thinking_end"}
+                    elif event_type == "content_block_stop":
+                        if in_thinking:
+                            in_thinking = False
+                            yield {"type": "thinking_end"}
 
-            final_message = await stream.get_final_message()
-            accumulated_content = final_message.content
-            stop_reason = final_message.stop_reason
+                final_message = await stream.get_final_message()
+                accumulated_content = final_message.content
+                stop_reason = final_message.stop_reason
+        except Exception as exc:  # noqa: BLE001
+            budget = _maybe_budget_exceeded(exc)
+            if budget is not None:
+                raise budget from exc
+            raise
 
         duration_ms = int((asyncio.get_event_loop().time() - stream_started) * 1000)
         usage = getattr(final_message, "usage", None)
@@ -1112,7 +1135,21 @@ class LoopController:
                         yield item
             except Exception as exc:  # noqa: BLE001
                 logger.error("Turn stream error iteration %d: %s", iteration, exc)
-                yield {"type": "error", "content": str(exc)}
+                from services.budget_service import BudgetExceeded
+
+                if isinstance(exc, BudgetExceeded):
+                    # Typed budget block (#413 3e-3) — same contract as the
+                    # non-streaming 402 detail, so the chat UI shows the budget
+                    # banner instead of a generic error toast.
+                    yield {
+                        "type": "error",
+                        "code": "budget_exceeded",
+                        "tier": exc.tier,
+                        "status_code": exc.status_code,
+                        "content": str(exc),
+                    }
+                else:
+                    yield {"type": "error", "content": str(exc)}
                 break
 
             if turn is None:

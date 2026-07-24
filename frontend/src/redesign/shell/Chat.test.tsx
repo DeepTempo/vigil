@@ -181,3 +181,40 @@ describe('tool-approval notice (#413 PR3e)', () => {
     expect(await screen.findByText(/2 tools need approval/i)).toBeInTheDocument()
   })
 })
+
+describe('budget banner (#413 PR3e-3)', () => {
+  it('renders a budget banner on a typed budget_exceeded error event', async () => {
+    vi.mocked(streamFetch).mockResolvedValue(
+      heldSseResponse([
+        {
+          type: 'error',
+          code: 'budget_exceeded',
+          tier: 'virtual_key',
+          content: 'Over budget',
+        },
+      ]),
+    )
+    render(<Chat open onClose={vi.fn()} onNavigate={vi.fn()} />)
+    sendPrompt('run an expensive analysis')
+
+    const banner = await screen.findByRole('alert')
+    expect(banner.textContent).toMatch(/budget exceeded/i)
+    expect(banner.textContent).toMatch(/virtual_key/)
+    // Not surfaced as the generic connectivity error bubble.
+    expect(screen.queryByText(/Could not reach Vigil/i)).not.toBeInTheDocument()
+  })
+
+  it('words a rate_limit (429) block as a rate limit, not a budget overage', async () => {
+    vi.mocked(streamFetch).mockResolvedValue(
+      heldSseResponse([
+        { type: 'error', code: 'budget_exceeded', tier: 'rate_limit', content: '' },
+      ]),
+    )
+    render(<Chat open onClose={vi.fn()} onNavigate={vi.fn()} />)
+    sendPrompt('go')
+
+    const banner = await screen.findByRole('alert')
+    expect(banner.textContent).toMatch(/rate limit/i)
+    expect(banner.textContent).not.toMatch(/budget exceeded/i)
+  })
+})
