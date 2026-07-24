@@ -1,19 +1,23 @@
-/**
- * Protected Route Component - Requires authentication.
- * 
- * Wraps routes that require user authentication and optional permissions.
- */
-
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { Box, CircularProgress, Typography } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
+import Loader from '../../redesign/shell/Loader';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredPermission?: string;
   requiredPermissions?: string[];
   requireAll?: boolean; // If true, requires all permissions; if false, requires any
+}
+
+function AccessDenied({ detail }: { detail: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 p-6 min-h-screen">
+      <h2 className="text-xl font-semibold" style={{ color: 'var(--crit)' }}>Access Denied</h2>
+      <p className="text-sm text-tx-3">You don't have permission to access this page.</p>
+      <p className="text-xs text-tx-3">{detail}</p>
+    </div>
+  );
 }
 
 export default function ProtectedRoute({
@@ -25,93 +29,28 @@ export default function ProtectedRoute({
   const { isAuthenticated, isLoading, hasPermission, hasAnyPermission, hasAllPermissions } = useAuth();
   const location = useLocation();
 
-  // Show loading spinner while checking authentication
   if (isLoading) {
-    return (
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '100vh',
-          gap: 2,
-        }}
-      >
-        <CircularProgress size={48} />
-        <Typography variant="body1" color="text.secondary">
-          Loading...
-        </Typography>
-      </Box>
-    );
+    return <Loader />;
   }
 
-  // Redirect to login if not authenticated
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Check single permission
   if (requiredPermission && !hasPermission(requiredPermission)) {
-    return (
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '100vh',
-          gap: 2,
-          padding: 3,
-        }}
-      >
-        <Typography variant="h5" color="error">
-          Access Denied
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          You don't have permission to access this page.
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Required permission: {requiredPermission}
-        </Typography>
-      </Box>
-    );
+    return <AccessDenied detail={`Required permission: ${requiredPermission}`} />;
   }
 
-  // Check multiple permissions
   if (requiredPermissions && requiredPermissions.length > 0) {
     const hasAccess = requireAll
       ? hasAllPermissions(...requiredPermissions)
       : hasAnyPermission(...requiredPermissions);
 
     if (!hasAccess) {
-      return (
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: '100vh',
-            gap: 2,
-            padding: 3,
-          }}
-        >
-          <Typography variant="h5" color="error">
-            Access Denied
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            You don't have permission to access this page.
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Required permissions ({requireAll ? 'all' : 'any'}): {requiredPermissions.join(', ')}
-          </Typography>
-        </Box>
-      );
+      const scope = requireAll ? 'all' : 'any';
+      return <AccessDenied detail={`Required permissions (${scope}): ${requiredPermissions.join(', ')}`} />;
     }
   }
 
-  // User is authenticated and has required permissions
   return <>{children}</>;
 }
-

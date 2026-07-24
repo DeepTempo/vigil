@@ -4,7 +4,7 @@
 // one opens IntegrationWizard; save persists creds then enables the MCP server.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import IntegrationWizard from '../settings/IntegrationWizard'
-import type { IntegrationMetadata } from '../../../components/settings/IntegrationWizard'
+import type { IntegrationMetadata } from '../../../config/integrationSchema'
 import { getAllIntegrations } from '../../../config/integrations'
 import { DATA_SOURCE_CATEGORIES } from '../../../setup/setupSteps'
 import { configApi, mcpApi } from '../../../services/api'
