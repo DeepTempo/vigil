@@ -378,16 +378,17 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
                 detail=f"Configured provider '{provider_id}' is unavailable",
             )
 
-        claude_service = None
         if provider.provider_type == "anthropic":
-            from services.claude_service import ClaudeService
+            # H1: keep the 503 no-provider gate on the Anthropic key without
+            # constructing ClaudeService — dispatch now goes through
+            # LLMRouter.chat below (#413 4c-4).
+            from services.llm_router import anthropic_api_key_available
 
-            claude_service = ClaudeService(use_backend_tools=True, use_mcp_tools=False)
-            if not claude_service.has_api_key():
+            if not anthropic_api_key_available():
                 from backend.api.claude import NO_PROVIDER_DETAIL
 
                 raise HTTPException(status_code=503, detail=NO_PROVIDER_DETAIL)
-        
+
         # Extract finding details (use `or` to guard against keys present with None values)
         severity = finding.get('severity') or 'unknown'
         data_source = finding.get('data_source') or 'unknown'
@@ -506,16 +507,18 @@ Respond ONLY with valid JSON. Be specific and actionable. Focus on helping a SOC
             provider.provider_id,
             model_id,
         )
-        loop = asyncio.get_event_loop()
         if provider.provider_type == "anthropic":
             # The enrichment JSON schema is large; a tight cap truncates it.
-            response = await loop.run_in_executor(
-                None,
-                lambda: claude_service.chat(
-                    message=prompt,
-                    model=model_id,
-                    max_tokens=4096,
-                ),
+            # LLMRouter.chat runs the synchronous ClaudeService.chat off the
+            # event loop internally (asyncio.to_thread), so no manual executor.
+            # service_config mirrors the old
+            # ClaudeService(use_backend_tools=True, use_mcp_tools=False) ctor.
+            response = await LLMRouter().chat(
+                message=prompt,
+                provider=provider,
+                model=model_id,
+                max_tokens=4096,
+                service_config={"use_backend_tools": True, "use_mcp_tools": False},
             )
         else:
             # Local models are slow per token; bound them tighter than the
