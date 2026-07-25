@@ -50,7 +50,23 @@ def _load_claude_module():
     return mod
 
 
+def _load_agents_module():
+    spec = importlib.util.spec_from_file_location(
+        "agents_api_sdk_under_test", str(REPO / "backend" / "api" / "agents.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as exc:  # pragma: no cover - environment dependent
+        pytest.skip(
+            f"backend.api.agents not importable here: {exc}",
+            allow_module_level=True,
+        )
+    return mod
+
+
 claude = _load_claude_module()
+agents = _load_agents_module()
 
 
 class _FakeRouter:
@@ -140,3 +156,82 @@ def test_agent_stream_frames_router_events(monkeypatch):
     assert {"type": "result", "content": "final"} in payloads
     # use_backend_tools threaded through agent_config to the SDK engine.
     assert _FakeRouter.last_stream_kwargs["agent_config"] == {"use_backend_tools": True}
+
+
+# --- /chat use_agent_sdk branch ---------------------------------------------
+
+
+def test_chat_agent_sdk_branch_dispatches_via_router(monkeypatch):
+    _patch_router(monkeypatch, key_available=True)
+    monkeypatch.setattr(llm_router, "agent_sdk_available", lambda: True)
+    # No positively-identified non-Anthropic provider -> use_router False, so
+    # the SDK branch (not the router dispatch branch) is taken.
+    monkeypatch.setattr(claude, "_select_active_provider", lambda pid: None)
+    monkeypatch.setattr(
+        claude, "_resolve_provider_model_for_request", lambda m, a: (None, "m")
+    )
+    req = claude.ChatRequest(
+        messages=[claude.ChatMessage(role="user", content="investigate this")],
+        use_agent_sdk=True,
+        model="m",
+    )
+    result = asyncio.run(claude.chat(req))
+    assert result["agent_sdk"] is True
+    assert result["response"] == "done"
+    assert result["tool_calls"] == [{"tool": "get_finding"}]
+    assert _FakeRouter.last_task_config["use_backend_tools"] is True
+
+
+def test_chat_no_key_raises_503_before_sdk_dispatch(monkeypatch):
+    _patch_router(monkeypatch, key_available=False)
+    monkeypatch.setattr(llm_router, "agent_sdk_available", lambda: True)
+    monkeypatch.setattr(claude, "_select_active_provider", lambda pid: None)
+    monkeypatch.setattr(
+        claude, "_resolve_provider_model_for_request", lambda m, a: (None, "m")
+    )
+    req = claude.ChatRequest(
+        messages=[claude.ChatMessage(role="user", content="hi")],
+        use_agent_sdk=True,
+        model="m",
+    )
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(claude.chat(req))
+    assert exc.value.status_code == 503
+
+
+# --- agents.py /agents/run --------------------------------------------------
+
+
+class _StubAgent:
+    id = "investigator"
+    name = "Investigator"
+    icon = "🕵️"
+    color = "#abc"
+    system_prompt = "you investigate"
+    recommended_tools = ["get_finding"]
+    enable_thinking = True
+
+
+def test_agents_run_dispatches_via_router_with_flags(monkeypatch):
+    _patch_router(monkeypatch, key_available=True)
+    monkeypatch.setattr(agents, "_resolve_agent", lambda aid: _StubAgent())
+    req = agents.AgentRunRequest(task="do the thing", agent_id="investigator")
+    result = asyncio.run(agents.run_agent(req))
+    assert result["success"] is True
+    assert result["result"] == "done"
+    assert result["agent_sdk_used"] is True
+    cfg = _FakeRouter.last_task_config
+    # agents.py mirrors ClaudeService(use_backend_tools=True, use_mcp_tools=True,
+    # enable_thinking=agent.enable_thinking) through agent_config.
+    assert cfg["use_backend_tools"] is True
+    assert cfg["use_mcp_tools"] is True
+    assert cfg["enable_thinking"] is True
+
+
+def test_agents_run_no_key_raises_503(monkeypatch):
+    _patch_router(monkeypatch, key_available=False)
+    monkeypatch.setattr(agents, "_resolve_agent", lambda aid: _StubAgent())
+    req = agents.AgentRunRequest(task="do the thing", agent_id="investigator")
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(agents.run_agent(req))
+    assert exc.value.status_code == 503
