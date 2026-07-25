@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 vi.mock('../../../services/api', () => ({
   llmProviderApi: {
@@ -109,9 +109,10 @@ describe('LLMProvidersTab', () => {
     render(<LLMProvidersTab setMessage={() => {}} />)
     await screen.findByText('Local Ollama')
 
-    // The beaker/test icons are IconButtons with title "Test connection"
-    const testButtons = await screen.findAllByLabelText(/test connection/i)
-    fireEvent.click(testButtons[1]) // click the second (ollama) test button
+    // The tooltip puts the label on a span wrapper, so the clickable
+    // IconButton is inside it — clicking the span itself does nothing.
+    const testCells = await screen.findAllByLabelText(/test connection/i)
+    fireEvent.click(within(testCells[1]).getByRole('button')) // the ollama row
 
     await waitFor(() =>
       expect(llmProviderApi.test).toHaveBeenCalledWith('ollama-local')

@@ -155,8 +155,7 @@ jobs:
       
       - name: Run unit tests
         working-directory: frontend
-        run: npm run test:unit || echo "Frontend tests not yet implemented"
-        continue-on-error: true
+        run: npm run test:run
 
   # ============================================================================
   # Integration Tests

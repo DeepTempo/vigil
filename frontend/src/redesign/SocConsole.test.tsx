@@ -221,10 +221,12 @@ describe('SocConsole redesign', () => {
     expect(screen.getByText('Security operations overview')).toBeInTheDocument()
   })
 
-  it('renders the 404 screen for an unknown path and routes home', () => {
+  it('renders the 404 screen for an unknown path and routes home', async () => {
     renderConsole('/does-not-exist')
     expect(title()).toBe('Page not found')
-    expect(screen.getByText('404')).toBeInTheDocument()
+    // An unknown path is first probed as a page extension, so the 404 body
+    // only lands once that resolution settles.
+    expect(await screen.findByText('404')).toBeInTheDocument()
     // the in-shell "Back to dashboard" action returns to a real screen
     fireEvent.click(screen.getByRole('button', { name: /Back to dashboard/ }))
     expect(title()).toBe('Dashboard')

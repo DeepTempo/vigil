@@ -23,6 +23,12 @@ vi.mock('../../../services/api', () => ({
     getTheme: () => Promise.resolve({ data: { theme: 'dark' } }),
     setTheme: () => Promise.resolve({ data: {} }),
   },
+  // The screen asks whether this instance still needs a first admin; an
+  // unmocked export throws inside the mount effect and fails every test here.
+  bootstrapApi: {
+    status: () => Promise.resolve({ data: { required: false } }),
+    create: () => Promise.resolve({ data: {} }),
+  },
 }))
 
 vi.mock('react-router-dom', async () => {
