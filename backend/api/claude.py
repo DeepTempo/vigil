@@ -1,21 +1,14 @@
 """Claude API endpoints for chat, streaming, and Agent SDK workflows."""
 
-from typing import List, Optional, Dict, Union, Any, Tuple
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    WebSocket,
-    WebSocketDisconnect,
-    File,
-    UploadFile,
-)
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, field_validator
 import asyncio
+import base64
 import json
 import logging
-import base64
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, field_validator
 
 from backend.middleware.auth import get_current_user
 from backend.schemas.system_prompt import validate_system_prompt
@@ -89,6 +82,8 @@ def _persist_chat_turn(
         )
     except Exception as exc:  # noqa: BLE001 — fail-open, never break the chat
         logger.warning("chat history write-through failed (non-fatal): %s", exc)
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -216,10 +211,7 @@ def _select_active_provider(provider_id: Optional[str]):
     Returns a ``ProviderSpec`` or ``None``. Lookups are wrapped so a transient
     DB error degrades to the ClaudeService/Anthropic path rather than 500-ing.
     """
-    from services.llm_router import (
-        get_default_provider_spec,
-        get_provider_spec,
-    )
+    from services.llm_router import get_default_provider_spec, get_provider_spec
 
     provider = None
     if provider_id:
@@ -328,9 +320,10 @@ async def chat(request: ChatRequest):
     Returns:
         Claude's response
     """
-    from services.soc_agents import AgentManager
-    import uuid
     import time
+    import uuid
+
+    from services.soc_agents import AgentManager
 
     # Generate unique request ID for tracking
     request_id = str(uuid.uuid4())[:8]
@@ -642,8 +635,8 @@ async def chat_stream(
     Returns:
         Streaming response
     """
-    import uuid
     import time
+    import uuid
 
     # Generate unique request ID for tracking
     request_id = str(uuid.uuid4())[:8]
@@ -1020,9 +1013,7 @@ async def chat_stream(
                         complete=history_reached_end,
                     )
                 except Exception as exc:  # noqa: BLE001 — fail-open
-                    logger.warning(
-                        "chat history persist failed (non-fatal): %s", exc
-                    )
+                    logger.warning("chat history persist failed (non-fatal): %s", exc)
 
     return StreamingResponse(
         generate(),
@@ -1032,81 +1023,6 @@ async def chat_stream(
             "Connection": "keep-alive",
         },
     )
-
-
-@router.websocket("/ws/chat")
-async def websocket_chat(websocket: WebSocket):
-    """
-    WebSocket endpoint for bidirectional chat with Claude.
-
-    This allows for streaming responses and real-time interaction.
-    """
-    await websocket.accept()
-
-    claude_service = ClaudeService(use_backend_tools=True)
-
-    # Check if API key is configured (works for both implementations)
-    if not claude_service.has_api_key():
-        await websocket.send_json({"error": NO_PROVIDER_DETAIL})
-        await websocket.close()
-        return
-
-    try:
-        while True:
-            # Receive message from client
-            data = await websocket.receive_json()
-
-            messages = data.get("messages", [])
-            system_prompt = data.get("system_prompt")
-            # GH #89: resolve via ai_model_configs when caller omits model.
-            model = data.get("model") or _resolve_model_for_request(
-                None, data.get("agent_id")
-            )
-            max_tokens = data.get("max_tokens", 4096)
-            enable_thinking = data.get("enable_thinking", False)
-            thinking_budget = data.get("thinking_budget", 10000)
-
-            # Update thinking settings if needed
-            if enable_thinking != claude_service.enable_thinking:
-                claude_service.enable_thinking = enable_thinking
-                claude_service.thinking_budget = thinking_budget
-
-            # Stream response back to client
-            try:
-                # Split messages into context and current message
-                if len(messages) == 0:
-                    await websocket.send_json({"error": "No messages provided"})
-                    continue
-
-                # Get the last message as the current message
-                current_message = messages[-1]["content"]
-
-                # Use all previous messages as context (if any)
-                context = messages[:-1] if len(messages) > 1 else None
-
-                async for chunk in claude_service.chat_stream(
-                    message=current_message,
-                    context=context,
-                    system_prompt=system_prompt,
-                    model=model,
-                    max_tokens=max_tokens,
-                ):
-                    # Handle both dict (new format with thinking) and string (backward compat)
-                    if isinstance(chunk, dict):
-                        await websocket.send_json(chunk)
-                    else:
-                        # Old format - plain text string
-                        await websocket.send_json({"type": "text", "content": chunk})
-
-            except Exception as e:
-                logger.error(f"Error in chat stream: {e}")
-                await websocket.send_json({"error": str(e)})
-
-    except WebSocketDisconnect:
-        logger.info("WebSocket disconnected")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        await websocket.close()
 
 
 @router.get("/models")
@@ -1211,9 +1127,12 @@ async def summarize_conversation(request: SummarizeRequest):
     """
     import asyncio
 
-    claude_service = ClaudeService(use_backend_tools=False, enable_thinking=False)
+    # #413: this endpoint dispatches through the LLM gateway (below); it only
+    # needs to know a provider is configured, so check availability via the
+    # router instead of constructing a ClaudeService.
+    from services.llm_router import anthropic_api_key_available
 
-    if not claude_service.has_api_key():
+    if not anthropic_api_key_available():
         _raise_no_provider()
 
     # Build a flat text representation of the conversation
@@ -1303,9 +1222,12 @@ Provide a structured summary that captures all essential context for continuing 
 @router.get("/sdk-status")
 async def get_sdk_status():
     """Check availability of Claude Agent SDK."""
+    # #413: both are capability probes resolvable without a ClaudeService.
+    from services.llm_router import agent_sdk_available, anthropic_api_key_available
+
     return {
-        "agent_sdk_available": ClaudeService.is_agent_sdk_available(),
-        "anthropic_available": ClaudeService(use_backend_tools=True).has_api_key(),
+        "agent_sdk_available": agent_sdk_available(),
+        "anthropic_available": anthropic_api_key_available(),
     }
 
 
@@ -1434,85 +1356,6 @@ async def stream_agent_task(request: AgentTaskRequest):
     )
 
 
-@router.websocket("/ws/agent")
-async def websocket_agent(websocket: WebSocket):
-    """
-    WebSocket endpoint for interactive agent sessions.
-
-    Supports bidirectional communication for multi-turn agent workflows
-    with real-time streaming of tool calls and results.
-    """
-    await websocket.accept()
-
-    claude_service = ClaudeService(use_backend_tools=True, use_agent_sdk=True)
-
-    if not claude_service.has_api_key():
-        await websocket.send_json({"type": "error", "content": NO_PROVIDER_DETAIL})
-        await websocket.close()
-        return
-
-    session_id = None
-
-    try:
-        while True:
-            data = await websocket.receive_json()
-
-            task = data.get("task", "")
-            system_prompt = data.get("system_prompt")
-            allowed_tools = data.get("allowed_tools")
-            max_turns = data.get("max_turns", 10)
-            model = data.get("model", DEFAULT_MODEL)
-            agent_id = data.get("agent_id")
-
-            # Handle session management
-            if data.get("action") == "new_session":
-                session_id = f"ws-{id(websocket)}-{hash(task)}"
-                claude_service.create_session(session_id)
-                await websocket.send_json({"type": "session", "session_id": session_id})
-                continue
-            elif data.get("action") == "clear_session":
-                if session_id:
-                    claude_service.clear_session(session_id)
-                await websocket.send_json({"type": "session_cleared"})
-                continue
-
-            # Apply agent config
-            if agent_id:
-                from services.soc_agents import AgentManager
-
-                agent_manager = AgentManager()
-                agent = agent_manager.agents.get(agent_id)
-                if agent:
-                    system_prompt = system_prompt or agent.system_prompt
-                    if not allowed_tools:
-                        allowed_tools = agent.recommended_tools
-
-            try:
-                async for event in claude_service.agent_query(
-                    prompt=task,
-                    system_prompt=system_prompt,
-                    allowed_tools=allowed_tools,
-                    max_turns=max_turns,
-                    session_id=session_id,
-                    model=model,
-                ):
-                    await websocket.send_json(event)
-
-                await websocket.send_json({"type": "complete"})
-
-            except Exception as e:
-                logger.error(f"Agent execution error: {e}")
-                await websocket.send_json({"type": "error", "content": str(e)})
-
-    except WebSocketDisconnect:
-        logger.info("Agent WebSocket disconnected")
-        if session_id:
-            claude_service.clear_session(session_id)
-    except Exception as e:
-        logger.error(f"Agent WebSocket error: {e}")
-        await websocket.close()
-
-
 @router.post("/upload-file")
 async def upload_file(file: UploadFile = File(...)):
     """
@@ -1586,10 +1429,11 @@ async def analyze_finding(finding_id: str, context: Optional[str] = None):
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
 
-    claude_service = ClaudeService(use_backend_tools=True)
+    # #413: dispatches through the LLM gateway (below); only needs to confirm a
+    # provider is configured — check via the router, not a ClaudeService.
+    from services.llm_router import anthropic_api_key_available
 
-    # Check if API key is configured (works for both implementations)
-    if not claude_service.has_api_key():
+    if not anthropic_api_key_available():
         _raise_no_provider()
 
     # Construct analysis prompt
@@ -1650,9 +1494,10 @@ async def generate_chat_report(request: ChatReportRequest):
     Returns:
         Report file information
     """
-    from services.report_service import ReportService, REPORTLAB_AVAILABLE
-    from pathlib import Path
     from datetime import datetime
+    from pathlib import Path
+
+    from services.report_service import REPORTLAB_AVAILABLE, ReportService
 
     if not REPORTLAB_AVAILABLE:
         raise HTTPException(

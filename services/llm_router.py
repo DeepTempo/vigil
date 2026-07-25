@@ -248,8 +248,7 @@ def _pre_dispatch_sanitize(
     Returns the (possibly rewritten) ``messages`` and the system prompt
     (returned as-is — we never silently mutate user system prompts).
     """
-    from services.prompt_security import (PromptInjectionBlocked,
-                                          scan_for_injection)
+    from services.prompt_security import PromptInjectionBlocked, scan_for_injection
 
     wrapped = _wrap_tool_results_in_messages(messages)
 
@@ -834,8 +833,10 @@ class LLMRouter:
     ) -> Dict[str, Any]:
         from openai import AsyncOpenAI  # lazy — avoids hard dep for tests
 
-        from services.llm_format import (anthropic_messages_to_openai,
-                                         anthropic_tools_to_openai)
+        from services.llm_format import (
+            anthropic_messages_to_openai,
+            anthropic_tools_to_openai,
+        )
 
         # Callers (the daemon tool loop, workflows) build conversations in
         # Anthropic shape — assistant tool_use blocks, user tool_result blocks,
@@ -919,8 +920,10 @@ class LLMRouter:
         usage) for non-Anthropic Bifrost providers."""
         from openai import AsyncOpenAI
 
-        from services.llm_format import (anthropic_messages_to_openai,
-                                         anthropic_tools_to_openai)
+        from services.llm_format import (
+            anthropic_messages_to_openai,
+            anthropic_tools_to_openai,
+        )
 
         messages, system_prompt = _pre_dispatch_sanitize(messages, system_prompt)
         model = model or provider.default_model
@@ -1254,3 +1257,43 @@ def discover_anthropic_api_key() -> Optional[str]:
         return None
     finally:
         session.close()
+
+
+def anthropic_api_key_available() -> bool:
+    """True if an Anthropic API key is resolvable without a ClaudeService.
+
+    Mirrors ``ClaudeService``'s own key-resolution order so the API endpoints
+    can keep their ``has_api_key()``->503 no-provider gate after migrating off
+    ``ClaudeService`` (#413 PR4c):
+
+      1. Legacy ``CLAUDE_API_KEY`` / ``ANTHROPIC_API_KEY`` secret/env names.
+      2. A UI-configured Anthropic provider row (``discover_anthropic_api_key``).
+
+    (The Anthropic SDK is a hard project dependency, so — unlike
+    ``has_api_key`` — this does not also assert the SDK client imports: if the
+    SDK were missing the whole app would already be down.)
+    """
+    if get_secret is not None:
+        for name in ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY"):
+            try:
+                if get_secret(name):
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
+    return discover_anthropic_api_key() is not None
+
+
+def agent_sdk_available() -> bool:
+    """True if the Claude Agent SDK is importable (capability probe).
+
+    Mirrors ``ClaudeService.is_agent_sdk_available`` for the ``/sdk-status``
+    endpoint without importing ``ClaudeService`` (#413 PR4c). It is a pure
+    import check — the same ``import claude_agent_sdk`` that sets
+    ``ClaudeService``'s module-level ``AGENT_SDK_AVAILABLE`` flag.
+    """
+    try:
+        import claude_agent_sdk  # noqa: F401
+
+        return True
+    except Exception:  # noqa: BLE001
+        return False

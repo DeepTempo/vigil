@@ -16,8 +16,12 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.llm_router import (LLMRouter, ProviderSpec,
-                                 provider_spec_from_row, select_path)
+from services.llm_router import (
+    LLMRouter,
+    ProviderSpec,
+    provider_spec_from_row,
+    select_path,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -1812,3 +1816,60 @@ async def test_dispatch_stream_service_config_overrides_use_backend_tools_false(
             )
         ]
     assert holder["engine"].init_kwargs["use_backend_tools"] is False
+
+
+# ---- anthropic_api_key_available (#413 PR4c has_api_key replacement) ------
+
+
+@pytest.mark.parametrize(
+    "secrets, discover, expected",
+    [
+        ({"CLAUDE_API_KEY": "sk-x"}, None, True),
+        ({"ANTHROPIC_API_KEY": "sk-y"}, None, True),
+        ({}, "sk-from-ui-row", True),  # env absent, UI row resolves
+        ({}, None, False),  # nothing configured
+    ],
+)
+def test_anthropic_api_key_available(secrets, discover, expected):
+    from services.llm_router import anthropic_api_key_available
+
+    with patch(
+        "services.llm_router.get_secret", side_effect=lambda n: secrets.get(n)
+    ), patch("services.llm_router.discover_anthropic_api_key", return_value=discover):
+        assert anthropic_api_key_available() is expected
+
+
+def test_anthropic_api_key_available_survives_get_secret_error():
+    """A raising get_secret must not crash the gate — fall through to discover."""
+    from services.llm_router import anthropic_api_key_available
+
+    def boom(_name):
+        raise RuntimeError("secrets backend down")
+
+    with patch("services.llm_router.get_secret", side_effect=boom), patch(
+        "services.llm_router.discover_anthropic_api_key", return_value="sk-ui"
+    ):
+        assert anthropic_api_key_available() is True
+
+
+def test_agent_sdk_available_true_when_importable():
+    from services.llm_router import agent_sdk_available
+
+    with patch.dict("sys.modules", {"claude_agent_sdk": MagicMock()}):
+        assert agent_sdk_available() is True
+
+
+def test_agent_sdk_available_false_when_missing():
+    import builtins
+
+    from services.llm_router import agent_sdk_available
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "claude_agent_sdk":
+            raise ImportError("no sdk")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=fake_import):
+        assert agent_sdk_available() is False
