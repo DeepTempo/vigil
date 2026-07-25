@@ -396,15 +396,14 @@ async def chat(request: ChatRequest):
         and getattr(active_provider, "provider_type", None) != "anthropic"
     )
 
-    claude_service = None
+    from services.llm_router import agent_sdk_available, anthropic_api_key_available
+
     if not use_router:
-        claude_service = ClaudeService(
-            use_backend_tools=True,
-            enable_thinking=enable_thinking,
-            thinking_budget=thinking_budget,
-            use_agent_sdk=request.use_agent_sdk,
-        )
-        if not claude_service.has_api_key():
+        # Anthropic (or no positively-identified non-Anthropic provider):
+        # preserve the 503 no-provider gate without constructing ClaudeService
+        # (#413 4c-2). This gate covers both the Agent SDK branch and the
+        # standard-chat gateway branch below.
+        if not anthropic_api_key_available():
             _raise_no_provider()
     else:
         request.model = _router_model(active_provider, request.model)
@@ -487,7 +486,7 @@ async def chat(request: ChatRequest):
                 interaction_id=request_id,
             )
             response = result.get("content", "")
-        elif request.use_agent_sdk and claude_service.use_agent_sdk:
+        elif request.use_agent_sdk and agent_sdk_available():
             # Extract text from current message for agent query
             if isinstance(current_message, list):
                 prompt = " ".join(
@@ -500,12 +499,22 @@ async def chat(request: ChatRequest):
             else:
                 prompt = current_message
 
-            result = await claude_service.run_agent_task(
+            # SDK dispatch through LLMRouter (#413 4c-2). The old guard
+            # `request.use_agent_sdk and claude_service.use_agent_sdk` reduces
+            # to `request.use_agent_sdk and AGENT_SDK_AVAILABLE`, which
+            # `agent_sdk_available()` reproduces exactly — behaviour-preserving.
+            from services.llm_router import LLMRouter
+
+            result = await LLMRouter().run_agent_task(
                 task=prompt,
                 agent_config={
                     "system_prompt": system_prompt,
                     "allowed_tools": allowed_tools,
                     "model": request.model,
+                    # Mirror the old ClaudeService(use_backend_tools=True) ctor;
+                    # use_mcp_tools defaults True in both, and thinking is a
+                    # no-op on the Agent SDK path.
+                    "use_backend_tools": True,
                 },
             )
 
@@ -1264,19 +1273,25 @@ async def run_agent_task(request: AgentTaskRequest):
     # GH #89: resolve model via ai_model_configs if caller didn't specify one.
     request.model = _resolve_model_for_request(request.model, request.agent_id)
 
-    claude_service = ClaudeService(use_backend_tools=True, use_agent_sdk=True)
+    # Agent SDK is Anthropic-only, so keep the 503 no-provider gate on the
+    # Anthropic key without constructing ClaudeService (#413 4c-2). Router's
+    # _build_agent_sdk_engine reproduces the old
+    # ClaudeService(use_backend_tools=True, use_mcp_tools=True default,
+    # use_agent_sdk=True) construction; pass use_backend_tools explicitly.
+    from services.llm_router import LLMRouter, anthropic_api_key_available
 
-    if not claude_service.has_api_key():
+    if not anthropic_api_key_available():
         _raise_no_provider()
 
     try:
-        result = await claude_service.run_agent_task(
+        result = await LLMRouter().run_agent_task(
             task=request.task,
             agent_config={
                 "system_prompt": system_prompt,
                 "allowed_tools": allowed_tools,
                 "max_turns": max_turns,
                 "model": request.model,
+                "use_backend_tools": True,
             },
             session_id=request.session_id,
         )
@@ -1326,20 +1341,23 @@ async def stream_agent_task(request: AgentTaskRequest):
     # GH #89: resolve model via ai_model_configs if caller didn't specify one.
     request.model = _resolve_model_for_request(request.model, request.agent_id)
 
-    claude_service = ClaudeService(use_backend_tools=True, use_agent_sdk=True)
+    # Agent SDK is Anthropic-only; keep the 503 no-provider gate on the
+    # Anthropic key without constructing ClaudeService (#413 4c-2).
+    from services.llm_router import LLMRouter, anthropic_api_key_available
 
-    if not claude_service.has_api_key():
+    if not anthropic_api_key_available():
         _raise_no_provider()
 
     async def generate():
         try:
-            async for event in claude_service.agent_query(
+            async for event in LLMRouter().run_agent_stream(
                 prompt=request.task,
                 system_prompt=system_prompt,
                 allowed_tools=allowed_tools,
                 max_turns=request.max_turns,
                 session_id=request.session_id,
                 model=request.model,
+                agent_config={"use_backend_tools": True},
             ):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
