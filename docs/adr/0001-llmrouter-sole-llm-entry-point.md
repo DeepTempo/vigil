@@ -47,3 +47,19 @@ anywhere except `LLMRouter` and tests.
   tool execution and the worker's persistence move behind the router.
 - Once enforced, any new module that imports `ClaudeService` fails CI, keeping
   the boundary from eroding.
+
+## Enforcement (PR5)
+
+The contract lives in [`.importlinter`](../../.importlinter) (a `forbidden`
+contract: `services.claude_service` importable only by `services.llm_router`),
+run by the **blocking** `import-contract` CI job and a `lint-imports`
+pre-commit hook. Run it locally with `pip install -r requirements-dev.txt &&
+lint-imports`.
+
+Two modules keep the import under a **temporary, tracked exemption** (they are
+LLM plumbing that borrows `ClaudeService` internals, not feature callers, and
+are already router-first for their main paths):
+
+- `daemon/agent_runner.py` — 4 non-dispatch helper borrowings — [#449](https://github.com/Vigil-SOC/vigil/issues/449)
+- `services/llm_worker.py` — the raw multi-turn loop (`.client` +
+  `_persist_interaction`) — [#450](https://github.com/Vigil-SOC/vigil/issues/450)
