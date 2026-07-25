@@ -16,12 +16,8 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.llm_router import (
-    LLMRouter,
-    ProviderSpec,
-    provider_spec_from_row,
-    select_path,
-)
+from services.llm_router import (LLMRouter, ProviderSpec,
+                                 provider_spec_from_row, select_path)
 
 pytestmark = pytest.mark.unit
 
@@ -1826,6 +1822,10 @@ async def test_dispatch_stream_service_config_overrides_use_backend_tools_false(
     [
         ({"CLAUDE_API_KEY": "sk-x"}, None, True),
         ({"ANTHROPIC_API_KEY": "sk-y"}, None, True),
+        # Lowercase legacy names ClaudeService._load_api_key also honours;
+        # get_secret is case-sensitive so these are distinct lookups (review M1).
+        ({"claude_api_key": "sk-lc"}, None, True),
+        ({"anthropic_api_key": "sk-lc2"}, None, True),
         ({}, "sk-from-ui-row", True),  # env absent, UI row resolves
         ({}, None, False),  # nothing configured
     ],
@@ -1837,6 +1837,39 @@ def test_anthropic_api_key_available(secrets, discover, expected):
         "services.llm_router.get_secret", side_effect=lambda n: secrets.get(n)
     ), patch("services.llm_router.discover_anthropic_api_key", return_value=discover):
         assert anthropic_api_key_available() is expected
+
+
+def test_anthropic_api_key_available_matches_claudeservice_name_set():
+    """Parity guard: the helper must check the exact legacy name set
+    ClaudeService._load_api_key uses (review M1 regression)."""
+    from services.llm_router import anthropic_api_key_available
+
+    checked: list = []
+
+    def record(name):
+        checked.append(name)
+        return None
+
+    with patch("services.llm_router.get_secret", side_effect=record), patch(
+        "services.llm_router.discover_anthropic_api_key", return_value=None
+    ):
+        assert anthropic_api_key_available() is False
+    assert checked == [
+        "CLAUDE_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "claude_api_key",
+        "anthropic_api_key",
+    ]
+
+
+def test_anthropic_api_key_available_when_secrets_backend_absent():
+    """get_secret is None (no secrets backend) → fall straight to discover."""
+    from services.llm_router import anthropic_api_key_available
+
+    with patch("services.llm_router.get_secret", None), patch(
+        "services.llm_router.discover_anthropic_api_key", return_value="sk-ui"
+    ):
+        assert anthropic_api_key_available() is True
 
 
 def test_anthropic_api_key_available_survives_get_secret_error():

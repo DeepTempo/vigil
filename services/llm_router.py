@@ -248,7 +248,8 @@ def _pre_dispatch_sanitize(
     Returns the (possibly rewritten) ``messages`` and the system prompt
     (returned as-is — we never silently mutate user system prompts).
     """
-    from services.prompt_security import PromptInjectionBlocked, scan_for_injection
+    from services.prompt_security import (PromptInjectionBlocked,
+                                          scan_for_injection)
 
     wrapped = _wrap_tool_results_in_messages(messages)
 
@@ -833,10 +834,8 @@ class LLMRouter:
     ) -> Dict[str, Any]:
         from openai import AsyncOpenAI  # lazy — avoids hard dep for tests
 
-        from services.llm_format import (
-            anthropic_messages_to_openai,
-            anthropic_tools_to_openai,
-        )
+        from services.llm_format import (anthropic_messages_to_openai,
+                                         anthropic_tools_to_openai)
 
         # Callers (the daemon tool loop, workflows) build conversations in
         # Anthropic shape — assistant tool_use blocks, user tool_result blocks,
@@ -920,10 +919,8 @@ class LLMRouter:
         usage) for non-Anthropic Bifrost providers."""
         from openai import AsyncOpenAI
 
-        from services.llm_format import (
-            anthropic_messages_to_openai,
-            anthropic_tools_to_openai,
-        )
+        from services.llm_format import (anthropic_messages_to_openai,
+                                         anthropic_tools_to_openai)
 
         messages, system_prompt = _pre_dispatch_sanitize(messages, system_prompt)
         model = model or provider.default_model
@@ -1266,15 +1263,25 @@ def anthropic_api_key_available() -> bool:
     can keep their ``has_api_key()``->503 no-provider gate after migrating off
     ``ClaudeService`` (#413 PR4c):
 
-      1. Legacy ``CLAUDE_API_KEY`` / ``ANTHROPIC_API_KEY`` secret/env names.
+      1. Legacy secret/env names — the SAME four ``_load_api_key`` checks, in
+         order: ``CLAUDE_API_KEY``, ``ANTHROPIC_API_KEY``, ``claude_api_key``,
+         ``anthropic_api_key`` (``get_secret`` is case-sensitive, so the
+         lowercase legacy names are distinct lookups and must be included).
       2. A UI-configured Anthropic provider row (``discover_anthropic_api_key``).
 
     (The Anthropic SDK is a hard project dependency, so — unlike
     ``has_api_key`` — this does not also assert the SDK client imports: if the
-    SDK were missing the whole app would already be down.)
+    SDK were missing the whole app would already be down. The
+    ``provider_api_key_ref`` step is omitted because it is caller-supplied and
+    none of the migrated endpoints pass one.)
     """
     if get_secret is not None:
-        for name in ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY"):
+        for name in (
+            "CLAUDE_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "claude_api_key",
+            "anthropic_api_key",
+        ):
             try:
                 if get_secret(name):
                     return True
