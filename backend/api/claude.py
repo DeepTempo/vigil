@@ -13,7 +13,6 @@ from pydantic import BaseModel, field_validator
 from backend.middleware.auth import get_current_user
 from backend.schemas.system_prompt import validate_system_prompt
 from database.models import User
-from services.claude_service import ClaudeService
 from services.defaults import DEFAULT_MODEL
 from services.model_registry import get_registry
 
@@ -729,16 +728,20 @@ async def chat_stream(
         and getattr(active_provider, "provider_type", None) != "anthropic"
     )
 
-    claude_service = None
+    from services.llm_router import anthropic_api_key_available
+
     if not use_router:
-        claude_service = ClaudeService(
-            use_backend_tools=True,
-            enable_thinking=enable_thinking,
-            thinking_budget=thinking_budget,
-        )
-        if not claude_service.has_api_key():
+        # H1 carry-over: keep the 503 no-provider gate on the Anthropic key
+        # without constructing ClaudeService — the Anthropic stream now runs
+        # through LLMRouter.dispatch_stream below (#413 4c-3). dispatch_stream's
+        # Anthropic path has no key check of its own, so this gate is what
+        # prevents an Ollama-less / key-less deployment from failing mid-stream.
+        if not anthropic_api_key_available():
             _raise_no_provider()
     else:
+        # Idempotent pre-transform so the write-through history records the
+        # provider-resolved model; dispatch_stream re-applies _router_model
+        # internally (a non-``claude-`` result is a no-op on re-application).
         request.model = _router_model(active_provider, request.model)
 
     async def generate():
@@ -826,99 +829,7 @@ async def chat_stream(
             # Use all previous messages as context (if any)
             context = messages[:-1] if len(messages) > 1 else None
 
-            # Non-Anthropic path — stream via LLMRouter / Bifrost's OpenAI
-            # surface. No tools here, so use the no-tools guardrail prompt.
-            if use_router and active_provider is not None:
-                # Non-Anthropic path. A model that supports tool calling runs the
-                # full agentic loop (OpenAIAgentService, multi-turn + tools);
-                # anything else falls back to a plain no-tools router stream.
-                # Both branches preserve history tracking below.
-                model_id = request.model or active_provider.default_model
-                enable_agent_tools = False
-                try:
-                    from services.model_registry import ModelRegistry
-
-                    model_info = ModelRegistry().get_model_info(
-                        active_provider.provider_id,
-                        active_provider.provider_type,
-                        model_id,
-                    )
-                    enable_agent_tools = bool(
-                        getattr(model_info, "supports_tools", False)
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug("model tool-support lookup failed: %s", exc)
-
-                agent = None
-                if enable_agent_tools:
-                    from services.openai_agent_service import OpenAIAgentService
-
-                    agent = OpenAIAgentService(recommended_tools=recommended_tools)
-                    # Claims tool support but nothing loadable — fall back to the
-                    # no-tools stream rather than send an empty tools=[] that some
-                    # providers reject.
-                    if not agent.tools_available():
-                        logger.info(
-                            "Model %s supports tools but none available; "
-                            "using no-tools router stream",
-                            model_id,
-                        )
-                        agent = None
-                        enable_agent_tools = False
-
-                text_chunks = 0
-                total_text_length = 0
-                logger.info(
-                    f"🚀 [RequestID: {request_id}] Starting router stream "
-                    f"({active_provider.provider_type}, tools={enable_agent_tools}) "
-                    f"with {len(messages)} messages"
-                )
-
-                if enable_agent_tools and agent is not None:
-                    # Always include the tool-use guardrail. When an agent
-                    # supplies its own system prompt, prepend the guardrail so
-                    # the tool/anti-fabrication instructions are never dropped.
-                    agent_system_prompt = (
-                        f"{ROUTER_AGENT_TOOLS_SYSTEM_PROMPT}\n\n{system_prompt}"
-                        if system_prompt
-                        else ROUTER_AGENT_TOOLS_SYSTEM_PROMPT
-                    )
-                    async for chunk in agent.stream(
-                        provider=active_provider,
-                        messages=messages,
-                        system_prompt=agent_system_prompt,
-                        model=model_id,
-                        max_tokens=max_tokens,
-                        enable_tools=True,
-                        session_id=request.session_id,
-                        agent_id=request.agent_id,
-                    ):
-                        text_chunks += 1
-                        total_text_length += len(chunk.get("content", ""))
-                        history_assistant_parts.append(chunk.get("content", ""))
-                        yield f"data: {json.dumps(chunk)}\n\n"
-                else:
-                    from services.llm_router import LLMRouter
-
-                    async for chunk in LLMRouter().dispatch_openai_stream(
-                        provider=active_provider,
-                        messages=messages,
-                        system_prompt=ROUTER_NO_TOOLS_SYSTEM_PROMPT,
-                        model=model_id,
-                        max_tokens=max_tokens,
-                        interaction_id=request_id,
-                    ):
-                        text_chunks += 1
-                        total_text_length += len(chunk.get("content", ""))
-                        history_assistant_parts.append(chunk.get("content", ""))
-                        yield f"data: {json.dumps(chunk)}\n\n"
-                history_reached_end = True
-                elapsed_time = time.time() - start_time
-                logger.info(
-                    f"✅ [RequestID: {request_id}] Router stream complete in {elapsed_time:.2f}s — "
-                    f"{text_chunks} chunks ({total_text_length} chars)"
-                )
-                return
+            from services.llm_router import LLMRouter
 
             logger.info(
                 f"🚀 [RequestID: {request_id}] Starting stream with {len(messages)} messages, context={len(context) if context else 0}"
@@ -930,10 +841,21 @@ async def chat_stream(
             total_text_length = 0
             total_thinking_length = 0
 
-            assert claude_service is not None
-            async for chunk in claude_service.chat_stream(
-                message=current_message,
-                context=context,
+            # Unified provider-aware streaming (#413 4c-3): dispatch_stream
+            # absorbs the three provider branches that used to live here
+            # (tool-capable non-Anthropic → OpenAIAgentService loop;
+            # non-Anthropic no-tools → dispatch_openai_stream; Anthropic / no
+            # active provider → ClaudeService.chat_stream) and yields the SSE
+            # event dicts verbatim. Post-3b both provider paths emit the same
+            # agent_loop event vocabulary, so this one type-based accumulation
+            # block handles history for all of them: text/thinking carry real
+            # output; tool_processing/tool_result carry no "content" (the old
+            # router-path append-all was already a no-op for those). The full
+            # validated `messages` go in; the Anthropic engine splits the
+            # trailing user turn off internally, exactly as before.
+            async for chunk in LLMRouter().dispatch_stream(
+                provider=active_provider,
+                messages=messages,
                 system_prompt=system_prompt,
                 model=request.model,
                 max_tokens=max_tokens,
@@ -941,6 +863,8 @@ async def chat_stream(
                 thinking_budget=thinking_budget,
                 session_id=request.session_id,
                 agent_id=request.agent_id,
+                recommended_tools=recommended_tools,
+                interaction_id=request_id,
             ):
                 chunk_count += 1
                 # Handle both dict (new format with thinking) and string (backward compat)

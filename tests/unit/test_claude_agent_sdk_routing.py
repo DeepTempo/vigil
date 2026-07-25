@@ -96,6 +96,22 @@ class _FakeRouter:
         ):
             yield evt
 
+    async def dispatch_stream(self, **kwargs):
+        type(self).last_stream_kwargs = dict(kwargs)
+        # Mixed event vocabulary post-3b: text/thinking carry content;
+        # tool_processing has no "content" key (old append-all was a no-op).
+        for evt in (
+            {"type": "text", "content": "Hello "},
+            {"type": "thinking", "content": "pondering"},
+            {"type": "tool_processing", "tool_name": "x", "tool_id": "1"},
+            {"type": "text", "content": "world"},
+        ):
+            yield evt
+
+
+class _StubUser:
+    user_id = "u1"
+
 
 def _patch_router(monkeypatch, *, key_available: bool):
     _FakeRouter.last_task_config = None
@@ -235,3 +251,60 @@ def test_agents_run_no_key_raises_503(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         asyncio.run(agents.run_agent(req))
     assert exc.value.status_code == 503
+
+
+# --- /chat/stream (4c-3) ----------------------------------------------------
+
+
+def _patch_stream(monkeypatch, *, key_available: bool):
+    _patch_router(monkeypatch, key_available=key_available)
+    # No positively-identified non-Anthropic provider -> use_router False so the
+    # H1 503 gate applies; dispatch_stream still handles the Anthropic path.
+    monkeypatch.setattr(claude, "_select_active_provider", lambda pid: None)
+    monkeypatch.setattr(
+        claude, "_resolve_provider_model_for_request", lambda m, a: (None, "m")
+    )
+
+
+def test_chat_stream_no_key_raises_503(monkeypatch):
+    _patch_stream(monkeypatch, key_available=False)
+    req = claude.ChatRequest(
+        messages=[claude.ChatMessage(role="user", content="hi")], model="m"
+    )
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(claude.chat_stream(req, _StubUser()))
+    assert exc.value.status_code == 503
+
+
+def test_chat_stream_dispatches_frames_and_accumulates_history(monkeypatch):
+    _patch_stream(monkeypatch, key_available=True)
+    captured = {}
+    monkeypatch.setattr(claude, "_persist_chat_turn", lambda **kw: captured.update(kw))
+
+    req = claude.ChatRequest(
+        messages=[claude.ChatMessage(role="user", content="analyze")],
+        model="m",
+        session_id="s1",
+    )
+    response = asyncio.run(claude.chat_stream(req, _StubUser()))
+
+    async def _drain():
+        return [c async for c in response.body_iterator]
+
+    frames = asyncio.run(_drain())
+    payloads = [json.loads(f.removeprefix("data: ").strip()) for f in frames]
+    # Every chunk is framed to the client verbatim, in order.
+    assert [p.get("type") for p in payloads] == [
+        "text",
+        "thinking",
+        "tool_processing",
+        "text",
+    ]
+    # Type-based history accumulation: text concatenated to assistant, thinking
+    # separated, tool_processing (no "content") contributes nothing.
+    assert captured["assistant_text"] == "Hello world"
+    assert captured["assistant_thinking"] == "pondering"
+    assert captured["complete"] is True
+    # recommended_tools + the full validated messages are threaded to the router.
+    assert "recommended_tools" in _FakeRouter.last_stream_kwargs
+    assert _FakeRouter.last_stream_kwargs["provider"] is None
