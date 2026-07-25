@@ -19,6 +19,7 @@ root_packages =
     database
     core
     tools
+    scripts
 
 [importlinter:contract:claude-service-boundary]
 name = ClaudeService is reachable only through LLMRouter (#413)
@@ -30,6 +31,7 @@ source_modules =
     database
     core
     tools
+    scripts
 forbidden_modules =
     services.claude_service
 # Allowed importer (the sole LLM entry point) + temporary tracked exemptions.
