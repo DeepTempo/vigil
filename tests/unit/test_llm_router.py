@@ -1906,3 +1906,111 @@ def test_agent_sdk_available_false_when_missing():
 
     with patch("builtins.__import__", side_effect=fake_import):
         assert agent_sdk_available() is False
+
+
+# --- run_agent_chat (#413 4d-2) --------------------------------------------
+
+
+class _FakeOASRun:
+    """OpenAIAgentService stand-in exposing the non-streaming run()."""
+
+    def __init__(self, recommended_tools=None):
+        self.recommended_tools = recommended_tools
+        self.run_kwargs = None
+
+    async def run(self, **kwargs):
+        self.run_kwargs = kwargs
+        return "oas-final-text"
+
+
+def _patch_oas_run():
+    holder: dict = {}
+
+    def factory(recommended_tools=None):
+        inst = _FakeOASRun(recommended_tools=recommended_tools)
+        holder["oas"] = inst
+        return inst
+
+    return holder, patch("services.openai_agent_service.OpenAIAgentService", factory)
+
+
+@pytest.mark.asyncio
+async def test_run_agent_chat_anthropic_path_builds_service_and_calls_chat():
+    holder, p = _patch_chat_engine()
+    with p:
+        out = await LLMRouter().run_agent_chat(
+            "investigate F1",
+            provider=None,
+            model="claude-x",
+            system_prompt="sys",
+            recommended_tools=["list_findings"],
+            max_tokens=8192,
+            service_config={
+                "use_backend_tools": True,
+                "use_mcp_tools": True,
+                "use_agent_sdk": False,
+                "enable_thinking": True,
+            },
+        )
+    assert out == "anthropic-reply"
+    eng = holder["engine"]
+    # service_config drives the ClaudeService construction verbatim.
+    assert eng.init_kwargs == {
+        "use_backend_tools": True,
+        "use_mcp_tools": True,
+        "use_agent_sdk": False,
+        "enable_thinking": True,
+    }
+    # chat() gets the workflow turn args (no session_id/agent_id on this path,
+    # matching the old _run_agent_turn Anthropic branch).
+    msg, kwargs = eng.chat_calls[0]
+    assert msg == "investigate F1"
+    assert kwargs["system_prompt"] == "sys"
+    assert kwargs["model"] == "claude-x"
+    assert kwargs["max_tokens"] == 8192
+    assert kwargs["recommended_tools"] == ["list_findings"]
+
+
+@pytest.mark.asyncio
+async def test_run_agent_chat_non_anthropic_uses_openai_agent_run():
+    holder, p = _patch_oas_run()
+    with p:
+        out = await LLMRouter().run_agent_chat(
+            "investigate F1",
+            provider=_ollama_spec(),
+            model="llama3",
+            system_prompt="sys",
+            recommended_tools=["list_findings"],
+            max_tokens=4096,
+            session_id="run-1",
+            agent_id="triage",
+        )
+    assert out == "oas-final-text"
+    oas = holder["oas"]
+    assert oas.recommended_tools == ["list_findings"]
+    k = oas.run_kwargs
+    assert getattr(k["provider"], "provider_type", None) == "ollama"
+    assert k["messages"] == [{"role": "user", "content": "investigate F1"}]
+    assert k["enable_tools"] is True
+    assert k["session_id"] == "run-1"
+    assert k["agent_id"] == "triage"
+    assert k["model"] == "llama3"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_chat_none_provider_does_not_resolve_default(monkeypatch):
+    # Unlike chat(), provider=None must NOT resolve the default provider — it
+    # deterministically selects the Anthropic path. Guard against a regression
+    # that adds default resolution here.
+    called = {"resolved": False}
+
+    def _sentinel():
+        called["resolved"] = True
+        return _ollama_spec()
+
+    monkeypatch.setattr("services.llm_router.get_default_provider_spec", _sentinel)
+    holder, p = _patch_chat_engine()
+    with p:
+        out = await LLMRouter().run_agent_chat("x", provider=None)
+    assert out == "anthropic-reply"
+    assert called["resolved"] is False

@@ -680,6 +680,68 @@ class LLMRouter:
             chat_kwargs["model"] = model
         return await asyncio.to_thread(lambda: svc.chat(message, **chat_kwargs))
 
+    async def run_agent_chat(
+        self,
+        message: Any,
+        *,
+        provider: Optional[ProviderSpec] = None,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: int = 4096,
+        recommended_tools: Optional[List[str]] = None,
+        session_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        service_config: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """Provider-aware agentic chat (multi-turn tools), non-streaming → text.
+
+        Absorbs the workflow engine's per-turn dispatch branch: a non-Anthropic
+        ``ProviderSpec`` runs the ``OpenAIAgentService`` multi-turn tool loop;
+        ``provider is None`` runs the Anthropic path via ``ClaudeService.chat``
+        (whose own backend/MCP tool loop provides multi-turn tools). Returns the
+        final assistant text like ``chat``.
+
+        IMPORTANT — ``provider=None`` here means "the Anthropic path", NOT
+        "resolve the default provider" (that is ``chat``'s behaviour). This
+        mirrors the workflow provider resolver, which returns ``None`` precisely
+        when the resolved provider is Anthropic; the Bifrost/OpenAI providers
+        always carry a concrete ``ProviderSpec``. ``service_config`` supplies the
+        ``ClaudeService`` ctor flags for the Anthropic path (the caller's
+        agentic setup: backend + MCP tools, no Agent SDK, thinking on).
+        """
+        use_router = (
+            provider is not None
+            and getattr(provider, "provider_type", None) != "anthropic"
+        )
+        if use_router:
+            from services.openai_agent_service import OpenAIAgentService
+
+            agent = OpenAIAgentService(recommended_tools=recommended_tools)
+            return await agent.run(
+                provider=provider,
+                messages=[{"role": "user", "content": message}],
+                system_prompt=system_prompt,
+                model=model,
+                max_tokens=max_tokens,
+                enable_tools=True,
+                session_id=session_id,
+                agent_id=agent_id,
+            )
+
+        # Anthropic path — ClaudeService.chat is synchronous, run it off-loop.
+        from services.claude_service import ClaudeService
+
+        svc = ClaudeService(**(service_config or {}))
+        return await asyncio.to_thread(
+            lambda: svc.chat(
+                message=message,
+                system_prompt=system_prompt,
+                model=model,
+                max_tokens=max_tokens,
+                recommended_tools=recommended_tools,
+            )
+        )
+
     async def dispatch_stream(
         self,
         *,
