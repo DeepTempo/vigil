@@ -533,6 +533,7 @@ class LLMRouter:
         extra_headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         from services.llm_clients import create_async_anthropic_client
+        from services.defaults import build_thinking_kwargs
 
         api_key: Optional[str] = None
         if provider.api_key_ref and get_secret is not None:
@@ -559,7 +560,9 @@ class LLMRouter:
         if tools:
             kwargs["tools"] = tools
         if enable_thinking:
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+            # Model-aware: newer Anthropic models reject the budget_tokens
+            # shape and require adaptive thinking + output_config.effort.
+            kwargs.update(build_thinking_kwargs(model, thinking_budget))
         if extra_headers:
             kwargs["extra_headers"] = extra_headers
 
