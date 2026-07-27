@@ -409,7 +409,11 @@ jobs:
     name: Build Frontend
     runs-on: ubuntu-latest
     needs: [lint-frontend]
-    if: github.event_name == 'push' && github.repository == 'Vigil-SOC/vigil'
+    # Runs on PRs too, not just push. This is the only job that type-checks
+    # (tsc); gating it to post-merge let type errors land on main. The
+    # pull_request build compiles the PR merged into its base, so it also
+    # catches breakage that only appears after the merge.
+    if: github.repository == 'Vigil-SOC/vigil'
     steps:
       - uses: actions/checkout@v5
       
@@ -429,6 +433,7 @@ jobs:
         run: npm run build
       
       - name: Upload build artifacts
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v5
         with:
           name: frontend-build
