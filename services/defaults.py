@@ -46,19 +46,24 @@ def _thinking_budget_to_effort(budget: Optional[int]) -> str:
 def build_thinking_kwargs(model: str, budget: Optional[int]) -> Dict[str, Any]:
     """Build the messages.create/stream kwargs that enable extended thinking.
 
-    Newer Anthropic models (Opus 4.7/4.8, Fable 5, Mythos) reject
-    ``thinking={"type": "enabled", "budget_tokens": N}`` with a 400 and require
-    adaptive thinking plus an ``output_config.effort`` hint instead; older
-    models keep the budget-based form. ``display: "summarized"`` is set on the
-    adaptive path so thinking content is still returned (the API default is
-    ``omitted`` on these models, which would blank the UI's thinking view).
+    Two model families need different shapes, and the Bifrost gateway that all
+    Anthropic traffic routes through (``services/llm_clients.py``) constrains
+    what we can send:
 
-    Returns a dict to merge into the API kwargs — on the adaptive path it sets
-    both ``thinking`` and ``output_config``.
+    * **Adaptive-only models** (Opus 4.7/4.8, Fable 5, Mythos) reject
+      ``thinking={"type": "enabled", "budget_tokens": N}`` with a 400. They want
+      ``thinking={"type": "adaptive"}`` + ``output_config.effort`` — but the
+      pinned ``maximhq/bifrost`` image cannot convert ``thinking.type=adaptive``
+      and 500s ("failed to convert bifrost request..."). Since neither thinking
+      shape survives the round trip for these models, we omit ``thinking``
+      entirely and steer reasoning depth with ``output_config.effort`` alone
+      (Bifrost forwards it, and it is valid direct-to-Anthropic too). Thinking
+      blocks won't stream for these models until Bifrost gains adaptive support.
+    * **Older models** (Sonnet 4.x, Haiku 4.5, Opus 4.6) keep the budget-based
+      ``enabled`` shape, which both Anthropic and Bifrost accept.
+
+    Returns a dict to merge into the API kwargs.
     """
     if model_requires_adaptive_thinking(model):
-        return {
-            "thinking": {"type": "adaptive", "display": "summarized"},
-            "output_config": {"effort": _thinking_budget_to_effort(budget)},
-        }
+        return {"output_config": {"effort": _thinking_budget_to_effort(budget)}}
     return {"thinking": {"type": "enabled", "budget_tokens": budget}}
