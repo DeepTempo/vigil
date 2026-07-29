@@ -305,6 +305,9 @@ describe('SocConsole redesign', () => {
 
   it('restores and persists the preferred chat width', () => {
     localStorage.setItem('soc.chat.width.v1', '500')
+    // A wide viewport keeps the 516 step inside the band; jsdom's 1024 default
+    // caps the dock at half the screen (512), which is the next test's subject.
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 })
     renderConsole()
     fireEvent.click(screen.getByRole('button', { name: /Ask Vigil/ }))
 
