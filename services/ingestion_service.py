@@ -48,6 +48,27 @@ TEMPO_CSV_IDENTITY_COLUMNS = (
     'event_start', 'event_end', 'IP1', 'IP2', 'mitre_tactic', 'created_at',
 )
 
+# Best-effort column-name aliases for populating entity_context on parquet
+# schemas ingestion doesn't recognize (see _generic_row_to_finding). First
+# alias present in the row wins; if none match the field is just left blank
+# -- the full row is always kept as raw_features too, so nothing is lost.
+ENTITY_FIELD_ALIASES = {
+    'src_ip': ('src_ip', 'source_ip', 'srcip', 'ip1', 'saddr'),
+    'dst_ip': ('dest_ip', 'dst_ip', 'destination_ip', 'dstip', 'ip2', 'daddr'),
+    'src_port': ('src_port', 'source_port', 'sport', 'srcport'),
+    'dst_port': ('dest_port', 'dst_port', 'destination_port', 'dport', 'dstport'),
+    'proto': ('proto', 'protocol', 'ip_proto'),
+    'timestamp': ('timestamp', 'ts', 'event_time', 'time', 'created_at'),
+}
+
+
+def _first_present(row: Dict[str, Any], aliases: tuple) -> Any:
+    """First non-null value among a row's aliases for one logical field."""
+    for alias in aliases:
+        if row.get(alias) is not None:
+            return row[alias]
+    return None
+
 
 def row_identity_key(row: Dict[str, Any], columns: tuple) -> str:
     """Digest a row's identifying columns, for sources with no id column.
@@ -248,7 +269,48 @@ class IngestionService:
             self.stats['findings_errors'] += 1
             logger.error(f"Error ingesting finding {finding_id}: {e}")
             return False
-    
+
+    def _ingest_finding_batch(self, finding_dicts: List[Dict[str, Any]]) -> None:
+        """
+        Bulk-dedup and insert a batch of findings in one DB round trip.
+
+        ingest_finding does a SELECT + INSERT per call, each in its own
+        session_scope() -- fine one at a time, but a parquet file can be
+        hundreds of thousands of rows and that per-row cost dominates
+        wall-clock time. Used by ingest_parquet_file, which already has a
+        natural batch boundary from iter_batches.
+        """
+        if not finding_dicts:
+            return
+
+        if not self.use_database or not self.db_service:
+            for finding_data in finding_dicts:
+                self.ingest_finding(finding_data)
+            return
+
+        valid = []
+        for finding_data in finding_dicts:
+            if not finding_data.get('finding_id'):
+                logger.error("Finding missing finding_id")
+                self.stats['findings_errors'] += 1
+                continue
+            finding_data = normalize_finding_source_evidence(finding_data)
+            finding_data['timestamp'] = self.parse_timestamp(finding_data.get('timestamp'))
+            finding_data['anomaly_score'] = float(finding_data.get('anomaly_score', 0.0))
+            valid.append(finding_data)
+
+        if not valid:
+            return
+
+        try:
+            result = self.db_service.bulk_create_findings(valid)
+            self.stats['findings_imported'] += result['imported']
+            self.stats['findings_skipped'] += result['skipped']
+            self.stats['findings_errors'] += result.get('errors', 0)
+        except Exception as e:
+            logger.error(f"Error bulk ingesting findings: {e}")
+            self.stats['findings_errors'] += len(valid)
+
     def ingest_case(self, case_data: Dict[str, Any]) -> bool:
         """
         Ingest a single case into the database.
@@ -702,10 +764,11 @@ class IngestionService:
         data_source: str = 'flow'
     ) -> Dict[str, Any]:
         """
-        Ingest findings from a DeepTempo LogLM parquet file.
+        Ingest findings from a parquet file.
 
-        Parquet files contain embedding vectors and metadata from the LogLM
-        model. Columns are mapped to the findings schema as follows:
+        DeepTempo LogLM embedding exports (detected by a `sequence_id` or
+        `embedding` column) get bespoke handling -- see
+        _parquet_row_to_finding:
           sequence_id   -> finding_id (hashed to f-YYYYMMDD-xxxxxxxx)
           embedding     -> embedding (variable dimension, stored as-is)
           mitre_pred    -> mitre_predictions (integer label stored as key)
@@ -714,6 +777,10 @@ class IngestionService:
           focal_ip      -> entity_context.src_ip
           engaged_ip    -> entity_context.dst_ip
           event_start/end_time -> timestamp + entity_context
+
+        Any other schema (raw netflow captures, vendor exports, ...) is
+        ingested generically as unscored evidence -- see
+        _generic_row_to_finding.
 
         Args:
             file_path: Path to parquet file
@@ -739,11 +806,15 @@ class IngestionService:
             logger.info(f"Parquet columns: {sorted(col_names)}")
             self.stats['findings_total'] = parquet_file.metadata.num_rows
 
+            schema_kind = self._detect_parquet_schema(col_names)
+            logger.info(f"Detected parquet schema: {schema_kind}")
+
             sampled_first_row = False
             batch_size = 1000
             for batch in parquet_file.iter_batches(batch_size=batch_size):
                 batch_dict = batch.to_pydict()
                 batch_len = len(next(iter(batch_dict.values()))) if batch_dict else 0
+                finding_batch = []
                 for i in range(batch_len):
                     try:
                         row = {col: batch_dict[col][i] for col in col_names if col in batch_dict}
@@ -751,11 +822,14 @@ class IngestionService:
                             sample = {k: (type(v).__name__, v) for k, v in row.items() if k != 'embedding'}
                             logger.info(f"Parquet sample row (types+values): {sample}")
                             sampled_first_row = True
-                        finding_data = self._parquet_row_to_finding(row, data_source)
-                        self.ingest_finding(finding_data)
+                        if schema_kind == 'loglm':
+                            finding_batch.append(self._parquet_row_to_finding(row, data_source))
+                        else:
+                            finding_batch.append(self._generic_row_to_finding(row, data_source))
                     except Exception as e:
                         logger.error(f"Error processing parquet row: {e}")
                         self.stats['findings_errors'] += 1
+                self._ingest_finding_batch(finding_batch)
 
             logger.info(f"Parquet ingestion complete: {self.stats}")
             return self.stats
@@ -878,6 +952,70 @@ class IngestionService:
             'cluster_id': cluster_id,
             'severity': severity,
             'status': 'new',
+        }
+
+    def _detect_parquet_schema(self, col_names: set) -> str:
+        """Classify a parquet file's schema so it's routed to the right row
+        mapper. LogLM embeddings need bespoke handling (embedding vectors,
+        MITRE logits, a real confidence score); anything else is ingested
+        generically as unscored evidence via _generic_row_to_finding."""
+        if 'embedding' in col_names or 'sequence_id' in col_names:
+            return 'loglm'
+        return 'generic'
+
+    def _generic_row_to_finding(
+        self,
+        row: Dict[str, Any],
+        data_source: str = 'flow'
+    ) -> Dict[str, Any]:
+        """
+        Map a row from an unrecognized tabular schema (parquet columns that
+        don't match the LogLM embeddings shape) to an unscored finding shell.
+
+        No column layout is assumed: the identity key hashes every column in
+        the row (stable across re-ingestion, distinct rows stay distinct), a
+        small alias table best-effort-populates entity_context for common
+        IP/port/proto/timestamp names, and the full row is always kept as
+        raw_features so nothing is lost when no alias matches. Never assigns
+        a severity or confidence score -- an unrecognized schema carries no
+        known detection verdict; status='unscored' marks it as awaiting
+        triage rather than an actual low-confidence finding.
+
+        Args:
+            row: Dictionary of column values for one row
+            data_source: Data source label
+
+        Returns:
+            Finding dictionary ready for ingest_finding()
+        """
+        timestamp = _first_present(row, ENTITY_FIELD_ALIASES['timestamp'])
+        event_ts = self.parse_timestamp(timestamp) if timestamp is not None else datetime.utcnow()
+
+        unique_key = row_identity_key(row, tuple(sorted(row.keys())))
+        id_hash = hashlib.sha256(unique_key.encode()).hexdigest()[:ID_HASH_WIDTH]
+        finding_id = f"f-{event_ts.strftime('%Y%m%d')}-{id_hash}"
+
+        entity_context = {
+            'src_ip': _first_present(row, ENTITY_FIELD_ALIASES['src_ip']),
+            'dst_ip': _first_present(row, ENTITY_FIELD_ALIASES['dst_ip']),
+            'src_port': _first_present(row, ENTITY_FIELD_ALIASES['src_port']),
+            'dst_port': _first_present(row, ENTITY_FIELD_ALIASES['dst_port']),
+            'proto': _first_present(row, ENTITY_FIELD_ALIASES['proto']),
+            'raw_features': row,
+        }
+
+        return {
+            'finding_id': finding_id,
+            'embedding': [0.0] * 768,
+            'mitre_predictions': {},
+            'anomaly_score': 0.0,
+            'timestamp': event_ts.isoformat(),
+            'data_source': data_source,
+            'entity_context': entity_context,
+            'evidence_links': None,
+            'cluster_id': None,
+            'severity': None,
+            'status': 'unscored',
         }
 
     # Extension -> (ingestion method name, temp file suffix, file mode for write)
