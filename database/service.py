@@ -98,22 +98,8 @@ class DatabaseService:
             return None
 
     def bulk_create_findings(self, rows: List[Dict[str, Any]]) -> Dict[str, int]:
-        """
-        Dedup and insert many findings in one transaction.
-
-        create_finding/get_finding each open their own session_scope(); calling
-        them per row doesn't scale to the hundred-thousand-row parquet files
-        real LogLM/netflow exports can be. Rows sharing a finding_id within the
-        batch keep only their last occurrence (matches the create-then-skip
-        semantics of ingesting the same row twice).
-
-        Args:
-            rows: finding dicts shaped like create_finding's kwargs, plus
-                  finding_id; timestamp must already be a datetime.
-
-        Returns:
-            {'imported': N, 'skipped': N}
-        """
+        """Dedup + insert many findings in one transaction; per-row create_finding
+        doesn't scale to hundred-thousand-row parquet files."""
         if not rows:
             return {'imported': 0, 'skipped': 0}
 

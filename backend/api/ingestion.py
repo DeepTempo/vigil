@@ -162,57 +162,19 @@ async def ingest_from_string(
     format: str = Form("json"),
     data_type: str = Form("finding")
 ):
-    """
-    Ingest data from a string.
-    
-    Args:
-        data: Data as string
-        format: Format ('json', 'csv', 'jsonl')
-        data_type: Type of data ('finding' or 'case')
-    
-    Returns:
-        Ingestion statistics
-    """
+    """Ingest data from a string; format is 'json', 'csv', or 'jsonl'."""
     if data_type not in ['finding', 'case']:
         raise HTTPException(status_code=400, detail="data_type must be 'finding' or 'case'")
-    
+
     if format not in ['json', 'csv', 'jsonl']:
         raise HTTPException(status_code=400, detail="format must be 'json', 'csv', or 'jsonl'")
-    
+
     try:
         ingestion_service = IngestionService()
         stats = ingestion_service.ingest_from_string(data, format=format, data_type=data_type)
-        
-        # Determine success
-        success = (
-            stats['findings_errors'] == 0 and
-            stats['cases_errors'] == 0 and
-            (stats['findings_imported'] > 0 or stats['cases_imported'] > 0)
-        )
-        
-        # Build message
-        messages = []
-        if stats['findings_imported'] > 0:
-            messages.append(f"Imported {stats['findings_imported']} findings")
-        if stats['findings_skipped'] > 0:
-            messages.append(f"Skipped {stats['findings_skipped']} duplicate findings")
-        if stats['cases_imported'] > 0:
-            messages.append(f"Imported {stats['cases_imported']} cases")
-        if stats['cases_skipped'] > 0:
-            messages.append(f"Skipped {stats['cases_skipped']} duplicate cases")
-        if stats['findings_errors'] > 0:
-            messages.append(f"⚠ {stats['findings_errors']} finding errors")
-        if stats['cases_errors'] > 0:
-            messages.append(f"⚠ {stats['cases_errors']} case errors")
-        
-        message = ". ".join(messages) if messages else "No data imported"
-        
-        return IngestionStats(
-            **stats,
-            success=success,
-            message=message
-        )
-    
+        success, message = summarize_stats(stats)
+        return IngestionStats(**stats, success=success, message=message)
+
     except Exception as e:
         logger.error(f"Error ingesting string data: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
