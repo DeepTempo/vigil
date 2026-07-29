@@ -372,7 +372,7 @@ All CI checks must pass before merging.
 
 ## Submodules
 
-This repo uses two Git submodules:
+This repo uses three Git submodules:
 
 ```bash
 # Initialize after cloning
@@ -386,8 +386,13 @@ git submodule update --remote
 |-----------|------|---------|
 | `deeptempo-core` | `./deeptempo-core` | Core AI and detection library |
 | `mcp-servers` | `./mcp-servers` | MCP server implementations |
+| `mempalace` | `./mempalace` | Agent memory / knowledge palace |
 
-Both are installed as editable packages (`-e ./deeptempo-core`, `-e ./mcp-servers`) in `requirements.txt`. If submodules aren't initialized, `start.sh` skips their installation gracefully.
+All three are installed as editable packages (`-e ./deeptempo-core`, `-e ./mcp-servers`, `-e ./mempalace`) in `requirements.txt`. If submodules aren't initialized, `start.sh` skips their installation gracefully.
+
+`mempalace` ships its own `tests/benchmarks/`, which a bare `pytest` from the
+repo root tries to collect and fails on. Scope your runs the way CI does
+(`pytest tests/unit/`, `pytest tests/integration/`).
 
 ---
 
