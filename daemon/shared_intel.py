@@ -7,7 +7,6 @@ overlapping investigations and link related cases.
 import logging
 import os
 from collections import defaultdict
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
