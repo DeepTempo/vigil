@@ -3,7 +3,6 @@
 Single source of truth used by:
 - backend/api/attack.py — /attack/techniques/rollup
 - backend/api/analytics.py — get_mitre_technique_distribution
-- services/attack_data_loader.py — visualization data
 
 Findings in this codebase carry MITRE data in two shapes:
 - Demo path: `predicted_techniques: list[{technique_id, confidence, technique_name}]`

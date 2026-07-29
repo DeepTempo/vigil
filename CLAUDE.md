@@ -44,11 +44,10 @@ vigil/
 │   └── scheduler.py      # Cron-style scheduled tasks
 ├── frontend/             # React + TypeScript + Vite SPA
 │   └── src/
-│       ├── pages/        # Route-level page components
-│       ├── components/   # Feature components (16 subdirectories)
+│       ├── redesign/     # The SOC console — screens/, shell/, shared/
+│       ├── components/   # Cross-console components (auth, setup)
 │       ├── services/     # Axios API client services
-│       ├── contexts/     # React Context (auth, theme)
-│       └── theme/        # MUI customization
+│       └── contexts/     # React Context (auth, theme)
 ├── workflows/            # Workflow definitions as WORKFLOW.md files
 │   ├── incident-response/WORKFLOW.md
 │   ├── full-investigation/WORKFLOW.md
@@ -264,8 +263,12 @@ Key config variables: `DAEMON_AUTO_TRIAGE`, `DAEMON_CONFIDENCE_THRESHOLD`, `ORCH
 ### TypeScript / React
 
 - **Framework**: React 18 + Vite 5 (not CRA)
-- **UI**: Material-UI (MUI) v5 — use MUI components, not custom CSS primitives
-- **State/data**: `@tanstack/react-query` for server state; React Context for auth/theme
+- **UI**: Tailwind utility classes + the CSS custom properties in
+  `frontend/src/redesign/styles.css`. Reuse the primitives in
+  `redesign/shared/` (`ui.tsx`, `formKit.tsx`, `icons.tsx`) — there is no
+  component library, so do not add one
+- **State/data**: plain hooks (`useState`/`useEffect`) over the axios services;
+  React Context for auth/theme/toasts
 - **HTTP**: axios via `frontend/src/services/`
 - **Linter**: ESLint with `@typescript-eslint/recommended` + `react-hooks/recommended`
 - Component files: `PascalCase.tsx`
