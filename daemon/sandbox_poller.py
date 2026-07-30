@@ -19,6 +19,9 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from core.config import get_settings
+from core.secrets import get_secret
+
 logger = logging.getLogger(__name__)
 
 

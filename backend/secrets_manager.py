@@ -777,7 +777,6 @@ def get_secrets_manager(
             else:
                 # Check general config file
                 try:
-                    from pathlib import Path
                     import json
 
                     config_file = vigil_path("general_config.json")

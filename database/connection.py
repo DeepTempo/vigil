@@ -5,7 +5,6 @@ Handles database connections, session management, and connection pooling.
 """
 
 import asyncio
-import os
 import logging
 import threading
 import time

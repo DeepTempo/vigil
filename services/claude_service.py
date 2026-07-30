@@ -14,6 +14,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Union
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 from secrets_manager import get_secret, set_secret
 
+from core.config import get_settings
 from services.defaults import DEFAULT_MODEL, build_thinking_kwargs
 
 # GH #89 — resolve the summarization model via ai_model_configs with a safe

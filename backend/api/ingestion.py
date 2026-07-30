@@ -11,7 +11,6 @@ Handles uploading and ingesting findings/cases from various file formats:
 
 import asyncio
 import logging
-import os
 from datetime import datetime
 from typing import Dict, Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query

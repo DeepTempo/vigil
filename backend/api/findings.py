@@ -141,7 +141,6 @@ async def export_findings(output_format: str = "json"):
     Returns:
         Export result
     """
-    from pathlib import Path
     from datetime import datetime
     
     output_dir = vigil_path("exports", write=True)

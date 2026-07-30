@@ -142,14 +142,14 @@ class DaemonConfig:
     orchestrator: OrchestratorConfig = field(default_factory=OrchestratorConfig)
     llm_queue: LLMQueueConfig = field(default_factory=LLMQueueConfig)
     kafka: KafkaConfig = field(default_factory=KafkaConfig)
-    
+
     # Database
     database_url: Optional[str] = None
-    
+
     # Logging
     log_level: str = "INFO"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    
+
     @classmethod
     def from_env(cls) -> "DaemonConfig":
         config = cls()
@@ -321,7 +321,7 @@ class DaemonConfig:
             logger.debug(f"Could not load Kafka config from DB (using env/defaults): {e}")
 
         return config
-    
+
     def setup_logging(self):
         logging.basicConfig(
             level=getattr(logging, self.log_level.upper()),

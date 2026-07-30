@@ -186,7 +186,6 @@ def wrap_tool_result(
     ``PROMPT_INJECTION_BLOCK=true``) so tool-output attacks are caught at
     the same chokepoint as user-supplied content.
     """
-    import os
 
     if not isinstance(content, str):
         content = str(content)

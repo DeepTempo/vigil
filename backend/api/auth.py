@@ -5,7 +5,6 @@ Handles login, logout, token refresh, password management, and MFA.
 """
 
 import logging
-import os
 from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, Header, Request, Response, status

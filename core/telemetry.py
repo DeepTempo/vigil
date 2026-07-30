@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import logging
 from contextvars import ContextVar
-from pathlib import Path
 from typing import Any, Optional
 
 from core.config import get_settings, vigil_path

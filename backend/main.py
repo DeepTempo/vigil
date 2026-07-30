@@ -726,7 +726,6 @@ async def startup_event():
     try:
         from services.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
-        import os
 
         # Defense-in-depth: ensure the SQLAlchemy-managed schema exists before
         # any endpoint tries to query it. start.sh runs scripts/init_schema.py

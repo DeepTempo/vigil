@@ -13,7 +13,6 @@ is bypassed (matches the rest of the Vigil codebase).
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Optional
 

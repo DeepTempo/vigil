@@ -38,7 +38,6 @@ class ThreatFeedPoller:
     @staticmethod
     def poll_interval_seconds() -> int:
         """Effective poll interval. Honors integration config and env override."""
-        import os
 
         try:
             from core.config import get_integration_config

@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-import os
 from typing import Optional, Dict, List, Any, Tuple, TYPE_CHECKING
 from pathlib import Path
 import platform
@@ -316,13 +315,8 @@ class MCPClient:
             return False
 
     def _missing_credentials_for(self, server) -> List[str]:
-        """Return the subset of a server's required_env_vars that resolve empty.
-
-        Checks both ``os.environ`` and the Vigil secrets manager, so a
-        user who saved a credential via the integration wizard (which
-        writes to the encrypted store, not the process env) isn't told
-        the server is still dormant.
-        """
+        # Resolves through get_secret, so a credential saved via the integration
+        # wizard (encrypted store, not the process env) does not read as dormant.
         required = getattr(server, "required_env_vars", None) or []
         if not required:
             return []
