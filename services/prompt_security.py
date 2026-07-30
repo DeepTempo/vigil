@@ -26,6 +26,8 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
+from core.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -202,7 +204,7 @@ def wrap_tool_result(
                 "patterns": result.patterns,
             },
         )
-        if os.getenv("PROMPT_INJECTION_BLOCK", "false").lower() in ("true", "1", "yes"):
+        if get_settings().prompt_injection_block:
             raise PromptInjectionBlocked(result.patterns)
 
     src = _slug(source, "unknown")

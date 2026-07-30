@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.secrets import get_secret
+
 logger = logging.getLogger(__name__)
 
 
@@ -585,7 +587,8 @@ def get_extra_model_ids(provider_type: str) -> Tuple[str, ...]:
     """Return the extra model IDs for a provider type, honoring env
     overrides. Empty string disables; missing env falls back to defaults."""
     env_name = f"{provider_type.upper()}_EXTRA_MODELS"
-    raw = os.getenv(env_name)
+    # Provider-derived name, so this stays a dynamic lookup rather than a field.
+    raw = os.getenv(env_name)  # noqa: ENV001
     if raw is None:
         return _DEFAULT_EXTRA_MODELS.get(provider_type, ())
     # Present but empty → explicitly disabled.
@@ -664,13 +667,9 @@ ANTHROPIC_STATIC_MODELS: Tuple[str, ...] = _FALLBACK_MODELS_BY_PROVIDER["anthrop
 
 
 async def _resolve_provider_key(row) -> Optional[str]:
-    """Resolve a provider's API key via secrets_manager with env fallbacks."""
-    try:
-        from secrets_manager import get_secret  # type: ignore
-    except Exception:
-        get_secret = None  # type: ignore
-
-    if row.api_key_ref and get_secret is not None:
+    # The provider's own api_key_ref wins; otherwise fall back to the common
+    # key names so local dev works without an explicit provider row.
+    if row.api_key_ref:
         try:
             key = get_secret(row.api_key_ref)
             if key:
@@ -679,9 +678,9 @@ async def _resolve_provider_key(row) -> Optional[str]:
             logger.debug("secret lookup for %s failed: %s", row.api_key_ref, exc)
 
     if row.provider_type == "anthropic":
-        return os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
+        return get_secret("ANTHROPIC_API_KEY") or get_secret("CLAUDE_API_KEY")
     if row.provider_type == "openai":
-        return os.getenv("OPENAI_API_KEY")
+        return get_secret("OPENAI_API_KEY")
     return None
 
 

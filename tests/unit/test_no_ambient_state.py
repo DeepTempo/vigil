@@ -30,37 +30,6 @@ SINGLETON_ALLOWED = {
     ("services/ingestion_jobs.py", "_registry"),
 }
 
-# Not yet migrated onto Settings. Shrinks to empty as the migration lands;
-# a file leaving this list can never come back, which is the ratchet.
-MIGRATION_PENDING = {
-    "core/telemetry.py",
-    "core/telemetry_config.py",
-    "database/connection.py",
-    "services/autostart_config.py",
-    "services/bifrost_admin.py",
-    "services/bifrost_cost_client.py",
-    "services/budget_service.py",
-    "services/claude_service.py",
-    "services/cost_estimator.py",
-    "services/defaults.py",
-    "services/extension_trust.py",
-    "services/integration_bridge_service.py",
-    "services/llm_clients.py",
-    "services/llm_gateway.py",
-    "services/llm_router.py",
-    "services/llm_worker.py",
-    "services/local_ai_recovery.py",
-    "services/mcp_client.py",
-    "services/mcp_service.py",
-    "services/mempalace_paths.py",
-    "services/model_registry.py",
-    "services/ollama_process.py",
-    "services/prompt_security.py",
-    "services/provider_model_discovery.py",
-    "services/runtime_config.py",
-    "services/service_manager.py",
-    "services/vstrike_service.py",
-}
 
 SERVICE_SUFFIXES = ("Service", "Registry", "Manager", "Client")
 
@@ -124,7 +93,7 @@ def _module_level_services(rel_path: Path):
 def test_no_raw_env_reads():
     violations = []
     for rel_path in _python_files():
-        if rel_path.as_posix() in ENV_EXEMPT_FILES | MIGRATION_PENDING:
+        if rel_path.as_posix() in ENV_EXEMPT_FILES:
             continue
         for lineno, text in _env_reads(rel_path):
             violations.append(f"{rel_path}:{lineno}: {text}")

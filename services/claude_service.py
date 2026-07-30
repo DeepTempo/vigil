@@ -4,7 +4,6 @@ import asyncio
 import base64
 import json
 import logging
-import os
 import platform
 import sys
 import threading
@@ -815,8 +814,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                             tool_name,
                             schema_scan.patterns,
                         )
-                        block = os.getenv("PROMPT_INJECTION_BLOCK", "false")
-                        if block.lower() in ("true", "1", "yes"):
+                        if get_settings().prompt_injection_block:
                             logger.error("Skipping poisoned tool %s", tool_name)
                             continue
                     self.mcp_tools.append(claude_tool)

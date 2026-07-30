@@ -30,6 +30,8 @@ except ImportError:
 
 from services.mcp_service import MCPService
 
+from core.secrets import get_secret
+
 logger = logging.getLogger(__name__)
 
 
@@ -324,18 +326,10 @@ class MCPClient:
         required = getattr(server, "required_env_vars", None) or []
         if not required:
             return []
-        try:
-            from backend.secrets_manager import get_secret
-        except Exception:  # pragma: no cover — secrets module always present
-            get_secret = lambda _name: None  # type: ignore[assignment]
-
         missing: List[str] = []
         for var in required:
-            if os.environ.get(var):
-                continue
-            if get_secret(var):
-                continue
-            missing.append(var)
+            if not get_secret(var):
+                missing.append(var)
         return missing
 
     def get_missing_credentials(self, server_name: str) -> Optional[List[str]]:

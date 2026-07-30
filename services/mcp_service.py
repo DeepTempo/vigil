@@ -10,6 +10,8 @@ from typing import Optional, Dict, List
 from datetime import datetime
 import os
 
+from core.secrets import get_secret
+
 logger = logging.getLogger(__name__)
 
 
@@ -83,7 +85,7 @@ class MCPServer:
         
         try:
             # Prepare environment
-            env = os.environ.copy()
+            env = os.environ.copy()  # noqa: ENV001 - MCP child process env
             env.update(self.env)
             
             # Start process
@@ -301,7 +303,11 @@ class MCPService:
         def replace_var(match):
             var_name = match.group(1)
             default = match.group(2)
-            env_val = os.environ.get(var_name)
+            # Env first (an operator export wins), then the encrypted store, so a
+            # credential set in the UI reaches any MCP server without a restart.
+            env_val = os.environ.get(var_name)  # noqa: ENV001 - MCP placeholder
+            if env_val is None:
+                env_val = get_secret(var_name)
             if env_val is not None:
                 return env_val
             if default is not None:
@@ -396,7 +402,7 @@ class MCPService:
                     # entries still take precedence. Required-credential
                     # detection scans the raw config above, not this spawn env,
                     # so dormancy behavior is unchanged.
-                    env = os.environ.copy()
+                    env = os.environ.copy()  # noqa: ENV001 - MCP child env
                     env.update(
                         {
                             k: self._substitute_env_vars(v)
