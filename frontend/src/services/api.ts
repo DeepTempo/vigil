@@ -482,12 +482,6 @@ export const mcpApi = {
 
   getServerStatus: (name: string) => api.get(`/mcp/servers/${name}/status`),
 
-  // Persistent connection status for all MCP servers — includes
-  // `connected: boolean` and (when not connected) `missing_credentials`
-  // and/or `error`. Used to detect whether an integration like VStrike is
-  // configured and ready.
-  getConnections: () => api.get('/mcp/connections/status'),
-
   // NOTE: startServer / stopServer / startAll / stopAll were removed —
   // every server in mcp-config.json is stdio-based, and the old endpoints
   // explicitly refused stdio. Runtime start/stop now lives on the enable
