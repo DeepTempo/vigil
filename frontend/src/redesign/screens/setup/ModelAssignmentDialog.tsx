@@ -72,6 +72,7 @@ const ModelAssignmentDialog = ({ onClose, onSaved }: Props) => {
     component === CHAT_DEFAULT_KEY
       ? modelOptions
       : [{ value: INHERIT, label: 'Inherit default' }, ...modelOptions]
+  const overrides = components.filter((c) => c !== CHAT_DEFAULT_KEY)
 
   const setRow = (component: string, value: string) => {
     setRows((prev) => ({ ...prev, [component]: value }))
@@ -107,22 +108,47 @@ const ModelAssignmentDialog = ({ onClose, onSaved }: Props) => {
     }, 'Failed to save model assignments')
   }
 
-  const renderRow = (component: string, required: boolean) => {
-    const meta = COMPONENT_LABELS[component] ?? { label: component, description: '' }
+  // The required default keeps the full Field treatment (label + hint + error).
+  const renderDefaultRow = () => {
+    const meta = COMPONENT_LABELS[CHAT_DEFAULT_KEY]
     return (
       <Field
-        key={component}
         label={meta.label}
-        hint={required && loading ? 'Loading available models…' : meta.description}
-        error={required ? selectError : null}
+        hint={loading ? 'Loading available models…' : meta.description}
+        error={selectError}
       >
         <Select
-          value={rows[component] ?? (required ? '' : INHERIT)}
-          placeholder={loading ? 'Loading…' : required ? 'Select a model' : 'Inherit default'}
-          options={optionsFor(component)}
-          onSelect={(v) => setRow(component, v)}
+          value={rows[CHAT_DEFAULT_KEY] ?? ''}
+          placeholder={loading ? 'Loading…' : 'Select a model'}
+          options={optionsFor(CHAT_DEFAULT_KEY)}
+          onSelect={(v) => setRow(CHAT_DEFAULT_KEY, v)}
         />
       </Field>
+    )
+  }
+
+  // Overrides are dense single-line rows: label + hint left, picker right, so
+  // all six stay visible without growing the page into a scroll.
+  const renderOverrideRow = (component: string) => {
+    const meta = COMPONENT_LABELS[component] ?? { label: component, description: '' }
+    return (
+      <div
+        key={component}
+        className="flex items-center gap-3.5 py-2.5 border-b border-line-soft last:border-b-0"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] text-tx">{meta.label}</div>
+          <div className="text-[11.5px] text-tx-3 leading-snug">{meta.description}</div>
+        </div>
+        <div className="flex-none w-52">
+          <Select
+            value={rows[component] ?? INHERIT}
+            placeholder={loading ? 'Loading…' : 'Inherit default'}
+            options={optionsFor(component)}
+            onSelect={(v) => setRow(component, v)}
+          />
+        </div>
+      </div>
     )
   }
 
@@ -138,11 +164,16 @@ const ModelAssignmentDialog = ({ onClose, onSaved }: Props) => {
           No models available yet — finish connecting an AI provider first.
         </p>
       )}
-      {renderRow(CHAT_DEFAULT_KEY, true)}
-      <div className="text-tx-3 text-xs font-medium uppercase tracking-wide mt-1">
-        Per-agent overrides (optional)
-      </div>
-      {components.filter((c) => c !== CHAT_DEFAULT_KEY).map((c) => renderRow(c, false))}
+      {renderDefaultRow()}
+      {overrides.length > 0 && (
+        <div className="mt-1">
+          <div className="pb-2 border-b border-line-soft text-xs font-semibold uppercase tracking-wide text-tx-3">
+            Per-agent overrides{' '}
+            <span className="font-normal normal-case tracking-normal text-tx-faint">· optional</span>
+          </div>
+          {overrides.map(renderOverrideRow)}
+        </div>
+      )}
       <StepFooter
         onCancel={onClose}
         saving={saving}
