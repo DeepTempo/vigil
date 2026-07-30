@@ -244,3 +244,6 @@ claude_analysis_*.txt
 
 # Autostart list, written by Settings -> Services (see services/autostart_config.py)
 .vigil-autostart
+
+# Generated knowledge-graph output (graphify) — ~20MB, never committed
+graphify-out/
