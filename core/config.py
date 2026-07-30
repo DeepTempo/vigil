@@ -40,9 +40,18 @@ def get_config_dir() -> Path:
     return vigil_path(write=True)
 
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 class Settings(BaseSettings):
+    # Anchored to the repo so the same .env loads regardless of working
+    # directory. Real environment variables still take precedence over the file,
+    # which is what keeps container and Helm injection authoritative.
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", case_sensitive=False
+        env_file=_REPO_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
     )
 
     # Runtime
@@ -184,8 +193,6 @@ class Settings(BaseSettings):
     orchestrator_dedup_window: int = 30
     orchestrator_agent_loop_delay: int = 2
     orchestrator_context_max_chars: int = 10000
-    orchestrator_plan_model: Optional[str] = None
-    orchestrator_review_model: Optional[str] = None
 
     # Kafka ingestion. Credentials go through the secrets store, not here.
     kafka_enabled: bool = False

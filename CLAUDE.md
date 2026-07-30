@@ -133,6 +133,30 @@ encrypted at `~/.vigil/secrets.enc` — see [docs/STATE.md](docs/STATE.md).
 
 Default dev login: **admin / admin123** (when `DEV_MODE=false`)
 
+### Reading configuration
+
+Config flows through exactly three channels. Do not add `os.getenv` calls —
+`tests/unit/test_no_ambient_state.py` fails CI on them.
+
+| Need | Use | Owner |
+|------|-----|-------|
+| Non-secret setting | `core.config.get_settings().field` | env / `.env` |
+| Credential | `core.secrets.get_secret("NAME")` | `~/.vigil/secrets.enc`, then env |
+| UI-editable at runtime | `services.runtime_config` / `database.config_service` | `system_config` table |
+
+`core/config.py` is the single definition site: every setting is a typed field
+with its default, and `tests/unit/test_settings_env_example.py` fails if a field
+is missing from `env.example` or vice versa. `get_settings()` is `lru_cache`d, so
+a test that changes env mid-test must call `get_settings.cache_clear()`.
+
+Config file paths go through `core.config.vigil_path()`, which reads from
+`~/.vigil` with a fallback to the legacy `~/.deeptempo` copy and always writes to
+`~/.vigil`. Pass `write=True` on save paths.
+
+The two legitimate exceptions, both marked `# noqa: ENV001`: exporting env into
+spawned MCP child processes (env is their config protocol, so third-party servers
+need no adaptation), and genuinely dynamic variable names.
+
 ---
 
 ## Running Tests

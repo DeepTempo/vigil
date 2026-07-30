@@ -208,10 +208,6 @@ class DaemonConfig:
         config.orchestrator.dedup_window_minutes = settings.orchestrator_dedup_window
         config.orchestrator.agent_loop_delay = settings.orchestrator_agent_loop_delay
         config.orchestrator.context_max_chars = settings.orchestrator_context_max_chars
-        if settings.orchestrator_plan_model:
-            config.orchestrator.plan_model = settings.orchestrator_plan_model
-        if settings.orchestrator_review_model:
-            config.orchestrator.review_model = settings.orchestrator_review_model
         config.orchestrator.auto_assign_severities = list(settings.orchestrator_auto_severities)
 
         config.llm_queue.redis_url = settings.redis_url or DEFAULT_REDIS_URL
