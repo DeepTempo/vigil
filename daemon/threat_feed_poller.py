@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ class ThreatFeedPoller:
             raw = None
 
         if raw is None:
-            raw = os.getenv("THREAT_FEED_POLL_INTERVAL", "900")
+            raw = get_settings().threat_feed_poll_interval
         try:
             return max(60, int(raw))
         except (TypeError, ValueError):
