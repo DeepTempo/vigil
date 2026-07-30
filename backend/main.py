@@ -100,6 +100,7 @@ from api.budgets import router as budgets_router
 # Kafka ingestion router
 from api.kafka import router as kafka_router
 
+from core.config import get_settings
 from core.rate_limit import rate_limit_dependency
 from backend.middleware.auth import get_current_active_user
 from monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
@@ -166,7 +167,7 @@ app = FastAPI(
 # (served at root). All API routers, the health endpoint, the static/assets
 # mounts and the SPA catch-all are prefixed with this; the frontend learns it
 # at runtime via the <meta name="vigil-base-path"> injected into index.html below.
-_CONTEXT_PATH = os.getenv("VIGIL_CONTEXT_PATH", "").rstrip("/")
+_CONTEXT_PATH = get_settings().vigil_context_path.rstrip("/")
 
 # Wire the shared slowapi Limiter used by auth endpoints. The decorator-based
 # limits (@limiter.limit) read state from app.state.limiter, so both must be set.
@@ -192,7 +193,7 @@ _DEFAULT_CORS_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:5173",
 ]
-_cors_origins_raw = os.getenv("VIGIL_CORS_ORIGINS")
+_cors_origins_raw = get_settings().vigil_cors_origins
 if _cors_origins_raw:
     _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 else:
@@ -441,7 +442,7 @@ app.include_router(
 # Darktrace inbound webhook receiver — only mount when explicitly enabled.
 # env.example and docs/integrations/DARKTRACE.md document DARKTRACE_ENABLED
 # as the on/off toggle; leaving it unset must leave the receiver off.
-if os.environ.get("DARKTRACE_ENABLED", "false").lower() == "true":
+if get_settings().darktrace_enabled:
     app.include_router(
         darktrace_webhook_router,
         prefix=f"{_CONTEXT_PATH}/api/webhooks/darktrace",
@@ -468,15 +469,12 @@ app.include_router(
 
 
 def _mcp_auto_connect_enabled() -> bool:
-    """Keep optional MCP processes from blocking a local backend startup."""
-    dev_mode = os.getenv("DEV_MODE", "false").lower() in {"1", "true", "yes"}
-    default = "false" if dev_mode else "true"
-    return os.getenv("MCP_AUTO_CONNECT_ON_STARTUP", default).lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    # Off by default in DEV_MODE so optional MCP processes cannot block a local
+    # backend startup; an explicit setting wins either way.
+    settings = get_settings()
+    if settings.mcp_auto_connect_on_startup is not None:
+        return settings.mcp_auto_connect_on_startup
+    return not settings.dev_mode
 
 
 async def _connect_external_services():
@@ -493,7 +491,7 @@ async def _connect_external_services():
     try:
         from services.bifrost_admin import sync_all_provider_models
 
-        refresh_interval_s = int(os.getenv("MODEL_CATALOG_REFRESH_INTERVAL_S", "300"))
+        refresh_interval_s = get_settings().model_catalog_refresh_interval_s
 
         async def _model_catalog_refresher():
             while True:
@@ -625,9 +623,7 @@ async def startup_event():
     logger.info("Starting Vigil SOC Backend")
     logger.info("=" * 60)
 
-    import os
-
-    _testing = os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
+    _testing = get_settings().testing
 
     # Initialize Sentry error tracking (was never called before — bug fix)
     try:
@@ -670,17 +666,16 @@ async def startup_event():
     # Load secrets into environment for MCP servers
     try:
         from backend.secrets_manager import get_secret
-        import os
 
         # Load PostgreSQL connection string for database backend
         postgres_conn = get_secret("POSTGRESQL_CONNECTION_STRING")
         if postgres_conn:
-            os.environ["POSTGRESQL_CONNECTION_STRING"] = postgres_conn
+            os.environ["POSTGRESQL_CONNECTION_STRING"] = postgres_conn  # noqa: ENV001
             logger.debug("Loaded PostgreSQL connection string from secrets")
         else:
             # Set default connection string if not configured
             default_conn = "postgresql://deeptempo:deeptempo_secure_password_change_me@localhost:5432/deeptempo_soc"
-            os.environ["POSTGRESQL_CONNECTION_STRING"] = default_conn
+            os.environ["POSTGRESQL_CONNECTION_STRING"] = default_conn  # noqa: ENV001
             logger.debug("Using default PostgreSQL connection string")
 
         # Rehydrate integration credentials into os.environ so MCP servers gated
@@ -693,7 +688,7 @@ async def startup_event():
             for env_key in field_map.values():
                 value = get_secret(env_key)
                 if value:
-                    os.environ[env_key] = value
+                    os.environ[env_key] = value  # noqa: ENV001 - MCP child env
                     rehydrated += 1
         logger.debug("Rehydrated %d integration secret(s) into env", rehydrated)
 
@@ -740,7 +735,7 @@ async def startup_event():
         # here is fatal — we do NOT silently fall back to JSON because that
         # leaves the DB in an inconsistent state (some endpoints use
         # get_db_session() directly, see backend/api/case_metrics.py).
-        data_backend_env = os.getenv("DATA_BACKEND", "database").lower()
+        data_backend_env = get_settings().data_backend.lower()
         if not is_demo_mode() and data_backend_env == "database":
             try:
                 from database.connection import init_database
@@ -766,7 +761,7 @@ async def startup_event():
             logger.info(f"  Backend: {backend_info['backend']}")
         else:
             # Check configuration preference
-            data_backend = os.getenv("DATA_BACKEND", "database").lower()
+            data_backend = get_settings().data_backend.lower()
             use_database = data_backend == "database"
 
             if use_database:

@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from database.config_service import get_config_service
 from services.defaults import DEFAULT_MODEL
 from services.integration_secrets import redact_secrets, secret_fields_for, split_secrets
+from core.config import get_settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -115,14 +116,14 @@ async def get_demo_mode():
     """
     try:
         from core.config import is_demo_mode
-        import os
 
         demo_enabled = is_demo_mode()
-        env_value = os.getenv("DEMO_MODE", "")
+        # "environment" means the env var was supplied at all, true or false.
+        env_set = get_settings().demo_mode is not None
 
         return {
             "enabled": demo_enabled,
-            "source": "environment" if env_value else "config",
+            "source": "environment" if env_set else "config",
             "description": "Demo mode uses generated sample data instead of database",
         }
     except Exception as e:
@@ -1343,9 +1344,7 @@ async def get_darktrace_config():
         config_service = get_config_service()
         value = config_service.get_system_config(DARKTRACE_SETTINGS_KEY) or {}
         merged = {**DARKTRACE_DEFAULTS, **value}
-        secret = get_secret("DARKTRACE_WEBHOOK_SECRET") or os.environ.get(
-            "DARKTRACE_WEBHOOK_SECRET", ""
-        )
+        secret = get_secret("DARKTRACE_WEBHOOK_SECRET") or ""
         return {**merged, "configured": bool(secret)}
     except Exception as e:
         logger.error(f"Error getting Darktrace config: {e}")

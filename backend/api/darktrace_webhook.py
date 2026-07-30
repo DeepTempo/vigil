@@ -19,13 +19,14 @@ Signature header: ``X-Darktrace-Signature`` (hex HMAC-SHA256 of raw body).
 import asyncio
 import hmac
 import logging
-import os
 from hashlib import sha256
 from typing import Any, Callable, Dict, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from services.darktrace_ingestion import DarktraceIngestionService
+from core.config import get_settings
+from core.secrets import get_secret
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def _get_settings() -> Dict[str, Any]:
 def _get_max_body_bytes() -> int:
     settings = _get_settings()
     try:
-        kb = int(settings.get("max_body_kb") or os.environ.get("DARKTRACE_MAX_BODY_KB", "1024"))
+        kb = int(settings.get("max_body_kb") or get_settings().darktrace_max_body_kb)
     except (TypeError, ValueError):
         kb = 1024
     return max(1, kb) * 1024
@@ -63,7 +64,7 @@ def _get_secret() -> Optional[str]:
             return secret
     except Exception as exc:  # noqa: BLE001
         logger.debug("secrets_manager lookup failed, using env: %s", exc)
-    secret = os.environ.get("DARKTRACE_WEBHOOK_SECRET")
+    secret = get_secret("DARKTRACE_WEBHOOK_SECRET")
     return secret or None
 
 
@@ -71,7 +72,7 @@ def _get_console_url() -> str:
     url = _get_settings().get("url")
     if url:
         return str(url)
-    return os.environ.get("DARKTRACE_URL", "") or ""
+    return get_settings().darktrace_url
 
 
 def _verify_signature(raw_body: bytes, provided: Optional[str]) -> bool:

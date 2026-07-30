@@ -29,6 +29,8 @@ from backend.schemas.vstrike import (
 from backend.middleware.auth import get_current_active_user
 from services.database_data_service import DatabaseDataService
 from services.vstrike_service import VStrikeToolNotImplemented, get_vstrike_service
+from core.config import get_settings
+from core.secrets import get_secret
 
 
 class VStrikeLoadNetworkRequest(BaseModel):
@@ -80,12 +82,12 @@ data_service = DatabaseDataService()
 
 
 def _is_dev_mode() -> bool:
-    return os.environ.get("DEV_MODE", "").lower() == "true"
+    return get_settings().dev_mode
 
 
 def _expected_inbound_key() -> Optional[str]:
     """Return the expected inbound bearer key, or None if unset."""
-    key = os.environ.get("VSTRIKE_INBOUND_API_KEY")
+    key = get_secret("VSTRIKE_INBOUND_API_KEY")
     if key:
         return key
     try:
