@@ -480,6 +480,11 @@ def _sync_claude_raw(
     """Make a direct client.messages.create() call for multi-turn tool loops."""
     import time as _time
 
+    from services.defaults import (
+        build_thinking_kwargs,
+        model_requires_adaptive_thinking,
+    )
+
     kwargs: Dict[str, Any] = {
         "model": model,
         "max_tokens": max_tokens,
@@ -487,13 +492,13 @@ def _sync_claude_raw(
     }
     if tools:
         kwargs["tools"] = tools
-    if temperature is not None:
+    # Newer Anthropic models (Opus 4.7/4.8, Fable 5, Mythos) reject sampling
+    # params like temperature with a 400, so only send it to older models.
+    if temperature is not None and not model_requires_adaptive_thinking(model):
         kwargs["temperature"] = temperature
     if enable_thinking and thinking_budget:
-        kwargs["thinking"] = {
-            "type": "enabled",
-            "budget_tokens": thinking_budget,
-        }
+        # Model-aware: adaptive thinking for models that reject budget_tokens.
+        kwargs.update(build_thinking_kwargs(model, thinking_budget))
 
     # #185: tag the upstream Bifrost call with a Vigil interaction UUID
     # so the LogEntry on Bifrost's side can be correlated with the local

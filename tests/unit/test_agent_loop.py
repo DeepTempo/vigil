@@ -38,6 +38,7 @@ from services.agent_loop import (  # noqa: E402
     _inter_iteration_delay,
 )
 from services.budget_service import BudgetExceeded  # noqa: E402
+from services.defaults import build_thinking_kwargs  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -599,8 +600,10 @@ def _anthropic_engine(runtime, *, messages=None, tools=None, use_thinking=False)
         model="claude-opus-4-8",
         max_tokens=1024,
         tools=tools,
+        # Built the same way claude_service builds it (#454), so the fixture
+        # tracks the real kwargs shape rather than a hand-rolled legacy dict.
         thinking_config=(
-            {"type": "enabled", "budget_tokens": 1000} if use_thinking else None
+            build_thinking_kwargs("claude-opus-4-8", 1000) if use_thinking else None
         ),
         use_thinking=use_thinking,
         thinking_budget=1000 if use_thinking else None,
@@ -639,6 +642,34 @@ async def _anth_turn_and_assistant(engine):
 
 
 class TestAnthropicStreamTurn:
+    def test_thinking_config_is_merged_not_nested(self):
+        """``thinking_config`` is a kwargs *mapping* from build_thinking_kwargs,
+        so it must be merged into api_kwargs. Nesting it under a "thinking" key
+        would send thinking={"output_config": ...} for adaptive-only models and
+        earn a 400 from Anthropic."""
+        rt = _anthropic_runtime([], _final([], "end_turn"))
+
+        adaptive = _anthropic_engine(rt, use_thinking=True)._build_api_kwargs("iid")
+        assert adaptive["output_config"] == {"effort": "low"}
+        assert "thinking" not in adaptive
+
+        budgeted = AnthropicTurnEngine(
+            runtime=rt,
+            messages=[{"role": "user", "content": "hi"}],
+            system_prompt="sys",
+            model="claude-sonnet-4-5",
+            max_tokens=1024,
+            tools=None,
+            thinking_config=build_thinking_kwargs("claude-sonnet-4-5", 8000),
+            use_thinking=True,
+            thinking_budget=8000,
+            session_id="s",
+            agent_id="a",
+            investigation_id=None,
+        )._build_api_kwargs("iid")
+        assert budgeted["thinking"] == {"type": "enabled", "budget_tokens": 8000}
+        assert "output_config" not in budgeted
+
     @pytest.mark.asyncio
     async def test_thinking_and_text_deltas_in_order(self):
         events_in = [

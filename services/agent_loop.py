@@ -773,7 +773,11 @@ class AnthropicTurnEngine:
         if self._tools:
             api_kwargs["tools"] = self._tools
         if self._thinking_config:
-            api_kwargs["thinking"] = self._thinking_config
+            # Already a kwargs mapping from services.defaults.build_thinking_kwargs
+            # (#454): {"thinking": {...}} for budget-based models, or
+            # {"output_config": {"effort": ...}} for adaptive-only ones — so merge
+            # it rather than nesting it under a "thinking" key.
+            api_kwargs.update(self._thinking_config)
         # #185: fresh interaction UUID per streaming iteration so each upstream
         # Bifrost call lands its own log row correlated with the local one.
         # Route through the shared header builder so the budget virtual-key

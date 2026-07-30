@@ -15,7 +15,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Union
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 from secrets_manager import get_secret, set_secret
 
-from services.defaults import DEFAULT_MODEL
+from services.defaults import DEFAULT_MODEL, build_thinking_kwargs
 
 # GH #89 — resolve the summarization model via ai_model_configs with a safe
 # fallback to the historical hardcoded default. Defined at module scope so
@@ -1868,7 +1868,8 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                 else self.default_system_prompt
             )
 
-            # Set thinking config
+            # Set thinking config (model-aware: newer Anthropic models reject
+            # the budget_tokens shape and require adaptive thinking).
             thinking_config = None
             if use_thinking:
                 budget = (
@@ -1876,7 +1877,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     if thinking_budget is not None
                     else self.thinking_budget
                 )
-                thinking_config = {"type": "enabled", "budget_tokens": budget}
+                thinking_config = build_thinking_kwargs(model, budget)
 
             # Sliding window + rolling summary compression (no LLM call).
             messages, _windowed_out = self._prepare_context_sync(
@@ -1896,7 +1897,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                 api_kwargs["tools"] = tools
                 logger.debug(f"🔧 MCP Tools enabled: {len(tools)} tools available")
             if thinking_config:
-                api_kwargs["thinking"] = thinking_config
+                api_kwargs.update(thinking_config)
                 logger.info(f"💭 Thinking config: {thinking_config}")
 
             # GH #84 PR-C: tag system prompt + last tool block for prompt caching.
@@ -2133,7 +2134,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                         api_kwargs["tools"] = tools
                     # IMPORTANT: Include thinking config in follow-up request too!
                     if thinking_config:
-                        api_kwargs["thinking"] = thinking_config
+                        api_kwargs.update(thinking_config)
 
                     # GH #84 PR-C: cache markers for the follow-up rounds too.
                     # System + tools are stable across rounds so the same
@@ -2496,7 +2497,8 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                 else self.default_system_prompt
             )
 
-            # Set thinking config
+            # Set thinking config (model-aware: newer Anthropic models reject
+            # the budget_tokens shape and require adaptive thinking).
             thinking_config = None
             if use_thinking:
                 budget = (
@@ -2504,7 +2506,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     if thinking_budget is not None
                     else self.thinking_budget
                 )
-                thinking_config = {"type": "enabled", "budget_tokens": budget}
+                thinking_config = build_thinking_kwargs(model, budget)
 
             # Sliding window + rolling summary compression (no LLM call).
             messages, windowed_out = await self._prepare_context_async(
