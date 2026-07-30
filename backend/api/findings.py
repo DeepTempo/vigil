@@ -27,7 +27,7 @@ class FindingFilter(BaseModel):
 
 
 @router.get("/")
-async def get_findings(
+def get_findings(
     severity: Optional[str] = Query(None),
     data_source: Optional[str] = Query(None),
     cluster_id: Optional[int] = Query(None),
@@ -53,9 +53,9 @@ async def get_findings(
             logger.info(f"S3 sync completed: {message}")
         else:
             logger.warning(f"S3 sync failed or partial: {message}")
-    
+
     cluster_id_str = str(cluster_id) if cluster_id is not None else None
-    
+
     total = data_service.count_findings(
         severity=severity, data_source=data_source,
         cluster_id=cluster_id_str, min_anomaly_score=min_anomaly_score,
@@ -71,7 +71,7 @@ async def get_findings(
         # 1000-row page (polled every 10s) isn't several MB of vectors.
         include_embedding=False,
     )
-    
+
     return {
         "findings": [
             project_finding_source_evidence_for_list(finding) for finding in findings
@@ -84,7 +84,7 @@ async def get_findings(
 
 
 @router.get("/{finding_id}")
-async def get_finding(finding_id: str):
+def get_finding(finding_id: str):
     """
     Get a specific finding by ID.
     
@@ -101,7 +101,7 @@ async def get_finding(finding_id: str):
 
 
 @router.get("/stats/summary")
-async def get_findings_summary():
+def get_findings_summary():
     """
     Get summary statistics for findings.
     
@@ -130,7 +130,7 @@ async def get_findings_summary():
 
 
 @router.post("/export")
-async def export_findings(output_format: str = "json"):
+def export_findings(output_format: str = "json"):
     """
     Export findings to a file.
     
@@ -176,7 +176,7 @@ class BulkEnrichmentRequest(BaseModel):
 
 
 @router.patch("/{finding_id}")
-async def update_finding(finding_id: str, update: FindingUpdate):
+def update_finding(finding_id: str, update: FindingUpdate):
     """
     Update/enrich an existing finding.
     
@@ -232,7 +232,7 @@ async def update_finding(finding_id: str, update: FindingUpdate):
 
 
 @router.post("/bulk-enrich")
-async def bulk_enrich_findings(request: BulkEnrichmentRequest):
+def bulk_enrich_findings(request: BulkEnrichmentRequest):
     """
     Bulk enrich multiple findings with MITRE ATT&CK and other data.
     
@@ -345,7 +345,7 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
     from datetime import datetime
     
     # Get the finding
-    finding = data_service.get_finding(finding_id)
+    finding = await asyncio.to_thread(data_service.get_finding, finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
     
@@ -620,7 +620,9 @@ Respond ONLY with valid JSON. Be specific and actionable. Focus on helping a SOC
         enrichment['provider_type'] = provider.provider_type
         
         # Save enrichment to database
-        success = data_service.update_finding(finding_id, ai_enrichment=enrichment)
+        success = await asyncio.to_thread(
+            data_service.update_finding, finding_id, ai_enrichment=enrichment
+        )
         
         if not success:
             logger.error(f"Failed to save enrichment for {finding_id}")
@@ -645,7 +647,7 @@ Respond ONLY with valid JSON. Be specific and actionable. Focus on helping a SOC
 
 
 @router.delete("/all")
-async def clear_all_findings():
+def clear_all_findings():
     """Delete all findings from the database."""
     try:
         from database.connection import get_session

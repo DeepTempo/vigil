@@ -541,7 +541,7 @@ async def set_platform_database_config(config: PlatformDatabaseProxyConfig):
 
 
 @router.post("/s3/test")
-async def test_s3_connection():
+def test_s3_connection():
     """
     Test S3 connection with current configuration.
 

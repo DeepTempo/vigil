@@ -128,7 +128,7 @@ def verify_inbound_key(
 
 
 @router.post("/findings", response_model=VStrikePushResponse)
-async def ingest_findings(
+def ingest_findings(
     request: VStrikePushRequest,
     _auth: None = Depends(verify_inbound_key),
 ) -> VStrikePushResponse:
