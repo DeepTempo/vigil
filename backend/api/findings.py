@@ -6,6 +6,7 @@ from pydantic import BaseModel
 import logging
 
 from services.database_data_service import DatabaseDataService
+from core.config import vigil_path
 from services.source_evidence import (
     normalize_finding_source_evidence,
     project_finding_source_evidence_for_list,
@@ -143,7 +144,7 @@ async def export_findings(output_format: str = "json"):
     from pathlib import Path
     from datetime import datetime
     
-    output_dir = Path.home() / ".deeptempo" / "exports"
+    output_dir = vigil_path("exports", write=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

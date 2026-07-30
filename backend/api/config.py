@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from database.config_service import get_config_service
 from services.defaults import DEFAULT_MODEL
 from services.integration_secrets import redact_secrets, secret_fields_for, split_secrets
-from core.config import get_settings
+from core.config import get_settings, vigil_path
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -145,13 +145,13 @@ async def set_demo_mode(config: DemoModeConfig):
         Success status
     """
     try:
-        config_file = Path.home() / ".deeptempo" / "general_config.json"
-        config_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file = vigil_path("general_config.json")
+        config_file = vigil_path("general_config.json", write=True)
 
         # Load existing config
         existing = {}
-        if config_file.exists():
-            with open(config_file, "r") as f:
+        if source_file.exists():
+            with open(source_file, "r") as f:
                 existing = json.load(f)
 
         # Update demo_mode setting
@@ -318,7 +318,7 @@ async def get_s3_config():
             }
 
         # Fallback to file-based config
-        config_file = Path.home() / ".deeptempo" / "s3_config.json"
+        config_file = vigil_path("s3_config.json")
         if config_file.exists():
             with open(config_file, "r") as f:
                 config = json.load(f)
@@ -395,8 +395,7 @@ async def set_s3_config(config: S3Config):
             )
 
         # Also save to file for backward compatibility
-        config_file = Path.home() / ".deeptempo" / "s3_config.json"
-        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file = vigil_path("s3_config.json", write=True)
         with open(config_file, "w") as f:
             json.dump(config_data, f, indent=2)
 
@@ -558,7 +557,7 @@ async def test_s3_connection():
 
         if not s3_integration:
             # Fallback to file-based config
-            config_file = Path.home() / ".deeptempo" / "s3_config.json"
+            config_file = vigil_path("s3_config.json")
             if config_file.exists():
                 with open(config_file, "r") as f:
                     s3_integration = json.load(f)
@@ -651,7 +650,7 @@ async def get_theme_config():
             return config_value
 
         # Fallback to file-based config
-        config_file = Path.home() / ".deeptempo" / "theme_config.json"
+        config_file = vigil_path("theme_config.json")
         if config_file.exists():
             with open(config_file, "r") as f:
                 config = json.load(f)
@@ -693,8 +692,7 @@ async def set_theme_config(config: ThemeConfig):
             )
 
         # Also save to file for backward compatibility
-        config_file = Path.home() / ".deeptempo" / "theme_config.json"
-        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file = vigil_path("theme_config.json", write=True)
         with open(config_file, "w") as f:
             json.dump(config_data, f, indent=2)
 
@@ -751,7 +749,7 @@ async def get_integrations_config():
             }
 
         # Fallback to file-based config
-        config_file = Path.home() / ".deeptempo" / "integrations_config.json"
+        config_file = vigil_path("integrations_config.json")
         if config_file.exists():
             with open(config_file, "r") as f:
                 config = json.load(f)
@@ -828,8 +826,7 @@ async def set_integrations_config(config: IntegrationsConfig):
                 logger.error(f"Failed to save integration '{integration_id}'")
 
         # Also save to file for backward compatibility — sanitized only.
-        config_file = Path.home() / ".deeptempo" / "integrations_config.json"
-        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file = vigil_path("integrations_config.json", write=True)
         config_data = {
             "enabled_integrations": config.enabled_integrations,
             "integrations": sanitized_integrations,
@@ -957,7 +954,7 @@ async def get_general_config():
             return config_value
 
         # Fallback to file-based config
-        config_file = Path.home() / ".deeptempo" / "general_config.json"
+        config_file = vigil_path("general_config.json")
 
         if config_file.exists():
             with open(config_file, "r") as f:
@@ -1021,8 +1018,7 @@ async def set_general_config(config: GeneralConfig):
             )
 
         # Also save to file for backward compatibility (during transition)
-        config_file = Path.home() / ".deeptempo" / "general_config.json"
-        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file = vigil_path("general_config.json", write=True)
         with open(config_file, "w") as f:
             json.dump(config_data, f, indent=2)
 
@@ -1613,7 +1609,7 @@ async def secrets_reinit(
 async def secrets_migrate_to_encrypted(
     request: Optional[_SecretsMigrateRequest] = None,
 ) -> Dict[str, Any]:
-    """Move secrets from ``~/.deeptempo/.env`` to ``~/.vigil/secrets.enc``.
+    """Move secrets from the dotenv backend to ``~/.vigil/secrets.enc``.
 
     Encrypted store is authoritative on conflicts: if a key exists in
     both with different values, the dotenv entry is left in place and

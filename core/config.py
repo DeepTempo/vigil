@@ -9,11 +9,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
-VIGIL_DIR = Path.home() / '.vigil'
-_LEGACY_DIR = Path.home() / '.deeptempo'
-
-INTEGRATIONS_FILE = VIGIL_DIR / 'integrations_config.json'
-GENERAL_CONFIG_FILE = VIGIL_DIR / 'general_config.json'
+_VIGIL_DIRNAME = '.vigil'
+_LEGACY_DIRNAME = '.deeptempo'
 
 REQUEST_TIMEOUT = 30
 STREAM_TIMEOUT = 120
@@ -22,20 +19,25 @@ DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_SANDBOX_FILE_TYPES = "exe,dll,doc,docx,xls,xlsx,pdf,js,vbs,ps1,bat,msi"
 
 
-def vigil_path(*parts: str) -> Path:
-    # Resolves under ~/.vigil, falling back to the legacy ~/.deeptempo copy when a
-    # file exists only there. Writes always target ~/.vigil.
-    target = VIGIL_DIR.joinpath(*parts)
-    if not target.exists():
-        legacy = _LEGACY_DIR.joinpath(*parts)
-        if legacy.exists():
-            return legacy
+def vigil_path(*parts: str, write: bool = False) -> Path:
+    # Reads prefer ~/.vigil and fall back to the legacy ~/.deeptempo copy so
+    # existing installs keep working; writes always target ~/.vigil, so data
+    # drifts to the new location on next save. Home is resolved per call, which
+    # keeps the helper patchable in tests.
+    target = Path.home() / _VIGIL_DIRNAME
+    legacy = Path.home() / _LEGACY_DIRNAME
+    if parts:
+        target, legacy = target.joinpath(*parts), legacy.joinpath(*parts)
+    if write:
+        (target.parent if parts else target).mkdir(parents=True, exist_ok=True)
+        return target
+    if not target.exists() and legacy.exists():
+        return legacy
     return target
 
 
 def get_config_dir() -> Path:
-    VIGIL_DIR.mkdir(parents=True, exist_ok=True)
-    return VIGIL_DIR
+    return vigil_path(write=True)
 
 
 class Settings(BaseSettings):
@@ -180,6 +182,10 @@ class Settings(BaseSettings):
     orchestrator_auto_severities: Annotated[List[str], NoDecode] = ["critical", "high"]
     orchestrator_dry_run: bool = False
     orchestrator_dedup_window: int = 30
+    orchestrator_agent_loop_delay: int = 2
+    orchestrator_context_max_chars: int = 10000
+    orchestrator_plan_model: Optional[str] = None
+    orchestrator_review_model: Optional[str] = None
 
     # Kafka ingestion. Credentials go through the secrets store, not here.
     kafka_enabled: bool = False

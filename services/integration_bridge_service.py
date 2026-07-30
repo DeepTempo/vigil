@@ -5,6 +5,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Dict, List, Optional
+from core.config import vigil_path
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ class IntegrationBridgeService:
 
     def __init__(self):
         """Initialize the integration bridge service."""
-        self.config_path = Path.home() / ".deeptempo" / "integrations_config.json"
+        self.config_path = vigil_path("integrations_config.json")
 
     def load_integration_config(self) -> Dict:
         """

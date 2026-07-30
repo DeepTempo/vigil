@@ -21,7 +21,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Optional
 
-from core.config import get_settings
+from core.config import get_settings, vigil_path
 
 logger = logging.getLogger(__name__)
 
@@ -460,8 +460,7 @@ def _install_json_logging() -> None:
     root.addHandler(console)
 
     try:
-        log_dir = Path.home() / ".deeptempo"
-        log_dir.mkdir(parents=True, exist_ok=True)
+        log_dir = vigil_path(write=True)
         file_handler = logging.FileHandler(log_dir / "vigil.log")
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)
