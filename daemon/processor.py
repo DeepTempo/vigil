@@ -516,7 +516,7 @@ REASONING: [Brief explanation]
         """Lazily initialise the LLM gateway (needs an event loop)."""
         if getattr(self, "_llm_gateway", None) is None:
             try:
-                from services.llm_gateway import get_llm_gateway
+                from core.llm.gateway.gateway import get_llm_gateway
 
                 self._llm_gateway = await get_llm_gateway()
                 logger.info("LLM gateway connected for AI triage")

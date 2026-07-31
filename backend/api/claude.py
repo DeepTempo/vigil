@@ -528,7 +528,7 @@ async def chat(request: ChatRequest):
             logger.info(
                 f"💬 Starting chat with {len(messages)} messages, thinking={enable_thinking}, budget={thinking_budget}"
             )
-            from services.llm_gateway import get_llm_gateway
+            from core.llm.gateway.gateway import get_llm_gateway
 
             gateway = await get_llm_gateway()
             response = await gateway.submit_chat(
@@ -1258,7 +1258,7 @@ CONVERSATION:
 Provide a structured summary that captures all essential context for continuing the conversation."""
 
     try:
-        from services.llm_gateway import get_llm_gateway
+        from core.llm.gateway.gateway import get_llm_gateway
 
         # GH #89: resolve summarization model via ai_model_configs.
         model = request.model or _resolve_model_for_request(None, None)
@@ -1612,7 +1612,7 @@ Please provide:
 4. Related MITRE ATT&CK techniques"""
 
     try:
-        from services.llm_gateway import get_llm_gateway
+        from core.llm.gateway.gateway import get_llm_gateway
 
         gateway = await get_llm_gateway()
         response = await gateway.submit_chat(

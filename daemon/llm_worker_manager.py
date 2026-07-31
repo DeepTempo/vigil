@@ -1,6 +1,6 @@
 """LLM Worker Manager — dynamically starts/stops the ARQ worker subprocess.
 
-The ARQ worker (``services.run_llm_worker``) processes queued Claude API
+The ARQ worker (``core.llm.gateway.run_worker``) processes queued Claude API
 calls.  Because ARQ's ``run_worker()`` blocks, it must live in a separate
 process.  This manager runs as an async task inside the daemon and polls
 the ``orchestrator.settings`` SystemConfig key every few seconds, reading
@@ -100,7 +100,7 @@ class LLMWorkerManager:
         try:
             log_file = open(log_path, "a")
             self._process = subprocess.Popen(
-                [sys.executable, "-m", "services.run_llm_worker"],
+                [sys.executable, "-m", "core.llm.gateway.run_worker"],
                 cwd=PROJECT_ROOT,
                 env=env,
                 stdout=log_file,

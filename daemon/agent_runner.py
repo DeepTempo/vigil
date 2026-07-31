@@ -256,7 +256,7 @@ class AgentRunner:
         """Lazily initialise the LLM gateway."""
         if self._llm_gateway is None:
             try:
-                from services.llm_gateway import get_llm_gateway
+                from core.llm.gateway.gateway import get_llm_gateway
 
                 self._llm_gateway = await get_llm_gateway()
                 logger.info("AgentRunner: LLM gateway connected")

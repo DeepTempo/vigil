@@ -4,17 +4,13 @@ Python 3.12+ removed implicit event loop creation in the main thread.
 This wrapper ensures an event loop exists before ARQ's Worker initialises.
 
 Usage:
-    python -m services.run_llm_worker
+    python -m core.llm.gateway.run_worker
 """
 
 import asyncio
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from arq.worker import run_worker
-from services.llm_worker import WorkerSettings
+from core.llm.gateway.worker import WorkerSettings
 
 
 def main():
