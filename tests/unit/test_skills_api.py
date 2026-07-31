@@ -115,7 +115,11 @@ def client():
     FakeSkillService._store = {}
     FakeSkillService._gen_response = {}
 
-    with patch("services.skill_service.SkillService", FakeSkillService):
+    # The router imports SkillService through the services shim, while the
+    # importer resolves it from the core module at call time — patch both.
+    with patch("services.skill_service.SkillService", FakeSkillService), patch(
+        "core.skills.skill_service.SkillService", FakeSkillService
+    ):
         # Import late so the patched class is picked up by backend.api.skills
         spec = importlib.util.spec_from_file_location(
             "skills_router_under_test",
