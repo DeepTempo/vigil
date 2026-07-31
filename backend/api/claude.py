@@ -20,7 +20,7 @@ import base64
 from backend.middleware.auth import get_current_user
 from backend.schemas.system_prompt import validate_system_prompt
 from database.models import User
-from services.claude_service import ClaudeService
+from core.llm.harness.claude import ClaudeService
 from services.defaults import DEFAULT_MODEL
 from core.llm.providers.registry import get_registry
 
@@ -849,7 +849,7 @@ async def chat_stream(
 
                 agent = None
                 if enable_agent_tools:
-                    from services.openai_agent_service import OpenAIAgentService
+                    from core.llm.harness.openai import OpenAIAgentService
 
                     agent = OpenAIAgentService(recommended_tools=recommended_tools)
                     # Claims tool support but nothing loadable — fall back to the

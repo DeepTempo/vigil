@@ -18,7 +18,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.openai_agent_service import (  # noqa: E402
+from core.llm.harness.openai import (  # noqa: E402
     _LOOP_DETECT_THRESHOLD,
     OpenAIAgentService,
     PendingApprovalError,
@@ -444,7 +444,7 @@ class TestApprovalGate:
         )
         with patch(
             "services.approval_service.get_approval_service", return_value=fake_service
-        ), patch("services.openai_agent_service._APPROVAL_POLL_INTERVAL_S", 0.0):
+        ), patch("core.llm.harness.openai._APPROVAL_POLL_INTERVAL_S", 0.0):
             decision, _detail, _waited = await agent._await_approval("ACT-1")
         assert decision == "approved"
         assert fake_service.get_action.call_count == 3
@@ -467,7 +467,7 @@ class TestApprovalGate:
         )
         with patch(
             "services.approval_service.get_approval_service", return_value=fake_service
-        ), patch("services.openai_agent_service._APPROVAL_POLL_INTERVAL_S", 0.0):
+        ), patch("core.llm.harness.openai._APPROVAL_POLL_INTERVAL_S", 0.0):
             decision, detail, _waited = await agent._await_approval(
                 "ACT-1", timeout=0.0
             )

@@ -163,7 +163,7 @@ class TestPhasedExecutionPauseResume:
         return svc
 
     def test_pauses_before_phase_requiring_approval(self, clean_tables):
-        from services import claude_service as cs_module
+        from core.llm.harness import claude as cs_module
         from services.workflow_run_service import get_workflow_run_service
 
         workflow = _make_workflow(approval_on_phase_2=True)
@@ -193,7 +193,7 @@ class TestPhasedExecutionPauseResume:
         assert by_id["phase-2"]["approval_state"] == "pending"
 
     def test_resume_approved_completes_run(self, clean_tables):
-        from services import claude_service as cs_module
+        from core.llm.harness import claude as cs_module
         from services.approval_service import get_approval_service
         from services.workflow_run_service import get_workflow_run_service
 
@@ -226,7 +226,7 @@ class TestPhasedExecutionPauseResume:
         assert approval_states["phase-2"] == "approved"
 
     def test_resume_rejected_cancels_run(self, clean_tables):
-        from services import claude_service as cs_module
+        from core.llm.harness import claude as cs_module
         from services.approval_service import get_approval_service
         from services.workflow_run_service import get_workflow_run_service
 
@@ -265,7 +265,7 @@ class TestPhasedExecutionPauseResume:
         assert by_id["phase-2"]["approval_state"] == "rejected"
 
     def test_no_approval_required_runs_straight_through(self, clean_tables):
-        from services import claude_service as cs_module
+        from core.llm.harness import claude as cs_module
         from services.workflow_run_service import get_workflow_run_service
 
         workflow = _make_workflow(approval_on_phase_2=False)

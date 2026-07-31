@@ -102,7 +102,7 @@ class CustomIntegrationService:
         """
         try:
             # Import Claude service
-            from services.claude_service import ClaudeService
+            from core.llm.harness.claude import ClaudeService
 
             # Initialize Claude
             claude = ClaudeService(use_mcp_tools=False)

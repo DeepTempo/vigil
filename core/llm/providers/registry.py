@@ -19,9 +19,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-import sys
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.secrets import get_secret
@@ -68,12 +66,6 @@ def _record_pricing_unknown(provider_type: str, model_id: str) -> None:
     except Exception:
         # Telemetry must never break cost math.
         pass
-
-_REPO = Path(__file__).resolve().parent.parent
-if str(_REPO / "backend") not in sys.path:
-    sys.path.insert(0, str(_REPO / "backend"))
-if str(_REPO) not in sys.path:
-    sys.path.insert(0, str(_REPO))
 
 
 # ---------------------------------------------------------------------------

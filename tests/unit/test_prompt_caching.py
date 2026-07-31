@@ -23,7 +23,7 @@ pytestmark = pytest.mark.unit
 
 def _apply(kwargs):
     """Shorthand — imports lazily so test collection doesn't need the module."""
-    from services.claude_service import ClaudeService
+    from core.llm.harness.claude import ClaudeService
 
     ClaudeService._apply_prompt_cache_controls(kwargs)
     return kwargs

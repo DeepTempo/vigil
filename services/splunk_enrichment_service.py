@@ -7,7 +7,7 @@ from datetime import datetime
 import json
 
 from services.splunk_service import SplunkService
-from services.claude_service import ClaudeService
+from core.llm.harness.claude import ClaudeService
 from services.database_data_service import DatabaseDataService
 
 logger = logging.getLogger(__name__)

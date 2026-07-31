@@ -2,21 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
-
-logger = logging.getLogger(__name__)
-
-_REPO = Path(__file__).resolve().parent.parent
-if str(_REPO / "backend") not in sys.path:
-    sys.path.insert(0, str(_REPO / "backend"))
-if str(_REPO) not in sys.path:
-    sys.path.insert(0, str(_REPO))
 
 from core.config import get_settings
 from core.secrets import get_secret
+
+logger = logging.getLogger(__name__)
 
 DispatchPath = Literal["bifrost"]
 

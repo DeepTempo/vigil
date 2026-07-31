@@ -543,7 +543,7 @@ async def get_event_visualization(
         ai_analysis = None
         if include_ai_analysis and finding_data:
             try:
-                from services.claude_service import ClaudeService
+                from core.llm.harness.claude import ClaudeService
                 claude_service = ClaudeService(use_backend_tools=True, use_mcp_tools=False)
                 
                 if claude_service.has_api_key():

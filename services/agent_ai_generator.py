@@ -42,7 +42,7 @@ class AgentAIGenerator:
                 "raw": "",
             }
 
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         claude = ClaudeService(use_backend_tools=False, use_mcp_tools=False)
         if not claude.has_api_key():

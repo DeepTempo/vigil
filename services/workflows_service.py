@@ -646,7 +646,7 @@ For each phase:
                 recommended_tools=recommended_tools,
             )
 
-        from services.openai_agent_service import OpenAIAgentService
+        from core.llm.harness.openai import OpenAIAgentService
 
         agent = OpenAIAgentService(recommended_tools=recommended_tools)
         return await agent.run(
@@ -669,7 +669,7 @@ For each phase:
         """Legacy composite-prompt path for file-based workflows that
         don't have structured phases. No approval gating possible —
         there's no phase_id to attach an approval to."""
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
         from services.soc_agents import SOCAgentLibrary
         from services.workflow_run_service import get_workflow_run_service
 
@@ -787,7 +787,7 @@ For each phase:
         triggered_by: Optional[str],
     ) -> Dict[str, Any]:
         """Phase-by-phase execution path for custom workflows (#128)."""
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
         from services.workflow_run_service import get_workflow_run_service
 
         if not ClaudeService(
@@ -842,7 +842,7 @@ For each phase:
         resume. Walks phases from ``start_index``; pauses or completes
         the run as appropriate."""
         from services.approval_service import ActionType, get_approval_service
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
         from services.soc_agents import SOCAgentLibrary
         from services.workflow_run_service import get_workflow_run_service
 

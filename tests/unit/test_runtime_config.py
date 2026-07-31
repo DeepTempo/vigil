@@ -210,7 +210,7 @@ class TestConsumerIntegration:
 
     def test_history_window_respects_db(self):
         from services import runtime_config
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         with patch.object(
             runtime_config, "_fetch_db_config", return_value={"history_window": 3}
@@ -231,7 +231,7 @@ class TestConsumerIntegration:
 
     def test_prompt_cache_kill_switch_from_db(self):
         from services import runtime_config
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         with patch.object(
             runtime_config,
@@ -245,7 +245,7 @@ class TestConsumerIntegration:
 
     def test_tool_response_budget_from_db(self):
         from services import runtime_config
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         with patch.object(
             runtime_config,

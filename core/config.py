@@ -40,7 +40,7 @@ def get_config_dir() -> Path:
     return vigil_path(write=True)
 
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # directory. Real environment variables still take precedence over the file,
     # which is what keeps container and Helm injection authoritative.
     model_config = SettingsConfigDict(
-        env_file=_REPO_ROOT / ".env",
+        env_file=REPO_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,

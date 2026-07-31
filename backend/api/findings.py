@@ -380,7 +380,7 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
 
         claude_service = None
         if provider.provider_type == "anthropic":
-            from services.claude_service import ClaudeService
+            from core.llm.harness.claude import ClaudeService
 
             claude_service = ClaudeService(use_backend_tools=True, use_mcp_tools=False)
             if not claude_service.has_api_key():

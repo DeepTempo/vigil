@@ -182,7 +182,7 @@ class AgentRunner:
     def _init_services(self):
         if self._claude_service is None:
             try:
-                from services.claude_service import ClaudeService
+                from core.llm.harness.claude import ClaudeService
 
                 self._claude_service = ClaudeService(
                     use_backend_tools=True,

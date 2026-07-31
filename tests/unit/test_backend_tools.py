@@ -15,7 +15,7 @@ import pytest
 # Add repo root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from services.claude_service import ClaudeService
+from core.llm.harness.claude import ClaudeService
 
 
 @pytest.mark.external_service

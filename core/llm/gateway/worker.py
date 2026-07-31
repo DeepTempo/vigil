@@ -12,18 +12,12 @@ are enqueuing concurrently.
 import asyncio
 import json
 import logging
-import sys
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from arq.connections import RedisSettings
 
-# Ensure project root is importable
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from core.llm.gateway.gateway import QUEUE_NAME, RedisSessionStore
-
 from core.config import get_settings
+from core.llm.gateway.gateway import QUEUE_NAME, RedisSessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -653,7 +647,7 @@ async def on_startup(ctx: Dict[str, Any]):
             _db_err,
         )
 
-    from services.claude_service import ClaudeService
+    from core.llm.harness.claude import ClaudeService
 
     claude_service = ClaudeService(
         use_backend_tools=True,
