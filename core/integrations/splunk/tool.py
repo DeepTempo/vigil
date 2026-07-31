@@ -21,7 +21,7 @@ except ImportError:
 # sys.path to find secrets_manager. If the import fails (e.g. the server is
 # running outside the repo), we fall back to os.environ — the keyring /
 # dotenv lookups just get skipped.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _BACKEND_DIR = _REPO_ROOT / "backend"
 if _BACKEND_DIR.is_dir() and str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
@@ -59,7 +59,7 @@ def result(data):
 
 def get_splunk_service():
     try:
-        from services.splunk_service import SplunkService
+        from core.integrations.splunk.client import SplunkService
         url = _read_credential("SPLUNK_URL")
         if not url:
             return None

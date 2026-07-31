@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from core.integrations.splunk.descriptor import SPLUNK
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,7 +56,7 @@ class IntegrationBridgeService:
         "carbon-black": "carbon-black-server",
         "microsoft-defender": "microsoft-defender-server",
         # SIEM
-        "splunk": "splunk-server",
+        SPLUNK.id: SPLUNK.mcp_server_name,
         "azure-sentinel": "azure-sentinel-server",
         # Cloud Security
         "aws-security-hub": "aws-security-hub-server",

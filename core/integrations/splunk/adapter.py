@@ -54,7 +54,7 @@ class SplunkAdapter:
         if not self.is_configured():
             return None
         try:
-            from services.splunk_service import SplunkService
+            from core.integrations.splunk.client import SplunkService
 
             cfg = get_integration_config("splunk")
             self._service = SplunkService(

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import uuid
 
 from services.siem_ingestion_service import SIEMIngestionService
-from services.splunk_service import SplunkService
+from core.integrations.splunk.client import SplunkService
 from core.config import get_integration_config
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ class SplunkIngestion(SIEMIngestionService):
             return self.splunk_service
         
         try:
-            server_url = self.config.get('url')
+            server_url = self.config.get('server_url')
             username = self.config.get('username')
             password = self.config.get('password')
             

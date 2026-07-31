@@ -34,6 +34,8 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, Mapping
 
+from core.integrations.splunk.descriptor import SPLUNK
+
 # Default form-field → env-var-suffix translations. Mirrors
 # ``services.integration_bridge_service.IntegrationBridgeService.FIELD_TO_ENV_MAP``
 # so credentials saved via the Settings UI land under the same env-var
@@ -114,7 +116,7 @@ _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "kaspersky": ("password",),
     "cisco-secure-endpoint": ("api_key",),
     "symantec-edr": ("client_secret",),
-    "splunk": ("password",),
+    SPLUNK.id: SPLUNK.secret_fields,
     "cribl-stream": ("password",),
     "elastic-siem": ("api_key", "password"),
     "azure-sentinel": ("client_secret",),

@@ -6,7 +6,7 @@ from typing import Optional, Dict, List, Any
 from datetime import datetime
 import json
 
-from services.splunk_service import SplunkService
+from core.integrations.splunk.client import SplunkService
 from services.claude_service import ClaudeService
 from services.database_data_service import DatabaseDataService
 
