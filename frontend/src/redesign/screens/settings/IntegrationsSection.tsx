@@ -24,7 +24,7 @@ import DataIngestionPanel from './DataIngestion'
 import DetectionRulesPanel from './DetectionRulesPanel'
 import CustomIntegrationBuilder from './CustomIntegrationBuilder'
 import IntegrationWizard from './IntegrationWizard'
-import type { IntegrationMetadata } from '../../../components/settings/IntegrationWizard'
+import type { IntegrationMetadata } from '../../../config/integrationSchema'
 import type { SectionProps } from './types'
 
 type IntegrationsTab = 'servers' | 'ingestion' | 'detection'

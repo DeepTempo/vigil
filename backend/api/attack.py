@@ -34,7 +34,7 @@ def _parse_finding_timestamp(finding: dict) -> Optional[datetime]:
 
 
 @router.get("/layer")
-async def get_attack_layer():
+def get_attack_layer():
     """
     Get ATT&CK Navigator layer data.
 
@@ -90,7 +90,7 @@ async def get_attack_layer():
 
 
 @router.get("/techniques/rollup")
-async def get_technique_rollup(
+def get_technique_rollup(
     min_confidence: float = 0.0,
     time_range: str = Query("all", pattern="^(24h|7d|30d|all)$"),
 ):
@@ -171,7 +171,7 @@ async def get_technique_rollup(
 
 
 @router.get("/techniques/{technique_id}/findings")
-async def get_findings_by_technique(technique_id: str):
+def get_findings_by_technique(technique_id: str):
     """
     Get all findings associated with a specific technique.
 
@@ -199,7 +199,7 @@ async def get_findings_by_technique(technique_id: str):
 
 
 @router.get("/tactics/summary")
-async def get_tactics_summary():
+def get_tactics_summary():
     """
     Get summary of tactics across all findings.
 

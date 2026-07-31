@@ -131,8 +131,6 @@ def _invoke_ingest(fake_service: _FakeDataService, payload: Dict[str, Any]):
     Patches both the imported reference in `backend.api.vstrike` and the
     one used by `services.case_automation_service.cluster_findings_by_attack_path`.
     """
-    import asyncio
-
     from backend.api import vstrike as vstrike_module
     from backend.schemas.vstrike import VStrikePushRequest
 
@@ -142,7 +140,7 @@ def _invoke_ingest(fake_service: _FakeDataService, payload: Dict[str, Any]):
         "services.database_data_service.DatabaseDataService",
         return_value=fake_service,
     ):
-        response = asyncio.run(vstrike_module.ingest_findings(req))
+        response = vstrike_module.ingest_findings(req)
     return response
 
 

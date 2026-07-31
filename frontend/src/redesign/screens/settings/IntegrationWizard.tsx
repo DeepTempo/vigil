@@ -14,7 +14,7 @@ import {
   SECTION_LABELS,
   type IntegrationField,
   type IntegrationMetadata,
-} from '../../../components/settings/IntegrationWizard'
+} from '../../../config/integrationSchema'
 
 interface Props {
   integration: IntegrationMetadata
