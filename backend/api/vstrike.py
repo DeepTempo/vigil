@@ -85,14 +85,8 @@ def _is_dev_mode() -> bool:
 
 
 def _expected_inbound_key() -> Optional[str]:
-    """Return the expected inbound bearer key, or None if unset."""
-    key = get_secret("VSTRIKE_INBOUND_API_KEY")
-    if key:
-        return key
     try:
-        from backend.secrets_manager import get_secret
-
-        return get_secret("VSTRIKE_INBOUND_API_KEY")
+        return get_secret("VSTRIKE_INBOUND_API_KEY") or None
     except Exception as e:
         logger.debug("Could not read VSTRIKE_INBOUND_API_KEY from secrets: %s", e)
         return None

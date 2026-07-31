@@ -54,18 +54,14 @@ def _get_max_body_bytes() -> int:
     return max(1, kb) * 1024
 
 
+# Read at request time, not import time, so a secret saved in the UI takes
+# effect without a restart.
 def _get_secret() -> Optional[str]:
-    """Fetch the HMAC shared secret at request time (not import time). Prefers
-    the secrets manager (set via Settings UI); falls back to env var."""
     try:
-        from secrets_manager import get_secret as _gs
-        secret = _gs("DARKTRACE_WEBHOOK_SECRET")
-        if secret:
-            return secret
+        return get_secret("DARKTRACE_WEBHOOK_SECRET") or None
     except Exception as exc:  # noqa: BLE001
-        logger.debug("secrets_manager lookup failed, using env: %s", exc)
-    secret = get_secret("DARKTRACE_WEBHOOK_SECRET")
-    return secret or None
+        logger.debug("DARKTRACE_WEBHOOK_SECRET lookup failed: %s", exc)
+        return None
 
 
 def _get_console_url() -> str:
