@@ -12,8 +12,9 @@ import pytest  # noqa: E402
 # dropped on both sides to avoid leaking a stale Settings.
 @pytest.fixture(autouse=True)
 def _reset_settings_cache():
-    from core.config import get_settings  # lazy: pure-AST tests need no app deps
+    from core.config import Settings, get_settings  # lazy: AST tests need no app deps
 
+    Settings.model_config["env_file"] = None  # ignore the developer's .env, as CI does
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
