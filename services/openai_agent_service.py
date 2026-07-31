@@ -10,7 +10,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
 from services import tool_manager
 from core.llm.router.format import anthropic_tools_to_openai
-from services.llm_router import LLMRouter, ProviderSpec
+from core.llm.router.router import LLMRouter, ProviderSpec
 
 logger = logging.getLogger(__name__)
 

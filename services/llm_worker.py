@@ -344,7 +344,7 @@ async def _maybe_dispatch_via_router(
         return None
 
     try:
-        from services.llm_router import get_provider_spec
+        from core.llm.router.router import get_provider_spec
 
         spec = get_provider_spec(provider_id)
     except Exception as exc:  # noqa: BLE001
@@ -670,7 +670,7 @@ async def on_startup(ctx: Dict[str, Any]):
     # fails (e.g. openai not installed), worker continues in Anthropic-only
     # mode and provider_id kwargs are silently ignored.
     try:
-        from services.llm_router import LLMRouter
+        from core.llm.router.router import LLMRouter
 
         ctx["llm_router"] = LLMRouter()
         logger.info(

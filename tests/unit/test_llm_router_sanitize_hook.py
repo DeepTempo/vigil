@@ -13,7 +13,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.llm_router import (  # noqa: E402
+from core.llm.router.router import (  # noqa: E402
     LLMRouter,
     ProviderSpec,
     _pre_dispatch_sanitize,

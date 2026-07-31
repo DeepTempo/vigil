@@ -601,7 +601,7 @@ For each phase:
         Any failure degrades to ``(None, DEFAULT_MODEL)`` (legacy behavior).
         """
         try:
-            from services.llm_router import get_provider_spec
+            from core.llm.router.router import get_provider_spec
             from core.llm.providers.registry import get_registry
 
             pick = get_registry().resolve_model_for_component(component)

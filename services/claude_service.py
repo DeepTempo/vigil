@@ -358,7 +358,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             # isn't importable.
             if not self.api_key:
                 try:
-                    from services.llm_router import discover_anthropic_api_key
+                    from core.llm.router.router import discover_anthropic_api_key
 
                     self.api_key = discover_anthropic_api_key()
                 except Exception as exc:  # noqa: BLE001

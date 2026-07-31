@@ -240,7 +240,7 @@ class AgentRunner:
         result = True
         if provider_id:
             try:
-                from services.llm_router import get_provider_spec
+                from core.llm.router.router import get_provider_spec
 
                 spec = get_provider_spec(provider_id)
                 if spec is not None:

@@ -216,7 +216,7 @@ def _select_active_provider(provider_id: Optional[str]):
     Returns a ``ProviderSpec`` or ``None``. Lookups are wrapped so a transient
     DB error degrades to the ClaudeService/Anthropic path rather than 500-ing.
     """
-    from services.llm_router import (
+    from core.llm.router.router import (
         get_default_provider_spec,
         get_provider_spec,
     )
@@ -479,7 +479,7 @@ async def chat(request: ChatRequest):
         # The router path has no tools, so send the no-tools guardrail prompt
         # rather than the agentic system prompt.
         if use_router:
-            from services.llm_router import LLMRouter
+            from core.llm.router.router import LLMRouter
 
             logger.info(
                 f"💬 [RequestID: {request_id}] Starting router chat ({active_provider.provider_type}) "
@@ -896,7 +896,7 @@ async def chat_stream(
                         history_assistant_parts.append(chunk.get("content", ""))
                         yield f"data: {json.dumps(chunk)}\n\n"
                 else:
-                    from services.llm_router import LLMRouter
+                    from core.llm.router.router import LLMRouter
 
                     async for chunk in LLMRouter().dispatch_openai_stream(
                         provider=active_provider,

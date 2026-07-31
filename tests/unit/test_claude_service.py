@@ -68,7 +68,7 @@ class TestClaudeServiceInitialization:
         assert service.client is None
         assert service.async_client is None
 
-    @patch('services.llm_router.discover_anthropic_api_key')
+    @patch('core.llm.router.router.discover_anthropic_api_key')
     @patch('services.claude_service.get_secret')
     def test_init_discovers_ui_saved_key(self, mock_get_secret, mock_discover):
         """Issue #292: when neither CLAUDE_API_KEY nor ANTHROPIC_API_KEY
@@ -92,7 +92,7 @@ class TestClaudeServiceInitialization:
         # Discovery should only be tried after the legacy chain comes up empty.
         assert mock_discover.call_count == 1
 
-    @patch('services.llm_router.discover_anthropic_api_key')
+    @patch('core.llm.router.router.discover_anthropic_api_key')
     @patch('services.claude_service.get_secret')
     def test_init_does_not_call_discovery_when_legacy_key_present(
         self, mock_get_secret, mock_discover

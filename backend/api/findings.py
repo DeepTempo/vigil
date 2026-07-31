@@ -361,7 +361,7 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
     
     # Generate new enrichment using the configured reporting provider.
     try:
-        from services.llm_router import LLMRouter, get_provider_spec
+        from core.llm.router.router import LLMRouter, get_provider_spec
         from core.llm.providers.registry import get_registry
 
         resolved_model = get_registry().resolve_model_for_component("reporting")

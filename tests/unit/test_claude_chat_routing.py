@@ -31,7 +31,7 @@ for _p in (str(REPO), str(REPO / "backend")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from services.llm_router import ProviderSpec  # noqa: E402
+from core.llm.router.router import ProviderSpec  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -138,7 +138,7 @@ def test_unspecified_model_uses_registry_tuple(monkeypatch):
 
 
 def test_explicit_provider_id_wins(monkeypatch):
-    import services.llm_router as r
+    import core.llm.router.router as r
 
     oll = _spec()
     anthropic_default = _spec(
@@ -153,7 +153,7 @@ def test_explicit_provider_id_wins(monkeypatch):
 
 def test_no_provider_id_falls_back_to_default(monkeypatch):
     # Bare model id (redesign Chat dock) → no provider_id → use the default.
-    import services.llm_router as r
+    import core.llm.router.router as r
 
     default = _spec()
     monkeypatch.setattr(r, "get_provider_spec", lambda pid: None)
@@ -162,7 +162,7 @@ def test_no_provider_id_falls_back_to_default(monkeypatch):
 
 
 def test_unknown_provider_id_falls_back_to_default(monkeypatch):
-    import services.llm_router as r
+    import core.llm.router.router as r
 
     default = _spec()
     monkeypatch.setattr(r, "get_provider_spec", lambda pid: None)
@@ -171,7 +171,7 @@ def test_unknown_provider_id_falls_back_to_default(monkeypatch):
 
 
 def test_provider_lookup_error_degrades_to_default(monkeypatch):
-    import services.llm_router as r
+    import core.llm.router.router as r
 
     default = _spec(provider_type="anthropic", provider_id="anthropic-default")
 
@@ -185,7 +185,7 @@ def test_provider_lookup_error_degrades_to_default(monkeypatch):
 
 
 def test_no_provider_anywhere_returns_none(monkeypatch):
-    import services.llm_router as r
+    import core.llm.router.router as r
 
     monkeypatch.setattr(r, "get_provider_spec", lambda pid: None)
     monkeypatch.setattr(r, "get_default_provider_spec", lambda: None)
@@ -238,7 +238,7 @@ def test_router_guardrail_prompt_forbids_tools():
     ],
 )
 def test_use_router_decision(monkeypatch, provider_id, default_type, expect_router):
-    import services.llm_router as r
+    import core.llm.router.router as r
 
     explicit = _spec() if provider_id else None
     default = (

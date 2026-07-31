@@ -1,4 +1,4 @@
-"""Unit tests for services.llm_router (GH #88).
+"""Unit tests for core.llm.router.router (GH #88).
 
 Exercises the pure-logic path-selection rules and the dispatch wiring
 with mocked openai / anthropic clients.
@@ -16,7 +16,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.llm_router import (
+from core.llm.router.router import (
     LLMRouter,
     ProviderSpec,
     provider_spec_from_row,
@@ -238,7 +238,7 @@ async def test_dispatch_anthropic_with_thinking_routes_through_bifrost():
     # Router builds its Anthropic client via core.llm.providers.clients.create_async_anthropic_client,
     # which in turn instantiates anthropic.AsyncAnthropic with base_url=<bifrost>/anthropic.
     with patch("anthropic.AsyncAnthropic", return_value=mock_client) as ac_ctor, patch(
-        "services.llm_router.get_secret", return_value="sk-ant-fake"
+        "core.llm.router.router.get_secret", return_value="sk-ant-fake"
     ), patch.dict("os.environ", {"BIFROST_URL": "http://test-bifrost:8080"}):
         out = await router.dispatch(
             provider=_anthropic_spec(),
@@ -419,7 +419,7 @@ async def test_dispatch_propagates_interaction_id_anthropic():
 
     interaction_id = "uuid-bbbb-2222"
     with patch("anthropic.AsyncAnthropic", return_value=mock_client), patch(
-        "services.llm_router.get_secret", return_value="sk-ant-fake"
+        "core.llm.router.router.get_secret", return_value="sk-ant-fake"
     ):
         await router.dispatch(
             provider=_anthropic_spec(),
@@ -585,7 +585,7 @@ async def test_dispatch_does_not_swallow_non_budget_errors():
 @pytest.mark.asyncio
 async def test_anthropic_dispatch_raises_when_no_key():
     router = LLMRouter()
-    with patch("services.llm_router.get_secret", return_value=None), patch.dict(
+    with patch("core.llm.router.router.get_secret", return_value=None), patch.dict(
         "os.environ", {"ANTHROPIC_API_KEY": "", "CLAUDE_API_KEY": ""}, clear=False
     ):
         with pytest.raises(RuntimeError, match="no resolvable API key"):
@@ -689,7 +689,7 @@ async def test_non_default_anthropic_with_thinking_dispatches_via_router(monkeyp
     }
 
     with patch(
-        "services.llm_router.get_provider_spec",
+        "core.llm.router.router.get_provider_spec",
         return_value=per_provider,
     ):
         result = await _maybe_dispatch_via_router(
@@ -744,7 +744,7 @@ async def test_default_anthropic_with_thinking_still_falls_back():
         "rate_limiter": asyncio.Semaphore(1),
     }
     with patch(
-        "services.llm_router.get_provider_spec",
+        "core.llm.router.router.get_provider_spec",
         return_value=default_spec,
     ):
         result = await _maybe_dispatch_via_router(
@@ -797,7 +797,7 @@ def _stub_session(rows):
 
 
 def test_discover_anthropic_api_key_returns_secret_for_default_row():
-    from services import llm_router
+    from core.llm.router import router as llm_router
 
     default_row = SimpleNamespace(
         provider_id="anthropic-default",
@@ -813,7 +813,7 @@ def test_discover_anthropic_api_key_returns_secret_for_default_row():
 
 def test_discover_anthropic_api_key_falls_through_to_active_row():
     """If the default row's secret is missing, the next active row wins."""
-    from services import llm_router
+    from core.llm.router import router as llm_router
 
     default_row = SimpleNamespace(
         provider_id="anthropic-default",
@@ -836,7 +836,7 @@ def test_discover_anthropic_api_key_falls_through_to_active_row():
 
 
 def test_discover_anthropic_api_key_returns_none_when_no_rows():
-    from services import llm_router
+    from core.llm.router import router as llm_router
 
     session = _stub_session([])
     with patch.object(llm_router, "get_secret", return_value=None), patch(
@@ -852,7 +852,7 @@ def test_discover_anthropic_api_key_returns_none_when_db_unavailable():
     # entire ``database.connection`` import fail by patching builtins.
     import builtins
 
-    from services import llm_router
+    from core.llm.router import router as llm_router
 
     real_import = builtins.__import__
 
