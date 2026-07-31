@@ -333,7 +333,7 @@ async def _maybe_dispatch_via_router(
     other than the default Anthropic row with thinking enabled — that one
     case still falls back to ClaudeService so we keep its full tool-use
     loop, context reduction, and session management (which also routes
-    through Bifrost under the hood via ``services.llm_clients``).
+    through Bifrost under the hood via ``core.llm.providers.clients``).
     """
     if provider_id is None:
         return None

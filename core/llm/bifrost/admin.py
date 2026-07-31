@@ -229,7 +229,7 @@ async def sync_all_provider_models() -> Dict[str, Any]:
     does everything:
 
     1. Fetches each provider's live upstream catalog via
-       ``services.provider_model_discovery``.
+       ``core.llm.providers.discovery``.
     2. Applies the configured extras (IDs upstream dropped from
        /v1/models but that still route — e.g. Claude 3.x).
     3. Populates ``_MODEL_LIST_CACHE[provider_id]`` in
@@ -275,7 +275,7 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
     # Deferred imports to keep module load cheap.
     from database.connection import get_db_manager
     from database.models import LLMProviderConfig
-    from services import provider_model_discovery as discovery
+    from core.llm.providers import discovery
     from services.model_registry import (
         _FALLBACK_MODELS_BY_PROVIDER,
         _MODEL_LIST_CACHE,

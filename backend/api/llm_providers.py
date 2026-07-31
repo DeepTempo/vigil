@@ -40,7 +40,7 @@ VALID_PROVIDER_TYPES = {"anthropic", "openai", "ollama"}
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
 
 # Anthropic's live /v1/models endpoint is consulted via
-# ``services.provider_model_discovery``; the fallback tuple here is the
+# ``core.llm.providers.discovery``; the fallback tuple here is the
 # cold-boot list used only when the live call fails (e.g. no API key
 # was provided at /discover-models time).
 from services.model_registry import _FALLBACK_MODELS_BY_PROVIDER  # noqa: E402
@@ -638,7 +638,7 @@ async def discover_models(
             detail=f"unsupported provider_type: {req.provider_type}",
         )
 
-    from services import provider_model_discovery as discovery
+    from core.llm.providers import discovery
 
     try:
         if req.provider_type == "anthropic":

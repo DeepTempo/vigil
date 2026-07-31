@@ -235,7 +235,7 @@ async def test_dispatch_anthropic_with_thinking_routes_through_bifrost():
     mock_client.close = AsyncMock()
     mock_client.messages.create = AsyncMock(return_value=fake_resp)
 
-    # Router builds its Anthropic client via services.llm_clients.create_async_anthropic_client,
+    # Router builds its Anthropic client via core.llm.providers.clients.create_async_anthropic_client,
     # which in turn instantiates anthropic.AsyncAnthropic with base_url=<bifrost>/anthropic.
     with patch("anthropic.AsyncAnthropic", return_value=mock_client) as ac_ctor, patch(
         "services.llm_router.get_secret", return_value="sk-ant-fake"

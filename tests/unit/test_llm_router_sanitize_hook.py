@@ -19,7 +19,7 @@ from services.llm_router import (  # noqa: E402
     _pre_dispatch_sanitize,
     _wrap_tool_results_in_messages,
 )
-from services.prompt_security import PromptInjectionBlocked  # noqa: E402
+from core.llm.security import PromptInjectionBlocked  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -173,7 +173,8 @@ async def test_dispatch_invokes_sanitize_hook(monkeypatch):
     fake_client.messages.create = _fake_create
 
     with patch(
-        "services.llm_clients.create_async_anthropic_client", return_value=fake_client
+        "core.llm.providers.clients.create_async_anthropic_client",
+        return_value=fake_client,
     ):
         router = LLMRouter()
         await router.dispatch(

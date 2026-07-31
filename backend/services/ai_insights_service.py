@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from backend.secrets_manager import get_secret
 from services.defaults import DEFAULT_MODEL
-from services.llm_clients import create_anthropic_client
+from core.llm.providers.clients import create_anthropic_client
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ Sits on top of the multi-provider layer introduced in #88:
   - Reads `ai_model_configs` (component → provider+model) for assignments.
   - Reads `llm_provider_configs` for provider info.
   - Live-queries providers for their current model lists via
-    ``services.provider_model_discovery`` (Anthropic /v1/models, OpenAI
+    ``core.llm.providers.discovery`` (Anthropic /v1/models, OpenAI
     /v1/models, Ollama /api/tags + /api/show), with a short TTL cache.
   - Owns a layered cost/capability catalog: live upstream meta first, then
     a static override dict for known-exact values, then a provider-specific
@@ -99,7 +99,7 @@ def is_valid_component(name: str) -> bool:
 # Layered catalog — live meta → static override → tier heuristic → default
 # ---------------------------------------------------------------------------
 #
-# 1. Live meta: populated by ``services.provider_model_discovery`` when the
+# 1. Live meta: populated by ``core.llm.providers.discovery`` when the
 #    dynamic-discovery path runs. Holds display_name, context_window and
 #    capability flags scraped from upstream APIs. Does NOT hold pricing —
 #    no provider publishes pricing in their /models endpoint.
@@ -341,7 +341,7 @@ def _match_tier(provider_type: str, model_id: str) -> Optional[Tuple[float, floa
 
 # Maps (provider_type, model_id) → catalog-shape dict with the meta we
 # got from upstream. Populated by ``record_live_meta`` after
-# ``services.provider_model_discovery.fetch_*`` succeeds. Cleared when
+# ``core.llm.providers.discovery.fetch_*`` succeeds. Cleared when
 # discovery cache is invalidated.
 
 _LIVE_META: Dict[Tuple[str, str], Dict[str, Any]] = {}
@@ -542,7 +542,7 @@ _MODEL_LIST_CACHE = _ProviderModelCache()
 # Cold-boot fallback lists — used only when the live upstream API is
 # unreachable at the exact moment a caller needs a list. Each entry is
 # a small safe set; it is NOT the UI dropdown. Real model discovery
-# runs through ``services.provider_model_discovery`` and populates the
+# runs through ``core.llm.providers.discovery`` and populates the
 # layered catalog above.
 
 _FALLBACK_MODELS_BY_PROVIDER: Dict[str, Tuple[str, ...]] = {
@@ -1053,7 +1053,7 @@ def invalidate_model_cache(provider_id: Optional[str] = None) -> None:
     # surgically drop a single entry; clear all meta + discovery cache
     # when any provider changes.
     try:
-        from services import provider_model_discovery as discovery
+        from core.llm.providers import discovery
 
         discovery.invalidate_cache()
     except Exception:  # noqa: BLE001

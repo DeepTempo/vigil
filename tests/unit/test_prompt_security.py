@@ -1,4 +1,4 @@
-"""Unit tests for services.prompt_security (issue #87)."""
+"""Unit tests for core.llm.security (issue #87)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.prompt_security import (  # noqa: E402
+from core.llm.security import (  # noqa: E402
     MAX_SYSTEM_PROMPT_BYTES,
     has_disallowed_control_chars,
     sanitize_system_prompt,

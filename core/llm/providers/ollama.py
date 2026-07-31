@@ -28,7 +28,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from services.provider_model_discovery import ollama_ping
+from core.llm.providers.discovery import ollama_ping
 
 if TYPE_CHECKING:
     from services.service_manager import ActionResult, ServiceSpec, ServiceStatus

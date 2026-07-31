@@ -1169,7 +1169,7 @@ async def get_models():
     # the chat picker. Signal is the registry's is_embedding flag (from the
     # provider capability array), with a name heuristic as fallback for
     # providers/paths that don't carry live capability meta.
-    from services.provider_model_discovery import is_embedding_model_id
+    from core.llm.providers.discovery import is_embedding_model_id
 
     seen: set = set()
     models = []

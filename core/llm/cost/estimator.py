@@ -147,7 +147,7 @@ async def estimate_anthropic(
 ) -> CostEstimate:
     """Estimate USD cost of an Anthropic call by hitting count_tokens.
 
-    Routes through Bifrost via ``services.llm_clients.create_async_anthropic_client``
+    Routes through Bifrost via ``core.llm.providers.clients.create_async_anthropic_client``
     so the count_tokens call obeys the single-routing-path policy.
     """
     from services.model_registry import get_registry
@@ -162,7 +162,8 @@ async def estimate_anthropic(
 
     if api_key:
         try:
-            from services.llm_clients import create_async_anthropic_client
+            from core.llm.providers.clients import \
+                create_async_anthropic_client
 
             client = create_async_anthropic_client(api_key, timeout=30.0)
             kwargs: Dict[str, Any] = {"model": model_id, "messages": messages}

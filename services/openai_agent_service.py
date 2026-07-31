@@ -9,7 +9,7 @@ from collections import deque
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
 from services import tool_manager
-from services.llm_format import anthropic_tools_to_openai
+from core.llm.router.format import anthropic_tools_to_openai
 from services.llm_router import LLMRouter, ProviderSpec
 
 logger = logging.getLogger(__name__)
@@ -202,7 +202,7 @@ class OpenAIAgentService:
 
         tools = self._all_tools_openai_format() if enable_tools else []
 
-        from services.llm_format import anthropic_messages_to_openai
+        from core.llm.router.format import anthropic_messages_to_openai
 
         # The loop appends assistant/tool turns in OpenAI shape, so normalize
         # the incoming history up front; the router re-converts idempotently.
@@ -695,7 +695,7 @@ class OpenAIAgentService:
             )
             if not handled:
                 return f"Unknown backend tool: {tool_name}", True
-            from services.prompt_security import wrap_tool_result
+            from core.llm.security import wrap_tool_result
 
             text = _truncate(json.dumps(result, default=str))
             return wrap_tool_result(text, source="backend", tool=tool_name), False
@@ -709,7 +709,7 @@ class OpenAIAgentService:
         """Execute an MCP tool via the shared MCP client."""
         try:
             from services.mcp_client import get_mcp_client
-            from services.prompt_security import wrap_tool_result
+            from core.llm.security import wrap_tool_result
 
             client = get_mcp_client()
             if not client:

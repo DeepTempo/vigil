@@ -132,11 +132,11 @@ def _wrap_tool_results_in_messages(
 ) -> List[Dict[str, Any]]:
     """Walk Anthropic-shape messages and wrap every ``tool_result`` block.
 
-    The wrapper is idempotent (see ``services.prompt_security.wrap_tool_result``)
+    The wrapper is idempotent (see ``core.llm.security.wrap_tool_result``)
     so messages that already passed through ``ClaudeService`` won't be
     double-wrapped here.
     """
-    from services.prompt_security import wrap_tool_result
+    from core.llm.security import wrap_tool_result
 
     out: List[Dict[str, Any]] = []
     for msg in messages:
@@ -187,7 +187,7 @@ def _wrap_tool_results_in_messages(
 
 def _scan_messages_for_injection(messages: List[Dict[str, Any]]) -> List[str]:
     """Run pattern scan over text content in *messages*; return matched names."""
-    from services.prompt_security import scan_for_injection
+    from core.llm.security import scan_for_injection
 
     patterns: List[str] = []
     for msg in messages:
@@ -230,7 +230,7 @@ def _pre_dispatch_sanitize(
     Returns the (possibly rewritten) ``messages`` and the system prompt
     (returned as-is — we never silently mutate user system prompts).
     """
-    from services.prompt_security import PromptInjectionBlocked, scan_for_injection
+    from core.llm.security import PromptInjectionBlocked, scan_for_injection
 
     wrapped = _wrap_tool_results_in_messages(messages)
 
@@ -354,7 +354,7 @@ class LLMRouter:
     ) -> Dict[str, Any]:
         from openai import AsyncOpenAI  # lazy — avoids hard dep for tests
 
-        from services.llm_format import (
+        from core.llm.router.format import (
             anthropic_messages_to_openai,
             anthropic_tools_to_openai,
         )
@@ -441,7 +441,7 @@ class LLMRouter:
         usage) for non-Anthropic Bifrost providers."""
         from openai import AsyncOpenAI
 
-        from services.llm_format import (
+        from core.llm.router.format import (
             anthropic_messages_to_openai,
             anthropic_tools_to_openai,
         )
@@ -529,7 +529,7 @@ class LLMRouter:
         thinking_budget: int,
         extra_headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        from services.llm_clients import create_async_anthropic_client
+        from core.llm.providers.clients import create_async_anthropic_client
         from services.defaults import build_thinking_kwargs
 
         api_key: Optional[str] = None

@@ -55,9 +55,9 @@ try:
     # Anthropic imports are retained for type references and the Bifrost-routed
     # client helpers imported just below. Direct construction happens through
     # `create_anthropic_client` / `create_async_anthropic_client` in
-    # services.llm_clients so every Anthropic call flows through Bifrost (GH #84).
+    # core.llm.providers.clients so every Anthropic call flows through Bifrost (GH #84).
     from anthropic import Anthropic, AsyncAnthropic  # noqa: F401
-    from services.llm_clients import (
+    from core.llm.providers.clients import (
         create_anthropic_client,
         create_async_anthropic_client,
     )
@@ -804,7 +804,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     # Scan the tool's own schema for prompt-injection — a
                     # poisoned MCP server can smuggle instructions through tool
                     # names/descriptions, not just tool output.
-                    from services.prompt_security import scan_tool_schema
+                    from core.llm.security import scan_tool_schema
 
                     schema_scan = scan_tool_schema(claude_tool)
                     if schema_scan:
@@ -1849,7 +1849,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     )
                     # Issue #87: wrap untrusted tool output in a delimiter
                     # block so the model can distinguish data from instructions.
-                    from services.prompt_security import wrap_tool_result
+                    from core.llm.security import wrap_tool_result
 
                     content_str = wrap_tool_result(
                         content_str, source="backend", tool=tool_name
@@ -1869,7 +1869,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     logger.error(
                         f"Error calling backend tool {tool_name}: {e}", exc_info=True
                     )
-                    from services.prompt_security import wrap_tool_result
+                    from core.llm.security import wrap_tool_result
 
                     err_text = wrap_tool_result(
                         f"Error: {str(e)}", source="backend", tool=tool_name
@@ -1941,7 +1941,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                             # Issue #87: truncate first, then wrap each text
                             # block in <vigil:tool_result> so attacker payloads
                             # in MCP responses are clearly framed as data.
-                            from services.prompt_security import wrap_tool_result
+                            from core.llm.security import wrap_tool_result
 
                             for block in content:
                                 if (
@@ -1966,7 +1966,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                             )
                     except Exception as e:
                         logger.error(f"Error calling tool {tool_name}: {e}")
-                        from services.prompt_security import wrap_tool_result
+                        from core.llm.security import wrap_tool_result
 
                         err_text = wrap_tool_result(
                             f"Error: {str(e)}",

@@ -152,7 +152,7 @@ def test_anthropic_estimator_uses_count_tokens_when_available(monkeypatch):
             self.messages = _FakeMessages()
 
     monkeypatch.setattr(
-        "services.llm_clients.create_async_anthropic_client",
+        "core.llm.providers.clients.create_async_anthropic_client",
         lambda api_key, timeout=None: _FakeClient(),
     )
 
@@ -189,7 +189,7 @@ def test_anthropic_estimator_falls_back_when_count_tokens_raises(monkeypatch):
             self.messages = _BrokenMessages()
 
     monkeypatch.setattr(
-        "services.llm_clients.create_async_anthropic_client",
+        "core.llm.providers.clients.create_async_anthropic_client",
         lambda api_key, timeout=None: _BrokenClient(),
     )
 

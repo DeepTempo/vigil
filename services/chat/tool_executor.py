@@ -137,7 +137,7 @@ class ToolExecutor:
                 content_str = ContextManager.truncate_tool_response(
                     content_str, tool_name=tool_name
                 )
-                from services.prompt_security import wrap_tool_result
+                from core.llm.security import wrap_tool_result
 
                 content_str = wrap_tool_result(
                     content_str, source="backend", tool=tool_name
@@ -153,7 +153,7 @@ class ToolExecutor:
 
             except Exception as exc:
                 logger.error("Error calling backend tool %s: %s", tool_name, exc, exc_info=True)
-                from services.prompt_security import wrap_tool_result
+                from core.llm.security import wrap_tool_result
 
                 err_text = wrap_tool_result(
                     f"Error: {exc}", source="backend", tool=tool_name
@@ -223,7 +223,7 @@ class ToolExecutor:
                     else:
                         blocks = [{"type": "text", "text": str(raw)}]
 
-                    from services.prompt_security import wrap_tool_result
+                    from core.llm.security import wrap_tool_result
 
                     for block in blocks:
                         if isinstance(block, dict) and block.get("type") == "text":
@@ -245,7 +245,7 @@ class ToolExecutor:
                     )
             except Exception as exc:
                 logger.error("Error calling MCP tool %s: %s", tool_name, exc)
-                from services.prompt_security import wrap_tool_result
+                from core.llm.security import wrap_tool_result
 
                 err_text = wrap_tool_result(
                     f"Error: {exc}",

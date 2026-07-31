@@ -1,4 +1,4 @@
-"""Unit tests for services.provider_model_discovery (GH #139).
+"""Unit tests for core.llm.providers.discovery (GH #139).
 
 Focus: per-provider fetch behavior, retry, cache TTL, fallback on
 transient error. httpx is monkeypatched so tests never hit the network.
@@ -18,7 +18,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services import provider_model_discovery as discovery  # noqa: E402
+from core.llm.providers import discovery  # noqa: E402
 
 pytestmark = pytest.mark.unit
 

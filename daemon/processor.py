@@ -74,7 +74,7 @@ class FindingProcessor:
         so the metric is sliceable downstream.
         """
         try:
-            from services.prompt_security import scan_for_injection
+            from core.llm.security import scan_for_injection
         except Exception:  # noqa: BLE001 — daemon must never crash on a hook
             return
 
@@ -246,7 +246,7 @@ class FindingProcessor:
             # Issue #87: scan ingested finding for prompt-injection patterns
             # before any of its content reaches the LLM. Detect-only in v1.
             try:
-                from services.prompt_security import scan_for_injection
+                from core.llm.security import scan_for_injection
 
                 desc_patterns = scan_for_injection(
                     finding.get("description") or ""
