@@ -6,9 +6,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGES = ("backend", "services", "daemon", "core", "database")
 
-# Files where reading os.environ is the point, not a violation. The secrets
-# manager implements the environment backend; mcp_service exports config into
-# spawned MCP child processes, whose config protocol *is* env vars.
+# The secrets manager implements the environment backend, so reading os.environ
+# is its whole job. Every other boundary is exempted inline with '# noqa: ENV001'.
 ENV_EXEMPT_FILES = {
     "backend/secrets_manager.py",
 }
@@ -62,9 +61,13 @@ def _callee_name(node: ast.AST):
 def _env_reads(rel_path: Path):
     lines, tree = _parse(rel_path)
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Attribute) or node.attr not in ("getenv", "environ"):
-            continue
-        if not (isinstance(node.value, ast.Name) and node.value.id == "os"):
+        if isinstance(node, ast.Attribute) and node.attr in ("getenv", "environ"):
+            if not (isinstance(node.value, ast.Name) and node.value.id == "os"):
+                continue
+        elif isinstance(node, ast.ImportFrom) and node.module == "os":
+            if not any(a.name in ("getenv", "environ") for a in node.names):
+                continue
+        else:
             continue
         if "noqa: ENV001" in lines[node.lineno - 1]:
             continue

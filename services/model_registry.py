@@ -649,9 +649,9 @@ async def fetch_provider_models(row) -> List[str]:
 ANTHROPIC_STATIC_MODELS: Tuple[str, ...] = _FALLBACK_MODELS_BY_PROVIDER["anthropic"]
 
 
+# The provider's own api_key_ref wins; otherwise the common key names, so local
+# dev works without an explicit provider row.
 async def _resolve_provider_key(row) -> Optional[str]:
-    # The provider's own api_key_ref wins; otherwise fall back to the common
-    # key names so local dev works without an explicit provider row.
     if row.api_key_ref:
         try:
             key = get_secret(row.api_key_ref)

@@ -19,12 +19,10 @@ DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_SANDBOX_FILE_TYPES = "exe,dll,doc,docx,xls,xlsx,pdf,js,vbs,ps1,bat,msi"
 
 
+# Reads prefer ~/.vigil and fall back to the legacy ~/.deeptempo copy; writes
+# always target ~/.vigil, so data drifts over on the next save.
 def vigil_path(*parts: str, write: bool = False) -> Path:
-    # Reads prefer ~/.vigil and fall back to the legacy ~/.deeptempo copy so
-    # existing installs keep working; writes always target ~/.vigil, so data
-    # drifts to the new location on next save. Home is resolved per call, which
-    # keeps the helper patchable in tests.
-    target = Path.home() / _VIGIL_DIRNAME
+    target = Path.home() / _VIGIL_DIRNAME  # per call, so tests can patch home
     legacy = Path.home() / _LEGACY_DIRNAME
     if parts:
         target, legacy = target.joinpath(*parts), legacy.joinpath(*parts)
@@ -44,9 +42,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
-    # Anchored to the repo so the same .env loads regardless of working
-    # directory. Real environment variables still take precedence over the file,
-    # which is what keeps container and Helm injection authoritative.
+    # Anchored to the repo so the same .env loads regardless of working directory.
+    # Real env vars still win, keeping container and Helm injection authoritative.
     model_config = SettingsConfigDict(
         env_file=_REPO_ROOT / ".env",
         env_file_encoding="utf-8",
@@ -111,6 +108,8 @@ class Settings(BaseSettings):
     auth_lockout_duration_minutes: int = 15
     auth_password_history_limit: int = 5
     auth_min_password_length: int = 12
+    # bcrypt raises above 72 bytes rather than truncating, so a higher ceiling
+    # here means a long password validates and then 500s at hash time.
     auth_max_password_bytes: int = 72
     auth_min_zxcvbn_score: int = 3
     password_reset_ttl_seconds: int = 3600
@@ -247,10 +246,9 @@ class Settings(BaseSettings):
         "mcp_auto_connect_on_startup",
         mode="before",
     )
+    # Tri-state: blank means "no opinion, use the call site's fallback".
     @classmethod
     def _blank_is_unset(cls, v: Any) -> Any:
-        # These are tri-state: an empty value means "no opinion, use the call
-        # site's fallback", which is how the raw env reads behaved.
         if isinstance(v, str) and not v.strip():
             return None
         return v

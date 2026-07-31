@@ -304,11 +304,9 @@ class MCPService:
         def replace_var(match):
             var_name = match.group(1)
             default = match.group(2)
-            # Env first (an operator export wins), then the encrypted store, so a
-            # credential set in the UI reaches any MCP server without a restart.
-            env_val = os.environ.get(var_name)  # noqa: ENV001 - MCP placeholder
+            env_val = os.environ.get(var_name)  # noqa: ENV001 - operator export wins
             if env_val is None:
-                env_val = get_secret(var_name)
+                env_val = get_secret(var_name)  # UI-set credential, no restart needed
             if env_val is not None:
                 return env_val
             if default is not None:

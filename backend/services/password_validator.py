@@ -10,11 +10,6 @@ from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# bcrypt rejects inputs longer than 72 *bytes* (it raises, it does not
-# truncate), so cap here to match — otherwise a long password passes
-# validation and then 500s at hash time. A byte cap also bounds zxcvbn's
-# super-linear matching. 72 bytes == 72 chars for ASCII, comfortably above
-# NIST's "at least 64 characters" recommendation.
 _BLOCKLIST_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "common_passwords.txt"
 _blocklist: Optional[frozenset] = None
 
@@ -79,9 +74,7 @@ def validate_password_strength(
             suggestions=[f"Add {limit - len(password)} more characters."],
         )
 
-    # Reject over-length inputs before the expensive zxcvbn pass. Measured in
-    # bytes to match bcrypt's hard 72-byte limit.
-    if len(password.encode("utf-8")) > byte_ceiling:
+    if len(password.encode("utf-8")) > byte_ceiling:  # before the costly zxcvbn pass
         raise PasswordPolicyError(
             f"Password must be at most {byte_ceiling} bytes long",
             suggestions=["Use a shorter passphrase."],

@@ -1,6 +1,5 @@
-# Shared slowapi Limiter for auth and other sensitive endpoints. Redis keeps
-# limits consistent across workers; an unreachable Redis degrades to in-memory
-# rather than taking authentication offline.
+# Shared slowapi Limiter. Redis keeps limits consistent across workers; an
+# unreachable Redis degrades to in-memory rather than taking auth offline.
 
 import logging
 
@@ -16,9 +15,9 @@ def _in_memory() -> Limiter:
     return Limiter(key_func=get_remote_address, strategy="fixed-window")
 
 
+# slowapi connects lazily, so construction succeeding proves nothing: probe the
+# storage here or the first rate-limited request 500s instead of degrading.
 def _build_limiter() -> Limiter:
-    # slowapi connects lazily, so construction succeeding proves nothing. Probe the
-    # storage here or the first rate-limited request 500s instead of degrading.
     url = get_settings().redis_url
     if not url:
         return _in_memory()

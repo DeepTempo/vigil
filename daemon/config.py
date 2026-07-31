@@ -213,8 +213,7 @@ class DaemonConfig:
         config.llm_queue.redis_url = settings.redis_url or DEFAULT_REDIS_URL
         config.llm_queue.max_concurrent_llm_calls = settings.llm_max_concurrent
 
-        # Kafka env defaults; may be overridden by SystemConfig below
-        config.kafka.enabled = settings.kafka_enabled
+        config.kafka.enabled = settings.kafka_enabled  # SystemConfig may override below
         config.kafka.bootstrap_servers = settings.kafka_bootstrap_servers
         config.kafka.consumer_group = settings.kafka_consumer_group
         config.kafka.topics = list(settings.kafka_topics)

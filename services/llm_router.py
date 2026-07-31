@@ -536,7 +536,6 @@ class LLMRouter:
         if provider.api_key_ref:
             api_key = get_secret(provider.api_key_ref)
         if not api_key:
-            # Fall back to the common key names so local dev still works.
             api_key = get_secret("ANTHROPIC_API_KEY") or get_secret("CLAUDE_API_KEY")
         if not api_key:
             raise RuntimeError(

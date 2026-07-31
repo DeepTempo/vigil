@@ -132,15 +132,6 @@ def get_findings_summary():
 
 @router.post("/export")
 def export_findings(output_format: str = "json"):
-    """
-    Export findings to a file.
-    
-    Args:
-        output_format: Export format (json or jsonl)
-    
-    Returns:
-        Export result
-    """
     from datetime import datetime
     
     output_dir = vigil_path("exports", write=True)

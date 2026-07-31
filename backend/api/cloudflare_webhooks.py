@@ -32,12 +32,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# Off unless explicitly enabled. system_config wins so the Settings UI can flip
+# the receiver without a restart; env is the fallback.
 def cloudy_ingestion_enabled() -> bool:
-    """Master flag for the Cloudy webhook receiver.
-
-    Off unless explicitly enabled. Reads system_config first (so the
-    Settings UI can flip it without a restart), then falls back to env.
-    """
     try:
         from database.config_service import get_config_service
         cfg = get_config_service().get_system_config("cloudflare.cloudy.enabled")

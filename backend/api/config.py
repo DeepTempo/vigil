@@ -118,8 +118,7 @@ async def get_demo_mode():
         from core.config import is_demo_mode
 
         demo_enabled = is_demo_mode()
-        # "environment" means the env var was supplied at all, true or false.
-        env_set = get_settings().demo_mode is not None
+        env_set = get_settings().demo_mode is not None  # supplied at all, true or false
 
         return {
             "enabled": demo_enabled,
