@@ -150,7 +150,7 @@ async def estimate_anthropic(
     Routes through Bifrost via ``core.llm.providers.clients.create_async_anthropic_client``
     so the count_tokens call obeys the single-routing-path policy.
     """
-    from services.model_registry import get_registry
+    from core.llm.providers.registry import get_registry
 
     registry = get_registry()
     in_rate, out_rate = registry.get_cost_rates(model_id, "anthropic")
@@ -212,7 +212,7 @@ def estimate_openai(
 
     Synchronous — no network calls. Cheap to use in a hot path.
     """
-    from services.model_registry import get_registry
+    from core.llm.providers.registry import get_registry
 
     registry = get_registry()
     in_rate, out_rate = registry.get_cost_rates(model_id, "openai")
@@ -306,7 +306,7 @@ async def estimate_cost(
 
     # Genuinely unknown provider (not anthropic/openai/ollama). Surface the
     # event so dashboards see it instead of silently recording $0 — same
-    # treatment we give unknown models in services.model_registry.
+    # treatment we give unknown models in core.llm.providers.registry.
     logger.warning(
         "estimate_cost: unknown provider_type=%r model_id=%r — returning $0 "
         "with pricing_source='unknown'",
@@ -314,7 +314,7 @@ async def estimate_cost(
         model_id,
     )
     try:
-        from services.model_registry import _record_pricing_unknown
+        from core.llm.providers.registry import _record_pricing_unknown
 
         _record_pricing_unknown(provider_type or "unknown", model_id or "unknown")
     except Exception:

@@ -1,4 +1,4 @@
-"""Unit tests for ``daemon.agent_runner.compute_call_cost`` (GH #84 PR-E).
+"""Unit tests for ``core.llm.cost.calls.compute_call_cost`` (GH #84 PR-E).
 
 PR-E deleted the legacy Sonnet-pricing fallback so multi-provider calls
 don't get silently misattributed. These tests lock in the new behavior:
@@ -45,10 +45,10 @@ def _mock_registry(
 
 
 def test_happy_path_uses_registry_rates():
-    from daemon.agent_runner import compute_call_cost
+    from core.llm.cost.calls import compute_call_cost
 
     with patch(
-        "services.model_registry.get_registry",
+        "core.llm.providers.registry.get_registry",
         return_value=_mock_registry(3.0 / 1_000_000, 15.0 / 1_000_000),
     ):
         cost = compute_call_cost("claude-sonnet-4-5-20250929", "anthropic", 1_000, 500)
@@ -59,10 +59,10 @@ def test_happy_path_uses_registry_rates():
 def test_openai_rates_applied_when_provider_is_openai():
     """Regression: pre-PR-E, a missing rate would silently bill at Sonnet.
     Now we look up the actual provider's rates."""
-    from daemon.agent_runner import compute_call_cost
+    from core.llm.cost.calls import compute_call_cost
 
     with patch(
-        "services.model_registry.get_registry",
+        "core.llm.providers.registry.get_registry",
         return_value=_mock_registry(2.5 / 1_000_000, 10.0 / 1_000_000),
     ):
         cost = compute_call_cost("gpt-4o", "openai", 1_000, 1_000)
@@ -72,7 +72,7 @@ def test_openai_rates_applied_when_provider_is_openai():
 def test_missing_model_returns_zero(caplog):
     """No fallback to Sonnet — missing metadata means we record $0 (visible
     on the dashboard) instead of a confidently-wrong number."""
-    from daemon.agent_runner import compute_call_cost
+    from core.llm.cost.calls import compute_call_cost
 
     with caplog.at_level("WARNING"):
         cost = compute_call_cost(None, "anthropic", 1_000, 500)
@@ -81,19 +81,19 @@ def test_missing_model_returns_zero(caplog):
 
 
 def test_missing_provider_returns_zero():
-    from daemon.agent_runner import compute_call_cost
+    from core.llm.cost.calls import compute_call_cost
 
     assert compute_call_cost("claude-sonnet-4-5-20250929", None, 1_000, 500) == 0.0
 
 
 def test_registry_exception_returns_zero(caplog):
-    from daemon.agent_runner import compute_call_cost
+    from core.llm.cost.calls import compute_call_cost
 
     def _explode():
         raise RuntimeError("registry unavailable")
 
     with patch(
-        "services.model_registry.get_registry", side_effect=_explode
+        "core.llm.providers.registry.get_registry", side_effect=_explode
     ), caplog.at_level("WARNING"):
         cost = compute_call_cost("claude-sonnet-4-5", "anthropic", 1_000, 500)
 
@@ -125,12 +125,12 @@ def test_cache_read_priced_at_anthropic_discount():
     Pre-#184 these tokens were ignored (priced at $0). After #184 we
     multiply by the Anthropic ephemeral-cache read multiplier.
     """
-    from daemon.agent_runner import compute_call_cost
+    from core.llm.cost.calls import compute_call_cost
 
     in_rate = 3.0 / 1_000_000  # Sonnet input rate
     cache_read_rate = in_rate * 0.10
     with patch(
-        "services.model_registry.get_registry",
+        "core.llm.providers.registry.get_registry",
         return_value=_mock_registry(
             in_rate, 15.0 / 1_000_000, cache_read_rate=cache_read_rate
         ),
@@ -148,12 +148,12 @@ def test_cache_read_priced_at_anthropic_discount():
 
 def test_cache_creation_priced_at_anthropic_premium():
     """Cache writes bill at 1.25× input rate (the ephemeral premium)."""
-    from daemon.agent_runner import compute_call_cost
+    from core.llm.cost.calls import compute_call_cost
 
     in_rate = 3.0 / 1_000_000
     cache_creation_rate = in_rate * 1.25
     with patch(
-        "services.model_registry.get_registry",
+        "core.llm.providers.registry.get_registry",
         return_value=_mock_registry(
             in_rate,
             15.0 / 1_000_000,
@@ -174,12 +174,12 @@ def test_cache_creation_priced_at_anthropic_premium():
 def test_zero_cache_tokens_match_pre_184_behavior():
     """Backwards-compat: callers that don't pass cache tokens get the same
     number they did before #184."""
-    from daemon.agent_runner import compute_call_cost
+    from core.llm.cost.calls import compute_call_cost
 
     in_rate = 3.0 / 1_000_000
     out_rate = 15.0 / 1_000_000
     with patch(
-        "services.model_registry.get_registry",
+        "core.llm.providers.registry.get_registry",
         return_value=_mock_registry(in_rate, out_rate, cache_read_rate=in_rate * 0.1),
     ):
         legacy = compute_call_cost("claude-sonnet-4-5", "anthropic", 1_000, 500)
@@ -198,7 +198,7 @@ def test_zero_cache_tokens_match_pre_184_behavior():
 def test_real_anthropic_multipliers_via_registry():
     """End-to-end: hit the real ModelRegistry (no mock) and verify the
     Anthropic multipliers (0.1× read / 1.25× creation) are applied."""
-    from daemon.agent_runner import compute_call_cost
+    from core.llm.cost.calls import compute_call_cost
 
     # Sonnet 4.5 has exact pricing in _CATALOG: $3/MTok in, $15/MTok out.
     cost = compute_call_cost(

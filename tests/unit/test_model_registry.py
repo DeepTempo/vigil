@@ -1,4 +1,4 @@
-"""Unit tests for services.model_registry (GH #89).
+"""Unit tests for core.llm.providers.registry (GH #89).
 
 Focus: pure logic (cost catalog, capability lookup) and fallback resolution.
 DB-backed paths are exercised via monkeypatching the DB accessors so the
@@ -16,8 +16,8 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.model_registry import COMPONENTS  # noqa: E402
-from services.model_registry import (  # noqa: E402
+from core.llm.providers.registry import COMPONENTS  # noqa: E402
+from core.llm.providers.registry import (  # noqa: E402
     ComponentAssignment,
     ModelRegistry,
     _catalog_entry,
@@ -141,7 +141,7 @@ def test_pricing_source_unknown_for_unrecognized_model():
 def test_live_meta_populates_context_window(monkeypatch):
     """record_live_meta should feed display_name / context / caps into
     the catalog lookup for models not in the static _CATALOG."""
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     class _M:
         id = "claude-haiku-3-5-20241022"
@@ -185,7 +185,7 @@ def test_get_model_info_deprecated_flag():
 
 def test_default_extras_include_anthropic_3x(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_EXTRA_MODELS", raising=False)
-    from services.model_registry import get_extra_model_ids
+    from core.llm.providers.registry import get_extra_model_ids
 
     ids = get_extra_model_ids("anthropic")
     assert "claude-3-5-haiku-20241022" in ids
@@ -194,7 +194,7 @@ def test_default_extras_include_anthropic_3x(monkeypatch):
 
 
 def test_env_override_replaces_defaults(monkeypatch):
-    from services.model_registry import get_extra_model_ids
+    from core.llm.providers.registry import get_extra_model_ids
 
     monkeypatch.setenv("ANTHROPIC_EXTRA_MODELS", "foo-1, bar-2 ,, baz-3")
     ids = get_extra_model_ids("anthropic")
@@ -202,7 +202,7 @@ def test_env_override_replaces_defaults(monkeypatch):
 
 
 def test_env_empty_string_disables_extras(monkeypatch):
-    from services.model_registry import get_extra_model_ids
+    from core.llm.providers.registry import get_extra_model_ids
 
     monkeypatch.setenv("ANTHROPIC_EXTRA_MODELS", "")
     assert get_extra_model_ids("anthropic") == ()
@@ -222,7 +222,7 @@ def test_extras_catalog_entry_has_exact_pricing():
 
 
 def test_is_extra_model_flips_after_registration():
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     provider_type = "anthropic"
     mid = "test-extra-registration-xyz"
@@ -353,7 +353,7 @@ async def test_list_available_models_floors_empty_provider_to_default(monkeypatc
     """An active Ollama provider whose discovery returns nothing (empty
     bootstrap) must still surface its configured default_model, not vanish
     and let the aggregate collapse to Anthropic (#409)."""
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     async def _no_models(_row):
         return []
@@ -369,7 +369,7 @@ async def test_list_available_models_floors_empty_provider_to_default(monkeypatc
 
 async def test_list_available_models_uses_live_ids_when_present(monkeypatch):
     """When discovery returns real ids the default_model floor is not used."""
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     async def _live(_row):
         return ["llama3.1:8b", "mistral:7b"]

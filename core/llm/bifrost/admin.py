@@ -233,7 +233,7 @@ async def sync_all_provider_models() -> Dict[str, Any]:
     2. Applies the configured extras (IDs upstream dropped from
        /v1/models but that still route — e.g. Claude 3.x).
     3. Populates ``_MODEL_LIST_CACHE[provider_id]`` in
-       ``services.model_registry`` so the UI dropdown reads the same
+       ``core.llm.providers.registry`` so the UI dropdown reads the same
        list the sync just computed.
     4. Unions per-provider-type across rows and PUTs that to Bifrost's
        allow-list via the admin API, so LLM traffic routes for every
@@ -276,7 +276,7 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
     from database.connection import get_db_manager
     from database.models import LLMProviderConfig
     from core.llm.providers import discovery
-    from services.model_registry import (
+    from core.llm.providers.registry import (
         _FALLBACK_MODELS_BY_PROVIDER,
         _MODEL_LIST_CACHE,
         _register_extras,

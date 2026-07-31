@@ -614,7 +614,7 @@ async def fetch_provider_models(row) -> List[str]:
     """Return the cached model list for a provider.
 
     Cache reader only — the sole writer is
-    ``services.bifrost_admin.sync_all_provider_models`` which populates
+    ``core.llm.bifrost.admin.sync_all_provider_models`` which populates
     this cache at the same time it pushes to Bifrost. That shared-writer
     design is what prevents drift between the UI dropdown and Bifrost's
     allow-list.
@@ -632,7 +632,7 @@ async def fetch_provider_models(row) -> List[str]:
     # Cold: run the canonical refresh. This populates the cache for every
     # active provider, so concurrent lazy-syncs for other rows are free.
     try:
-        from services.bifrost_admin import sync_all_provider_models
+        from core.llm.bifrost.admin import sync_all_provider_models
 
         await sync_all_provider_models()
     except Exception as exc:  # noqa: BLE001

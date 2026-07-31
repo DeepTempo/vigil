@@ -45,7 +45,7 @@ class BudgetSettingsUpdate(BaseModel):
 @router.get("/analytics/budget", response_model=BudgetSettingsResponse)
 async def get_budget_settings() -> Dict[str, Any]:
     """Return the persisted Bifrost VK + budget config."""
-    from services.budget_service import get_settings
+    from core.llm.cost.budget import get_settings
 
     return get_settings()
 
@@ -59,7 +59,7 @@ async def put_budget_settings(payload: BudgetSettingsUpdate) -> Dict[str, Any]:
     ``LLM_BUDGET_UNLIMITED=true`` is set, the dispatch ignores the VK
     regardless of what's stored here.
     """
-    from services.budget_service import set_settings
+    from core.llm.cost.budget import set_settings
 
     try:
         return set_settings(
@@ -77,8 +77,8 @@ async def put_budget_settings(payload: BudgetSettingsUpdate) -> Dict[str, Any]:
 @router.get("/analytics/budget/quota")
 async def get_budget_quota() -> Dict[str, Any]:
     """Live spend/quota for the configured VK, proxied from Bifrost."""
-    from services.bifrost_cost_client import get_vk_quota
-    from services.budget_service import get_active_vk
+    from core.llm.bifrost.costs import get_vk_quota
+    from core.llm.cost.budget import get_active_vk
 
     vk = get_active_vk()
     if not vk:

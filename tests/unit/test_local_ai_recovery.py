@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from core.config import get_settings
-from services import local_ai_recovery as recovery
+from core.llm.providers import recovery as recovery
 
 
 def test_local_recovery_requires_dev_mode_and_loopback_gateway(monkeypatch):

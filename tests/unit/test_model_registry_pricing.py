@@ -22,7 +22,7 @@ pytestmark = pytest.mark.unit
 
 
 def test_anthropic_cache_multipliers():
-    from services.model_registry import get_cache_multipliers
+    from core.llm.providers.registry import get_cache_multipliers
 
     read_mult, creation_mult = get_cache_multipliers("anthropic")
     # Anthropic 5-min ephemeral cache: 0.1× read, 1.25× creation.
@@ -31,7 +31,7 @@ def test_anthropic_cache_multipliers():
 
 
 def test_openai_cache_multipliers():
-    from services.model_registry import get_cache_multipliers
+    from core.llm.providers.registry import get_cache_multipliers
 
     read_mult, creation_mult = get_cache_multipliers("openai")
     # OpenAI: 0.5× cached read, no write premium.
@@ -42,7 +42,7 @@ def test_openai_cache_multipliers():
 def test_unknown_provider_falls_back_to_full_input_rate():
     """Unknown providers should over-bound, not under-bound — charge cache
     tokens at full input rate so we don't silently miss costs."""
-    from services.model_registry import get_cache_multipliers
+    from core.llm.providers.registry import get_cache_multipliers
 
     assert get_cache_multipliers("future-vendor") == (1.0, 1.0)
 
@@ -50,7 +50,7 @@ def test_unknown_provider_falls_back_to_full_input_rate():
 def test_get_cache_rates_uses_input_rate_times_multiplier():
     """The cache rate is derived from the input rate, so a repricing of
     input automatically reprices cache — no second table to maintain."""
-    from services.model_registry import get_registry
+    from core.llm.providers.registry import get_registry
 
     registry = get_registry()
     in_rate, _ = registry.get_cost_rates("claude-sonnet-4-5-20250929", "anthropic")
@@ -62,7 +62,7 @@ def test_get_cache_rates_uses_input_rate_times_multiplier():
 
 
 def test_pricing_source_exact_for_catalog_models():
-    from services.model_registry import get_registry
+    from core.llm.providers.registry import get_registry
 
     src = get_registry().get_pricing_source("claude-sonnet-4-5-20250929", "anthropic")
     assert src == "exact"
@@ -71,20 +71,20 @@ def test_pricing_source_exact_for_catalog_models():
 def test_pricing_source_heuristic_for_unknown_anthropic_variant():
     """A model id we haven't catalog'd but matches a tier regex (e.g.
     a future Sonnet variant) should resolve via heuristic."""
-    from services.model_registry import get_registry
+    from core.llm.providers.registry import get_registry
 
     src = get_registry().get_pricing_source("claude-sonnet-9-99-future", "anthropic")
     assert src == "heuristic"
 
 
 def test_pricing_source_zero_for_ollama():
-    from services.model_registry import get_registry
+    from core.llm.providers.registry import get_registry
 
     assert get_registry().get_pricing_source("llama3.1", "ollama") == "zero"
 
 
 def test_pricing_source_unknown_for_novel_provider():
-    from services.model_registry import get_registry
+    from core.llm.providers.registry import get_registry
 
     assert get_registry().get_pricing_source("foo-1", "future-vendor") == "unknown"
 
@@ -93,7 +93,7 @@ def test_unknown_pricing_increments_counter(monkeypatch):
     """#184 acceptance #2: the 'unknown' path must increment the OTEL
     counter so dashboards/alerts can see unsupported models, not silently
     record $0."""
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     calls = []
     monkeypatch.setattr(
@@ -109,7 +109,7 @@ def test_unknown_pricing_increments_counter(monkeypatch):
 
 def test_known_pricing_does_not_increment_counter(monkeypatch):
     """Known models must NOT increment the unknown-pricing counter."""
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     calls = []
     monkeypatch.setattr(
@@ -126,14 +126,14 @@ def test_known_pricing_does_not_increment_counter(monkeypatch):
 
 
 def test_infer_provider_type_anthropic():
-    from services.model_registry import infer_provider_type
+    from core.llm.providers.registry import infer_provider_type
 
     assert infer_provider_type("claude-sonnet-4-5-20250929") == "anthropic"
     assert infer_provider_type("claude-opus-4-7") == "anthropic"
 
 
 def test_infer_provider_type_openai():
-    from services.model_registry import infer_provider_type
+    from core.llm.providers.registry import infer_provider_type
 
     assert infer_provider_type("gpt-4o") == "openai"
     assert infer_provider_type("gpt-4o-mini") == "openai"
@@ -142,7 +142,7 @@ def test_infer_provider_type_openai():
 
 
 def test_infer_provider_type_ollama_soft_match():
-    from services.model_registry import infer_provider_type
+    from core.llm.providers.registry import infer_provider_type
 
     assert infer_provider_type("llama3.1") == "ollama"
     assert infer_provider_type("mistral-7b") == "ollama"
@@ -150,7 +150,7 @@ def test_infer_provider_type_ollama_soft_match():
 
 
 def test_infer_provider_type_unknown():
-    from services.model_registry import infer_provider_type
+    from core.llm.providers.registry import infer_provider_type
 
     assert infer_provider_type("") == "unknown"
     assert infer_provider_type("some-novel-thing") == "unknown"

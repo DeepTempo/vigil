@@ -310,7 +310,7 @@ class _FakeRow:
 
 
 def _reset_registry_state():
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     model_registry._MODEL_LIST_CACHE.invalidate()
     model_registry._EXTRA_IDS.clear()
@@ -319,7 +319,7 @@ def _reset_registry_state():
 
 def test_fetch_provider_models_reads_cache():
     """Populated cache is returned without any lazy sync."""
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     _reset_registry_state()
     model_registry._MODEL_LIST_CACHE.set(
@@ -334,7 +334,7 @@ def test_fetch_provider_models_reads_cache():
 def test_fetch_provider_models_lazy_sync_on_miss(monkeypatch):
     """Cache miss triggers sync_all_provider_models; result is the cache
     entry that sync wrote."""
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     _reset_registry_state()
     call_count = {"n": 0}
@@ -350,7 +350,7 @@ def test_fetch_provider_models_lazy_sync_on_miss(monkeypatch):
 
     # The lazy-sync import is inside the function, so patch the attribute
     # where the caller looks it up.
-    import services.bifrost_admin as bifrost_admin
+    import core.llm.bifrost.admin as bifrost_admin
 
     monkeypatch.setattr(bifrost_admin, "sync_all_provider_models", fake_sync)
 
@@ -362,14 +362,14 @@ def test_fetch_provider_models_lazy_sync_on_miss(monkeypatch):
 
 def test_fetch_provider_models_hard_fallback_when_sync_fails(monkeypatch):
     """If sync raises AND cache remains empty, return bootstrap + extras."""
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     _reset_registry_state()
 
     async def fake_sync_fails():
         raise RuntimeError("no db")
 
-    import services.bifrost_admin as bifrost_admin
+    import core.llm.bifrost.admin as bifrost_admin
 
     monkeypatch.setattr(bifrost_admin, "sync_all_provider_models", fake_sync_fails)
     monkeypatch.setenv("ANTHROPIC_EXTRA_MODELS", "legacy-only-1")

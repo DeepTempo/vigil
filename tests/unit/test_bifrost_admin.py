@@ -1,4 +1,4 @@
-"""Unit tests for services.bifrost_admin sync helpers (GH #139).
+"""Unit tests for core.llm.bifrost.admin sync helpers (GH #139).
 
 Verifies the new ``sync_provider_models`` path: empty-list guard, dedup,
 GET-modify-PUT flow, and error handling. httpx is monkeypatched via a
@@ -17,7 +17,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services import bifrost_admin  # noqa: E402
+from core.llm.bifrost import admin as bifrost_admin  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -199,7 +199,7 @@ def _patch_db(monkeypatch, rows):
 
 
 def _reset_registry():
-    from services import model_registry
+    from core.llm.providers import registry as model_registry
 
     model_registry._MODEL_LIST_CACHE.invalidate()
     model_registry._EXTRA_IDS.clear()
@@ -210,7 +210,7 @@ def test_sync_all_populates_dropdown_cache_and_bifrost_allowlist(monkeypatch):
     """The whole point of the refactor: one call writes the dropdown cache
     AND Bifrost's allow-list — they can't drift because they come from
     the same iteration over the same upstream fetch."""
-    from services import bifrost_admin as ba
+    from core.llm.bifrost import admin as ba
 
     _reset_registry()
 
@@ -244,7 +244,7 @@ def test_sync_all_populates_dropdown_cache_and_bifrost_allowlist(monkeypatch):
         "claude-3-5-haiku-20241022",
     ]
     # Dropdown cache — same list, same row, same call.
-    from services.model_registry import _MODEL_LIST_CACHE
+    from core.llm.providers.registry import _MODEL_LIST_CACHE
 
     assert _MODEL_LIST_CACHE.get("ant-default") == [
         "claude-opus-4-7",
@@ -264,7 +264,7 @@ def test_sync_all_populates_dropdown_cache_and_bifrost_allowlist(monkeypatch):
 def test_sync_all_unions_across_same_type_providers(monkeypatch):
     """Two anthropic providers with different keys — per-row caches hold
     each row's own list; Bifrost allow-list is the union."""
-    from services import bifrost_admin as ba
+    from core.llm.bifrost import admin as ba
 
     _reset_registry()
 
@@ -294,7 +294,7 @@ def test_sync_all_unions_across_same_type_providers(monkeypatch):
 
     asyncio.run(ba.sync_all_provider_models())
 
-    from services.model_registry import _MODEL_LIST_CACHE
+    from core.llm.providers.registry import _MODEL_LIST_CACHE
 
     assert _MODEL_LIST_CACHE.get("ant-dev") == [
         "claude-opus-4-7",
@@ -316,7 +316,7 @@ def test_sync_all_unions_across_same_type_providers(monkeypatch):
 def test_sync_all_falls_back_when_all_fetches_fail(monkeypatch):
     """Every row's fetch failing → per-row cache gets bootstrap + extras,
     Bifrost allow-list gets the union."""
-    from services import bifrost_admin as ba
+    from core.llm.bifrost import admin as ba
 
     _reset_registry()
 
@@ -341,7 +341,7 @@ def test_sync_all_falls_back_when_all_fetches_fail(monkeypatch):
 
     asyncio.run(ba.sync_all_provider_models())
 
-    from services.model_registry import _MODEL_LIST_CACHE
+    from core.llm.providers.registry import _MODEL_LIST_CACHE
 
     row_list = _MODEL_LIST_CACHE.get("ant-default")
     assert "claude-opus-4-7" in row_list  # from bootstrap
@@ -356,7 +356,7 @@ def test_sync_all_coalesces_concurrent_callers(monkeypatch):
     Prevents a dropdown cold-load from doubling upstream load when it
     races the scheduled refresher's first tick.
     """
-    from services import bifrost_admin as ba
+    from core.llm.bifrost import admin as ba
 
     _reset_registry()
 
@@ -403,7 +403,7 @@ def test_cache_has_no_ttl(monkeypatch):
     Before the drift-prevention refactor this had a 60s TTL that caused
     periodic latency spikes when the UI hit an expired entry.
     """
-    from services.model_registry import _MODEL_LIST_CACHE
+    from core.llm.providers.registry import _MODEL_LIST_CACHE
 
     _MODEL_LIST_CACHE.invalidate()
     _MODEL_LIST_CACHE.set("p1", ["a", "b"])

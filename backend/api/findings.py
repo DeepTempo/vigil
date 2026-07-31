@@ -362,7 +362,7 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
     # Generate new enrichment using the configured reporting provider.
     try:
         from services.llm_router import LLMRouter, get_provider_spec
-        from services.model_registry import get_registry
+        from core.llm.providers.registry import get_registry
 
         resolved_model = get_registry().resolve_model_for_component("reporting")
         if not resolved_model:
@@ -531,7 +531,7 @@ Respond ONLY with valid JSON. Be specific and actionable. Focus on helping a SOC
                 "model": model_id,
                 "max_tokens": 1400,
             }
-            from services.local_ai_recovery import (
+            from core.llm.providers.recovery import (
                 is_gateway_connection_error,
                 local_bifrost_recovery_enabled,
                 local_bifrost_recovery_retry_limit,

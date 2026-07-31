@@ -4,7 +4,7 @@ Bifrost is the authoritative cost source for every LLM call Vigil makes —
 its logging plugin records exact cost against current pricing for every
 upstream request, with built-in batch-recompute for retroactive repricing.
 This module is the one place the backend talks to that read-side API,
-mirroring the pattern set by ``services.bifrost_admin`` (module-level
+mirroring the pattern set by ``core.llm.bifrost.admin`` (module-level
 functions, env-driven base URL, ``httpx.Client``, failures returned as
 ``None``/empty rather than raised).
 
@@ -21,7 +21,7 @@ What's wrapped (verified against docs.getbifrost.ai):
   * ``POST /api/logs/recalculate-cost``— batch recompute against current
                                           pricing (admin operation)
 
-What's *not* wrapped here: provider config (``services.bifrost_admin``
+What's *not* wrapped here: provider config (``core.llm.bifrost.admin``
 already owns provider key/model writes) and governance/budget endpoints
 (those land in PR C / #186 alongside the VK enforcement work).
 """

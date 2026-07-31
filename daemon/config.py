@@ -267,7 +267,7 @@ class DaemonConfig:
         # for plan_model/review_model. This is the same override layer that
         # powers the "Model Assignment" section of the AI Config tab.
         try:
-            from services.model_registry import get_registry
+            from core.llm.providers.registry import get_registry
             registry = get_registry()
             plan_pick = registry.resolve_model_for_component('orchestrator_plan')
             review_pick = registry.resolve_model_for_component('orchestrator_review')

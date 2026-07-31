@@ -25,7 +25,7 @@ _SUMMARIZATION_DEFAULT = DEFAULT_MODEL
 
 def _resolve_summarization_model() -> str:
     try:
-        from services.model_registry import get_registry
+        from core.llm.providers.registry import get_registry
 
         resolved = get_registry().resolve_model_for_component("summarization")
         if resolved is not None:
@@ -1225,7 +1225,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                 # #184 Phase 3: include cache tokens so reads (0.1×) and
                 # writes (1.25×) are priced correctly instead of being
                 # treated as full-rate input.
-                from daemon.agent_runner import compute_call_cost
+                from core.llm.cost.calls import compute_call_cost
 
                 cost_usd = compute_call_cost(
                     model,
@@ -1241,7 +1241,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             # #186: capture which Bifrost VK serviced this call so we can
             # group spend per-VK in analytics. Empty in dev / bypass mode.
             try:
-                from services.budget_service import get_active_vk
+                from core.llm.cost.budget import get_active_vk
 
                 _vk = get_active_vk()
             except Exception:
@@ -2270,7 +2270,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     # GH #89: use the model registry for per-provider pricing.
                     # #184 Phase 3: include cache tokens at provider-specific
                     # rates (Anthropic: 0.1× read / 1.25× write).
-                    from daemon.agent_runner import compute_call_cost
+                    from core.llm.cost.calls import compute_call_cost
 
                     _cost = compute_call_cost(
                         model,

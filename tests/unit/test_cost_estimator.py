@@ -1,4 +1,4 @@
-"""Unit tests for ``services.cost_estimator`` (#184 Phase 2).
+"""Unit tests for ``core.llm.cost.estimator`` (#184 Phase 2).
 
 Covers the synchronous OpenAI / Ollama / unknown branches and the
 Anthropic branch's fallback path (no API key set → char heuristic).
@@ -26,7 +26,7 @@ def _run(coro):
 
 
 def test_openai_estimator_uses_registry_rates():
-    from services.cost_estimator import estimate_openai
+    from core.llm.cost.estimator import estimate_openai
 
     est = estimate_openai(
         model_id="gpt-4o",
@@ -52,7 +52,7 @@ def test_openai_estimator_falls_back_to_heuristic_when_tiktoken_missing():
     ``token_count_method`` reflects that. Forces the import to fail."""
     import builtins
 
-    from services.cost_estimator import estimate_openai
+    from core.llm.cost.estimator import estimate_openai
 
     real_import = builtins.__import__
 
@@ -71,7 +71,7 @@ def test_openai_estimator_falls_back_to_heuristic_when_tiktoken_missing():
 
 
 def test_ollama_estimator_returns_zero_cost():
-    from services.cost_estimator import estimate_ollama
+    from core.llm.cost.estimator import estimate_ollama
 
     est = estimate_ollama(
         model_id="llama3.1",
@@ -83,7 +83,7 @@ def test_ollama_estimator_returns_zero_cost():
 
 
 def test_unknown_provider_returns_zero_with_unknown_source(caplog):
-    from services.cost_estimator import estimate_cost
+    from core.llm.cost.estimator import estimate_cost
 
     with caplog.at_level("WARNING"):
         est = _run(
@@ -105,14 +105,14 @@ def test_unknown_provider_returns_zero_with_unknown_source(caplog):
 
 def test_unknown_provider_calls_record_pricing_unknown(monkeypatch):
     """Counter side-effect fires for the unknown branch (#184 acceptance #2)."""
-    from services import cost_estimator
+    from core.llm.cost import estimator as cost_estimator
 
     calls = []
     # Patch where cost_estimator imports it from. The estimator does the
     # import lazily inside the function, so patching at the model_registry
     # module is what catches both the import and call.
     monkeypatch.setattr(
-        "services.model_registry._record_pricing_unknown",
+        "core.llm.providers.registry._record_pricing_unknown",
         lambda provider_type, model_id: calls.append((provider_type, model_id)),
     )
 
@@ -136,7 +136,7 @@ def test_anthropic_estimator_uses_count_tokens_when_available(monkeypatch):
       2. token_count_method == "anthropic_count_tokens"
       3. the cost band is built from registry rates × returned count
     """
-    from services import cost_estimator
+    from core.llm.cost import estimator as cost_estimator
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
 
@@ -176,7 +176,7 @@ def test_anthropic_estimator_uses_count_tokens_when_available(monkeypatch):
 def test_anthropic_estimator_falls_back_when_count_tokens_raises(monkeypatch):
     """If the Bifrost-routed count_tokens call raises, we still return
     a useful estimate via the char heuristic instead of bubbling the error."""
-    from services import cost_estimator
+    from core.llm.cost import estimator as cost_estimator
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
 

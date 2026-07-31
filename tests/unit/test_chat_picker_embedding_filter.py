@@ -20,7 +20,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "backend"))
 
 from backend.api import claude as claude_api  # noqa: E402
-from services.model_registry import ModelInfo  # noqa: E402
+from core.llm.providers.registry import ModelInfo  # noqa: E402
 
 pytestmark = pytest.mark.unit
 

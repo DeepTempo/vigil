@@ -602,7 +602,7 @@ For each phase:
         """
         try:
             from services.llm_router import get_provider_spec
-            from services.model_registry import get_registry
+            from core.llm.providers.registry import get_registry
 
             pick = get_registry().resolve_model_for_component(component)
             if not pick:
@@ -710,7 +710,7 @@ For each phase:
         # Best-effort — telemetry never blocks a workflow.
         trigger_context = dict(parameters or {})
         try:
-            from services.cost_estimator import estimate_cost
+            from core.llm.cost.estimator import estimate_cost
 
             _est = await estimate_cost(
                 provider_type=(
@@ -949,7 +949,7 @@ For each phase:
                 getattr(profile, "component_category", None) or "chat_default"
             )
             try:
-                from services.cost_estimator import estimate_cost
+                from core.llm.cost.estimator import estimate_cost
 
                 _est_provider, _est_model = self._resolve_agent_provider(
                     phase_component

@@ -22,7 +22,7 @@ from backend.schemas.system_prompt import validate_system_prompt
 from database.models import User
 from services.claude_service import ClaudeService
 from services.defaults import DEFAULT_MODEL
-from services.model_registry import get_registry
+from core.llm.providers.registry import get_registry
 
 router = APIRouter()
 
@@ -598,7 +598,7 @@ async def chat(request: ChatRequest):
         # the direct claude_service.client.messages.create call sites that
         # don't go through llm_router yet.
         try:
-            from services.budget_service import BudgetExceeded as _BE
+            from core.llm.cost.budget import BudgetExceeded as _BE
         except Exception:
             _BE = None  # type: ignore[assignment]
 
@@ -834,7 +834,7 @@ async def chat_stream(
                 model_id = request.model or active_provider.default_model
                 enable_agent_tools = False
                 try:
-                    from services.model_registry import ModelRegistry
+                    from core.llm.providers.registry import ModelRegistry
 
                     model_info = ModelRegistry().get_model_info(
                         active_provider.provider_id,

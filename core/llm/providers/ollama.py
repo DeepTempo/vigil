@@ -222,8 +222,8 @@ def _sync_bifrost() -> dict:
     import asyncio
 
     try:
-        from services.bifrost_admin import sync_all_provider_models
-        from services.model_registry import invalidate_model_cache
+        from core.llm.bifrost.admin import sync_all_provider_models
+        from core.llm.providers.registry import invalidate_model_cache
 
         invalidate_model_cache()
         try:

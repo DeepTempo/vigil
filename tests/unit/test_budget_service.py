@@ -1,4 +1,4 @@
-"""Unit tests for ``services.budget_service`` (#186).
+"""Unit tests for ``core.llm.cost.budget`` (#186).
 
 Tests focus on the bypass logic — VK header injection only happens when
 should_enforce() returns True, so the priority is making sure that
@@ -31,9 +31,9 @@ def test_should_enforce_false_when_dev_mode_on(monkeypatch):
     monkeypatch.setenv("DEV_MODE", "true")
     monkeypatch.setenv("LLM_BUDGET_UNLIMITED", "false")
     with patch(
-        "services.budget_service._get_settings", return_value={"default_vk": "sk-bf-x"}
+        "core.llm.cost.budget._get_settings", return_value={"default_vk": "sk-bf-x"}
     ):
-        from services.budget_service import should_enforce
+        from core.llm.cost.budget import should_enforce
 
         assert should_enforce() is False
 
@@ -42,9 +42,9 @@ def test_should_enforce_false_when_unlimited_env_on(monkeypatch):
     monkeypatch.setenv("DEV_MODE", "false")
     monkeypatch.setenv("LLM_BUDGET_UNLIMITED", "true")
     with patch(
-        "services.budget_service._get_settings", return_value={"default_vk": "sk-bf-x"}
+        "core.llm.cost.budget._get_settings", return_value={"default_vk": "sk-bf-x"}
     ):
-        from services.budget_service import should_enforce
+        from core.llm.cost.budget import should_enforce
 
         assert should_enforce() is False
 
@@ -55,9 +55,9 @@ def test_should_enforce_false_when_no_vk_configured(monkeypatch):
     monkeypatch.setenv("DEV_MODE", "false")
     monkeypatch.setenv("LLM_BUDGET_UNLIMITED", "false")
     with patch(
-        "services.budget_service._get_settings", return_value={"default_vk": ""}
+        "core.llm.cost.budget._get_settings", return_value={"default_vk": ""}
     ):
-        from services.budget_service import should_enforce
+        from core.llm.cost.budget import should_enforce
 
         assert should_enforce() is False
 
@@ -66,10 +66,10 @@ def test_should_enforce_true_when_vk_set_and_no_bypass(monkeypatch):
     monkeypatch.setenv("DEV_MODE", "false")
     monkeypatch.setenv("LLM_BUDGET_UNLIMITED", "false")
     with patch(
-        "services.budget_service._get_settings",
+        "core.llm.cost.budget._get_settings",
         return_value={"default_vk": "sk-bf-real-key"},
     ):
-        from services.budget_service import should_enforce
+        from core.llm.cost.budget import should_enforce
 
         assert should_enforce() is True
 
@@ -78,10 +78,10 @@ def test_get_active_vk_strips_whitespace():
     """Operator pastes a VK with surrounding whitespace from a config file
     — strip it so the header doesn't get mangled."""
     with patch(
-        "services.budget_service._get_settings",
+        "core.llm.cost.budget._get_settings",
         return_value={"default_vk": "  sk-bf-padded   "},
     ):
-        from services.budget_service import get_active_vk
+        from core.llm.cost.budget import get_active_vk
 
         assert get_active_vk() == "sk-bf-padded"
 
@@ -92,10 +92,10 @@ def test_get_active_vk_returns_none_when_db_unavailable():
     get_active_vk passes that through to the dispatch path which then
     falls back to bootstrap (no-VK) mode."""
     with patch(
-        "services.budget_service._get_settings",
+        "core.llm.cost.budget._get_settings",
         return_value=None,
     ):
-        from services.budget_service import get_active_vk
+        from core.llm.cost.budget import get_active_vk
 
         assert get_active_vk() is None
 
@@ -108,7 +108,7 @@ def test_internal_get_settings_swallows_db_errors():
         "database.config_service.get_config_service",
         side_effect=RuntimeError("DB exploded"),
     ):
-        from services.budget_service import _get_settings
+        from core.llm.cost.budget import _get_settings
 
         # Must not raise.
         result = _get_settings()
@@ -122,8 +122,8 @@ def test_internal_get_settings_swallows_db_errors():
 
 def test_get_settings_returns_normalized_defaults():
     """Empty / missing settings should normalize to safe defaults."""
-    with patch("services.budget_service._get_settings", return_value=None):
-        from services.budget_service import get_settings
+    with patch("core.llm.cost.budget._get_settings", return_value=None):
+        from core.llm.cost.budget import get_settings
 
         s = get_settings()
         assert s == {
@@ -134,7 +134,7 @@ def test_get_settings_returns_normalized_defaults():
 
 
 def test_set_settings_validates_enforcement_mode():
-    from services.budget_service import set_settings
+    from core.llm.cost.budget import set_settings
 
     with pytest.raises(ValueError, match="enforcement_mode must be"):
         set_settings(default_vk="sk-bf-x", budget_limit_usd=10.0, enforcement_mode="bogus")
@@ -146,7 +146,7 @@ def test_set_settings_validates_enforcement_mode():
 
 
 def test_budget_exceeded_carries_tier_and_status():
-    from services.budget_service import BudgetExceeded
+    from core.llm.cost.budget import BudgetExceeded
 
     err = BudgetExceeded(tier="virtual_key", message="$10 spent of $10", status_code=402)
     assert err.tier == "virtual_key"

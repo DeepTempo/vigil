@@ -36,7 +36,7 @@ def _classify_tier(status_code: Optional[int], body: str) -> str:
 
 async def _wrap_budget_errors(coro):
     """Run ``coro`` and translate Bifrost's budget/rate-limit responses
-    into ``services.budget_service.BudgetExceeded``.
+    into ``core.llm.cost.budget.BudgetExceeded``.
 
     Both the Anthropic and OpenAI SDKs raise their own ``APIStatusError``
     subclasses with a ``status_code`` attribute. We don't import either
@@ -60,7 +60,7 @@ async def _wrap_budget_errors(coro):
             resp = getattr(e, "response", None)
             if resp is not None:
                 body = getattr(resp, "text", "") or ""
-        from services.budget_service import BudgetExceeded
+        from core.llm.cost.budget import BudgetExceeded
 
         raise BudgetExceeded(
             tier=_classify_tier(status_code, body),
@@ -209,7 +209,7 @@ def _bifrost_headers(interaction_id: Optional[str] = None) -> Dict[str, str]:
     if interaction_id:
         headers["x-bf-lh-vigil-interaction-id"] = interaction_id
     try:
-        from services.budget_service import get_active_vk, should_enforce
+        from core.llm.cost.budget import get_active_vk, should_enforce
 
         if should_enforce():
             vk = get_active_vk()

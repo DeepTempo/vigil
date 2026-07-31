@@ -482,14 +482,14 @@ async def _connect_external_services():
     import asyncio
 
     try:
-        from services.bifrost_admin import sync_all_provider_keys
+        from core.llm.bifrost.admin import sync_all_provider_keys
 
         sync_all_provider_keys()
     except Exception as e:
         logger.warning(f"Bifrost provider sync skipped: {e}")
 
     try:
-        from services.bifrost_admin import sync_all_provider_models
+        from core.llm.bifrost.admin import sync_all_provider_models
 
         refresh_interval_s = get_settings().model_catalog_refresh_interval_s
 

@@ -1,4 +1,4 @@
-"""Tests for ``services.bifrost_cost_client`` (#185).
+"""Tests for ``core.llm.bifrost.costs`` (#185).
 
 The client wraps Bifrost's logging-plugin endpoints. Tests stub the HTTP
 layer so they don't need a running Bifrost — what we're verifying is:
@@ -68,8 +68,8 @@ def test_histogram_cost_hits_correct_url_and_returns_payload(monkeypatch):
     }
     cm, client = _client_returning("get", _ok_response(payload))
 
-    with patch("services.bifrost_cost_client.httpx.Client", return_value=cm):
-        from services.bifrost_cost_client import histogram_cost
+    with patch("core.llm.bifrost.costs.httpx.Client", return_value=cm):
+        from core.llm.bifrost.costs import histogram_cost
 
         result = histogram_cost(
             start_time="2026-05-04T00:00:00Z",
@@ -93,8 +93,8 @@ def test_histogram_cost_returns_none_on_5xx(monkeypatch):
     fall back to local LLMInteractionLog aggregations, not 500 the user."""
     cm, _ = _client_returning("get", _err_response(503, "service down"))
 
-    with patch("services.bifrost_cost_client.httpx.Client", return_value=cm):
-        from services.bifrost_cost_client import histogram_cost
+    with patch("core.llm.bifrost.costs.httpx.Client", return_value=cm):
+        from core.llm.bifrost.costs import histogram_cost
 
         assert histogram_cost() is None
 
@@ -107,8 +107,8 @@ def test_histogram_cost_returns_none_on_network_error():
     cm.__enter__ = MagicMock(return_value=client)
     cm.__exit__ = MagicMock(return_value=False)
 
-    with patch("services.bifrost_cost_client.httpx.Client", return_value=cm):
-        from services.bifrost_cost_client import histogram_cost
+    with patch("core.llm.bifrost.costs.httpx.Client", return_value=cm):
+        from core.llm.bifrost.costs import histogram_cost
 
         assert histogram_cost() is None
 
@@ -120,8 +120,8 @@ def test_histogram_cost_returns_none_on_network_error():
 
 def test_stats_hits_correct_path():
     cm, client = _client_returning("get", _ok_response({"total_requests": 0}))
-    with patch("services.bifrost_cost_client.httpx.Client", return_value=cm):
-        from services.bifrost_cost_client import stats
+    with patch("core.llm.bifrost.costs.httpx.Client", return_value=cm):
+        from core.llm.bifrost.costs import stats
 
         out = stats()
         assert out == {"total_requests": 0}
@@ -131,8 +131,8 @@ def test_stats_hits_correct_path():
 def test_search_logs_clamps_limit():
     """Bifrost docs cap limit at 1000 — clamp client-side too."""
     cm, client = _client_returning("get", _ok_response({"logs": []}))
-    with patch("services.bifrost_cost_client.httpx.Client", return_value=cm):
-        from services.bifrost_cost_client import search_logs
+    with patch("core.llm.bifrost.costs.httpx.Client", return_value=cm):
+        from core.llm.bifrost.costs import search_logs
 
         search_logs(limit=99999)
         assert client.get.call_args.kwargs["params"]["limit"] == 1000
@@ -140,8 +140,8 @@ def test_search_logs_clamps_limit():
 
 def test_search_logs_negative_offset_clamped_to_zero():
     cm, client = _client_returning("get", _ok_response({"logs": []}))
-    with patch("services.bifrost_cost_client.httpx.Client", return_value=cm):
-        from services.bifrost_cost_client import search_logs
+    with patch("core.llm.bifrost.costs.httpx.Client", return_value=cm):
+        from core.llm.bifrost.costs import search_logs
 
         search_logs(offset=-50)
         assert client.get.call_args.kwargs["params"]["offset"] == 0
@@ -157,8 +157,8 @@ def test_recalculate_cost_posts_filters_and_limit():
         "post",
         _ok_response({"total_matched": 50, "updated": 50, "skipped": 0, "remaining": 0}),
     )
-    with patch("services.bifrost_cost_client.httpx.Client", return_value=cm):
-        from services.bifrost_cost_client import recalculate_cost
+    with patch("core.llm.bifrost.costs.httpx.Client", return_value=cm):
+        from core.llm.bifrost.costs import recalculate_cost
 
         out = recalculate_cost(
             filters={"missing_cost_only": True, "providers": ["anthropic"]},
@@ -173,8 +173,8 @@ def test_recalculate_cost_posts_filters_and_limit():
 
 def test_recalculate_cost_limit_clamped_to_1000():
     cm, client = _client_returning("post", _ok_response({"updated": 1000, "remaining": 0}))
-    with patch("services.bifrost_cost_client.httpx.Client", return_value=cm):
-        from services.bifrost_cost_client import recalculate_cost
+    with patch("core.llm.bifrost.costs.httpx.Client", return_value=cm):
+        from core.llm.bifrost.costs import recalculate_cost
 
         recalculate_cost(limit=99999)
     assert client.post.call_args.kwargs["json"]["limit"] == 1000
@@ -184,7 +184,7 @@ def test_recalculate_cost_returns_none_on_400():
     """The endpoint surfaces invalid filters as 400 — caller treats it
     as a soft failure (UI shows error message, doesn't crash)."""
     cm, _ = _client_returning("post", _err_response(400, "bad request"))
-    with patch("services.bifrost_cost_client.httpx.Client", return_value=cm):
-        from services.bifrost_cost_client import recalculate_cost
+    with patch("core.llm.bifrost.costs.httpx.Client", return_value=cm):
+        from core.llm.bifrost.costs import recalculate_cost
 
         assert recalculate_cost() is None
