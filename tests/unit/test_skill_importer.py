@@ -333,9 +333,10 @@ def test_too_many_entries_is_400():
 def test_router_path_uses_module_level_service(monkeypatch):
     """The importer looks up SkillService at call time so router-level
     patches propagate. Regression guard: if someone replaces the import
-    with `from services.skill_service import SkillService`, this breaks.
+    with `from core.skills.skill_service import SkillService` at
+    import time (instead of the module handle), this breaks.
     """
-    import services.skill_importer as importer_mod
+    from core.skills import skill_importer as importer_mod
 
     captured: Dict[str, Any] = {}
 
@@ -345,6 +346,7 @@ def test_router_path_uses_module_level_service(monkeypatch):
             captured["created_by"] = created_by
             return super().create_skill(data, created_by=created_by)
 
+    # Patch the real module handle (shim re-exports don't share globals).
     monkeypatch.setattr(importer_mod._skill_service_mod, "SkillService", SpyService)
 
     zip_bytes = _make_zip({"SKILL.md": VALID_SKILL_MD})
