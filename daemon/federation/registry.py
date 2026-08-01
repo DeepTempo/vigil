@@ -87,7 +87,10 @@ def _ensure_builtins_loaded() -> None:
             crowdstrike,
             elastic,
             microsoft_defender,
-            splunk,
         )
+
+        # Splunk lives in its vertical slice; import the adapter module directly
+        # for the same module-scope register_adapter() side effect.
+        from core.integrations.splunk import adapter as _splunk_adapter  # noqa: F401
     except Exception as e:
         logger.warning("Failed to load builtin federation adapters: %s", e)
