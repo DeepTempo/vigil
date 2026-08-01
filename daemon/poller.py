@@ -110,7 +110,7 @@ class DataPoller:
             # Initialize Splunk service if configured
             if is_integration_enabled('splunk'):
                 try:
-                    from services.splunk_service import SplunkService
+                    from core.integrations.splunk.client import SplunkService
                     splunk_config = get_integration_config('splunk')
                     self._splunk_service = SplunkService(
                         server_url=splunk_config.get('server_url', ''),
