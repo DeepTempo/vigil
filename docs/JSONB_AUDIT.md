@@ -21,12 +21,12 @@ from a call site, the verdict says so rather than guessing.
 
 | Verdict | Count |
 |---|---|
-| **Keep as JSONB** | 38 |
-| **Promote to typed** | 16 |
+| **Keep as JSONB** | 39 |
+| **Promote to typed** | 15 |
 
 ---
 
-## Promote (16)
+## Promote (15)
 
 Grouped by the migration each needs, because the shape of the fix — not the
 table it lives in — is what makes these separable pieces of work.
@@ -70,13 +70,7 @@ entry; and there is no FK to attribute an entry to a user or finding.
 |---|---|---|
 | `roles.permissions` | `Mapped[dict]` | A flat `permission-name → bool` map (`database/init/06_auth_tables.sql:59+`). **The promotion is semantically lossless:** `AuthService.check_permission` is `role.permissions.get(permission, False)`, so an absent key already means denied and the stored explicit `false` entries are documentary only. Promoting makes "which roles can approve AI decisions?" a query instead of a scan. **Security-critical — see the caveat below.** |
 
-### D. Small flag sets → real columns (1)
-
-| Column | Annotation | Rationale |
-|---|---|---|
-| `case_watchers.notification_preferences` | `Mapped[Optional[dict]]` | A handful of notification booleans. Small, low-risk, and typed columns document the available switches that JSONB hides. |
-
-### E. Promote pending shape confirmation (1)
+### D. Promote pending shape confirmation (1)
 
 | Column | Annotation | Rationale |
 |---|---|---|
@@ -84,9 +78,39 @@ entry; and there is no FK to attribute an entry to a user or finding.
 
 ---
 
-## Keep as JSONB (38)
+## Keep as JSONB (39)
 
 Grouped by *why*, since "it's a dict" is not a reason.
+
+### Open vocabulary defined by code, not by data (1)
+
+The key set is not a fixed list of flags — it is whatever a caller passes at
+runtime, so typed columns would cap an open set and cost a migration per new key.
+
+`case_watchers.notification_preferences` — **corrected verdict; this column was
+originally classified as "promote to real columns" and filed as
+[#553](https://github.com/Vigil-SOC/vigil/issues/553).** Tracing the reader
+before designing columns reversed it. `services/case_notification_service.py`
+reads the column as `prefs.get(notification_type, True)`, where
+`notification_type` is a **runtime argument**, so the honoured keys are exactly
+the set of types passed to `notify_watchers` — today `new_comment` and
+`sla_warning`. Nothing declared that set anywhere, which was the real defect;
+#553 shipped it as `WATCHER_NOTIFICATION_TYPES` plus API-boundary rejection of
+keys the lookup cannot honour, with no schema change.
+
+Two further reasons the promotion would not have paid:
+
+- **No row has data.** `add_watcher` is insert-only and returns early on an
+  existing row, discarding incoming preferences; there is no PATCH route; the
+  frontend posts `{user_id}` only. The migration would have moved nothing.
+- **The mechanism does not apply.** `case_watchers` has no DDL anywhere — the
+  table comes from `Base.metadata.create_all()`, not `database/init/`. See
+  cross-cutting finding 5.
+
+*Method note:* the original verdict was drawn from the annotation and the column
+name without tracing the read. That is the one place this audit did not meet its
+own stated bar, and it is why every remaining promotion should enumerate its
+readers before columns are designed.
 
 ### Arbitrary third-party payloads (8)
 Shape is owned by an external vendor or tool and changes without our involvement.
@@ -177,6 +201,29 @@ assert the same allow/deny outcome for every seeded role before and after.
 `List[dict]`, used as if it were a list of ids. Worth a grep of the writers
 before anyone relies on either reading.
 
+**5. Half the promotion targets have no init SQL at all, so the numbered-file
+mechanism does not reach them.** Finding 1 framed this as a *disagreement*
+between the ORM and the init SQL; for these tables there is nothing to disagree
+with. They are created only by `Base.metadata.create_all()`
+(`database/connection.py`), so an `ALTER TABLE` in a numbered init file would run
+in the dbInit Job before the table exists and hard-fail.
+
+| Target table | Init SQL | Affected issues |
+|---|---|---|
+| `users`, `roles` | `06_auth_tables.sql` | #547, #552 |
+| `skills`, `custom_agents`, `workflow_runs`, `custom_workflows` | `07_*.sql`, `08_*.sql`, `12_*.sql` | #548 |
+| `cases`, `findings`, `case_evidence`, `case_tasks`, `case_watchers`, `investigations` | **none — ORM-only** | #549, #550, #551, #553, #554 |
+
+For the ORM-only tables the actual mechanism is `scripts/migrate_schema.py`, a
+decorator-registered list of idempotent `ALTER TABLE ... ADD COLUMN IF NOT
+EXISTS` steps. **It is invoked by no deploy path** — not `start.sh`, not Helm,
+not Docker. `create_all` is `checkfirst=True` and never alters an existing table,
+so adding a column to the ORM silently drifts an existing database until a human
+runs the script; `database/connection.py` detects the drift and
+`backend/api/storage_status.py` surfaces the instruction. Resolve that before
+promoting anything on an ORM-only table, and prefer #547, #548 or #552 as the
+first migration since those exercise the documented Helm path.
+
 ---
 
 ## Proposed follow-up issues
@@ -195,10 +242,16 @@ One issue per PR, grouped so each is independently reviewable and revertible.
   empty data directory** — so an existing local database never sees a new file.
   A developer has to recreate the volume or apply the SQL by hand.
 
-So each promotion below is *deliverable* today via a numbered init file, at the
-cost of a manual step for existing compose databases. #411 is what makes the
-mechanism uniform and reversible, not what makes these possible. Each follow-up
-should state which path it has verified.
+So a promotion **on a table that has init SQL** is *deliverable* today via a
+numbered file, at the cost of a manual step for existing compose databases. #411
+is what makes the mechanism uniform and reversible, not what makes these
+possible. Each follow-up should state which path it has verified.
+
+**This does not cover every promotion below.** Six of the target tables have no
+init SQL at all and are created only by `create_all`, so no numbered file can
+alter them — see cross-cutting finding 5 for which issues that hits and what the
+mechanism actually is. That distinction was missed when these issues were filed;
+several of them prescribe an init file for a table that does not have one.
 
 | Issue | Scope | Columns | Why separate |
 |---|---|---|---|
@@ -208,7 +261,7 @@ should state which path it has verified.
 | [#550](https://github.com/Vigil-SOC/vigil/issues/550) | `findings.mitre_predictions` → child table | 1 | Highest query value; touches the hottest table, so isolate it |
 | [#551](https://github.com/Vigil-SOC/vigil/issues/551) | Remaining case children → child tables | `cases.resolution_steps`, `case_tasks.checklist_items` | Best after #544 establishes the pattern |
 | [#552](https://github.com/Vigil-SOC/vigil/issues/552) | `roles.permissions` → `role_permissions` | 1 | Security-critical; must preserve the `Dict[str, bool]` API shape |
-| [#553](https://github.com/Vigil-SOC/vigil/issues/553) | `case_watchers.notification_preferences` → columns | 1 | Smallest and lowest-risk; good first migration |
+| ~~[#553](https://github.com/Vigil-SOC/vigil/issues/553)~~ | ~~`case_watchers.notification_preferences` → columns~~ | 1 | **Reclassified — no promotion.** The key set is a runtime `notification_type`, not a fixed flag list; no row has data; the table has no init SQL. Shipped instead as a declared vocabulary with API validation. See *Keep as JSONB* |
 | [#554](https://github.com/Vigil-SOC/vigil/issues/554) | Resolve `investigations.trigger_ids`' real shape | 1 | Investigation, not migration — its ORM type is wrong |
 
 ### Already filed: the `cases` event trio
