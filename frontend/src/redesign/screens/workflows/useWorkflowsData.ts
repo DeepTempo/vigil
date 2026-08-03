@@ -15,6 +15,7 @@ import {
   type ApiWorkflow,
   type ApiAgent,
 } from '../../data/mappers'
+import { prettyHandle } from '../../data/appData'
 import type { Workflow, AgentTemplate, Skill } from '../../data/appData'
 
 export type Phase = 'loading' | 'ready' | 'error'
@@ -83,6 +84,59 @@ export function useAgents() {
   }, [reloadKey])
 
   return { rows, phase, error, reload }
+}
+
+/* Agent label + dot color, sourced from GET /agents (#482 — replaces the old
+   hardcoded AGENT_META mirror). Fetched once and cached module-wide so the many
+   sequence chips share a single request; unknown/custom ids fall back to a
+   prettified handle + the accent color. Covers customs too, which the old
+   built-ins-only map didn't. */
+export interface AgentMeta {
+  label: string
+  color: string
+}
+
+let agentMetaCache: Promise<Record<string, AgentMeta>> | null = null
+
+function loadAgentMeta(): Promise<Record<string, AgentMeta>> {
+  if (!agentMetaCache) {
+    agentMetaCache = agentsApi
+      .listAgents()
+      .then((res) => {
+        const list = (res.data?.agents || []) as ApiAgent[]
+        const map: Record<string, AgentMeta> = {}
+        for (const a of list) {
+          map[a.id] = { label: a.name || a.id, color: a.color || 'var(--accent)' }
+        }
+        return map
+      })
+      .catch(() => {
+        // Don't cache a failed fetch — a transient error shouldn't pin every
+        // chip to the fallback for the rest of the session. Reset so the next
+        // mount retries.
+        agentMetaCache = null
+        return {}
+      })
+  }
+  return agentMetaCache
+}
+
+/** Returns a resolver `(agentId) => { label, color }` for agent chips. */
+export function useAgentMeta(): (id: string) => AgentMeta {
+  const [map, setMap] = useState<Record<string, AgentMeta>>({})
+  useEffect(() => {
+    let cancelled = false
+    loadAgentMeta().then((m) => {
+      if (!cancelled) setMap(m)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return useCallback(
+    (id: string): AgentMeta => map[id] || { label: prettyHandle(id), color: 'var(--accent)' },
+    [map],
+  )
 }
 
 /** reusable skills + an optimistic active/inactive toggle persisted to the API */

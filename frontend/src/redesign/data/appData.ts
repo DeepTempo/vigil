@@ -18,27 +18,9 @@ export interface Workflow {
   useCase: string
 }
 
-/**
- * Display label + dot color for each built-in agent, keyed by the canonical
- * agent handle the backend returns in a workflow's `agents` array (lowercase
- * ids like "mitre_analyst"). Colors mirror services/soc_agents.py so the
- * sequence chips match the Agents tab.
- */
-export const AGENT_META: Record<string, { label: string; color: string }> = {
-  triage: { label: 'Triage', color: '#FF6B6B' },
-  investigator: { label: 'Investigator', color: '#4ECDC4' },
-  threat_hunter: { label: 'Threat Hunter', color: '#95E1D3' },
-  correlator: { label: 'Correlator', color: '#F38181' },
-  responder: { label: 'Responder', color: '#FF8B94' },
-  reporter: { label: 'Reporter', color: '#A8E6CF' },
-  mitre_analyst: { label: 'MITRE Analyst', color: '#FFD3B6' },
-  forensics: { label: 'Forensics', color: '#FFAAA5' },
-  threat_intel: { label: 'Threat Intel', color: '#B4A7D6' },
-  compliance: { label: 'Compliance', color: '#C7CEEA' },
-  malware_analyst: { label: 'Malware Analyst', color: '#FF6B9D' },
-  network_analyst: { label: 'Network Analyst', color: '#56CCF2' },
-  auto_responder: { label: 'Auto-Response', color: '#FF6B6B' },
-}
+// Agent label + dot color used to be mirrored here as AGENT_META; it now comes
+// from GET /agents at runtime via useAgentMeta (#482), so built-in colors/labels
+// can't drift from the backend. prettyHandle stays as the offline fallback.
 
 /** "mitre_analyst" → "Mitre Analyst" — fallback for unknown/custom handles. */
 export function prettyHandle(handle: string): string {

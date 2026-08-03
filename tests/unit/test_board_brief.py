@@ -203,28 +203,28 @@ class TestReporterAgentConfig:
 
     def test_reporter_agent_exists(self):
         """Reporter agent must exist in AGENT_CONFIGS."""
-        from services.soc_agents import AGENT_CONFIGS
-        assert "reporter" in AGENT_CONFIGS
+        from core.agents.builtins import BUILTIN_AGENTS
+        assert any(r["id"] == "reporter" for r in BUILTIN_AGENTS)
 
     def test_reporter_methodology_includes_board_brief(self):
         """Reporter methodology must reference the board brief report type."""
-        from services.soc_agents import AGENT_CONFIGS
-        methodology = AGENT_CONFIGS["reporter"]["methodology"]
+        from core.agents.builtins import BUILTIN_AGENTS
+        methodology = {r["id"]: r for r in BUILTIN_AGENTS}["reporter"]["methodology"]
         assert "BOARD BRIEF" in methodology
         assert "board brief" in methodology.lower() or "board-brief" in methodology.lower()
 
     def test_reporter_methodology_mentions_risk_posture(self):
         """Board brief methodology must mention risk posture indicator."""
-        from services.soc_agents import AGENT_CONFIGS
-        methodology = AGENT_CONFIGS["reporter"]["methodology"]
+        from core.agents.builtins import BUILTIN_AGENTS
+        methodology = {r["id"]: r for r in BUILTIN_AGENTS}["reporter"]["methodology"]
         assert "RED" in methodology
         assert "YELLOW" in methodology
         assert "GREEN" in methodology
 
     def test_reporter_methodology_mentions_key_metrics(self):
         """Board brief methodology must reference all four key metrics."""
-        from services.soc_agents import AGENT_CONFIGS
-        methodology = AGENT_CONFIGS["reporter"]["methodology"].lower()
+        from core.agents.builtins import BUILTIN_AGENTS
+        methodology = {r["id"]: r for r in BUILTIN_AGENTS}["reporter"]["methodology"].lower()
         assert "kill chain" in methodology
         assert "detection coverage" in methodology
         assert "remediation" in methodology
@@ -232,20 +232,20 @@ class TestReporterAgentConfig:
 
     def test_reporter_methodology_mentions_trend(self):
         """Board brief methodology must mention 30/60/90 day trend."""
-        from services.soc_agents import AGENT_CONFIGS
-        methodology = AGENT_CONFIGS["reporter"]["methodology"]
+        from core.agents.builtins import BUILTIN_AGENTS
+        methodology = {r["id"]: r for r in BUILTIN_AGENTS}["reporter"]["methodology"]
         assert "30/60/90" in methodology
 
     def test_reporter_no_cve_instruction(self):
         """Board brief methodology must instruct no CVEs in main body."""
-        from services.soc_agents import AGENT_CONFIGS
-        methodology = AGENT_CONFIGS["reporter"]["methodology"].lower()
+        from core.agents.builtins import BUILTIN_AGENTS
+        methodology = {r["id"]: r for r in BUILTIN_AGENTS}["reporter"]["methodology"].lower()
         assert "no cve" in methodology
 
     def test_reporter_description_updated(self):
         """Reporter description should mention board briefs."""
-        from services.soc_agents import AGENT_CONFIGS
-        desc = AGENT_CONFIGS["reporter"]["description"].lower()
+        from core.agents.builtins import BUILTIN_AGENTS
+        desc = {r["id"]: r for r in BUILTIN_AGENTS}["reporter"]["description"].lower()
         assert "board brief" in desc
 
 
@@ -258,7 +258,7 @@ class TestAgentRouting:
 
     def test_board_brief_routes_to_reporter(self):
         """'board brief' keyword should route to the reporter agent."""
-        from services.soc_agents import AgentManager
+        from core.agents.manager import AgentManager
         mgr = AgentManager()
         agent = mgr.get_agent_by_task("Generate board brief")
         assert agent is not None
@@ -266,7 +266,7 @@ class TestAgentRouting:
 
     def test_board_report_routes_to_reporter(self):
         """'board report' keyword should route to the reporter agent."""
-        from services.soc_agents import AgentManager
+        from core.agents.manager import AgentManager
         mgr = AgentManager()
         agent = mgr.get_agent_by_task("Create board report")
         assert agent is not None
@@ -274,7 +274,7 @@ class TestAgentRouting:
 
     def test_risk_posture_routes_to_reporter(self):
         """'risk posture' keyword should route to the reporter agent."""
-        from services.soc_agents import AgentManager
+        from core.agents.manager import AgentManager
         mgr = AgentManager()
         agent = mgr.get_agent_by_task("Generate risk posture report")
         assert agent is not None
@@ -282,7 +282,7 @@ class TestAgentRouting:
 
     def test_existing_report_routing_preserved(self):
         """Existing 'report' and 'summary' keywords must still work."""
-        from services.soc_agents import AgentManager
+        from core.agents.manager import AgentManager
         mgr = AgentManager()
         assert mgr.get_agent_by_task("Write a report").id == "reporter"
         assert mgr.get_agent_by_task("Generate summary").id == "reporter"

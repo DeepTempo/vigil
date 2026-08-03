@@ -28,6 +28,10 @@ import { EmptyState, Popup, Field, TextInput, Select, Rating, Slider, Dropdown, 
 type DecTab = 'pending' | 'all' | 'analytics' | 'approvals'
 type Assessment = 'agree' | 'partial' | 'disagree'
 
+// Decision-log agent ids for the filter dropdown — the ids the daemon records
+// on decisions (investigation/correlation/orchestrator). Kept hardcoded rather
+// than built from GET /agents (#482): that's a different id space than /agents
+// serves (see AGENT_NAMES in data/mappers.ts).
 const AGENT_IDS = ['all', 'triage', 'investigation', 'correlation', 'auto_responder', 'threat_hunter', 'orchestrator']
 const AGENT_OPTS = AGENT_IDS.map((id) => ({ value: id, label: id === 'all' ? 'All agents' : getAgentDisplayName(id) }))
 const STATUS_OPTS = [

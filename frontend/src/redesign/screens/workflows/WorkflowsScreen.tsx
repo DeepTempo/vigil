@@ -8,8 +8,8 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { EmptyState, Popup, activateOnKey } from '../../shared/ui'
 import { Markdown } from '../../shared/Markdown'
-import { AGENT_META, prettyHandle, type Workflow, type AgentTemplate } from '../../data/appData'
-import { useWorkflows, useAgents, useSkills } from './useWorkflowsData'
+import { prettyHandle, type Workflow, type AgentTemplate } from '../../data/appData'
+import { useWorkflows, useAgents, useAgentMeta, useSkills } from './useWorkflowsData'
 import { workflowApi, agentsApi, findingsApi, casesApi, type GeneratedAgentDraft } from '../../../services/api'
 import { skillsApi, SKILL_CATEGORIES, type SkillCategory, type SkillDraft } from '../../../services/skillsApi'
 import WorkflowBuilder from './WorkflowBuilder'
@@ -60,15 +60,16 @@ function StateMsg({ children }: { children: React.ReactNode }) {
 
 /* ---- agent sequence ---- */
 function AgentSequence({ agents }: { agents: string[] }) {
+  const agentMeta = useAgentMeta()
   return (
     <div className="agent-seq">
       {agents.map((a, i) => {
-        const meta = AGENT_META[a]
+        const meta = agentMeta(a)
         return (
           <Fragment key={i}>
             <span className="agent-chip">
-              <span className="ad" style={{ background: meta?.color || 'var(--accent)' }} />
-              {meta?.label || prettyHandle(a)}
+              <span className="ad" style={{ background: meta.color }} />
+              {meta.label}
             </span>
             {i < agents.length - 1 && (
               <span className="seq-arrow"><Icon name="chevR" /></span>
@@ -339,7 +340,7 @@ function DetailsModal({ wf, onClose }: { wf: Workflow; onClose: () => void }) {
 /** Compose the chat prompt that runs a workflow (mirrors the old app's
     buildSkillPrompt — the run happens as a streamed chat conversation). */
 function buildRunPrompt(wf: Workflow, p: { finding_id?: string; case_id?: string; context?: string; hypothesis?: string }): string {
-  const seq = wf.agents.map((a) => AGENT_META[a]?.label || prettyHandle(a)).join(' → ')
+  const seq = wf.agents.map((a) => prettyHandle(a)).join(' → ')
   let prompt = `Please execute the **${wf.name}** workflow.\n\n`
   if (seq) prompt += `**Agent sequence:** ${seq}\n\n`
   if (p.finding_id) prompt += `**Target Finding:** ${p.finding_id}\n`
@@ -535,6 +536,7 @@ function RunRow({ run }: { run: WfRun }) {
 }
 
 function RunDetail({ d }: { d: WfRunDetail }) {
+  const agentMeta = useAgentMeta()
   return (
     <div className="run-detail">
       {d.error && (
@@ -558,7 +560,7 @@ function RunDetail({ d }: { d: WfRunDetail }) {
               {d.phases.map((p) => (
                 <tr key={p.phase_id}>
                   <td className="muted">{p.phase_order}</td>
-                  <td>{AGENT_META[p.agent_id]?.label || prettyHandle(p.agent_id)}{p.error && <span className="ml-2" style={{ color: 'var(--crit)' }} title={p.error}>⚠</span>}</td>
+                  <td>{agentMeta(p.agent_id).label}{p.error && <span className="ml-2" style={{ color: 'var(--crit)' }} title={p.error}>⚠</span>}</td>
                   <td><span style={{ color: runStatusColor(p.status) }}>{p.status}</span></td>
                   <td className="muted">{fmtDuration(p.duration_ms)}</td>
                   <td className="muted">{p.cost_usd ? `$${p.cost_usd.toFixed(3)}` : '—'}</td>

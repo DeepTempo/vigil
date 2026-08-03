@@ -237,7 +237,14 @@ export interface ApiDecision {
   has_feedback?: boolean
 }
 
-/** agent_id → display name (ported from pages/AIDecisions.tsx:186-195) */
+/**
+ * agent_id → display name for the AI Decisions log. Intentionally NOT sourced
+ * from GET /agents (#482): the daemon records decision-log ids here
+ * (investigation/correlation/reporting/orchestrator) that differ from the
+ * canonical ids /agents serves (investigator/correlator/reporter, and no
+ * orchestrator), so this can't be rebuilt from /agents without a normalization
+ * layer. (ported from pages/AIDecisions.tsx:186-195)
+ */
 const AGENT_NAMES: Record<string, string> = {
   triage: 'Triage',
   investigation: 'Investigation',
