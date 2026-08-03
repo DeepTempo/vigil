@@ -182,8 +182,23 @@ before anyone relies on either reading.
 ## Proposed follow-up issues
 
 One issue per PR, grouped so each is independently reviewable and revertible.
-Every one is **blocked on #411** for the migration mechanism — the classification
-in this document is not.
+
+**On the #411 dependency.** These need a migration mechanism, but "blocked on
+#411" overstates it, and the difference is per-deploy-path:
+
+- **Helm:** already has forward migration. `helm/vigil/templates/db-init-job.yaml`
+  maintains `_vigil_schema_versions(filename PRIMARY KEY, applied_at)` and skips
+  files already recorded, so a new numbered file in `database/init/` *does* apply
+  on `helm upgrade`.
+- **docker-compose:** has none. `database/init/` is mounted at
+  `/docker-entrypoint-initdb.d`, which Postgres runs **only when initialising an
+  empty data directory** — so an existing local database never sees a new file.
+  A developer has to recreate the volume or apply the SQL by hand.
+
+So each promotion below is *deliverable* today via a numbered init file, at the
+cost of a manual step for existing compose databases. #411 is what makes the
+mechanism uniform and reversible, not what makes these possible. Each follow-up
+should state which path it has verified.
 
 | # | Scope | Columns | Why separate |
 |---|---|---|---|
@@ -191,10 +206,34 @@ in this document is not.
 | 2 | Tool-name arrays → `ARRAY(TEXT)` | `skills.required_tools`, `custom_agents.recommended_tools`, `workflow_runs.skill_tools_available`, `custom_workflows.trigger_examples` | Mechanical and low-risk; one migration. Confirm `trigger_examples`' element type first |
 | 3 | `case_evidence.chain_of_custody` → child table | 1 | Correctness, not tidiness: append-only legal record currently open to lost updates |
 | 4 | `findings.mitre_predictions` → child table | 1 | Highest query value; touches the hottest table, so it deserves isolation |
-| 5 | Case children → child tables | `cases.timeline`, `cases.notes`, `cases.activities`, `cases.resolution_steps`, `case_tasks.checklist_items` | Should first decide whether `timeline` and `activities` are one table with a discriminator |
+| 5 | Case children → child tables | `cases.resolution_steps`, `case_tasks.checklist_items` | The `timeline` / `activities` / `notes` trio was split out and filed separately — see below |
 | 6 | `roles.permissions` → `role_permissions` | 1 | Security-critical; must preserve the `Dict[str, bool]` API shape |
 | 7 | `case_watchers.notification_preferences` → columns | 1 | Small and self-contained; a good first migration once #411 lands |
 | 8 | Resolve `investigations.trigger_ids`' real shape | 1 | Investigation, not migration — decides whether it lands in issue 2 or 5 |
+
+### Already filed: the `cases` event trio
+
+`cases.timeline`, `cases.activities` and `cases.notes` turned out to be the same
+concept stored three ways — `backend/api/timeline.py:95-119` already flattens all
+three into one stream and gives `timeline` and `activities` the **same**
+`type="activity"`. `activities` is a strict superset of `timeline`
+(`{timestamp, activity_type, description, details}` vs `{timestamp, event}`), so
+unification means adopting that shape, not reconciling peers.
+
+Filed as three sequenced issues, one PR each, in this order:
+
+| Order | Issue | Scope | Blocked by |
+|---|---|---|---|
+| 1 | [#543](https://github.com/Vigil-SOC/vigil/issues/543) | Fix silent loss of in-place JSONB appends — a **live bug**, not a refactor | nothing |
+| 2 | [#544](https://github.com/Vigil-SOC/vigil/issues/544) | Unify the three into `case_events`, API output unchanged | #543 |
+| 3 | [#545](https://github.com/Vigil-SOC/vigil/issues/545) | Collapse the API to one stream, drop the legacy columns | #544 |
+
+#543 must land first: it fixes `case.timeline.append(...)` silently failing at
+`services/case_workflow_service.py:403` (auto-assignment) and `:470`
+(escalation) — no JSONB column is wrapped in `MutableList` and `flag_modified`
+appears nowhere in the codebase, so SQLAlchemy emits no `UPDATE`. Migrating
+before that fix would backfill from columns already missing events. It is worth
+landing on its own merits even if #544 and #545 are never approved.
 
 ---
 
