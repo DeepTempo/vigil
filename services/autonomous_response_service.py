@@ -747,7 +747,10 @@ Please review and approve/reject in the SOC dashboard.
         try:
             from core.integrations.cloudflare import tool as cf_tool
         except Exception as e:  # noqa: BLE001
-            return {"success": False, "error": f"tools.cloudflare unavailable: {e}"}
+            return {
+                "success": False,
+                "error": f"core.integrations.cloudflare.tool unavailable: {e}",
+            }
 
         try:
             if action_type == "waf_block":

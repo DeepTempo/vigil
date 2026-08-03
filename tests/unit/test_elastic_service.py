@@ -1,4 +1,4 @@
-"""Unit tests for services/elastic_service.py."""
+"""Unit tests for core/integrations/elastic/client.py."""
 
 import pytest
 import httpx

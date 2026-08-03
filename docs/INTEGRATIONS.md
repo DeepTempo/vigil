@@ -452,7 +452,7 @@ radius.
 | Vigil → VStrike | `POST /api/integrations/vstrike/network-graph` | Full network graph: `{label, nodes, edges, bbox}` |
 | Vigil → VStrike | `POST /api/integrations/vstrike/ui/legend-apply` | Apply selected legend in the iframe |
 | Vigil → VStrike | `POST /api/integrations/vstrike/ui/rightpanel-focus` | Open / focus the iframe's right-hand details panel |
-| MCP | `tools/vstrike.py` (`vstrike_*` tools) | Agent-invokable topology queries + UI control |
+| MCP | `core/integrations/vstrike/tool.py` (`vstrike_*` tools) | Agent-invokable topology queries + UI control |
 
 #### Recently added MCP tools
 

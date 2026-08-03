@@ -1,4 +1,4 @@
-"""Unit tests for services/vstrike_service.py (mocked HTTP)."""
+"""Unit tests for core/integrations/vstrike/client.py (mocked HTTP)."""
 
 from __future__ import annotations
 
