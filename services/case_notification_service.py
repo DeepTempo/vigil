@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from database.models import CaseNotification, CaseWatcher, Case
-from database.connection import get_db_session
+from services.unit_of_work import unit_of_work
 
 logger = logging.getLogger(__name__)
 
@@ -52,39 +52,31 @@ class CaseNotificationService:
         Returns:
             Created CaseNotification or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            notification = CaseNotification(
-                case_id=case_id,
-                user_id=user_id,
-                notification_type=notification_type,
-                title=title,
-                message=message,
-                delivery_channel=delivery_channel,
-                priority=priority,
-                metadata=metadata or {},
-                is_read=False,
-                is_sent=False
-            )
-            
-            session.add(notification)
-            session.commit()
-            
-            logger.info(
-                f"Created notification for {user_id}: {notification_type}"
-            )
-            return notification
-        
+            with unit_of_work(session) as session:
+                notification = CaseNotification(
+                    case_id=case_id,
+                    user_id=user_id,
+                    notification_type=notification_type,
+                    title=title,
+                    message=message,
+                    delivery_channel=delivery_channel,
+                    priority=priority,
+                    metadata=metadata or {},
+                    is_read=False,
+                    is_sent=False
+                )
+
+                session.add(notification)
+
+                logger.info(
+                    f"Created notification for {user_id}: {notification_type}"
+                )
+                return notification
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error creating notification: {e}")
             return None
-        finally:
-            if should_close_session:
-                session.close()
     
     def notify_case_assignment(
         self,
@@ -105,17 +97,13 @@ class CaseNotificationService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             case = session.query(Case).filter(Case.case_id == case_id).first()
             if not case:
                 return False
-            
+
             assigned_msg = f"by {assigned_by}" if assigned_by else "automatically"
-            
+
             self.create_notification(
                 user_id=assignee,
                 notification_type='case_assigned',
@@ -127,12 +115,8 @@ class CaseNotificationService:
                 metadata={'assigned_by': assigned_by},
                 session=session
             )
-            
+
             return True
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def notify_comment_mention(
         self,
@@ -155,21 +139,17 @@ class CaseNotificationService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             case = session.query(Case).filter(Case.case_id == case_id).first()
             if not case:
                 return False
-            
+
             # Truncate comment for notification
             truncated_comment = (
                 comment_content[:100] + '...'
                 if len(comment_content) > 100 else comment_content
             )
-            
+
             self.create_notification(
                 user_id=mentioned_user,
                 notification_type='comment_mention',
@@ -184,12 +164,8 @@ class CaseNotificationService:
                 },
                 session=session
             )
-            
+
             return True
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def notify_sla_warning(
         self,
@@ -210,19 +186,15 @@ class CaseNotificationService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             case = session.query(Case).filter(Case.case_id == case_id).first()
             if not case:
                 return False
-            
+
             # Notify assignee if assigned
             if case.assignee:
                 urgency = 'urgent' if threshold_percent >= 90 else 'high'
-                
+
                 self.create_notification(
                     user_id=case.assignee,
                     notification_type='sla_warning',
@@ -240,7 +212,7 @@ class CaseNotificationService:
                     },
                     session=session
                 )
-            
+
             # Also notify watchers
             self.notify_watchers(
                 case_id=case_id,
@@ -252,12 +224,8 @@ class CaseNotificationService:
                 ),
                 session=session
             )
-            
+
             return True
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def notify_watchers(
         self,
@@ -282,15 +250,11 @@ class CaseNotificationService:
         Returns:
             Number of notifications created
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             watchers = session.query(CaseWatcher).filter(
                 CaseWatcher.case_id == case_id
             ).all()
-            
+
             count = 0
             for watcher in watchers:
                 # Check if user wants this type of notification
@@ -307,12 +271,8 @@ class CaseNotificationService:
                         session=session
                     )
                     count += 1
-            
+
             return count
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def extract_mentions(self, text: str) -> List[str]:
         """
@@ -344,31 +304,23 @@ class CaseNotificationService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            notification = session.query(CaseNotification).filter(
-                CaseNotification.notification_id == notification_id
-            ).first()
-            
-            if not notification:
-                return False
-            
-            notification.is_read = True
-            notification.read_at = datetime.utcnow()
-            session.commit()
-            
-            return True
-        
+            with unit_of_work(session) as session:
+                notification = session.query(CaseNotification).filter(
+                    CaseNotification.notification_id == notification_id
+                ).first()
+
+                if not notification:
+                    return False
+
+                notification.is_read = True
+                notification.read_at = datetime.utcnow()
+
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error marking notification read: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def mark_notification_sent(
         self,
@@ -385,31 +337,23 @@ class CaseNotificationService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            notification = session.query(CaseNotification).filter(
-                CaseNotification.notification_id == notification_id
-            ).first()
-            
-            if not notification:
-                return False
-            
-            notification.is_sent = True
-            notification.sent_at = datetime.utcnow()
-            session.commit()
-            
-            return True
-        
+            with unit_of_work(session) as session:
+                notification = session.query(CaseNotification).filter(
+                    CaseNotification.notification_id == notification_id
+                ).first()
+
+                if not notification:
+                    return False
+
+                notification.is_sent = True
+                notification.sent_at = datetime.utcnow()
+
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error marking notification sent: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def get_user_notifications(
         self,
@@ -430,25 +374,17 @@ class CaseNotificationService:
         Returns:
             List of CaseNotification objects
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             query = session.query(CaseNotification).filter(
                 CaseNotification.user_id == user_id
             )
-            
+
             if unread_only:
                 query = query.filter(CaseNotification.is_read == False)
-            
+
             return query.order_by(
                 CaseNotification.created_at.desc()
             ).limit(limit).all()
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def get_unsent_notifications(
         self,
@@ -467,25 +403,17 @@ class CaseNotificationService:
         Returns:
             List of CaseNotification objects
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             query = session.query(CaseNotification).filter(
                 CaseNotification.is_sent == False
             )
-            
+
             if delivery_channel:
                 query = query.filter(
                     CaseNotification.delivery_channel == delivery_channel
                 )
-            
+
             return query.order_by(
                 CaseNotification.created_at.asc()
             ).limit(limit).all()
-        
-        finally:
-            if should_close_session:
-                session.close()
 

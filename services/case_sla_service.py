@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from database.models import Case, CaseSLA, SLAPolicy, CaseNotification
-from database.connection import get_db_session
+from services.unit_of_work import unit_of_work
 
 logger = logging.getLogger(__name__)
 
@@ -176,88 +176,80 @@ class CaseSLAService:
         Returns:
             Created CaseSLA object or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            # Get case
-            case = session.query(Case).filter(Case.case_id == case_id).first()
-            if not case:
-                logger.error(f"Case {case_id} not found")
-                return None
-            
-            # Check if SLA already assigned
-            existing_sla = session.query(CaseSLA).filter(
-                CaseSLA.case_id == case_id
-            ).first()
-            if existing_sla:
-                logger.warning(f"SLA already assigned to case {case_id}")
-                return existing_sla
-            
-            # Get SLA policy
-            if sla_policy_id:
-                policy = session.query(SLAPolicy).filter(
-                    SLAPolicy.policy_id == sla_policy_id
+            with unit_of_work(session) as session:
+                # Get case
+                case = session.query(Case).filter(Case.case_id == case_id).first()
+                if not case:
+                    logger.error(f"Case {case_id} not found")
+                    return None
+
+                # Check if SLA already assigned
+                existing_sla = session.query(CaseSLA).filter(
+                    CaseSLA.case_id == case_id
                 ).first()
-            else:
-                # Get default policy for case priority
-                policy = session.query(SLAPolicy).filter(
-                    and_(
-                        SLAPolicy.priority_level == case.priority,
-                        SLAPolicy.is_default == True,
-                        SLAPolicy.is_active == True
+                if existing_sla:
+                    logger.warning(f"SLA already assigned to case {case_id}")
+                    return existing_sla
+
+                # Get SLA policy
+                if sla_policy_id:
+                    policy = session.query(SLAPolicy).filter(
+                        SLAPolicy.policy_id == sla_policy_id
+                    ).first()
+                else:
+                    # Get default policy for case priority
+                    policy = session.query(SLAPolicy).filter(
+                        and_(
+                            SLAPolicy.priority_level == case.priority,
+                            SLAPolicy.is_default == True,
+                            SLAPolicy.is_active == True
+                        )
+                    ).first()
+
+                if not policy:
+                    logger.error(f"No SLA policy found for case {case_id}")
+                    return None
+
+                # Calculate deadlines
+                case_created = case.created_at
+
+                if policy.business_hours_only:
+                    response_due = self.business_hours_calc.add_business_hours(
+                        case_created,
+                        policy.response_time_hours
                     )
-                ).first()
-            
-            if not policy:
-                logger.error(f"No SLA policy found for case {case_id}")
-                return None
-            
-            # Calculate deadlines
-            case_created = case.created_at
-            
-            if policy.business_hours_only:
-                response_due = self.business_hours_calc.add_business_hours(
-                    case_created,
-                    policy.response_time_hours
+                    resolution_due = self.business_hours_calc.add_business_hours(
+                        case_created,
+                        policy.resolution_time_hours
+                    )
+                else:
+                    response_due = case_created + timedelta(hours=policy.response_time_hours)
+                    resolution_due = case_created + timedelta(hours=policy.resolution_time_hours)
+
+                # Create SLA record
+                case_sla = CaseSLA(
+                    case_id=case_id,
+                    sla_policy_id=policy.policy_id,
+                    response_due=response_due,
+                    resolution_due=resolution_due,
+                    breached=False,
+                    is_paused=False,
+                    total_pause_duration=0
                 )
-                resolution_due = self.business_hours_calc.add_business_hours(
-                    case_created,
-                    policy.resolution_time_hours
+
+                session.add(case_sla)
+
+                logger.info(
+                    f"SLA assigned to case {case_id}: "
+                    f"response_due={response_due}, resolution_due={resolution_due}"
                 )
-            else:
-                response_due = case_created + timedelta(hours=policy.response_time_hours)
-                resolution_due = case_created + timedelta(hours=policy.resolution_time_hours)
-            
-            # Create SLA record
-            case_sla = CaseSLA(
-                case_id=case_id,
-                sla_policy_id=policy.policy_id,
-                response_due=response_due,
-                resolution_due=resolution_due,
-                breached=False,
-                is_paused=False,
-                total_pause_duration=0
-            )
-            
-            session.add(case_sla)
-            session.commit()
-            
-            logger.info(
-                f"SLA assigned to case {case_id}: "
-                f"response_due={response_due}, resolution_due={resolution_due}"
-            )
-            
-            return case_sla
-        
+
+                return case_sla
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error assigning SLA to case {case_id}: {e}")
             return None
-        finally:
-            if should_close_session:
-                session.close()
     
     def check_sla_breach(
         self,
@@ -277,42 +269,34 @@ class CaseSLAService:
             Tuple of (is_breached, breach_type) where breach_type is
             'response', 'resolution', or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             if current_time is None:
                 current_time = datetime.utcnow()
-            
+
             case_sla = session.query(CaseSLA).filter(
                 CaseSLA.case_id == case_id
             ).first()
-            
+
             if not case_sla:
                 return False, None
-            
+
             # Adjust current time for paused duration
             effective_time = current_time
             if case_sla.is_paused:
                 # Don't count time while paused
                 return False, None
-            
+
             # Check response SLA
             if not case_sla.response_completed_at:
                 if effective_time > case_sla.response_due:
                     return True, 'response'
-            
+
             # Check resolution SLA
             if not case_sla.resolution_completed_at:
                 if effective_time > case_sla.resolution_due:
                     return True, 'resolution'
-            
+
             return False, None
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def get_sla_status(
         self,
@@ -329,26 +313,22 @@ class CaseSLAService:
         Returns:
             Dictionary with SLA status details
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             case_sla = session.query(CaseSLA).filter(
                 CaseSLA.case_id == case_id
             ).first()
-            
+
             if not case_sla:
                 return None
-            
+
             current_time = datetime.utcnow()
-            
+
             # Calculate time remaining
             response_remaining = None
             resolution_remaining = None
             response_percent_elapsed = 0.0
             resolution_percent_elapsed = 0.0
-            
+
             if not case_sla.response_completed_at and not case_sla.is_paused:
                 response_delta = case_sla.response_due - current_time
                 response_remaining = max(0, response_delta.total_seconds())
@@ -362,7 +342,7 @@ class CaseSLAService:
                     100.0,
                     (elapsed_response_time / total_response_time) * 100
                 ) if total_response_time > 0 else 0.0
-            
+
             if not case_sla.resolution_completed_at and not case_sla.is_paused:
                 resolution_delta = case_sla.resolution_due - current_time
                 resolution_remaining = max(0, resolution_delta.total_seconds())
@@ -376,14 +356,14 @@ class CaseSLAService:
                     100.0,
                     (elapsed_resolution_time / total_resolution_time) * 100
                 ) if total_resolution_time > 0 else 0.0
-            
+
             # Determine status
             is_breached, breach_type = self.check_sla_breach(
                 case_id,
                 current_time,
                 session
             )
-            
+
             # Determine health status
             health_status = 'healthy'
             if is_breached:
@@ -392,7 +372,7 @@ class CaseSLAService:
                 health_status = 'critical'
             elif response_percent_elapsed >= 75 or resolution_percent_elapsed >= 75:
                 health_status = 'warning'
-            
+
             return {
                 'case_id': case_id,
                 'sla_policy_id': case_sla.sla_policy_id,
@@ -411,10 +391,6 @@ class CaseSLAService:
                 'is_paused': case_sla.is_paused,
                 'health_status': health_status
             }
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def pause_sla(
         self,
@@ -433,37 +409,29 @@ class CaseSLAService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            case_sla = session.query(CaseSLA).filter(
-                CaseSLA.case_id == case_id
-            ).first()
-            
-            if not case_sla:
-                logger.error(f"No SLA found for case {case_id}")
-                return False
-            
-            if case_sla.is_paused:
-                logger.warning(f"SLA for case {case_id} is already paused")
+            with unit_of_work(session) as session:
+                case_sla = session.query(CaseSLA).filter(
+                    CaseSLA.case_id == case_id
+                ).first()
+
+                if not case_sla:
+                    logger.error(f"No SLA found for case {case_id}")
+                    return False
+
+                if case_sla.is_paused:
+                    logger.warning(f"SLA for case {case_id} is already paused")
+                    return True
+
+                case_sla.is_paused = True
+                case_sla.paused_at = datetime.utcnow()
+
+                logger.info(f"SLA paused for case {case_id}: {reason}")
                 return True
-            
-            case_sla.is_paused = True
-            case_sla.paused_at = datetime.utcnow()
-            session.commit()
-            
-            logger.info(f"SLA paused for case {case_id}: {reason}")
-            return True
-        
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error pausing SLA for case {case_id}: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def resume_sla(
         self,
@@ -480,49 +448,41 @@ class CaseSLAService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            case_sla = session.query(CaseSLA).filter(
-                CaseSLA.case_id == case_id
-            ).first()
-            
-            if not case_sla:
-                logger.error(f"No SLA found for case {case_id}")
-                return False
-            
-            if not case_sla.is_paused:
-                logger.warning(f"SLA for case {case_id} is not paused")
+            with unit_of_work(session) as session:
+                case_sla = session.query(CaseSLA).filter(
+                    CaseSLA.case_id == case_id
+                ).first()
+
+                if not case_sla:
+                    logger.error(f"No SLA found for case {case_id}")
+                    return False
+
+                if not case_sla.is_paused:
+                    logger.warning(f"SLA for case {case_id} is not paused")
+                    return True
+
+                # Calculate pause duration
+                if case_sla.paused_at:
+                    pause_duration = (
+                        datetime.utcnow() - case_sla.paused_at
+                    ).total_seconds()
+                    case_sla.total_pause_duration += int(pause_duration)
+
+                    # Extend deadlines by pause duration
+                    pause_delta = timedelta(seconds=pause_duration)
+                    case_sla.response_due += pause_delta
+                    case_sla.resolution_due += pause_delta
+
+                case_sla.is_paused = False
+                case_sla.resumed_at = datetime.utcnow()
+
+                logger.info(f"SLA resumed for case {case_id}")
                 return True
-            
-            # Calculate pause duration
-            if case_sla.paused_at:
-                pause_duration = (
-                    datetime.utcnow() - case_sla.paused_at
-                ).total_seconds()
-                case_sla.total_pause_duration += int(pause_duration)
-                
-                # Extend deadlines by pause duration
-                pause_delta = timedelta(seconds=pause_duration)
-                case_sla.response_due += pause_delta
-                case_sla.resolution_due += pause_delta
-            
-            case_sla.is_paused = False
-            case_sla.resumed_at = datetime.utcnow()
-            session.commit()
-            
-            logger.info(f"SLA resumed for case {case_id}")
-            return True
-        
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error resuming SLA for case {case_id}: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def mark_response_complete(
         self,
@@ -539,37 +499,28 @@ class CaseSLAService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            case_sla = session.query(CaseSLA).filter(
-                CaseSLA.case_id == case_id
-            ).first()
-            
-            if not case_sla:
-                return False
-            
-            current_time = datetime.utcnow()
-            case_sla.response_completed_at = current_time
-            case_sla.response_sla_met = current_time <= case_sla.response_due
-            
-            session.commit()
-            
-            logger.info(
-                f"Response marked complete for case {case_id}, "
-                f"SLA met: {case_sla.response_sla_met}"
-            )
-            return True
-        
+            with unit_of_work(session) as session:
+                case_sla = session.query(CaseSLA).filter(
+                    CaseSLA.case_id == case_id
+                ).first()
+
+                if not case_sla:
+                    return False
+
+                current_time = datetime.utcnow()
+                case_sla.response_completed_at = current_time
+                case_sla.response_sla_met = current_time <= case_sla.response_due
+
+                logger.info(
+                    f"Response marked complete for case {case_id}, "
+                    f"SLA met: {case_sla.response_sla_met}"
+                )
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error marking response complete for case {case_id}: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def mark_resolution_complete(
         self,
@@ -586,37 +537,28 @@ class CaseSLAService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            case_sla = session.query(CaseSLA).filter(
-                CaseSLA.case_id == case_id
-            ).first()
-            
-            if not case_sla:
-                return False
-            
-            current_time = datetime.utcnow()
-            case_sla.resolution_completed_at = current_time
-            case_sla.resolution_sla_met = current_time <= case_sla.resolution_due
-            
-            session.commit()
-            
-            logger.info(
-                f"Resolution marked complete for case {case_id}, "
-                f"SLA met: {case_sla.resolution_sla_met}"
-            )
-            return True
-        
+            with unit_of_work(session) as session:
+                case_sla = session.query(CaseSLA).filter(
+                    CaseSLA.case_id == case_id
+                ).first()
+
+                if not case_sla:
+                    return False
+
+                current_time = datetime.utcnow()
+                case_sla.resolution_completed_at = current_time
+                case_sla.resolution_sla_met = current_time <= case_sla.resolution_due
+
+                logger.info(
+                    f"Resolution marked complete for case {case_id}, "
+                    f"SLA met: {case_sla.resolution_sla_met}"
+                )
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error marking resolution complete for case {case_id}: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def get_breached_cases(
         self,
@@ -631,13 +573,9 @@ class CaseSLAService:
         Returns:
             List of case dictionaries with SLA information
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             current_time = datetime.utcnow()
-            
+
             # Get all active SLAs
             slas = session.query(CaseSLA).filter(
                 and_(
@@ -645,7 +583,7 @@ class CaseSLAService:
                     CaseSLA.is_paused == False
                 )
             ).all()
-            
+
             breached_cases = []
             for sla in slas:
                 is_breached, breach_type = self.check_sla_breach(
@@ -667,12 +605,8 @@ class CaseSLAService:
                             'response_due': sla.response_due.isoformat(),
                             'resolution_due': sla.resolution_due.isoformat()
                         })
-            
+
             return breached_cases
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def get_sla_compliance_report(
         self,
@@ -691,20 +625,16 @@ class CaseSLAService:
         Returns:
             Dictionary with compliance statistics
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             query = session.query(CaseSLA)
-            
+
             if start_date:
                 query = query.filter(CaseSLA.created_at >= start_date)
             if end_date:
                 query = query.filter(CaseSLA.created_at <= end_date)
-            
+
             all_slas = query.all()
-            
+
             total_cases = len(all_slas)
             response_met = sum(1 for s in all_slas if s.response_sla_met)
             response_completed = sum(
@@ -714,7 +644,7 @@ class CaseSLAService:
             resolution_completed = sum(
                 1 for s in all_slas if s.resolution_completed_at is not None
             )
-            
+
             return {
                 'total_cases': total_cases,
                 'response_sla_met': response_met,
@@ -732,8 +662,4 @@ class CaseSLAService:
                 'start_date': start_date.isoformat() if start_date else None,
                 'end_date': end_date.isoformat() if end_date else None
             }
-        
-        finally:
-            if should_close_session:
-                session.close()
 
