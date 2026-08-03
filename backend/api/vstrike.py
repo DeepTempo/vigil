@@ -79,10 +79,12 @@ router = APIRouter()
 ROUTER_META = RouterMeta(
     prefix="/api/integrations/vstrike",
     tags=["vstrike"],
-    # Inbound /findings uses its own bearer API key; every management, UI and
-    # proxy route hangs off the nested authenticated_router, which carries its
-    # own dependency.
     auth=Auth.ROUTER_MANAGED,
+    reason=(
+        "Inbound /findings uses its own bearer API key; every management, UI "
+        "and proxy route hangs off the nested authenticated_router, which "
+        "carries its own dependency."
+    ),
 )
 authenticated_router = APIRouter(dependencies=[Depends(get_current_active_user)])
 logger = logging.getLogger(__name__)

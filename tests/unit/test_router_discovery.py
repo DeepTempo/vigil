@@ -174,7 +174,47 @@ def test_public_webhook_requires_a_gate():
     from api._meta import Auth, RouterMeta
 
     with pytest.raises(ValueError, match="must declare `enabled`"):
-        RouterMeta(prefix="/api/webhooks/x", tags=["x"], auth=Auth.PUBLIC_WEBHOOK)
+        RouterMeta(
+            prefix="/api/webhooks/x",
+            tags=["x"],
+            auth=Auth.PUBLIC_WEBHOOK,
+            reason="inbound machine caller, HMAC verified at the endpoint",
+        )
+
+
+def test_weakening_auth_requires_a_written_reason():
+    """A non-REQUIRED posture cannot be adopted silently."""
+    from api._meta import Auth, RouterMeta
+
+    with pytest.raises(ValueError, match="no `reason`"):
+        RouterMeta(prefix="/api/x", tags=["x"], auth=Auth.ROUTER_MANAGED)
+
+    # whitespace is not a justification
+    with pytest.raises(ValueError, match="no `reason`"):
+        RouterMeta(prefix="/api/x", tags=["x"], auth=Auth.ROUTER_MANAGED, reason="   ")
+
+
+def test_required_auth_rejects_a_reason():
+    """Keeps ``reason`` meaning "why auth is weaker", not a notes field."""
+    from api._meta import Auth, RouterMeta
+
+    with pytest.raises(ValueError, match="needs no `reason`"):
+        RouterMeta(prefix="/api/x", tags=["x"], auth=Auth.REQUIRED, reason="some note")
+
+
+def test_every_non_required_router_has_a_reason():
+    """The live tree, not just the validator: all 5 deviations are justified."""
+    from api._meta import Auth
+
+    deviations = [
+        (name, meta) for name, _r, meta in _specs() if meta.auth is not Auth.REQUIRED
+    ]
+    assert len(deviations) == 5, (
+        f"expected 5 non-REQUIRED routers, found {len(deviations)}: "
+        f"{sorted(n for n, _ in deviations)}. A new one needs review."
+    )
+    for name, meta in deviations:
+        assert meta.reason.strip(), f"{name} deviates from REQUIRED without a reason"
 
 
 @pytest.mark.parametrize("bad", ["api/x", "/api/x/"])

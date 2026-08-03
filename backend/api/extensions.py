@@ -22,10 +22,12 @@ router = APIRouter()
 ROUTER_META = RouterMeta(
     prefix="/api/integrations",
     tags=["extensions"],
-    # Page-extension host — mints connector session tokens. Each handler
-    # declares Depends(get_current_active_user) individually rather than
-    # inheriting a router-level dependency.
     auth=Auth.ROUTER_MANAGED,
+    reason=(
+        "Page-extension host that mints connector session tokens. Each "
+        "handler declares Depends(get_current_active_user) individually "
+        "rather than inheriting a router-level dependency."
+    ),
 )
 
 

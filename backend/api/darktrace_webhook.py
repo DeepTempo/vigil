@@ -47,6 +47,12 @@ ROUTER_META = RouterMeta(
     prefix="/api/webhooks/darktrace",
     tags=["darktrace"],
     auth=Auth.PUBLIC_WEBHOOK,
+    reason=(
+        "Inbound receiver for Darktrace pushes — the caller is a machine, so "
+        "there is no session to authenticate. Each endpoint verifies an "
+        "HMAC-SHA256 X-Darktrace-Signature and fails closed when no shared "
+        "secret is configured."
+    ),
     # env.example and docs/integrations/DARKTRACE.md document DARKTRACE_ENABLED
     # as the on/off toggle; leaving it unset must leave the receiver off.
     enabled=darktrace_enabled,

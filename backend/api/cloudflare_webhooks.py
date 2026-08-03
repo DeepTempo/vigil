@@ -60,10 +60,15 @@ ROUTER_META = RouterMeta(
     prefix="/api/webhooks/cloudflare",
     tags=["cloudflare"],
     auth=Auth.PUBLIC_WEBHOOK,
+    reason=(
+        "Inbound receiver for Cloudflare Cloudy pushes — the caller is a "
+        "machine, so there is no session to authenticate. The endpoints "
+        "verify an HMAC shared secret and re-check the enable flag at request "
+        "time, so even a misconfigured mount fails closed."
+    ),
     # Hard-off by default: the upstream API contract is not yet stable. Flip
     # CLOUDY_INGESTION_ENABLED=true (or system_config cloudflare.cloudy.enabled)
-    # once the partnership confirms the wire format. The endpoints also check
-    # the flag at request time, so even a misconfigured mount fails closed.
+    # once the partnership confirms the wire format.
     enabled=cloudy_ingestion_enabled,
 )
 
