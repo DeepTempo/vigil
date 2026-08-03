@@ -25,7 +25,7 @@ from typing import Any, Callable, Dict, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
-from services.darktrace_ingestion import DarktraceIngestionService
+from core.integrations.darktrace.ingestion import DarktraceIngestionService
 
 logger = logging.getLogger(__name__)
 

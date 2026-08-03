@@ -3,7 +3,7 @@
 VStrike pushes enriched findings to Vigil, but we also query it for asset
 topology, adjacent-asset lookup, and blast-radius computation during
 investigations. This service is consumed by `backend/api/vstrike.py` (proxy
-endpoints) and `tools/vstrike.py` (MCP server).
+endpoints) and `core/integrations/vstrike/tool.py` (MCP server).
 
 Two auth modes are supported:
 

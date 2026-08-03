@@ -8,7 +8,7 @@ from daemon.federation.contract import FederationAdapter, register_adapter
 
 def _factory() -> FederationAdapter:
     def make_service():
-        from services.azure_sentinel_ingestion import AzureSentinelIngestion
+        from core.integrations.azure_sentinel.ingestion import AzureSentinelIngestion
 
         return AzureSentinelIngestion()
 

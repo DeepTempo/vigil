@@ -1,4 +1,4 @@
-"""Unit tests for tools/vstrike.py (MCP server)."""
+"""Unit tests for core/integrations/vstrike/tool.py (MCP server)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import tools.vstrike as vstrike_module  # noqa: E402
+import core.integrations.vstrike.tool as vstrike_module  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

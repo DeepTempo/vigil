@@ -8,7 +8,7 @@ from daemon.federation.contract import FederationAdapter, register_adapter
 
 def _factory() -> FederationAdapter:
     def make_service():
-        from services.microsoft_defender_ingestion import MicrosoftDefenderIngestion
+        from core.integrations.microsoft_defender.ingestion import MicrosoftDefenderIngestion
 
         return MicrosoftDefenderIngestion()
 

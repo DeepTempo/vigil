@@ -56,7 +56,7 @@ def _result(data) -> list[types.TextContent]:
 
 def _get_service():
     try:
-        from services.vstrike_service import get_vstrike_service
+        from core.integrations.vstrike.client import get_vstrike_service
 
         return get_vstrike_service()
     except Exception as e:

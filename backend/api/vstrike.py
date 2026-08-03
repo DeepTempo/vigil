@@ -28,7 +28,7 @@ from backend.schemas.vstrike import (
 )
 from backend.middleware.auth import get_current_active_user
 from services.database_data_service import DatabaseDataService
-from services.vstrike_service import VStrikeToolNotImplemented, get_vstrike_service
+from core.integrations.vstrike.client import VStrikeToolNotImplemented, get_vstrike_service
 
 
 class VStrikeLoadNetworkRequest(BaseModel):

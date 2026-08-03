@@ -224,7 +224,7 @@ def test_killchain_replay_passes_steps_to_service():
 
 def test_killchain_replay_501_when_tool_not_implemented():
     from backend.api import vstrike as vstrike_module
-    from services.vstrike_service import VStrikeToolNotImplemented
+    from core.integrations.vstrike.client import VStrikeToolNotImplemented
 
     svc = _mock_ui_service()
     svc.killchain_replay_in_ui.side_effect = VStrikeToolNotImplemented(
@@ -509,7 +509,7 @@ def test_ui_storyline_backward_calls_service():
 def test_ui_camera_node_501_when_tool_not_implemented():
     from backend.api import vstrike as vstrike_module
     from backend.api.vstrike import VStrikeCameraNodeRequest
-    from services.vstrike_service import VStrikeToolNotImplemented
+    from core.integrations.vstrike.client import VStrikeToolNotImplemented
 
     svc = _mock_ui_control_service()
     svc.ui_camera_node.side_effect = VStrikeToolNotImplemented(
@@ -643,7 +643,7 @@ def test_ui_legend_apply_calls_service():
 def test_ui_legend_apply_501_when_tool_not_implemented():
     from backend.api import vstrike as vstrike_module
     from backend.api.vstrike import VStrikeLegendApplyRequest
-    from services.vstrike_service import VStrikeToolNotImplemented
+    from core.integrations.vstrike.client import VStrikeToolNotImplemented
 
     svc = _mock_new_tools_service()
     svc.ui_legend_apply.side_effect = VStrikeToolNotImplemented(

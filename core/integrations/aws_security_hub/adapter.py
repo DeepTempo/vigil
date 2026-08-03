@@ -8,7 +8,7 @@ from daemon.federation.contract import FederationAdapter, register_adapter
 
 def _factory() -> FederationAdapter:
     def make_service():
-        from services.aws_security_hub_ingestion import AWSSecurityHubIngestion
+        from core.integrations.aws_security_hub.ingestion import AWSSecurityHubIngestion
 
         return AWSSecurityHubIngestion()
 

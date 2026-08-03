@@ -5,7 +5,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from services.elastic_ingestion import ElasticIngestion
+from core.integrations.elastic.ingestion import ElasticIngestion
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
@@ -19,7 +19,7 @@ def sample_alerts():
 
 @pytest.fixture
 def ingestion():
-    with patch("services.elastic_ingestion.get_integration_config") as mock_cfg:
+    with patch("core.integrations.elastic.ingestion.get_integration_config") as mock_cfg:
         mock_cfg.return_value = {
             "elasticsearch_url": "https://es.test:9200",
             "kibana_url": "https://kibana.test:5601",

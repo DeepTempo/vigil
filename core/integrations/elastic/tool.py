@@ -35,7 +35,7 @@ def get_elastic_service():
     if _elastic_service is not None:
         return _elastic_service
     try:
-        from services.elastic_service import ElasticService
+        from core.integrations.elastic.client import ElasticService
         host = os.environ.get("ELASTIC_HOST")
         if not host:
             return None
