@@ -25,6 +25,7 @@ from hashlib import sha256
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
+from api._meta import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,18 @@ def cloudy_ingestion_enabled() -> bool:
         "yes",
         "on",
     )
+
+
+ROUTER_META = RouterMeta(
+    prefix="/api/webhooks/cloudflare",
+    tags=["cloudflare"],
+    auth=Auth.PUBLIC_WEBHOOK,
+    # Hard-off by default: the upstream API contract is not yet stable. Flip
+    # CLOUDY_INGESTION_ENABLED=true (or system_config cloudflare.cloudy.enabled)
+    # once the partnership confirms the wire format. The endpoints also check
+    # the flag at request time, so even a misconfigured mount fails closed.
+    enabled=cloudy_ingestion_enabled,
+)
 
 
 def _get_secret() -> Optional[str]:

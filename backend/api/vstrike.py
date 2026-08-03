@@ -29,6 +29,7 @@ from backend.schemas.vstrike import (
 from backend.middleware.auth import get_current_active_user
 from services.database_data_service import DatabaseDataService
 from services.vstrike_service import VStrikeToolNotImplemented, get_vstrike_service
+from api._meta import Auth, RouterMeta
 
 
 class VStrikeLoadNetworkRequest(BaseModel):
@@ -74,6 +75,15 @@ def _ui_service_or_503():
 
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/integrations/vstrike",
+    tags=["vstrike"],
+    # Inbound /findings uses its own bearer API key; every management, UI and
+    # proxy route hangs off the nested authenticated_router, which carries its
+    # own dependency.
+    auth=Auth.ROUTER_MANAGED,
+)
 authenticated_router = APIRouter(dependencies=[Depends(get_current_active_user)])
 logger = logging.getLogger(__name__)
 data_service = DatabaseDataService()

@@ -29,10 +29,17 @@ from services.ingestion_jobs import (
     summarize_stats,
 )
 from services.database_data_service import DatabaseDataService
+from api._meta import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/ingest",
+    tags=["ingestion"],
+    auth=Auth.REQUIRED,
+)
 
 MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "500")) * 1024 * 1024
 

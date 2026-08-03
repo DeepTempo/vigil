@@ -43,10 +43,22 @@ from backend.middleware.auth import get_current_active_user
 from backend.middleware.rate_limit import limiter
 from database.models import User
 from database.connection import get_db
+from api._meta import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/auth",
+    tags=["authentication"],
+    # A deliberate mix, which is why the router itself stays unwrapped: login /
+    # refresh / password-reset / bootstrap cannot require auth (chicken-and-egg)
+    # and are listed in PUBLIC_API_PATHS, while the inner /me, /change-password
+    # and /mfa routes declare get_current_active_user inline. Attaching a
+    # router-level auth dependency here would break login.
+    auth=Auth.ROUTER_MANAGED,
+)
 
 # The role the first account gets: it has to be able to create every other one.
 ADMIN_ROLE_ID = "role-admin"

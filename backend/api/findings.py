@@ -10,8 +10,15 @@ from services.source_evidence import (
     normalize_finding_source_evidence,
     project_finding_source_evidence_for_list,
 )
+from api._meta import Auth, RouterMeta
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/findings",
+    tags=["findings"],
+    auth=Auth.REQUIRED,
+)
 logger = logging.getLogger(__name__)
 # Use DatabaseDataService which automatically uses PostgreSQL if available, falls back to JSON
 data_service = DatabaseDataService()

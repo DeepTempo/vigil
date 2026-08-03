@@ -21,8 +21,19 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from api._meta import Auth, RouterMeta
 
-router = APIRouter(prefix="/api/kafka", tags=["kafka"])
+# Prefix and tags live in ROUTER_META, not the APIRouter() constructor — one
+# home for mount metadata across all 42 routers. This module was the sole
+# exception, which is why its include_router call passed no tags (issue #478).
+router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/kafka",
+    tags=["kafka"],
+    auth=Auth.REQUIRED,
+)
+
 logger = logging.getLogger(__name__)
 
 SYSTEMCONFIG_KEY = "kafka.settings"

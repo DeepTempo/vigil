@@ -13,10 +13,20 @@ from backend.middleware.auth import get_current_active_user
 from backend.services.auth_service import AuthService
 from database.models import User
 from services import extension_session_service as ext_session
+from api._meta import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/integrations",
+    tags=["extensions"],
+    # Page-extension host — mints connector session tokens. Each handler
+    # declares Depends(get_current_active_user) individually rather than
+    # inheriting a router-level dependency.
+    auth=Auth.ROUTER_MANAGED,
+)
 
 
 @router.get("/{integration_id}/session-token")

@@ -26,10 +26,31 @@ from typing import Any, Callable, Dict, Optional
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from services.darktrace_ingestion import DarktraceIngestionService
+from api._meta import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def darktrace_enabled() -> bool:
+    """Master flag for the Darktrace webhook receiver.
+
+    Off unless explicitly enabled. Lives here rather than inline in
+    ``backend/main.py`` so the gate travels with the receiver it guards and
+    can be unit-tested directly (issue #478).
+    """
+    return os.environ.get("DARKTRACE_ENABLED", "false").lower() == "true"
+
+
+ROUTER_META = RouterMeta(
+    prefix="/api/webhooks/darktrace",
+    tags=["darktrace"],
+    auth=Auth.PUBLIC_WEBHOOK,
+    # env.example and docs/integrations/DARKTRACE.md document DARKTRACE_ENABLED
+    # as the on/off toggle; leaving it unset must leave the receiver off.
+    enabled=darktrace_enabled,
+)
 
 
 def _get_settings() -> Dict[str, Any]:
