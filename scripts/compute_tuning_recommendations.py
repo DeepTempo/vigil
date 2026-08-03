@@ -5,7 +5,7 @@ PR-D shipped with best-guess defaults for four cost/perf toggles:
   * ``CLAUDE_HISTORY_WINDOW`` (20 turns)
   * ``TOOL_RESPONSE_BUDGET_DEFAULT`` (8000 tokens)
   * ``CLAUDE_THINKING_BUDGET`` (10000 tokens, daemon-wide)
-  * per-agent ``thinking_budget`` values in ``services/soc_agents.py``
+  * per-agent ``thinking_budget`` values in ``core/agents/builtins.py``
 
 PR-E's completion criterion was "re-tune defaults using two weeks of
 post-merge data." This script is the tooling side of that: point it at
@@ -14,7 +14,7 @@ recommendations (p50 / p95 / max of the relevant distributions).
 
 Operators run this periodically — say, monthly — and apply the
 recommendations through Settings → AI Config → AI Operations (PR-F) or
-by editing ``services/soc_agents.py`` for per-agent thinking budgets.
+by editing ``core/agents/builtins.py`` for per-agent thinking budgets.
 
 Usage::
 
@@ -269,7 +269,7 @@ def main() -> int:
                 f"{stats['max']:>8}"
                 f"  {stats['recommended_thinking_budget']:>12}"
             )
-        print("\n  Apply via services/soc_agents.py → agent config → thinking_budget field.")
+        print("\n  Apply via core/agents/builtins.py → agent config → thinking_budget field.")
 
     def _print_block(title: str, payload: Dict):
         print(f"\n## {title}")
@@ -291,7 +291,7 @@ def main() -> int:
 
     print()
     print("Apply non-agent recommendations via Settings → AI Config → AI Operations.")
-    print("Per-agent thinking_budget edits land in services/soc_agents.py.")
+    print("Per-agent thinking_budget edits land in core/agents/builtins.py.")
     return 0
 
 

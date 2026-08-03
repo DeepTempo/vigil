@@ -32,7 +32,6 @@ vigil/
 │   └── schemas/          # Pydantic request/response schemas
 ├── services/             # 70+ business logic service classes
 │   ├── claude_service.py # Central AI orchestration (largest file ~124KB)
-│   ├── soc_agents.py     # Agent prompt definitions
 │   ├── mcp_service.py    # MCP server coordination
 │   └── case_*_service.py # Case lifecycle services
 ├── daemon/               # Autonomous 24/7 SOC background process
@@ -58,7 +57,7 @@ vigil/
 ├── deeptempo-core/       # Git submodule: core AI/detection library
 ├── database/
 │   └── init/             # PostgreSQL init SQL (docker-compose: lex order by filename; Helm: values.yaml dbInit.sqlFiles)
-├── core/                 # Config, secrets management, rate limiting
+├── core/                 # Config, secrets, rate limiting, agent definitions (agents/)
 ├── data/                 # Schemas, MITRE taxonomy, detection registry
 ├── tests/                # pytest + vitest test suites
 ├── docs/                 # Detailed documentation
@@ -308,7 +307,7 @@ Register in `backend/main.py`.
 
 ### New Agent
 
-1. Add prompt definition in `services/soc_agents.py`
+1. Add the agent record in `core/agents/builtins.py` (prompt text lives in `core/agents/prompts.py`)
 2. Wire agent invocation in `services/claude_service.py`
 3. Expose via `backend/api/agents.py`
 4. Document in `docs/AGENTS.md`
@@ -358,7 +357,7 @@ All CI checks must pass before merging.
 |------|---------|
 | `backend/main.py` | FastAPI app, all router registrations |
 | `services/claude_service.py` | Central AI/agent orchestration (~124KB) |
-| `services/soc_agents.py` | All agent system prompts |
+| `core/agents/` | Agent records (`builtins.py`), prompt assembly (`prompts.py`), runtime manager (`manager.py`) |
 | `services/mcp_service.py` | MCP protocol coordination |
 | `database/init/` | Schema SQL — see Database section for the add/modify checklist |
 | `mcp-config.json` | All MCP server definitions |

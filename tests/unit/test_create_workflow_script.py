@@ -4,8 +4,8 @@ Background: ``AVAILABLE_AGENTS`` in ``scripts/create_workflow.py`` previously
 dropped the ``auto_responder`` agent, so the 60-second workflow scaffolder
 could not reference Vigil's autonomous-response capability. The fix
 (``auto_responder`` re-added to the list) is paired with this test so a
-future drift between the script's allow-list and ``AGENT_CONFIGS`` in
-``services.soc_agents`` fails fast in CI.
+future drift between the script's allow-list and ``BUILTIN_AGENTS`` in
+``core.agents.builtins`` fails fast in CI.
 
 See: https://github.com/Vigil-SOC/vigil/issues/204
 """
@@ -45,25 +45,25 @@ def test_auto_responder_is_in_available_agents():
 
 def test_available_agents_matches_agent_configs_keys():
     """The script's allow-list must stay in lock-step with the canonical
-    AGENT_CONFIGS dict in services.soc_agents. If they drift, new agents
+    BUILTIN_AGENTS dict in core.agents.builtins. If they drift, new agents
     silently become unscaffoldable (or the script offers agents that don't
     exist). Fail fast here instead of debugging "unknown agent" at runtime.
     """
     mod = _load_script_module()
-    from services.soc_agents import AGENT_CONFIGS
+    from core.agents.builtins import BUILTIN_AGENTS
 
     script_agents = set(mod.AVAILABLE_AGENTS)
-    config_agents = set(AGENT_CONFIGS.keys())
+    config_agents = {r["id"] for r in BUILTIN_AGENTS}
 
     missing_in_script = config_agents - script_agents
     extra_in_script = script_agents - config_agents
 
     assert not missing_in_script and not extra_in_script, (
         f"scripts/create_workflow.py:AVAILABLE_AGENTS has drifted from "
-        f"services.soc_agents:AGENT_CONFIGS.\n"
-        f"  Missing from script (defined in AGENT_CONFIGS but not selectable): "
+        f"core.agents.builtins:BUILTIN_AGENTS.\n"
+        f"  Missing from script (defined in BUILTIN_AGENTS but not selectable): "
         f"{sorted(missing_in_script) or 'none'}\n"
-        f"  Extra in script (selectable but not defined in AGENT_CONFIGS): "
+        f"  Extra in script (selectable but not defined in BUILTIN_AGENTS): "
         f"{sorted(extra_in_script) or 'none'}"
     )
 

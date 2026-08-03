@@ -1,6 +1,6 @@
 """Custom SOC Agent CRUD endpoints (Agent Builder).
 
-Built-in agents remain hardcoded in services/soc_agents.py. This module only
+Built-in agents remain hardcoded in core/agents/builtins.py. This module only
 manages the DB-backed custom agents, prefixed with "custom-".
 """
 
@@ -16,7 +16,7 @@ from backend.services.custom_agent_service import (
     CustomAgentNotFound,
     CustomAgentService,
 )
-from services.soc_agents import CUSTOM_AGENT_ID_PREFIX
+from core.agents.manager import CUSTOM_AGENT_ID_PREFIX
 
 logger = logging.getLogger(__name__)
 

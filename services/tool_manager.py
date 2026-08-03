@@ -53,7 +53,7 @@ def filter_tools_by_recommended(
     """Keep only tools whose name is in ``recommended``; no-op when falsy.
 
     MCP/server tools arrive prefixed as ``<server>_<tool>`` while per-agent
-    recommended lists (``soc_agents.py``) use bare names, so a tool matches if
+    recommended lists (``core/agents/builtins.py``) use bare names, so a tool matches if
     either its full name or its post-first-underscore suffix is recommended.
     """
     if not recommended:
