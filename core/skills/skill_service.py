@@ -141,7 +141,7 @@ class SkillService:
 
     # ------------------------------------------------------------------ AI
 
-    async def generate_skill(
+    def generate_skill(
         self,
         description: str,
         category: Optional[str] = None,
@@ -372,7 +372,7 @@ Do NOT emit the JSON until you have the information you need.
         filled in by Claude from knowledge + the server name.
         """
         try:
-            project_root = Path(__file__).resolve().parent.parent
+            project_root = Path(__file__).resolve().parent.parent.parent
             config_path = project_root / "mcp-config.json"
             if not config_path.exists():
                 return []

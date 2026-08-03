@@ -1,6 +1,6 @@
 """Unit tests for the Claude Desktop skill zip importer (Issue #130).
 
-Exercises ``services.skill_importer.import_skill_zip`` against an
+Exercises ``core.skills.skill_importer.import_skill_zip`` against an
 in-memory fake service. No DB or HTTP involved.
 """
 
@@ -17,7 +17,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from services.skill_importer import (  # noqa: E402
+from core.skills.skill_importer import (  # noqa: E402
     MAX_ENTRIES,
     MAX_SKILL_MD_BYTES,
     MAX_ZIP_BYTES,
