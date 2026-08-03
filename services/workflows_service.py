@@ -1099,7 +1099,7 @@ For each phase:
 
         skill_tool_names: List[str] = []
         try:
-            from services.skill_tools_bridge import list_active_skill_tools
+            from core.skills.skill_tools_bridge import list_active_skill_tools
 
             skill_defs, _ = list_active_skill_tools()
             skill_tool_names = [t["name"] for t in skill_defs]

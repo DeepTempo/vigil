@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from services import skill_service as _skill_service_mod
+from core.skills import skill_service as _skill_service_mod
 
 logger = logging.getLogger(__name__)
 

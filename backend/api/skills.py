@@ -21,12 +21,12 @@ from backend.schemas.skill import (  # noqa: E402
     SkillResponse,
     SkillUpdate,
 )
-from services.skill_importer import (  # noqa: E402
+from core.skills.skill_importer import (  # noqa: E402
     MAX_ZIP_BYTES,
     SkillImportError,
     import_skill_zip,
 )
-from services.skill_service import SkillService  # noqa: E402
+from core.skills.skill_service import SkillService  # noqa: E402
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def _service() -> SkillService:
 
 
 @router.post("/generate", response_model=SkillGenerateResponse)
-async def generate_skill(request: SkillGenerateRequest):
+def generate_skill(request: SkillGenerateRequest):
     """Generate a skill draft from a natural-language description.
 
     Supports multi-turn clarification. If Claude asks a question, the client
@@ -50,7 +50,7 @@ async def generate_skill(request: SkillGenerateRequest):
                 {"role": "user", "content": request.user_response}
             )
 
-        result = await _service().generate_skill(
+        result = _service().generate_skill(
             description=request.description,
             category=request.category,
             conversation_history=conversation_history or None,

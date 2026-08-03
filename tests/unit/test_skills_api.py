@@ -98,7 +98,7 @@ class FakeSkillService:
     def delete_skill(self, skill_id):
         return self._store.pop(skill_id, None) is not None
 
-    async def generate_skill(
+    def generate_skill(
         self, description, category=None, conversation_history=None
     ):
         return self._gen_response
@@ -115,7 +115,9 @@ def client():
     FakeSkillService._store = {}
     FakeSkillService._gen_response = {}
 
-    with patch("services.skill_service.SkillService", FakeSkillService):
+    # Both the router and the importer resolve SkillService from the core
+    # module, so a single patch covers both.
+    with patch("core.skills.skill_service.SkillService", FakeSkillService):
         # Import late so the patched class is picked up by backend.api.skills
         spec = importlib.util.spec_from_file_location(
             "skills_router_under_test",

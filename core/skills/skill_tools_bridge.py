@@ -98,7 +98,7 @@ def list_active_skill_tools() -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str,
     never breaks ClaudeService.
     """
     try:
-        from services.skill_service import SkillService
+        from core.skills.skill_service import SkillService
 
         rows = SkillService().list_skills(is_active=True)
     except Exception as e:

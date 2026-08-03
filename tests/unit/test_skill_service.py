@@ -22,7 +22,7 @@ for p in (str(_REPO_ROOT), str(_BACKEND_DIR)):
 # heavy model graph during unit tests.
 _spec = importlib.util.spec_from_file_location(
     "skill_service_under_test",
-    _REPO_ROOT / "services" / "skill_service.py",
+    _REPO_ROOT / "core" / "skills" / "skill_service.py",
 )
 _mod = importlib.util.module_from_spec(_spec)
 sys.modules["skill_service_under_test"] = _mod

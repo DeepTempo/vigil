@@ -56,7 +56,7 @@ class ToolExecutor:
                 # DB-backed Skills (Issue #82)
                 if tool_name.startswith("skill_"):
                     try:
-                        from services.skill_tools_bridge import execute_skill_tool
+                        from core.skills.skill_tools_bridge import execute_skill_tool
 
                         result = execute_skill_tool(
                             tool_name,

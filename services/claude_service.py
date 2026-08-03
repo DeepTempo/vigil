@@ -408,7 +408,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             self.backend_tools = self.backend_tools[: self._static_backend_tools_count]
         self._skill_tool_index = {}
         try:
-            from services.skill_tools_bridge import list_active_skill_tools
+            from core.skills.skill_tools_bridge import list_active_skill_tools
 
             skill_tools, skill_index = list_active_skill_tools()
             self.backend_tools.extend(skill_tools)
@@ -433,7 +433,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
         # DB-backed Skills get their own dispatch path so we don't bury
         # every one of them in this long if/elif ladder.
         try:
-            from services.skill_tools_bridge import (
+            from core.skills.skill_tools_bridge import (
                 execute_skill_tool,
                 is_skill_tool_name,
             )
@@ -1480,7 +1480,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     # of the chain.
                     if tool_name and tool_name.startswith("skill_"):
                         try:
-                            from services.skill_tools_bridge import execute_skill_tool
+                            from core.skills.skill_tools_bridge import execute_skill_tool
 
                             result = execute_skill_tool(
                                 tool_name,
