@@ -200,16 +200,16 @@ cost of a manual step for existing compose databases. #411 is what makes the
 mechanism uniform and reversible, not what makes these possible. Each follow-up
 should state which path it has verified.
 
-| # | Scope | Columns | Why separate |
+| Issue | Scope | Columns | Why separate |
 |---|---|---|---|
-| 1 | Security scalar arrays → `ARRAY(TEXT)` | `users.password_history`, `users.mfa_recovery_codes` | Touches credential material; wants its own review and its own tests |
-| 2 | Tool-name arrays → `ARRAY(TEXT)` | `skills.required_tools`, `custom_agents.recommended_tools`, `workflow_runs.skill_tools_available`, `custom_workflows.trigger_examples` | Mechanical and low-risk; one migration. Confirm `trigger_examples`' element type first |
-| 3 | `case_evidence.chain_of_custody` → child table | 1 | Correctness, not tidiness: append-only legal record currently open to lost updates |
-| 4 | `findings.mitre_predictions` → child table | 1 | Highest query value; touches the hottest table, so it deserves isolation |
-| 5 | Case children → child tables | `cases.resolution_steps`, `case_tasks.checklist_items` | The `timeline` / `activities` / `notes` trio was split out and filed separately — see below |
-| 6 | `roles.permissions` → `role_permissions` | 1 | Security-critical; must preserve the `Dict[str, bool]` API shape |
-| 7 | `case_watchers.notification_preferences` → columns | 1 | Small and self-contained; a good first migration once #411 lands |
-| 8 | Resolve `investigations.trigger_ids`' real shape | 1 | Investigation, not migration — decides whether it lands in issue 2 or 5 |
+| [#547](https://github.com/Vigil-SOC/vigil/issues/547) | Security scalar arrays → `ARRAY(TEXT)` | `users.password_history`, `users.mfa_recovery_codes` | Touches credential material; wants its own review and tests |
+| [#548](https://github.com/Vigil-SOC/vigil/issues/548) | Tool-name arrays → `ARRAY(TEXT)` | `skills.required_tools`, `custom_agents.recommended_tools`, `workflow_runs.skill_tools_available`, `custom_workflows.trigger_examples` | Mechanical and low-risk. Confirm `trigger_examples`' element type first |
+| [#549](https://github.com/Vigil-SOC/vigil/issues/549) | `case_evidence.chain_of_custody` → table | 1 | Correctness, not tidiness: append-only legal record open to lost updates |
+| [#550](https://github.com/Vigil-SOC/vigil/issues/550) | `findings.mitre_predictions` → child table | 1 | Highest query value; touches the hottest table, so isolate it |
+| [#551](https://github.com/Vigil-SOC/vigil/issues/551) | Remaining case children → child tables | `cases.resolution_steps`, `case_tasks.checklist_items` | Best after #544 establishes the pattern |
+| [#552](https://github.com/Vigil-SOC/vigil/issues/552) | `roles.permissions` → `role_permissions` | 1 | Security-critical; must preserve the `Dict[str, bool]` API shape |
+| [#553](https://github.com/Vigil-SOC/vigil/issues/553) | `case_watchers.notification_preferences` → columns | 1 | Smallest and lowest-risk; good first migration |
+| [#554](https://github.com/Vigil-SOC/vigil/issues/554) | Resolve `investigations.trigger_ids`' real shape | 1 | Investigation, not migration — its ORM type is wrong |
 
 ### Already filed: the `cases` event trio
 
