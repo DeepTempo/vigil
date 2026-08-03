@@ -20,6 +20,7 @@ from database.models import (
     EMBEDDING_DIM,
 )
 from database.connection import get_db_manager
+from database.case_repository import CaseRepository
 
 logger = logging.getLogger(__name__)
 
@@ -473,30 +474,19 @@ class DatabaseService:
         """
         try:
             with self.db_manager.session_scope() as session:
-                query = select(Case)
-                
-                # Apply filters
-                filters = []
-                if status:
-                    filters.append(Case.status == status)
-                if priority:
-                    filters.append(Case.priority == priority)
-                if assignee:
-                    filters.append(Case.assignee == assignee)
-                
-                if filters:
-                    query = query.where(and_(*filters))
-                
-                # Apply ordering, limit, and offset
-                query = query.order_by(Case.created_at.desc())
-                query = query.limit(limit).offset(offset)
-                
-                cases = session.execute(query).scalars().all()
-                
+                cases = CaseRepository(session).find(
+                    status=status,
+                    priority=priority,
+                    assignee=assignee,
+                    limit=limit,
+                    offset=offset,
+                    order_by="created_at",
+                )
+
                 # Detach from session
                 for case in cases:
                     session.expunge(case)
-                
+
                 return cases
         except Exception as e:
             logger.error(f"Error getting cases: {e}")
@@ -519,12 +509,19 @@ class DatabaseService:
                 if not case:
                     logger.warning(f"Case not found: {case_id}")
                     return False
-                
-                # Update allowed fields
+
+                # ``finding_ids`` maps to the ``findings`` relationship, not a
+                # column, so the generic setattr loop below would drop it.
+                if "finding_ids" in updates:
+                    CaseRepository(session).set_findings(
+                        case, updates.pop("finding_ids") or []
+                    )
+
+                # Update remaining mapped fields
                 for key, value in updates.items():
                     if hasattr(case, key):
                         setattr(case, key, value)
-                
+
                 case.updated_at = datetime.utcnow()
                 session.flush()
                 logger.info(f"Updated case: {case_id}")

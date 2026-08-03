@@ -5,25 +5,24 @@ Handles case comments, @mentions, watchers, and activity feeds.
 """
 
 import logging
-from datetime import datetime
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
-from database.models import CaseComment, CaseWatcher, Case
-from database.connection import get_db_session
+from database.models import CaseComment, CaseWatcher
 from services.case_notification_service import CaseNotificationService
+from services.unit_of_work import unit_of_work
 
 logger = logging.getLogger(__name__)
 
 
 class CaseCollaborationService:
     """Service for managing case collaboration."""
-    
+
     def __init__(self):
         """Initialize the collaboration service."""
         self.notification_service = CaseNotificationService()
-    
+
     def add_comment(
         self,
         case_id: str,
@@ -34,69 +33,61 @@ class CaseCollaborationService:
     ) -> Optional[CaseComment]:
         """
         Add a comment to a case.
-        
+
         Args:
             case_id: Case ID
             author: Comment author
             content: Comment content
             parent_comment_id: Parent comment ID for threading
             session: Database session (optional)
-        
+
         Returns:
             Created CaseComment or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            # Extract mentions from content
-            mentions = self.notification_service.extract_mentions(content)
-            
-            comment = CaseComment(
-                case_id=case_id,
-                parent_comment_id=parent_comment_id,
-                author=author,
-                content=content,
-                mentions=mentions,
-                is_edited=False,
-                is_deleted=False
-            )
-            
-            session.add(comment)
-            session.commit()
-            
-            # Send notifications for mentions
-            for mentioned_user in mentions:
-                if mentioned_user != author:  # Don't notify self
-                    self.notification_service.notify_comment_mention(
-                        case_id=case_id,
-                        mentioned_user=mentioned_user,
-                        comment_author=author,
-                        comment_content=content,
-                        session=session
-                    )
-            
-            # Notify watchers
-            self.notification_service.notify_watchers(
-                case_id=case_id,
-                notification_type='new_comment',
-                title='New Comment',
-                message=f'{author} added a comment',
-                session=session
-            )
-            
-            logger.info(f"Added comment to case {case_id} by {author}")
-            return comment
-        
+            with unit_of_work(session) as session:
+                # Extract mentions from content
+                mentions = self.notification_service.extract_mentions(content)
+
+                comment = CaseComment(
+                    case_id=case_id,
+                    parent_comment_id=parent_comment_id,
+                    author=author,
+                    content=content,
+                    mentions=mentions,
+                    is_edited=False,
+                    is_deleted=False
+                )
+
+                session.add(comment)
+
+                # Send notifications for mentions
+                for mentioned_user in mentions:
+                    if mentioned_user != author:  # Don't notify self
+                        self.notification_service.notify_comment_mention(
+                            case_id=case_id,
+                            mentioned_user=mentioned_user,
+                            comment_author=author,
+                            comment_content=content,
+                            session=session
+                        )
+
+                # Notify watchers
+                self.notification_service.notify_watchers(
+                    case_id=case_id,
+                    notification_type='new_comment',
+                    title='New Comment',
+                    message=f'{author} added a comment',
+                    session=session
+                )
+
+                logger.info(f"Added comment to case {case_id} by {author}")
+                return comment
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error adding comment: {e}")
             return None
-        finally:
-            if should_close_session:
-                session.close()
-    
+
     def update_comment(
         self,
         comment_id: int,
@@ -105,46 +96,37 @@ class CaseCollaborationService:
     ) -> bool:
         """
         Update a comment.
-        
+
         Args:
             comment_id: Comment ID
             new_content: New comment content
             session: Database session (optional)
-        
+
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            comment = session.query(CaseComment).filter(
-                CaseComment.comment_id == comment_id
-            ).first()
-            
-            if not comment:
-                return False
-            
-            comment.content = new_content
-            comment.is_edited = True
-            
-            # Update mentions
-            mentions = self.notification_service.extract_mentions(new_content)
-            comment.mentions = mentions
-            
-            session.commit()
-            
-            return True
-        
+            with unit_of_work(session) as session:
+                comment = session.query(CaseComment).filter(
+                    CaseComment.comment_id == comment_id
+                ).first()
+
+                if not comment:
+                    return False
+
+                comment.content = new_content
+                comment.is_edited = True
+
+                # Update mentions
+                mentions = self.notification_service.extract_mentions(new_content)
+                comment.mentions = mentions
+
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error updating comment: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
-    
+
     def delete_comment(
         self,
         comment_id: int,
@@ -153,45 +135,36 @@ class CaseCollaborationService:
     ) -> bool:
         """
         Delete a comment.
-        
+
         Args:
             comment_id: Comment ID
             soft_delete: If True, mark as deleted; if False, hard delete
             session: Database session (optional)
-        
+
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            comment = session.query(CaseComment).filter(
-                CaseComment.comment_id == comment_id
-            ).first()
-            
-            if not comment:
-                return False
-            
-            if soft_delete:
-                comment.is_deleted = True
-                comment.content = "[deleted]"
-            else:
-                session.delete(comment)
-            
-            session.commit()
-            
-            return True
-        
+            with unit_of_work(session) as session:
+                comment = session.query(CaseComment).filter(
+                    CaseComment.comment_id == comment_id
+                ).first()
+
+                if not comment:
+                    return False
+
+                if soft_delete:
+                    comment.is_deleted = True
+                    comment.content = "[deleted]"
+                else:
+                    session.delete(comment)
+
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error deleting comment: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
-    
+
     def get_case_comments(
         self,
         case_id: str,
@@ -200,33 +173,25 @@ class CaseCollaborationService:
     ) -> List[CaseComment]:
         """
         Get all comments for a case.
-        
+
         Args:
             case_id: Case ID
             include_deleted: Include deleted comments
             session: Database session (optional)
-        
+
         Returns:
             List of CaseComment objects
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             query = session.query(CaseComment).filter(
                 CaseComment.case_id == case_id
             )
-            
+
             if not include_deleted:
                 query = query.filter(CaseComment.is_deleted == False)
-            
+
             return query.order_by(CaseComment.created_at.asc()).all()
-        
-        finally:
-            if should_close_session:
-                session.close()
-    
+
     def get_comment_thread(
         self,
         comment_id: int,
@@ -234,38 +199,30 @@ class CaseCollaborationService:
     ) -> List[CaseComment]:
         """
         Get a comment and all its replies.
-        
+
         Args:
             comment_id: Parent comment ID
             session: Database session (optional)
-        
+
         Returns:
             List of CaseComment objects in thread
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             # Get parent comment
             parent = session.query(CaseComment).filter(
                 CaseComment.comment_id == comment_id
             ).first()
-            
+
             if not parent:
                 return []
-            
+
             # Get all replies
             replies = session.query(CaseComment).filter(
                 CaseComment.parent_comment_id == comment_id
             ).order_by(CaseComment.created_at.asc()).all()
-            
+
             return [parent] + replies
-        
-        finally:
-            if should_close_session:
-                session.close()
-    
+
     def add_watcher(
         self,
         case_id: str,
@@ -275,53 +232,45 @@ class CaseCollaborationService:
     ) -> Optional[CaseWatcher]:
         """
         Add a watcher to a case.
-        
+
         Args:
             case_id: Case ID
             user_id: User ID to add as watcher
             notification_preferences: Notification preferences
             session: Database session (optional)
-        
+
         Returns:
             Created CaseWatcher or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            # Check if already watching
-            existing = session.query(CaseWatcher).filter(
-                and_(
-                    CaseWatcher.case_id == case_id,
-                    CaseWatcher.user_id == user_id
+            with unit_of_work(session) as session:
+                # Check if already watching
+                existing = session.query(CaseWatcher).filter(
+                    and_(
+                        CaseWatcher.case_id == case_id,
+                        CaseWatcher.user_id == user_id
+                    )
+                ).first()
+
+                if existing:
+                    logger.info(f"User {user_id} already watching case {case_id}")
+                    return existing
+
+                watcher = CaseWatcher(
+                    case_id=case_id,
+                    user_id=user_id,
+                    notification_preferences=notification_preferences or {}
                 )
-            ).first()
-            
-            if existing:
-                logger.info(f"User {user_id} already watching case {case_id}")
-                return existing
-            
-            watcher = CaseWatcher(
-                case_id=case_id,
-                user_id=user_id,
-                notification_preferences=notification_preferences or {}
-            )
-            
-            session.add(watcher)
-            session.commit()
-            
-            logger.info(f"Added watcher {user_id} to case {case_id}")
-            return watcher
-        
+
+                session.add(watcher)
+
+                logger.info(f"Added watcher {user_id} to case {case_id}")
+                return watcher
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error adding watcher: {e}")
             return None
-        finally:
-            if should_close_session:
-                session.close()
-    
+
     def remove_watcher(
         self,
         case_id: str,
@@ -330,44 +279,36 @@ class CaseCollaborationService:
     ) -> bool:
         """
         Remove a watcher from a case.
-        
+
         Args:
             case_id: Case ID
             user_id: User ID to remove
             session: Database session (optional)
-        
+
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            watcher = session.query(CaseWatcher).filter(
-                and_(
-                    CaseWatcher.case_id == case_id,
-                    CaseWatcher.user_id == user_id
-                )
-            ).first()
-            
-            if not watcher:
-                return False
-            
-            session.delete(watcher)
-            session.commit()
-            
-            logger.info(f"Removed watcher {user_id} from case {case_id}")
-            return True
-        
+            with unit_of_work(session) as session:
+                watcher = session.query(CaseWatcher).filter(
+                    and_(
+                        CaseWatcher.case_id == case_id,
+                        CaseWatcher.user_id == user_id
+                    )
+                ).first()
+
+                if not watcher:
+                    return False
+
+                session.delete(watcher)
+
+                logger.info(f"Removed watcher {user_id} from case {case_id}")
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error removing watcher: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
-    
+
     def get_case_watchers(
         self,
         case_id: str,
@@ -375,27 +316,19 @@ class CaseCollaborationService:
     ) -> List[CaseWatcher]:
         """
         Get all watchers for a case.
-        
+
         Args:
             case_id: Case ID
             session: Database session (optional)
-        
+
         Returns:
             List of CaseWatcher objects
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             return session.query(CaseWatcher).filter(
                 CaseWatcher.case_id == case_id
             ).all()
-        
-        finally:
-            if should_close_session:
-                session.close()
-    
+
     def get_user_watched_cases(
         self,
         user_id: str,
@@ -403,26 +336,17 @@ class CaseCollaborationService:
     ) -> List[str]:
         """
         Get all cases a user is watching.
-        
+
         Args:
             user_id: User ID
             session: Database session (optional)
-        
+
         Returns:
             List of case IDs
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             watchers = session.query(CaseWatcher).filter(
                 CaseWatcher.user_id == user_id
             ).all()
-            
-            return [watcher.case_id for watcher in watchers]
-        
-        finally:
-            if should_close_session:
-                session.close()
 
+            return [watcher.case_id for watcher in watchers]

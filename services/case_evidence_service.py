@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, BinaryIO
 from sqlalchemy.orm import Session
 
 from database.models import CaseEvidence
-from database.connection import get_db_session
+from services.unit_of_work import unit_of_work
 
 logger = logging.getLogger(__name__)
 
@@ -122,61 +122,53 @@ class CaseEvidenceService:
         Returns:
             Created CaseEvidence or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            # Calculate file hashes if file exists
-            file_hash_md5 = None
-            file_hash_sha256 = None
-            file_size = None
-            
-            if file_path:
-                full_path = self.storage_path / file_path
-                if full_path.exists():
-                    hashes = self.calculate_file_hashes(full_path)
-                    file_hash_md5 = hashes['md5']
-                    file_hash_sha256 = hashes['sha256']
-                    file_size = full_path.stat().st_size
-            
-            # Initialize chain of custody
-            chain_of_custody = [{
-                'timestamp': datetime.utcnow().isoformat(),
-                'action': 'collected',
-                'user': collected_by,
-                'notes': 'Evidence collected and added to case'
-            }]
-            
-            evidence = CaseEvidence(
-                case_id=case_id,
-                evidence_type=evidence_type,
-                name=name,
-                description=description,
-                file_path=file_path,
-                file_size=file_size,
-                file_hash_md5=file_hash_md5,
-                file_hash_sha256=file_hash_sha256,
-                source=source,
-                collected_by=collected_by,
-                collected_at=datetime.utcnow(),
-                chain_of_custody=chain_of_custody,
-                tags=tags or []
-            )
-            
-            session.add(evidence)
-            session.commit()
-            
-            logger.info(f"Added evidence {evidence.evidence_id} to case {case_id}")
-            return evidence
-        
+            with unit_of_work(session) as session:
+                # Calculate file hashes if file exists
+                file_hash_md5 = None
+                file_hash_sha256 = None
+                file_size = None
+
+                if file_path:
+                    full_path = self.storage_path / file_path
+                    if full_path.exists():
+                        hashes = self.calculate_file_hashes(full_path)
+                        file_hash_md5 = hashes['md5']
+                        file_hash_sha256 = hashes['sha256']
+                        file_size = full_path.stat().st_size
+
+                # Initialize chain of custody
+                chain_of_custody = [{
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'action': 'collected',
+                    'user': collected_by,
+                    'notes': 'Evidence collected and added to case'
+                }]
+
+                evidence = CaseEvidence(
+                    case_id=case_id,
+                    evidence_type=evidence_type,
+                    name=name,
+                    description=description,
+                    file_path=file_path,
+                    file_size=file_size,
+                    file_hash_md5=file_hash_md5,
+                    file_hash_sha256=file_hash_sha256,
+                    source=source,
+                    collected_by=collected_by,
+                    collected_at=datetime.utcnow(),
+                    chain_of_custody=chain_of_custody,
+                    tags=tags or []
+                )
+
+                session.add(evidence)
+
+                logger.info(f"Added evidence {evidence.evidence_id} to case {case_id}")
+                return evidence
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error adding evidence: {e}")
             return None
-        finally:
-            if should_close_session:
-                session.close()
     
     def add_chain_of_custody_entry(
         self,
@@ -199,45 +191,37 @@ class CaseEvidenceService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            evidence = session.query(CaseEvidence).filter(
-                CaseEvidence.evidence_id == evidence_id
-            ).first()
-            
-            if not evidence:
-                logger.error(f"Evidence {evidence_id} not found")
-                return False
-            
-            # Add new entry to chain of custody
-            entry = {
-                'timestamp': datetime.utcnow().isoformat(),
-                'action': action,
-                'user': user,
-                'notes': notes or ''
-            }
-            
-            chain = evidence.chain_of_custody or []
-            chain.append(entry)
-            evidence.chain_of_custody = chain
-            
-            # Mark as updated to trigger ORM update
-            session.merge(evidence)
-            session.commit()
-            
-            logger.info(f"Added chain of custody entry for evidence {evidence_id}")
-            return True
-        
+            with unit_of_work(session) as session:
+                evidence = session.query(CaseEvidence).filter(
+                    CaseEvidence.evidence_id == evidence_id
+                ).first()
+
+                if not evidence:
+                    logger.error(f"Evidence {evidence_id} not found")
+                    return False
+
+                # Add new entry to chain of custody
+                entry = {
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'action': action,
+                    'user': user,
+                    'notes': notes or ''
+                }
+
+                chain = evidence.chain_of_custody or []
+                chain.append(entry)
+                evidence.chain_of_custody = chain
+
+                # Mark as updated to trigger ORM update
+                session.merge(evidence)
+
+                logger.info(f"Added chain of custody entry for evidence {evidence_id}")
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error adding chain of custody entry: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def get_case_evidence(
         self,
@@ -256,23 +240,15 @@ class CaseEvidenceService:
         Returns:
             List of CaseEvidence objects
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             query = session.query(CaseEvidence).filter(
                 CaseEvidence.case_id == case_id
             )
-            
+
             if evidence_type:
                 query = query.filter(CaseEvidence.evidence_type == evidence_type)
-            
+
             return query.order_by(CaseEvidence.collected_at.desc()).all()
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def update_evidence_analysis(
         self,
@@ -291,30 +267,22 @@ class CaseEvidenceService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            evidence = session.query(CaseEvidence).filter(
-                CaseEvidence.evidence_id == evidence_id
-            ).first()
-            
-            if not evidence:
-                return False
-            
-            evidence.analysis_results = analysis_results
-            session.commit()
-            
-            return True
-        
+            with unit_of_work(session) as session:
+                evidence = session.query(CaseEvidence).filter(
+                    CaseEvidence.evidence_id == evidence_id
+                ).first()
+
+                if not evidence:
+                    return False
+
+                evidence.analysis_results = analysis_results
+
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error updating evidence analysis: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def verify_evidence_integrity(
         self,
@@ -331,41 +299,33 @@ class CaseEvidenceService:
         Returns:
             True if integrity verified
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             evidence = session.query(CaseEvidence).filter(
                 CaseEvidence.evidence_id == evidence_id
             ).first()
-            
+
             if not evidence or not evidence.file_path:
                 return False
-            
+
             full_path = self.storage_path / evidence.file_path
             if not full_path.exists():
                 logger.error(f"Evidence file not found: {full_path}")
                 return False
-            
+
             # Calculate current hashes
             current_hashes = self.calculate_file_hashes(full_path)
-            
+
             # Verify against stored hashes
             if evidence.file_hash_sha256:
                 if current_hashes['sha256'] != evidence.file_hash_sha256:
                     logger.error(f"SHA256 hash mismatch for evidence {evidence_id}")
                     return False
-            
+
             if evidence.file_hash_md5:
                 if current_hashes['md5'] != evidence.file_hash_md5:
                     logger.error(f"MD5 hash mismatch for evidence {evidence_id}")
                     return False
-            
+
             logger.info(f"Evidence {evidence_id} integrity verified")
             return True
-        
-        finally:
-            if should_close_session:
-                session.close()
 

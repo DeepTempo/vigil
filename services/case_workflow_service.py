@@ -14,7 +14,7 @@ from sqlalchemy import and_
 from database.models import (
     Case, CaseTemplate, CaseTask, SLAPolicy, CaseSLA
 )
-from database.connection import get_db_session
+from services.unit_of_work import unit_of_work
 
 logger = logging.getLogger(__name__)
 
@@ -59,44 +59,36 @@ class CaseWorkflowService:
         Returns:
             Created CaseTemplate or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            # Generate template ID
-            timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-            template_id = f"template-{template_type}-{timestamp}"
-            
-            template = CaseTemplate(
-                template_id=template_id,
-                name=name,
-                description=description,
-                template_type=template_type,
-                default_priority=default_priority,
-                default_status=default_status,
-                default_sla_policy_id=default_sla_policy_id,
-                task_templates=task_templates or [],
-                playbook_steps=playbook_steps or [],
-                applicable_mitre_techniques=applicable_mitre_techniques or [],
-                tags=tags or [],
-                is_active=True,
-                usage_count=0
-            )
-            
-            session.add(template)
-            session.commit()
-            
-            logger.info(f"Created case template: {template_id}")
-            return template
-        
+            with unit_of_work(session) as session:
+                # Generate template ID
+                timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+                template_id = f"template-{template_type}-{timestamp}"
+
+                template = CaseTemplate(
+                    template_id=template_id,
+                    name=name,
+                    description=description,
+                    template_type=template_type,
+                    default_priority=default_priority,
+                    default_status=default_status,
+                    default_sla_policy_id=default_sla_policy_id,
+                    task_templates=task_templates or [],
+                    playbook_steps=playbook_steps or [],
+                    applicable_mitre_techniques=applicable_mitre_techniques or [],
+                    tags=tags or [],
+                    is_active=True,
+                    usage_count=0
+                )
+
+                session.add(template)
+
+                logger.info(f"Created case template: {template_id}")
+                return template
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error creating template: {e}")
             return None
-        finally:
-            if should_close_session:
-                session.close()
     
     def get_template(
         self,
@@ -113,17 +105,10 @@ class CaseWorkflowService:
         Returns:
             CaseTemplate or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             return session.query(CaseTemplate).filter(
                 CaseTemplate.template_id == template_id
             ).first()
-        finally:
-            if should_close_session:
-                session.close()
     
     def list_templates(
         self,
@@ -142,23 +127,16 @@ class CaseWorkflowService:
         Returns:
             List of CaseTemplate objects
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             query = session.query(CaseTemplate)
-            
+
             if template_type:
                 query = query.filter(CaseTemplate.template_type == template_type)
-            
+
             if active_only:
                 query = query.filter(CaseTemplate.is_active == True)
-            
+
             return query.order_by(CaseTemplate.usage_count.desc()).all()
-        finally:
-            if should_close_session:
-                session.close()
     
     def create_case_from_template(
         self,
@@ -185,98 +163,89 @@ class CaseWorkflowService:
         Returns:
             Created Case or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            # Get template
-            template = session.query(CaseTemplate).filter(
-                CaseTemplate.template_id == template_id
-            ).first()
-            
-            if not template or not template.is_active:
-                logger.error(f"Template {template_id} not found or inactive")
-                return None
-            
-            # Generate case ID
-            timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-            case_id = f"case-{timestamp}"
-            
-            # Create case
-            case = Case(
-                case_id=case_id,
-                title=title,
-                description=description or template.description or '',
-                priority=override_priority or template.default_priority,
-                status=template.default_status,
-                assignee=assignee,
-                tags=template.tags.copy() if template.tags else [],
-                mitre_techniques=(
-                    template.applicable_mitre_techniques.copy()
-                    if template.applicable_mitre_techniques else []
-                ),
-                notes=[],
-                timeline=[{
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'event': f'Case created from template: {template.name}'
-                }],
-                activities=[],
-                resolution_steps=[]
-            )
-            
-            session.add(case)
-            session.flush()  # Flush to get case_id
-            
-            # Create tasks from template
-            if template.task_templates:
-                for task_tmpl in template.task_templates:
-                    task = CaseTask(
-                        case_id=case.case_id,
-                        title=task_tmpl.get('title', ''),
-                        description=task_tmpl.get('description', ''),
-                        priority=task_tmpl.get('priority', 'medium'),
-                        status='pending',
-                        task_order=task_tmpl.get('order', 0),
-                        checklist_items=task_tmpl.get('checklist_items', [])
-                    )
-                    session.add(task)
-            
-            # Assign SLA if template has one
-            if template.default_sla_policy_id:
-                from services.case_sla_service import CaseSLAService
-                sla_service = CaseSLAService()
-                sla_service.assign_sla_to_case(
-                    case.case_id,
-                    template.default_sla_policy_id,
-                    session
+            with unit_of_work(session) as session:
+                # Get template
+                template = session.query(CaseTemplate).filter(
+                    CaseTemplate.template_id == template_id
+                ).first()
+
+                if not template or not template.is_active:
+                    logger.error(f"Template {template_id} not found or inactive")
+                    return None
+
+                # Generate case ID
+                timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+                case_id = f"case-{timestamp}"
+
+                # Create case
+                case = Case(
+                    case_id=case_id,
+                    title=title,
+                    description=description or template.description or '',
+                    priority=override_priority or template.default_priority,
+                    status=template.default_status,
+                    assignee=assignee,
+                    tags=template.tags.copy() if template.tags else [],
+                    mitre_techniques=(
+                        template.applicable_mitre_techniques.copy()
+                        if template.applicable_mitre_techniques else []
+                    ),
+                    notes=[],
+                    timeline=[{
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'event': f'Case created from template: {template.name}'
+                    }],
+                    activities=[],
+                    resolution_steps=[]
                 )
-            
-            # Increment template usage
-            template.usage_count += 1
-            
-            # Attach findings if provided
-            if finding_ids:
-                from database.models import Finding
-                for finding_id in finding_ids:
-                    finding = session.query(Finding).filter(
-                        Finding.finding_id == finding_id
-                    ).first()
-                    if finding:
-                        case.findings.append(finding)
-            
-            session.commit()
-            
-            logger.info(f"Created case {case_id} from template {template_id}")
-            return case
-        
+
+                session.add(case)
+                session.flush()  # Flush to get case_id
+
+                # Create tasks from template
+                if template.task_templates:
+                    for task_tmpl in template.task_templates:
+                        task = CaseTask(
+                            case_id=case.case_id,
+                            title=task_tmpl.get('title', ''),
+                            description=task_tmpl.get('description', ''),
+                            priority=task_tmpl.get('priority', 'medium'),
+                            status='pending',
+                            task_order=task_tmpl.get('order', 0),
+                            checklist_items=task_tmpl.get('checklist_items', [])
+                        )
+                        session.add(task)
+
+                # Assign SLA if template has one
+                if template.default_sla_policy_id:
+                    from services.case_sla_service import CaseSLAService
+                    sla_service = CaseSLAService()
+                    sla_service.assign_sla_to_case(
+                        case.case_id,
+                        template.default_sla_policy_id,
+                        session
+                    )
+
+                # Increment template usage
+                template.usage_count += 1
+
+                # Attach findings if provided
+                if finding_ids:
+                    from database.models import Finding
+                    for finding_id in finding_ids:
+                        finding = session.query(Finding).filter(
+                            Finding.finding_id == finding_id
+                        ).first()
+                        if finding:
+                            case.findings.append(finding)
+
+                logger.info(f"Created case {case_id} from template {template_id}")
+                return case
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error creating case from template: {e}")
             return None
-        finally:
-            if should_close_session:
-                session.close()
     
     def apply_playbook(
         self,
@@ -295,37 +264,29 @@ class CaseWorkflowService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            case = session.query(Case).filter(Case.case_id == case_id).first()
-            if not case:
-                logger.error(f"Case {case_id} not found")
-                return False
-            
-            # Add playbook steps to timeline
-            for step in playbook_steps:
-                case.timeline.append({
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'event': f"Playbook step: {step.get('name', 'Unknown')}"
-                })
-            
-            # Mark timeline as updated to trigger ORM update
-            session.merge(case)
-            session.commit()
-            
-            logger.info(f"Applied playbook to case {case_id}")
-            return True
-        
+            with unit_of_work(session) as session:
+                case = session.query(Case).filter(Case.case_id == case_id).first()
+                if not case:
+                    logger.error(f"Case {case_id} not found")
+                    return False
+
+                # Add playbook steps to timeline
+                for step in playbook_steps:
+                    case.timeline.append({
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'event': f"Playbook step: {step.get('name', 'Unknown')}"
+                    })
+
+                # Mark timeline as updated to trigger ORM update
+                session.merge(case)
+
+                logger.info(f"Applied playbook to case {case_id}")
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error applying playbook to case {case_id}: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def auto_assign_case(
         self,
@@ -346,78 +307,70 @@ class CaseWorkflowService:
         Returns:
             Assigned analyst ID or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            case = session.query(Case).filter(Case.case_id == case_id).first()
-            if not case:
-                logger.error(f"Case {case_id} not found")
+            with unit_of_work(session) as session:
+                case = session.query(Case).filter(Case.case_id == case_id).first()
+                if not case:
+                    logger.error(f"Case {case_id} not found")
+                    return None
+
+                if not available_analysts:
+                    logger.warning("No analysts available for assignment")
+                    return None
+
+                assigned_analyst = None
+
+                if assignment_strategy == 'round_robin':
+                    # Simple round-robin: assign to analyst with fewest active cases
+                    workloads = {}
+                    for analyst in available_analysts:
+                        active_cases = session.query(Case).filter(
+                            and_(
+                                Case.assignee == analyst,
+                                Case.status.in_(['open', 'in-progress', 'investigating'])
+                            )
+                        ).count()
+                        workloads[analyst] = active_cases
+
+                    assigned_analyst = min(workloads, key=workloads.get)
+
+                elif assignment_strategy == 'least_workload':
+                    # Assign to analyst with least workload (similar to round_robin)
+                    workloads = {}
+                    for analyst in available_analysts:
+                        active_cases = session.query(Case).filter(
+                            and_(
+                                Case.assignee == analyst,
+                                Case.status.in_(['open', 'in-progress', 'investigating'])
+                            )
+                        ).count()
+                        workloads[analyst] = active_cases
+
+                    assigned_analyst = min(workloads, key=workloads.get)
+
+                elif assignment_strategy == 'random':
+                    import random
+                    assigned_analyst = random.choice(available_analysts)
+
+                else:
+                    # Default to first analyst
+                    assigned_analyst = available_analysts[0]
+
+                if assigned_analyst:
+                    case.assignee = assigned_analyst
+                    case.timeline.append({
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'event': f'Auto-assigned to {assigned_analyst}'
+                    })
+
+                    logger.info(f"Auto-assigned case {case_id} to {assigned_analyst}")
+                    return assigned_analyst
+
                 return None
-            
-            if not available_analysts:
-                logger.warning("No analysts available for assignment")
-                return None
-            
-            assigned_analyst = None
-            
-            if assignment_strategy == 'round_robin':
-                # Simple round-robin: assign to analyst with fewest active cases
-                workloads = {}
-                for analyst in available_analysts:
-                    active_cases = session.query(Case).filter(
-                        and_(
-                            Case.assignee == analyst,
-                            Case.status.in_(['open', 'in-progress', 'investigating'])
-                        )
-                    ).count()
-                    workloads[analyst] = active_cases
-                
-                assigned_analyst = min(workloads, key=workloads.get)
-            
-            elif assignment_strategy == 'least_workload':
-                # Assign to analyst with least workload (similar to round_robin)
-                workloads = {}
-                for analyst in available_analysts:
-                    active_cases = session.query(Case).filter(
-                        and_(
-                            Case.assignee == analyst,
-                            Case.status.in_(['open', 'in-progress', 'investigating'])
-                        )
-                    ).count()
-                    workloads[analyst] = active_cases
-                
-                assigned_analyst = min(workloads, key=workloads.get)
-            
-            elif assignment_strategy == 'random':
-                import random
-                assigned_analyst = random.choice(available_analysts)
-            
-            else:
-                # Default to first analyst
-                assigned_analyst = available_analysts[0]
-            
-            if assigned_analyst:
-                case.assignee = assigned_analyst
-                case.timeline.append({
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'event': f'Auto-assigned to {assigned_analyst}'
-                })
-                session.commit()
-                
-                logger.info(f"Auto-assigned case {case_id} to {assigned_analyst}")
-                return assigned_analyst
-            
-            return None
-        
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error auto-assigning case {case_id}: {e}")
             return None
-        finally:
-            if should_close_session:
-                session.close()
     
     def escalate_case(
         self,
@@ -442,48 +395,39 @@ class CaseWorkflowService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            from database.models import CaseEscalation
-            
-            case = session.query(Case).filter(Case.case_id == case_id).first()
-            if not case:
-                logger.error(f"Case {case_id} not found")
-                return False
-            
-            # Create escalation record
-            escalation = CaseEscalation(
-                case_id=case_id,
-                escalated_from=escalated_from,
-                escalated_to=escalated_to,
-                reason=reason,
-                urgency_level=urgency_level,
-                status='pending'
-            )
-            session.add(escalation)
-            
-            # Update case
-            case.assignee = escalated_to
-            case.timeline.append({
-                'timestamp': datetime.utcnow().isoformat(),
-                'event': f'Escalated to {escalated_to}: {reason}'
-            })
-            
-            session.commit()
-            
-            logger.info(f"Escalated case {case_id} to {escalated_to}")
-            return True
-        
+            with unit_of_work(session) as session:
+                from database.models import CaseEscalation
+
+                case = session.query(Case).filter(Case.case_id == case_id).first()
+                if not case:
+                    logger.error(f"Case {case_id} not found")
+                    return False
+
+                # Create escalation record
+                escalation = CaseEscalation(
+                    case_id=case_id,
+                    escalated_from=escalated_from,
+                    escalated_to=escalated_to,
+                    reason=reason,
+                    urgency_level=urgency_level,
+                    status='pending'
+                )
+                session.add(escalation)
+
+                # Update case
+                case.assignee = escalated_to
+                case.timeline.append({
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'event': f'Escalated to {escalated_to}: {reason}'
+                })
+
+                logger.info(f"Escalated case {case_id} to {escalated_to}")
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error escalating case {case_id}: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def update_template(
         self,
@@ -502,42 +446,33 @@ class CaseWorkflowService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            template = session.query(CaseTemplate).filter(
-                CaseTemplate.template_id == template_id
-            ).first()
-            
-            if not template:
-                logger.error(f"Template {template_id} not found")
-                return False
-            
-            # Update allowed fields
-            allowed_fields = [
-                'name', 'description', 'default_priority', 'default_status',
-                'default_sla_policy_id', 'task_templates', 'playbook_steps',
-                'applicable_mitre_techniques', 'tags', 'is_active'
-            ]
-            
-            for field, value in updates.items():
-                if field in allowed_fields and hasattr(template, field):
-                    setattr(template, field, value)
-            
-            session.commit()
-            
-            logger.info(f"Updated template {template_id}")
-            return True
-        
+            with unit_of_work(session) as session:
+                template = session.query(CaseTemplate).filter(
+                    CaseTemplate.template_id == template_id
+                ).first()
+
+                if not template:
+                    logger.error(f"Template {template_id} not found")
+                    return False
+
+                # Update allowed fields
+                allowed_fields = [
+                    'name', 'description', 'default_priority', 'default_status',
+                    'default_sla_policy_id', 'task_templates', 'playbook_steps',
+                    'applicable_mitre_techniques', 'tags', 'is_active'
+                ]
+
+                for field, value in updates.items():
+                    if field in allowed_fields and hasattr(template, field):
+                        setattr(template, field, value)
+
+                logger.info(f"Updated template {template_id}")
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error updating template {template_id}: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def delete_template(
         self,
@@ -554,31 +489,23 @@ class CaseWorkflowService:
         Returns:
             True if successful
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            template = session.query(CaseTemplate).filter(
-                CaseTemplate.template_id == template_id
-            ).first()
-            
-            if not template:
-                logger.error(f"Template {template_id} not found")
-                return False
-            
-            # Soft delete by deactivating
-            template.is_active = False
-            session.commit()
-            
-            logger.info(f"Deactivated template {template_id}")
-            return True
-        
+            with unit_of_work(session) as session:
+                template = session.query(CaseTemplate).filter(
+                    CaseTemplate.template_id == template_id
+                ).first()
+
+                if not template:
+                    logger.error(f"Template {template_id} not found")
+                    return False
+
+                # Soft delete by deactivating
+                template.is_active = False
+
+                logger.info(f"Deactivated template {template_id}")
+                return True
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error deleting template {template_id}: {e}")
             return False
-        finally:
-            if should_close_session:
-                session.close()
 
