@@ -1,7 +1,7 @@
 """Tests for Cloudflare/Cloudforce One integration.
 
 Covers:
-- tools/cloudflare.py — the MCP server fails closed (no-op + clear error)
+- core/integrations/cloudflare/tool.py — the MCP server fails closed (no-op + clear error)
   when the integration is disabled, and the REST helpers shape arguments
   correctly when enabled (Cloudflare API itself is mocked).
 - services/threat_feed_service.py — STIX 2.1 indicator parsing.
@@ -29,14 +29,15 @@ for _p in (str(_REPO_ROOT), str(_BACKEND_DIR)):
 
 
 # ---------------------------------------------------------------------------
-# tools/cloudflare.py — REST helpers + disabled-integration behavior
+# core/integrations/cloudflare/tool.py — REST helpers + disabled-integration behavior
 # ---------------------------------------------------------------------------
 
 
 def _import_cloudflare_tool():
-    """Load tools/cloudflare.py without importing tools/__init__ side effects."""
+    """Load core/integrations/cloudflare/tool.py by path (no package side effects)."""
     spec = importlib.util.spec_from_file_location(
-        "cloudflare_tool_under_test", _REPO_ROOT / "tools" / "cloudflare.py"
+        "cloudflare_tool_under_test",
+        _REPO_ROOT / "core" / "integrations" / "cloudflare" / "tool.py",
     )
     mod = importlib.util.module_from_spec(spec)
     sys.modules["cloudflare_tool_under_test"] = mod

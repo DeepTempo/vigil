@@ -43,7 +43,7 @@ class CrowdStrikeAdapter:
         if not self.is_configured():
             return None
         try:
-            from services.crowdstrike_service import CrowdStrikeService
+            from core.integrations.crowdstrike.client import CrowdStrikeService
 
             cfg = get_integration_config("crowdstrike")
             self._service = CrowdStrikeService(

@@ -39,13 +39,13 @@ class TestElasticUpstreamSync:
 
     @pytest.mark.asyncio
     async def test_sync_closed(self):
-        with patch("services.elastic_ingestion.get_integration_config") as cfg:
+        with patch("core.integrations.elastic.ingestion.get_integration_config") as cfg:
             cfg.return_value = {
                 "elasticsearch_url": "https://es.test:9200",
                 "kibana_url": "https://kibana.test:5601",
                 "api_key": "k",
             }
-            from services.elastic_ingestion import ElasticIngestion
+            from core.integrations.elastic.ingestion import ElasticIngestion
 
             svc = ElasticIngestion()
             svc.ingestion_service = MagicMock()
@@ -61,13 +61,13 @@ class TestElasticUpstreamSync:
 
     @pytest.mark.asyncio
     async def test_sync_maps_resolved_to_closed(self):
-        with patch("services.elastic_ingestion.get_integration_config") as cfg:
+        with patch("core.integrations.elastic.ingestion.get_integration_config") as cfg:
             cfg.return_value = {
                 "elasticsearch_url": "https://es.test:9200",
                 "kibana_url": "https://kibana.test:5601",
                 "api_key": "k",
             }
-            from services.elastic_ingestion import ElasticIngestion
+            from core.integrations.elastic.ingestion import ElasticIngestion
 
             svc = ElasticIngestion()
             svc.ingestion_service = MagicMock()
@@ -82,13 +82,13 @@ class TestElasticUpstreamSync:
 
     @pytest.mark.asyncio
     async def test_sync_maps_new_to_open(self):
-        with patch("services.elastic_ingestion.get_integration_config") as cfg:
+        with patch("core.integrations.elastic.ingestion.get_integration_config") as cfg:
             cfg.return_value = {
                 "elasticsearch_url": "https://es.test:9200",
                 "kibana_url": "https://kibana.test:5601",
                 "api_key": "k",
             }
-            from services.elastic_ingestion import ElasticIngestion
+            from core.integrations.elastic.ingestion import ElasticIngestion
 
             svc = ElasticIngestion()
             svc.ingestion_service = MagicMock()
@@ -103,9 +103,9 @@ class TestElasticUpstreamSync:
 
     @pytest.mark.asyncio
     async def test_returns_false_when_service_unavailable(self):
-        with patch("services.elastic_ingestion.get_integration_config") as cfg:
+        with patch("core.integrations.elastic.ingestion.get_integration_config") as cfg:
             cfg.return_value = {}
-            from services.elastic_ingestion import ElasticIngestion
+            from core.integrations.elastic.ingestion import ElasticIngestion
 
             svc = ElasticIngestion()
             svc.ingestion_service = MagicMock()

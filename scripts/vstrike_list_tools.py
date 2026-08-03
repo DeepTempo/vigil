@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from services.vstrike_service import VStrikeService  # noqa: E402
+from core.integrations.vstrike.client import VStrikeService  # noqa: E402
 
 
 SERVICE_FILE = REPO_ROOT / "services" / "vstrike_service.py"

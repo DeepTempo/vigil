@@ -8,7 +8,7 @@ from daemon.federation.contract import FederationAdapter, register_adapter
 
 def _factory() -> FederationAdapter:
     def make_service():
-        from services.elastic_ingestion import ElasticIngestion
+        from core.integrations.elastic.ingestion import ElasticIngestion
 
         return ElasticIngestion()
 

@@ -34,7 +34,16 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, Mapping
 
+from core.integrations.aws_security_hub.descriptor import AWS_SECURITY_HUB
+from core.integrations.azure_sentinel.descriptor import AZURE_SENTINEL
+from core.integrations.cloudflare.descriptor import CLOUDFLARE
+from core.integrations.crowdstrike.descriptor import CROWDSTRIKE
+from core.integrations.elastic.descriptor import ELASTIC
+from core.integrations.jira.descriptor import JIRA
+from core.integrations.microsoft_defender.descriptor import MICROSOFT_DEFENDER
+from core.integrations.slack.descriptor import SLACK
 from core.integrations.splunk.descriptor import SPLUNK
+from core.integrations.vstrike.descriptor import VSTRIKE
 
 # Default form-field → env-var-suffix translations. Mirrors
 # ``services.integration_bridge_service.IntegrationBridgeService.FIELD_TO_ENV_MAP``
@@ -99,10 +108,10 @@ _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "gcp-threat-intel": ("api_key",),
     "url-analysis": ("api_key",),
     "ip-geolocation": ("api_key",),
-    "crowdstrike": ("client_secret",),
+    CROWDSTRIKE.id: CROWDSTRIKE.secret_fields,
     "sentinelone": ("api_token",),
     "carbon-black": ("api_key",),
-    "microsoft-defender": ("client_secret",),
+    MICROSOFT_DEFENDER.id: MICROSOFT_DEFENDER.secret_fields,
     "cortex-xdr": ("api_key",),
     "trend-micro-vision-one": ("api_token",),
     "sophos-intercept-x": ("client_secret",),
@@ -118,8 +127,8 @@ _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "symantec-edr": ("client_secret",),
     SPLUNK.id: SPLUNK.secret_fields,
     "cribl-stream": ("password",),
-    "elastic-siem": ("api_key", "password"),
-    "azure-sentinel": ("client_secret",),
+    ELASTIC.id: ELASTIC.secret_fields,
+    AZURE_SENTINEL.id: AZURE_SENTINEL.secret_fields,
     "qradar": ("sec_token",),
     "arcsight": ("password",),
     "logrhythm": ("api_token",),
@@ -127,7 +136,7 @@ _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "securonix": ("password",),
     "sumo-logic": ("access_key",),
     "graylog": ("api_token",),
-    "aws-security-hub": ("secret_access_key",),
+    AWS_SECURITY_HUB.id: AWS_SECURITY_HUB.secret_fields,
     "aws-guardduty": ("secret_access_key",),
     "gcp-security": ("credentials_json",),
     "azure-defender": ("client_secret",),
@@ -153,17 +162,17 @@ _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "checkpoint": ("password",),
     "zscaler": ("api_key", "password"),
     "sophos": ("api_token",),
-    "cloudflare": ("api_token",),
+    CLOUDFLARE.id: CLOUDFLARE.secret_fields,
     "cloudforce_one": ("api_token",),
     "juniper-srx": ("password",),
-    "jira": ("api_token",),
+    JIRA.id: JIRA.secret_fields,
     "servicenow": ("password",),
     "thehive": ("api_key",),
     "cortex-xsoar": ("api_key",),
     "swimlane": ("password",),
     "ibm-resilient": ("api_key_secret",),
     "opsgenie": ("api_key",),
-    "slack": ("bot_token",),
+    SLACK.id: SLACK.secret_fields,
     "pagerduty": ("api_token", "integration_key"),
     "microsoft-teams": ("webhook_url",),
     "email": ("smtp_password",),
@@ -179,7 +188,7 @@ _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "autopsy": ("password",),
     "osquery": ("api_token",),
     "cuckoo": ("api_token",),
-    "vstrike": ("username", "password"),
+    VSTRIKE.id: VSTRIKE.secret_fields,
 }
 
 

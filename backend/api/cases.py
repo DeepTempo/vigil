@@ -265,7 +265,7 @@ def _get_ingestion_service(source: str):
     """Return the ingestion service for a given data source, or None."""
     if source == "elastic":
         try:
-            from services.elastic_ingestion import ElasticIngestion
+            from core.integrations.elastic.ingestion import ElasticIngestion
             return ElasticIngestion()
         except Exception:
             return None

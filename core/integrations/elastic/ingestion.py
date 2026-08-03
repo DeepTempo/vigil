@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from services.siem_ingestion_service import SIEMIngestionService
-from services.elastic_service import ElasticService
+from core.integrations.elastic.client import ElasticService
 from core.config import get_integration_config
 
 logger = logging.getLogger(__name__)

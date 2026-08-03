@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from services.vstrike_service import (  # noqa: E402
+from core.integrations.vstrike.client import (  # noqa: E402
     VStrikeService,
     _jwt_cache,
     get_vstrike_service,
@@ -81,7 +81,7 @@ def test_test_connection_success():
     svc = _service()
     _seed_jwt(svc)
     with patch(
-        "services.vstrike_service.requests.get",
+        "core.integrations.vstrike.client.requests.get",
         return_value=_mock_response(200),
     ):
         ok, msg = svc.test_connection()
@@ -93,7 +93,7 @@ def test_test_connection_http_error():
     svc = _service()
     _seed_jwt(svc)
     with patch(
-        "services.vstrike_service.requests.get",
+        "core.integrations.vstrike.client.requests.get",
         return_value=_mock_response(503, text="down"),
     ):
         ok, msg = svc.test_connection()
@@ -107,7 +107,7 @@ def test_test_connection_network_error():
     svc = _service()
     _seed_jwt(svc)
     with patch(
-        "services.vstrike_service.requests.get",
+        "core.integrations.vstrike.client.requests.get",
         side_effect=requests.exceptions.ConnectionError("boom"),
     ):
         ok, msg = svc.test_connection()
@@ -120,7 +120,7 @@ def test_get_asset_topology_returns_body_on_200():
     _seed_jwt(svc)
     body = {"asset_id": "srv-01", "segment": "vlan-10"}
     with patch(
-        "services.vstrike_service.requests.get",
+        "core.integrations.vstrike.client.requests.get",
         return_value=_mock_response(200, json_body=body),
     ):
         result = svc.get_asset_topology("srv-01")
@@ -133,7 +133,7 @@ def test_get_asset_topology_attaches_jwt_bearer():
     _seed_jwt(svc, "jwt-from-cache")
     body = {"asset_id": "srv-01"}
     with patch(
-        "services.vstrike_service.requests.get",
+        "core.integrations.vstrike.client.requests.get",
         return_value=_mock_response(200, json_body=body),
     ) as mock_get:
         svc.get_asset_topology("srv-01")
@@ -145,7 +145,7 @@ def test_get_asset_topology_returns_none_on_error():
     svc = _service()
     _seed_jwt(svc)
     with patch(
-        "services.vstrike_service.requests.get",
+        "core.integrations.vstrike.client.requests.get",
         return_value=_mock_response(404),
     ):
         assert svc.get_asset_topology("srv-missing") is None
@@ -163,10 +163,10 @@ def test_legacy_rest_retries_on_401_after_invalidating_jwt():
     success = _mock_response(200, json_body=body)
 
     with patch(
-        "services.vstrike_service.requests.get",
+        "core.integrations.vstrike.client.requests.get",
         side_effect=[unauthorized, success],
     ) as mock_get, patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=refreshed_login,
     ) as mock_post:
         result = svc.get_asset_topology("srv-01")
@@ -185,7 +185,7 @@ def test_list_adjacent_returns_list():
     _seed_jwt(svc)
     body = {"adjacent": [{"asset_id": "dc-01", "hop_distance": 1}]}
     with patch(
-        "services.vstrike_service.requests.get",
+        "core.integrations.vstrike.client.requests.get",
         return_value=_mock_response(200, json_body=body),
     ):
         adjacent = svc.list_adjacent("srv-01")
@@ -197,7 +197,7 @@ def test_find_findings_by_segment_uses_query_params():
     _seed_jwt(svc)
     body = {"findings": [{"finding_id": "f1"}]}
     with patch(
-        "services.vstrike_service.requests.get",
+        "core.integrations.vstrike.client.requests.get",
         return_value=_mock_response(200, json_body=body),
     ) as mock_get:
         result = svc.find_findings_by_segment("dmz", limit=50)
@@ -331,7 +331,7 @@ def test_get_vstrike_service_ui_credentials_from_integration_config(
 def test_mcp_login_caches_jwt_across_calls():
     svc = _ui_service()
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body={"token": "jwt-1"}),
     ) as mock_post:
         token1 = svc._ensure_jwt()
@@ -345,7 +345,7 @@ def test_mcp_login_caches_jwt_across_calls():
 def test_mcp_login_extracts_alternate_token_keys():
     svc = _ui_service()
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body={"jwt": "from-jwt-key"}),
     ):
         assert svc._ensure_jwt() == "from-jwt-key"
@@ -354,7 +354,7 @@ def test_mcp_login_extracts_alternate_token_keys():
 def test_mcp_login_raises_on_http_error():
     svc = _ui_service()
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(401, text="bad creds"),
     ):
         with pytest.raises(RuntimeError, match="mcp-login HTTP 401"):
@@ -364,7 +364,7 @@ def test_mcp_login_raises_on_http_error():
 def test_mcp_login_raises_when_response_missing_token():
     svc = _ui_service()
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body={"unexpected": "shape"}),
     ):
         with pytest.raises(RuntimeError, match="missing token"):
@@ -402,7 +402,7 @@ def test_call_mcp_tool_re_logs_in_on_401():
     def consume(*_args, **_kwargs):
         return sequence.pop(0)
 
-    with patch("services.vstrike_service.requests.post", side_effect=consume):
+    with patch("core.integrations.vstrike.client.requests.post", side_effect=consume):
         token = svc.get_ui_login_token()
 
     assert token == "ui-token-xyz"
@@ -419,7 +419,7 @@ def test_call_mcp_tool_propagates_jsonrpc_error():
         json_body={"error": {"code": -32601, "message": "Tool not found"}},
     )
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=error_resp,
     ):
         with pytest.raises(RuntimeError, match="Tool not found"):
@@ -441,7 +441,7 @@ def test_list_networks_unwraps_mcp_content_envelope():
         }
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ):
         networks = svc.list_networks()
@@ -452,7 +452,7 @@ def test_load_network_in_ui_passes_network_id():
     svc = _ui_service()
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body={"result": {"ok": True}}),
     ) as mock_post:
         svc.load_network_in_ui("net-42")
@@ -463,7 +463,7 @@ def test_load_network_in_ui_passes_network_id():
 
 
 def test_killchain_replay_in_ui_passes_full_payload():
-    from services.vstrike_service import VStrikeToolNotImplemented  # noqa: F401
+    from core.integrations.vstrike.client import VStrikeToolNotImplemented  # noqa: F401
 
     svc = _ui_service()
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
@@ -476,7 +476,7 @@ def test_killchain_replay_in_ui_passes_full_payload():
         },
     ]
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(
             200, json_body={"result": {"content": [{"type": "text", "text": "queued"}]}}
         ),
@@ -502,7 +502,7 @@ def test_killchain_replay_in_ui_passes_full_payload():
 )
 def test_killchain_replay_in_ui_raises_tool_not_implemented(error_text):
     """Engineer-side absence of the tool is converted to VStrikeToolNotImplemented."""
-    from services.vstrike_service import VStrikeToolNotImplemented
+    from core.integrations.vstrike.client import VStrikeToolNotImplemented
 
     svc = _ui_service()
     with patch.object(svc, "_call_mcp_tool", side_effect=RuntimeError(error_text)):
@@ -525,7 +525,7 @@ def test_iframe_url_embeds_token():
     svc = _ui_service(base_url="https://vstrike.net")
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(
             200, json_body={"result": {"token": "short-lived-abc"}}
         ),
@@ -553,7 +553,7 @@ def test_node_search_passes_query_and_network_id():
         }
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ) as mock_post:
         result = svc.node_search("router", network_id="net-1", limit=10)
@@ -571,7 +571,7 @@ def test_node_search_returns_none_on_error():
     svc = _ui_service()
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(500, text="boom"),
     ):
         assert svc.node_search("x") is None
@@ -591,7 +591,7 @@ def test_node_drift_get_passes_node_id():
         }
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ) as mock_post:
         result = svc.node_drift_get("node-1", network_id="net-1")
@@ -617,7 +617,7 @@ def test_storyline_list_returns_storylines():
         }
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ):
         result = svc.storyline_list(network_id="net-1")
@@ -643,7 +643,7 @@ def test_storyline_list_unwraps_vstrike_structured_content():
         }
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ):
         result = svc.storyline_list(network_id="net-1")
@@ -664,7 +664,7 @@ def test_storyline_events_get_passes_storyline_id():
         }
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ) as mock_post:
         result = svc.storyline_events_get("s1", network_id="net-1")
@@ -689,7 +689,7 @@ def test_legend_run_list_returns_runs():
         }
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ):
         result = svc.legend_run_list(network_id="net-1")
@@ -714,7 +714,7 @@ def test_legend_run_list_unwraps_vstrike_structured_content():
         }
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ):
         result = svc.legend_run_list(network_id="net-1")
@@ -735,7 +735,7 @@ def test_legend_run_results_get_returns_dict():
         }
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ) as mock_post:
         result = svc.legend_run_results_get("lr1", network_id="net-1")
@@ -755,7 +755,7 @@ def test_ui_camera_node_passes_node_ids():
     svc = _ui_service()
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body={"result": {"ok": True}}),
     ) as mock_post:
         svc.ui_camera_node(["n1", "n2"], network_id="net-1")
@@ -771,7 +771,7 @@ def test_ui_camera_position_passes_position_and_rotation():
     svc = _ui_service()
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body={"result": {"ok": True}}),
     ) as mock_post:
         svc.ui_camera_position(
@@ -792,7 +792,7 @@ def test_ui_storyline_apply_passes_storyline_id():
     svc = _ui_service()
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body={"result": {"ok": True}}),
     ) as mock_post:
         svc.ui_storyline_apply("s1", network_id="net-1")
@@ -806,7 +806,7 @@ def test_ui_storyline_mode_passes_mode():
     svc = _ui_service()
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body={"result": {"ok": True}}),
     ) as mock_post:
         svc.ui_storyline_mode("replay", network_id="net-1")
@@ -820,7 +820,7 @@ def test_ui_storyline_forward_passes_network_id():
     svc = _ui_service()
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body={"result": {"ok": True}}),
     ) as mock_post:
         svc.ui_storyline_forward(network_id="net-1")
@@ -834,7 +834,7 @@ def test_ui_storyline_backward_passes_network_id():
     svc = _ui_service()
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body={"result": {"ok": True}}),
     ) as mock_post:
         svc.ui_storyline_backward(network_id="net-1")
@@ -867,7 +867,7 @@ def test_mcp_login_extracts_jsonwebtoken_field():
     """VStrike's /mcp-login returns the JWT under the `jsonwebtoken` key."""
     svc = _ui_service()
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(
             200, json_body={"jsonwebtoken": "eyJ...real.jwt..."}
         ),
@@ -879,7 +879,7 @@ def test_mcp_login_handles_sse_response():
     """Even /mcp-login may come back as text/event-stream."""
     svc = _ui_service()
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_sse_response({"jsonwebtoken": "sse-jwt"}),
     ):
         assert svc._ensure_jwt() == "sse-jwt"
@@ -902,7 +902,7 @@ def test_call_mcp_tool_parses_sse_with_structured_content():
         "id": 2,
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_sse_response(body),
     ):
         token = svc.get_ui_login_token()
@@ -931,7 +931,7 @@ def test_list_networks_parses_sse_with_structured_content():
         "id": 3,
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_sse_response(body),
     ):
         networks = svc.list_networks()
@@ -953,7 +953,7 @@ def test_call_mcp_tool_raises_on_tool_is_error():
         "id": 1,
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_sse_response(body),
     ):
         with pytest.raises(RuntimeError, match="tool error"):
@@ -981,7 +981,7 @@ def test_network_graph_get_unwraps_structured_content():
         "id": 1,
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ) as mock_post:
         result = svc.network_graph_get(network_id="net-1")
@@ -1003,7 +1003,7 @@ def test_network_graph_get_unwraps_text_envelope():
         "id": 1,
     }
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ):
         result = svc.network_graph_get(network_id="net-1")
@@ -1016,7 +1016,7 @@ def test_network_graph_get_forwards_unknown_kwargs():
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     body = {"result": {"label": "x", "nodes": [], "edges": []}}
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ) as mock_post:
         svc.network_graph_get(network_id="net-1", focusNodeId="n1", depth=2)
@@ -1031,7 +1031,7 @@ def test_network_graph_get_returns_none_on_runtime_error():
     svc = _ui_service()
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(500, text="boom"),
     ):
         assert svc.network_graph_get(network_id="net-1") is None
@@ -1042,7 +1042,7 @@ def test_ui_legend_apply_passes_legend_run_id():
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     body = {"result": {"ok": True}, "jsonrpc": "2.0", "id": 1}
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ) as mock_post:
         svc.ui_legend_apply("lr-1", network_id="net-1")
@@ -1059,7 +1059,7 @@ def test_ui_legend_apply_forwards_unknown_kwargs():
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     body = {"result": {"ok": True}}
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ) as mock_post:
         svc.ui_legend_apply("lr-1", network_id="net-1", overlay="dim")
@@ -1075,7 +1075,7 @@ def test_ui_rightpanel_focus_sends_empty_args():
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     body = {"result": {"ok": True}, "jsonrpc": "2.0", "id": 1}
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ) as mock_post:
         svc.ui_rightpanel_focus()
@@ -1091,7 +1091,7 @@ def test_ui_rightpanel_focus_forwards_extras_for_future_compat():
     _jwt_cache[(svc.base_url, svc.username)] = ("jwt-A", 9_999_999_999.0)
     body = {"result": {"ok": True}}
     with patch(
-        "services.vstrike_service.requests.post",
+        "core.integrations.vstrike.client.requests.post",
         return_value=_mock_response(200, json_body=body),
     ) as mock_post:
         svc.ui_rightpanel_focus(future_field="x")

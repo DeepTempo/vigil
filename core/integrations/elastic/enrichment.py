@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from services.elastic_service import ElasticService
+from core.integrations.elastic.client import ElasticService
 from services.database_data_service import DatabaseDataService
 
 logger = logging.getLogger(__name__)

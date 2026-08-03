@@ -4,7 +4,7 @@ import pytest
 import httpx
 import respx
 
-from services.elastic_service import ElasticService
+from core.integrations.elastic.client import ElasticService
 
 
 ES_URL = "https://es.test:9200"

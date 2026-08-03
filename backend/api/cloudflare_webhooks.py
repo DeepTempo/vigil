@@ -129,7 +129,7 @@ def _parse_json(raw: bytes) -> Dict[str, Any]:
 
 
 def _ingest(payload: Dict[str, Any]) -> Dict[str, Any]:
-    from services.cloudflare_ingestion_service import CloudyIngestionService
+    from core.integrations.cloudflare.ingestion import CloudyIngestionService
 
     service = CloudyIngestionService()
     finding = service.transform_event(payload)

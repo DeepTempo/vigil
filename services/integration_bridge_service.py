@@ -6,6 +6,12 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from core.integrations.aws_security_hub.descriptor import AWS_SECURITY_HUB
+from core.integrations.azure_sentinel.descriptor import AZURE_SENTINEL
+from core.integrations.crowdstrike.descriptor import CROWDSTRIKE
+from core.integrations.jira.descriptor import JIRA
+from core.integrations.microsoft_defender.descriptor import MICROSOFT_DEFENDER
+from core.integrations.slack.descriptor import SLACK
 from core.integrations.splunk.descriptor import SPLUNK
 
 logger = logging.getLogger(__name__)
@@ -51,15 +57,15 @@ class IntegrationBridgeService:
         "url-analysis": "url-analysis-server",
         "ip-geolocation": "ip-geolocation-server",
         # EDR/XDR
-        "crowdstrike": "crowdstrike-server",
+        CROWDSTRIKE.id: CROWDSTRIKE.mcp_server_name,
         "sentinelone": "sentinelone-server",
         "carbon-black": "carbon-black-server",
-        "microsoft-defender": "microsoft-defender-server",
+        MICROSOFT_DEFENDER.id: MICROSOFT_DEFENDER.mcp_server_name,
         # SIEM
         SPLUNK.id: SPLUNK.mcp_server_name,
-        "azure-sentinel": "azure-sentinel-server",
+        AZURE_SENTINEL.id: AZURE_SENTINEL.mcp_server_name,
         # Cloud Security
-        "aws-security-hub": "aws-security-hub-server",
+        AWS_SECURITY_HUB.id: AWS_SECURITY_HUB.mcp_server_name,
         "gcp-security": "gcp-security-server",
         # Identity & Access
         "okta": "okta-server",
@@ -67,9 +73,9 @@ class IntegrationBridgeService:
         # Network Security
         "palo-alto": "palo-alto-server",
         # Incident Management
-        "jira": "jira-server",
+        JIRA.id: JIRA.mcp_server_name,
         # Communications
-        "slack": "slack-server",
+        SLACK.id: SLACK.mcp_server_name,
         "pagerduty": "pagerduty-server",
         "microsoft-teams": "microsoft-teams-server",
         # Sandbox Analysis

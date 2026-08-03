@@ -723,7 +723,7 @@ Please review and approve/reject in the SOC dashboard.
         reason: str,
         parameters: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Execute an approved Cloudflare action via the REST helpers in tools/cloudflare.py."""
+        """Execute an approved Cloudflare action via the REST helpers in core/integrations/cloudflare/tool.py."""
         try:
             from core.config import get_integration_config, is_integration_enabled
         except Exception as e:  # noqa: BLE001
@@ -745,7 +745,7 @@ Please review and approve/reject in the SOC dashboard.
         # Lazy import to avoid forcing the MCP package on environments that
         # never enable Cloudflare.
         try:
-            from tools import cloudflare as cf_tool
+            from core.integrations.cloudflare import tool as cf_tool
         except Exception as e:  # noqa: BLE001
             return {"success": False, "error": f"tools.cloudflare unavailable: {e}"}
 
