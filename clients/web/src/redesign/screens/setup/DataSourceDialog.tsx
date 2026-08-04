@@ -1,5 +1,3 @@
-// frontend/src/redesign/screens/setup/DataSourceDialog.tsx
-//
 // Setup step panel — pick a telemetry source, enter credentials, connect.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import IntegrationWizard from '../settings/IntegrationWizard'

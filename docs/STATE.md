@@ -130,7 +130,7 @@ sessions can reuse the work. It's shipped as a git submodule at
 different user, etc.). All three consumers — the MCP server
 (`mcp-config.json`), the daemon (`daemon/orchestrator.py`), and the
 web service (`services/claude_service.py`) — resolve the path through
-`services.mempalace_paths.get_palace_path()`, so the default can't
+`core.platform.mempalace_paths.get_palace_path()`, so the default can't
 drift again.
 
 **Structure:**

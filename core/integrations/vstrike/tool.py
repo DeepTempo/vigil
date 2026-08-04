@@ -22,9 +22,6 @@ Tools:
 import asyncio
 import json
 import logging
-import os
-import sys
-from pathlib import Path
 
 import mcp.server.stdio
 import mcp.types as types
@@ -37,12 +34,6 @@ try:
     load_dotenv()
 except ImportError:
     pass
-
-# Ensure the repo root is on sys.path so `services.*` imports work when this
-# module is launched as a stand-alone MCP server via stdio.
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
 
 logger = logging.getLogger(__name__)
 server = Server("vstrike")

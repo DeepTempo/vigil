@@ -327,7 +327,7 @@ generator.save_to_file(events, "ransomware.json")
 ```bash
 # Test Splunk connection
 python -c "
-from services.splunk_service import SplunkService
+from core.integrations.splunk.client import SplunkService
 from core.config import get_integration_config
 
 config = get_integration_config('splunk')
