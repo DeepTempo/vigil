@@ -15,8 +15,25 @@ import pathlib
 
 import pytest
 
-from database.models import Case, Finding
+import database.models as models
 from database.schemas.case import CaseSchema, CaseWithFindingsSchema
+from database.schemas.case_entities import (
+    CaseAttachmentSchema,
+    CaseAuditLogSchema,
+    CaseClosureInfoSchema,
+    CaseCommentSchema,
+    CaseEscalationSchema,
+    CaseEvidenceSchema,
+    CaseIOCSchema,
+    CaseMetricsSchema,
+    CaseNotificationSchema,
+    CaseRelationshipSchema,
+    CaseSLASchema,
+    CaseTaskSchema,
+    CaseTemplateSchema,
+    CaseWatcherSchema,
+    SLAPolicySchema,
+)
 from database.schemas.finding import FindingSchema
 from tests.unit.orm_sample_instances import build_empty, build_populated, build_related
 
@@ -35,23 +52,36 @@ def golden():
         return json.load(fh)
 
 
-# model name -> {golden case key: callable(instance) -> dict}
-#
-# Populated as each domain is migrated. ``test_registry_covers_every_model``
-# guards the end state.
-SCHEMA_REGISTRY: dict[str, dict] = {
-    "Finding": {
-        "model": Finding,
+def _standard(model, schema):
+    """Registry entry for a model with a single unconditional shape."""
+    return {
+        "model": model,
         "cases": {
+            "populated.to_dict.default": schema.dump,
+            "empty.to_dict.default": schema.dump,
+        },
+    }
+
+
+def _variant(model, cases):
+    return {"model": model, "cases": cases}
+
+
+# model name -> {golden case key: callable(instance) -> dict}
+SCHEMA_REGISTRY: dict[str, dict] = {
+    # Core models, whose serialized shape is gated by a flag.
+    "Finding": _variant(
+        models.Finding,
+        {
             "populated.to_dict.with_embedding": FindingSchema.dump,
             "populated.to_dict.without_embedding": FindingSchema.dump_summary,
             "empty.to_dict.with_embedding": FindingSchema.dump,
             "empty.to_dict.without_embedding": FindingSchema.dump_summary,
         },
-    },
-    "Case": {
-        "model": Case,
-        "cases": {
+    ),
+    "Case": _variant(
+        models.Case,
+        {
             "populated.to_dict.with_finding_ids": CaseSchema.dump,
             "populated.to_dict.with_findings": CaseWithFindingsSchema.dump,
             "empty.to_dict.with_finding_ids": CaseSchema.dump,
@@ -59,7 +89,23 @@ SCHEMA_REGISTRY: dict[str, dict] = {
             "related.to_dict.with_finding_ids": CaseSchema.dump,
             "related.to_dict.with_findings": CaseWithFindingsSchema.dump,
         },
-    },
+    ),
+    # Case sub-entities.
+    "SLAPolicy": _standard(models.SLAPolicy, SLAPolicySchema),
+    "CaseSLA": _standard(models.CaseSLA, CaseSLASchema),
+    "CaseComment": _standard(models.CaseComment, CaseCommentSchema),
+    "CaseWatcher": _standard(models.CaseWatcher, CaseWatcherSchema),
+    "CaseEvidence": _standard(models.CaseEvidence, CaseEvidenceSchema),
+    "CaseIOC": _standard(models.CaseIOC, CaseIOCSchema),
+    "CaseTask": _standard(models.CaseTask, CaseTaskSchema),
+    "CaseTemplate": _standard(models.CaseTemplate, CaseTemplateSchema),
+    "CaseRelationship": _standard(models.CaseRelationship, CaseRelationshipSchema),
+    "CaseMetrics": _standard(models.CaseMetrics, CaseMetricsSchema),
+    "CaseAttachment": _standard(models.CaseAttachment, CaseAttachmentSchema),
+    "CaseClosureInfo": _standard(models.CaseClosureInfo, CaseClosureInfoSchema),
+    "CaseEscalation": _standard(models.CaseEscalation, CaseEscalationSchema),
+    "CaseAuditLog": _standard(models.CaseAuditLog, CaseAuditLogSchema),
+    "CaseNotification": _standard(models.CaseNotification, CaseNotificationSchema),
 }
 
 
