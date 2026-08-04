@@ -3,7 +3,7 @@
 # Multi-stage build: React SPA → Python FastAPI backend
 #
 # Final image runs:  uvicorn backend.main:app --host 0.0.0.0 --port 6987
-# Serves static SPA at /app/frontend/build  (via FastAPI StaticFiles mount)
+# Serves static SPA at /app/clients/web/build  (via FastAPI StaticFiles mount)
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -11,17 +11,17 @@
 # ---------------------------------------------------------------------------
 # Pin to the build host's arch: the output is arch-independent static assets,
 # and running esbuild under QEMU (cross-arch build) crashes it (write EPIPE).
-FROM --platform=$BUILDPLATFORM node:20-slim AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:20-slim AS web-builder
 
-WORKDIR /build/frontend
+WORKDIR /build/web
 
 # Install deps before copying source so layer is cached on package.json changes
-COPY frontend/package*.json ./
+COPY clients/web/package*.json ./
 RUN npm ci --prefer-offline
 
-COPY frontend/ .
+COPY clients/web/ .
 RUN npm run build
-# Output: /build/frontend/build
+# Output: /build/web/build
 
 # ---------------------------------------------------------------------------
 # Stage 2: install Python dependencies
@@ -90,7 +90,7 @@ COPY --chown=vigil:vigil VERSION      ./VERSION
 COPY --chown=vigil:vigil setup.cfg    ./setup.cfg
 
 # Built SPA — served by FastAPI StaticFiles (or nginx sidecar)
-COPY --from=frontend-builder --chown=vigil:vigil /build/frontend/build ./frontend/build/
+COPY --from=web-builder --chown=vigil:vigil /build/web/build ./clients/web/build/
 
 # Writable dirs the app needs at runtime
 RUN mkdir -p /app/data/investigations /app/data/mempalace \

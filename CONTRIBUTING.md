@@ -117,7 +117,7 @@ vigil/
 ├── contrib/         # Community development tools (not runtime)
 ├── mcp-servers/     # MCP server implementations
 ├── backend/         # FastAPI backend + Agent SDK
-├── frontend/        # React + MUI frontend
+├── clients/web/     # React web client
 ├── services/        # Business logic
 ├── daemon/          # Headless autonomous SOC
 ├── database/        # PostgreSQL models
@@ -129,7 +129,7 @@ vigil/
 ### Style
 
 - Python: follow existing patterns in `backend/`. Use type hints.
-- TypeScript/React: follow existing patterns in `frontend/`.
+- TypeScript/React: follow existing patterns in `clients/web/`.
 - Workflows: follow the format of existing `workflows/*/WORKFLOW.md` files.
 - MCP servers: follow the patterns in `mcp-servers/`.
 

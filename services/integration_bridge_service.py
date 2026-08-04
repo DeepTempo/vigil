@@ -24,7 +24,7 @@ _DERIVED_MCP_URLS: Dict[str, str] = {}
 
 
 # Form-field names contributed by the shared proxy block (see
-# ``frontend/src/config/integrations.ts``). These are meta-config — the
+# ``clients/web/src/config/integrations.ts``). These are meta-config — the
 # bridge translates them into HTTPS_PROXY / ALL_PROXY env vars (which
 # requests/httpx/urllib all honor) rather than emitting raw
 # ``<ID>_PROXY_*`` vars that downstream MCP servers wouldn't know to

@@ -69,14 +69,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: clients/web/package-lock.json
       
       - name: Install dependencies
-        working-directory: frontend
+        working-directory: clients/web
         run: npm ci
       
       - name: Run ESLint
-        working-directory: frontend
+        working-directory: clients/web
         run: npm run lint
         continue-on-error: true
 
@@ -147,14 +147,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: clients/web/package-lock.json
       
       - name: Install dependencies
-        working-directory: frontend
+        working-directory: clients/web
         run: npm ci
       
       - name: Run unit tests
-        working-directory: frontend
+        working-directory: clients/web
         run: npm run test:run
 
   # ============================================================================
@@ -330,7 +330,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       
       - name: Run npm audit
-        working-directory: frontend
+        working-directory: clients/web
         run: npm audit --audit-level=moderate || true
         continue-on-error: true
 
@@ -421,14 +421,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: clients/web/package-lock.json
       
       - name: Install dependencies
-        working-directory: frontend
+        working-directory: clients/web
         run: npm ci
       
       - name: Build frontend
-        working-directory: frontend
+        working-directory: clients/web
         run: npm run build
       
       - name: Upload build artifacts
@@ -436,7 +436,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: frontend-build
-          path: frontend/build/
+          path: clients/web/build/
           retention-days: 7
 
   # ============================================================================

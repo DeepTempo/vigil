@@ -427,7 +427,7 @@ docker-compose up -d --force-recreate
   uses: actions/setup-node@v5
   with:
     cache: 'npm'
-    cache-dependency-path: frontend/package-lock.json
+    cache-dependency-path: clients/web/package-lock.json
 ```
 
 ### Parallel Execution

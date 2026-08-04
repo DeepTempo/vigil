@@ -15,17 +15,17 @@
       "extra-files": [
         {
           "type": "json",
-          "path": "frontend/package.json",
+          "path": "clients/web/package.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "frontend/package-lock.json",
+          "path": "clients/web/package-lock.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "frontend/package-lock.json",
+          "path": "clients/web/package-lock.json",
           "jsonpath": "$.packages[''].version"
         },
         {

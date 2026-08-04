@@ -416,4 +416,4 @@ connectivity).
 **SPA shows a blank page** — the SPA is bundled into the backend image via
 a multi-stage build in `docker/Dockerfile.backend`. If you're using a
 custom build of the backend, make sure the multi-stage build step ran and
-copied `frontend/build/` into the final image.
+copied `clients/web/build/` into the final image.
