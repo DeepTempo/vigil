@@ -23,7 +23,7 @@ uses it to:
    back to the frontend.
 
 When you add a new integration that has password-typed fields in
-``frontend/src/config/integrations.ts``, add a tuple entry to
+``clients/web/src/config/integrations.ts``, add a tuple entry to
 ``_SECRET_FIELDS`` below. The default ``<INTEGRATION_ID>_<FIELD>``
 convention is built automatically; add an ``_ENV_VAR_OVERRIDES`` entry
 only when the consumer reads the secret under a non-canonical name
@@ -93,7 +93,7 @@ def _default_env_var(integration_id: str, field_name: str) -> str:
 
 
 # Form-field names per integration that are sensitive (mirrors `type:
-# 'password'` entries in ``frontend/src/config/integrations.ts``). The
+# 'password'` entries in ``clients/web/src/config/integrations.ts``). The
 # values get routed through the secrets manager rather than persisted
 # plaintext to the DB / JSON file.
 _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
@@ -210,7 +210,7 @@ _ENV_VAR_OVERRIDES: Mapping[str, Mapping[str, str]] = {
 
 
 # Form-field names contributed by the shared proxy block (see
-# ``frontend/src/config/integrations.ts:PROXY_FIELDS``). Integrations
+# ``clients/web/src/config/integrations.ts:PROXY_FIELDS``). Integrations
 # that opt in via ``PROXY_SUPPORTED`` get these added to their
 # secret-field registry so credentials are routed to the encrypted
 # store rather than persisted plaintext on the integration row.

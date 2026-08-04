@@ -206,8 +206,8 @@ jobs:
         run: |
           docker run --rm \
             ghcr.io/vigil-soc/vigil-backend:${{ needs.version.outputs.version }} \
-            test -f /app/frontend/build/index.html \
-            || { echo "::error::SPA missing from image — frontend not copied to /app/frontend/build"; exit 1; }
+            test -f /app/clients/web/build/index.html \
+            || { echo "::error::SPA missing from image — web client not copied to /app/clients/web/build"; exit 1; }
 
       - name: Daemon — import check
         run: |

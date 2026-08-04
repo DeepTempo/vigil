@@ -489,7 +489,7 @@ UI: **Settings → Integrations → CloudCurrent VStrike**.
 VStrike enrichment lives at `finding.entity_context["vstrike"]` (JSONB —
 no DB migration required). Shape is defined by
 `backend/schemas/vstrike.py::VStrikeEnrichment` and mirrored by
-`frontend/src/types/vstrike.ts`.
+`clients/web/src/types/vstrike.ts`.
 
 The ingest handler does read-modify-write on `entity_context` so existing
 keys (`src_ip`, `hostname`, etc.) are never clobbered.

@@ -6,7 +6,7 @@
     "**/__pycache__",
     "**/.*",
     "venv",
-    "frontend",
+    "clients/web",
     "build",
     "dist"
   ]

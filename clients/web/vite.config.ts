@@ -9,8 +9,8 @@ const __dirname = dirname(__filename)
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // Load env from root directory (parent of frontend)
-  const env = loadEnv(mode, resolve(__dirname, '..'), '')
+  // Load env from repo root (two levels up: clients/web → repo root)
+  const env = loadEnv(mode, resolve(__dirname, '..', '..'), '')
   
   // Frontend auth bypass. An explicit VITE_DEV_MODE wins (the desktop app sets
   // it false so its login/bootstrap flow is real); otherwise inherit root .env

@@ -2,7 +2,7 @@
 # Reset the first-access setup state so the onboarding wizard (/setup) starts fresh.
 #
 # Each onboarding step derives "ready" live from backend state (see
-# frontend/src/setup/setupSteps.ts) — there is no persisted "done" flag — so
+# clients/web/src/setup/setupSteps.ts) — there is no persisted "done" flag — so
 # clearing the underlying state is all it takes to redo the wizard.
 #
 # Usage:
@@ -194,7 +194,7 @@ if [ "$do_providers" = true ]; then
   # Postgres, then re-issue the delete (which now passes the guard and still runs
   # the FK cascade + Bifrost key reconcile). If the DB can't be reached we fall
   # back to deactivating it: the wizard gate is `is_active && is_default`
-  # (frontend/src/setup/setupSteps.ts), so an inactive provider re-fires it too.
+  # (clients/web/src/setup/setupSteps.ts), so an inactive provider re-fires it too.
   ids=$(get /llm/providers/ | python3 -c "import sys,json;rows=json.load(sys.stdin);[print(p['provider_id']) for p in sorted(rows,key=lambda p:bool(p.get('is_default')))]")
   if [ -z "$ids" ]; then echo "  providers: already empty"; else
     while read -r id; do

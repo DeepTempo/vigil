@@ -146,4 +146,4 @@ Direct questions about the Vigil-side implementation to:
 - Tool client lives in [`core/integrations/vstrike/client.py`](../../core/integrations/vstrike/client.py) (see
   `killchain_replay_in_ui`)
 - API surface: [`backend/api/vstrike.py`](../../backend/api/vstrike.py) (`POST /ui/killchain-replay`)
-- Frontend Play button: [`frontend/src/components/graph/VStrikeIframeHost.tsx`](../../frontend/src/components/graph/VStrikeIframeHost.tsx)
+- Frontend Play button: [`clients/web/src/components/graph/VStrikeIframeHost.tsx`](../../clients/web/src/components/graph/VStrikeIframeHost.tsx)

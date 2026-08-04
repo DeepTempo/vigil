@@ -41,7 +41,7 @@ vigil/
 │   ├── processor.py      # Processes findings through AI pipeline
 │   ├── responder.py      # Executes containment actions
 │   └── scheduler.py      # Cron-style scheduled tasks
-├── frontend/             # React + TypeScript + Vite SPA
+├── clients/web/             # React + TypeScript + Vite SPA
 │   └── src/
 │       ├── redesign/     # The SOC console — screens/, shell/, shared/
 │       ├── components/   # Cross-console components (auth, setup)
@@ -90,7 +90,7 @@ source venv/bin/activate
 uvicorn backend.main:app --host 0.0.0.0 --port 6987 --reload
 
 # 3. Frontend
-cd frontend && npm run dev
+cd clients/web && npm run dev
 
 # 4. (Optional) Daemon
 ./start.sh --daemon
@@ -158,7 +158,7 @@ Available markers: `unit`, `integration`, `slow`, `auth`, `siem`, `claude`, `dat
 ### Frontend (vitest)
 
 ```bash
-cd frontend
+cd clients/web
 npm run test           # watch mode
 npm run test:run       # single run with verbose output
 npm run test:coverage  # with coverage report
@@ -175,7 +175,7 @@ isort .                # sort imports
 mypy . --ignore-missing-imports
 
 # TypeScript
-cd frontend && npm run lint
+cd clients/web && npm run lint
 
 # Pre-commit (runs black automatically)
 pre-commit run --all-files
@@ -263,12 +263,12 @@ Key config variables: `DAEMON_AUTO_TRIAGE`, `DAEMON_CONFIDENCE_THRESHOLD`, `ORCH
 
 - **Framework**: React 18 + Vite 5 (not CRA)
 - **UI**: Tailwind utility classes + the CSS custom properties in
-  `frontend/src/redesign/styles.css`. Reuse the primitives in
+  `clients/web/src/redesign/styles.css`. Reuse the primitives in
   `redesign/shared/` (`ui.tsx`, `formKit.tsx`, `icons.tsx`) — there is no
   component library, so do not add one
 - **State/data**: plain hooks (`useState`/`useEffect`) over the axios services;
   React Context for auth/theme/toasts
-- **HTTP**: axios via `frontend/src/services/`
+- **HTTP**: axios via `clients/web/src/services/`
 - **Linter**: ESLint with `@typescript-eslint/recommended` + `react-hooks/recommended`
 - Component files: `PascalCase.tsx`
 - Service files: `camelCase.ts`
@@ -324,7 +324,7 @@ Register in `backend/main.py`.
 2. Add service logic in `services/`
 3. Add Pydantic schema in `backend/schemas/` if needed
 4. Register router in `backend/main.py`
-5. Add corresponding frontend API call in `frontend/src/services/`
+5. Add corresponding frontend API call in `clients/web/src/services/`
 
 ---
 
@@ -335,7 +335,7 @@ GitHub Actions workflows in `.github/workflows/`:
 | Workflow | Trigger | Jobs |
 |----------|---------|------|
 | `ci-cd.yml` | Push/PR to main, develop | Lint → Unit Tests → Integration Tests → Security Scan → Docker Build |
-| `release-please.yml` | Push to `main`, manual | Read Conventional Commits since last tag → open/update a release PR with bumped `VERSION` / `Chart.yaml` (`appVersion` + `version`, lockstep) / `frontend/package.json` / `frontend/package-lock.json` + `CHANGELOG.md`. On merge, push `vX.Y.Z` tag and create the GitHub Release. See `RELEASING.md`. |
+| `release-please.yml` | Push to `main`, manual | Read Conventional Commits since last tag → open/update a release PR with bumped `VERSION` / `Chart.yaml` (`appVersion` + `version`, lockstep) / `clients/web/package.json` / `clients/web/package-lock.json` + `CHANGELOG.md`. On merge, push `vX.Y.Z` tag and create the GitHub Release. See `RELEASING.md`. |
 | `release.yml` | Version tags (`v*.*.*`) | Build & push `vigil-backend` + `vigil-daemon` images to GHCR → Trivy scan → smoke-test that they start → annotate the GitHub Release with image digests. **Publishes images only — it does not deploy.** Does **not** create the GitHub Release object either (release-please owns that). |
 | `nightly.yml` | Daily 2 AM UTC | Comprehensive security & performance audits |
 

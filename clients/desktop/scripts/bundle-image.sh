@@ -8,11 +8,11 @@
 # the matching-arch artifact. Run before `npm run dist`.
 set -euo pipefail
 
-cd "$(dirname "$0")/../.."
-VERSION="$(node -p "require('./desktop/package.json').version")"
+cd "$(dirname "$0")/../../.."
+VERSION="$(node -p "require('./clients/desktop/package.json').version")"
 IMAGE="ghcr.io/vigil-soc/vigil-backend:${VERSION}"
 PLATFORM="${1:-linux/arm64}"
-OUT="desktop/standalone/backend-image.tar.gz"
+OUT="clients/desktop/standalone/backend-image.tar.gz"
 
 echo "building ${IMAGE} for ${PLATFORM}"
 docker build --platform "${PLATFORM}" -f docker/Dockerfile.backend -t "${IMAGE}" .

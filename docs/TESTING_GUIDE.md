@@ -50,7 +50,7 @@ pip install -r requirements.txt
 ### Frontend Setup
 
 ```bash
-cd frontend
+cd clients/web
 npm install
 
 # Test dependencies include:
@@ -99,7 +99,7 @@ pytest -n auto
 ### Frontend Tests
 
 ```bash
-cd frontend
+cd clients/web
 
 # Run all tests
 npm test
@@ -201,7 +201,7 @@ class TestCaseAPI:
 
 ### Frontend Test Example
 
-**File**: `frontend/src/components/CaseList.test.tsx`
+**File**: `clients/web/src/components/CaseList.test.tsx`
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest'

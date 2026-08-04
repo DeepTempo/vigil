@@ -54,7 +54,7 @@ fs.writeFileSync(
 );
 
 fs.copyFileSync(
-  path.join(__dirname, "..", "..", "docker", "bifrost", "config.json"),
+  path.join(__dirname, "..", "..", "..", "docker", "bifrost", "config.json"),
   path.join(outDir, "bifrost-config.json"),
 );
 

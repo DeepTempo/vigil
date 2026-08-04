@@ -948,7 +948,7 @@ async def health_check():
 
 
 # Serve React static files in production
-frontend_build_dir = Path(__file__).parent.parent / "frontend" / "build"
+frontend_build_dir = Path(__file__).parent.parent / "clients" / "web" / "build"
 static_dir = frontend_build_dir / "static"
 
 # Only mount static files if the build directory exists

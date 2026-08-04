@@ -368,8 +368,8 @@ function sendSplash(channel: string, payload: unknown): void {
 function needsSetup(): boolean {
   return (
     !fs.existsSync(path.join(repoRoot!, "venv", "bin", "python")) ||
-    !fs.existsSync(path.join(repoRoot!, "frontend", "node_modules")) ||
-    !fs.existsSync(path.join(repoRoot!, "frontend", "build", "index.html"))
+    !fs.existsSync(path.join(repoRoot!, "clients", "web", "node_modules")) ||
+    !fs.existsSync(path.join(repoRoot!, "clients", "web", "build", "index.html"))
   );
 }
 
