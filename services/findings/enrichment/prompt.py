@@ -93,15 +93,21 @@ def build_techniques_string(
     return ""
 
 
-def summarize_finding(finding: Dict[str, Any]) -> FindingSummary:
+def summarize_finding(
+    finding: Dict[str, Any], *, finding_id: Optional[str] = None
+) -> FindingSummary:
     """Extract the prompt inputs from a finding dict.
 
     Uses ``or`` rather than ``dict.get`` defaults throughout: these keys are
     frequently *present with a None value*, which a plain default wouldn't
     catch.
+
+    ``finding_id`` overrides the dict's own key. The HTTP handler passes the
+    path param — its authoritative id — rather than trusting the row it just
+    read back, which is what the pre-extraction handler did.
     """
     return FindingSummary(
-        finding_id=finding.get("finding_id") or "",
+        finding_id=finding_id or finding.get("finding_id") or "",
         severity=finding.get("severity") or "unknown",
         data_source=finding.get("data_source") or "unknown",
         timestamp=finding.get("timestamp") or "",

@@ -24,6 +24,7 @@ from services.findings.enrichment import (
     build_entity_string,
     build_prompt,
     build_techniques_string,
+    UnidentifiableFinding,
     enrich,
     extract_json_block,
     parse_enrichment,
@@ -383,6 +384,77 @@ async def test_enrich_propagates_empty_provider_response(stub_provider):
 async def test_enrich_builds_the_prompt_from_the_finding(stub_provider):
     await enrich(_finding(entity_context={"hostnames": ["db-07"]}), persist=False)
     assert "Hostnames: db-07" in stub_provider["prompts"][0]
+
+
+# ---------------------------------------------------------------------------
+# service.py — the write target
+#
+# The pre-extraction handler persisted with its path param. Deriving the write
+# target from the finding dict instead means an id-less dict silently writes to
+# update_finding(""), which matches no row and only logs — a lost write. These
+# pin the explicit id and the guard that replaced that hole.
+# ---------------------------------------------------------------------------
+
+
+async def test_explicit_finding_id_is_the_write_target(stub_provider):
+    """A caller holding the id independently must win over the dict."""
+    data_service = _RecordingDataService()
+
+    await enrich(
+        _finding(finding_id="stale-in-dict"),
+        finding_id="authoritative-id",
+        data_service=data_service,
+    )
+
+    written_id, _ = data_service.writes[0]
+    assert written_id == "authoritative-id"
+
+
+async def test_explicit_finding_id_is_what_the_prompt_reports(stub_provider):
+    await enrich(
+        _finding(finding_id="stale-in-dict"),
+        finding_id="authoritative-id",
+        persist=False,
+    )
+
+    assert "Finding ID: authoritative-id" in stub_provider["prompts"][0]
+    assert "stale-in-dict" not in stub_provider["prompts"][0]
+
+
+async def test_finding_id_falls_back_to_the_dict_when_not_passed(stub_provider):
+    data_service = _RecordingDataService()
+
+    await enrich(_finding(finding_id="from-dict"), data_service=data_service)
+
+    written_id, _ = data_service.writes[0]
+    assert written_id == "from-dict"
+
+
+@pytest.mark.parametrize("missing_id", [None, ""])
+async def test_persist_without_any_id_raises_instead_of_writing_to_empty_string(
+    stub_provider, missing_id
+):
+    """The regression this guard exists for: a silently-dropped write."""
+    data_service = _RecordingDataService()
+
+    with pytest.raises(UnidentifiableFinding):
+        await enrich(_finding(finding_id=missing_id), data_service=data_service)
+
+    assert data_service.writes == []
+
+
+async def test_the_id_guard_runs_before_any_provider_call(stub_provider):
+    """Fail fast — don't pay for a dispatch whose result can't be stored."""
+    with pytest.raises(UnidentifiableFinding):
+        await enrich(_finding(finding_id=None))
+
+    assert stub_provider["prompts"] == []
+
+
+async def test_an_id_less_finding_is_fine_when_not_persisting(stub_provider):
+    """persist=False callers compose their own write, so no id is needed."""
+    enrichment = await enrich(_finding(finding_id=None), persist=False)
+    assert enrichment["threat_summary"] == "beaconing"
 
 
 # ---------------------------------------------------------------------------

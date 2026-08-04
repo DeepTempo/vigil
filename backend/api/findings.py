@@ -373,7 +373,11 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
     # from domain errors to status codes (#470). The write that used to sit here
     # moved into that module's _persist(), which keeps the to_thread offload.
     try:
-        enrichment = await enrich(finding, data_service=data_service)
+        # Pass the path param, not the id off the row we just read — it's the
+        # authoritative write target, exactly as the pre-extraction handler did.
+        enrichment = await enrich(
+            finding, finding_id=finding_id, data_service=data_service
+        )
     except FindingNotFound:
         raise HTTPException(status_code=404, detail="Finding not found")
     except NoProviderConfigured:

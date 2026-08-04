@@ -1,37 +1,20 @@
 """The ``enrich()`` seam: resolve provider → dispatch → parse → stamp → persist.
 
-Extracted from ``backend/api/findings.py``'s 333-line
-``get_or_generate_enrichment`` handler (#470) so ingestion, the daemon and
-agents can reuse the flow instead of it being reachable only over HTTP.
+Extracted from ``backend/api/findings.py`` ``get_or_generate_enrichment`` handler so ingestion,
+the daemon and agents can reuse the flow instead of it being reachable only over HTTP.
 
 Behaviour is preserved exactly as it was in the handler, including two things
 that are known-imperfect and deliberately *not* fixed here:
 
-**The dispatch asymmetry.** Anthropic goes through the sync ``ClaudeService``
-on a threadpool with no retry; every other provider goes through
-``LLMRouter.dispatch`` wrapped in a retry loop with local-Bifrost recovery.
-That is existing behaviour, not a design position — unifying it while moving
-code would make any regression impossible to bisect. See #470's notes.
-
-**The ``ai_enrichment`` write is a full replace, and it has a second writer.**
-``daemon/processor.py`` writes triage keys (``ai_triage``, ``enrichment``,
-``enriched_at``, ``triage_confidence``, ``category``, ``recommended_action``,
-``triage_reasoning``) into the same JSONB column; this module writes analysis
-keys (``threat_summary``, ``potential_impact``, ``recommended_actions``, …).
-The two key sets do not overlap, so today:
-
-1. the API's cache check can return a daemon triage payload labelled as an
-   analysis ``enrichment``, and the UI reads ``undefined`` off it;
-2. persisting here wipes any daemon triage on the same finding, because
-   ``update_finding(..., ai_enrichment=...)`` replaces the whole value; and
-3. the finding then falls out of the daemon's ``ai_enrichment IS NULL``
-   backfill permanently.
-
-Fixing that is a JSONB schema change with a read-side compatibility shim, so
-it is a separate change. What this module does provide is the seam for it:
-``persist=False`` returns the payload and lets the caller compose its own
-write, so the merge policy can live in one place later without reopening this
-module.
+* **Asymmetric dispatch** — Anthropic runs on a threadpool with no retry;
+  other providers get ``LLMRouter`` + retry + local-Bifrost recovery.
+* **A full-replace write on a column with two writers** — ``daemon/processor``
+  stores triage keys (``ai_triage``, ``triage_confidence``, …) in the same
+  JSONB column this module fills with analysis keys (``threat_summary``, …),
+  and the two sets don't overlap. So: a daemon payload satisfies the API's
+  cache check but renders as ``undefined``; writing here wipes daemon triage;
+  and the finding then leaves the daemon's ``ai_enrichment IS NULL`` backfill
+  for good.
 """
 
 import asyncio
@@ -43,6 +26,7 @@ from services.findings.enrichment.errors import (
     FindingNotFound,
     NoProviderConfigured,
     ProviderUnavailable,
+    UnidentifiableFinding,
 )
 from services.findings.enrichment.parse import parse_enrichment
 from services.findings.enrichment.prompt import build_prompt, summarize_finding
@@ -216,6 +200,7 @@ async def _persist(
 async def enrich(
     finding: Dict[str, Any],
     *,
+    finding_id: Optional[str] = None,
     component: str = "reporting",
     persist: bool = True,
     data_service: Any = None,
@@ -233,6 +218,11 @@ async def enrich(
 
     Args:
         finding: The finding to enrich.
+        finding_id: Authoritative id — the write target, and what the prompt
+            reports. Overrides ``finding["finding_id"]``; pass it whenever you
+            hold the id independently of the dict (the HTTP handler passes its
+            path param). Required when ``persist`` is True and the dict carries
+            no id of its own.
         component: ``ai_model_configs`` component whose model assignment to
             use. The HTTP handler uses ``"reporting"``.
         persist: Write the result to the finding's ``ai_enrichment`` column.
@@ -243,6 +233,7 @@ async def enrich(
 
     Raises:
         FindingNotFound: ``finding`` is empty.
+        UnidentifiableFinding: ``persist`` is True but no id is available.
         NoProviderConfigured: no usable provider for ``component``.
         ProviderUnavailable: resolved provider id has no spec row.
         EmptyProviderResponse: the provider returned nothing.
@@ -250,12 +241,20 @@ async def enrich(
     if not finding:
         raise FindingNotFound("Finding not found")
 
+    finding_id = finding_id or finding.get("finding_id") or ""
+    if persist and not finding_id:
+        # update_finding("") matches no row and only logs, so refuse the call
+        # rather than paying a provider and dropping the result on the floor.
+        raise UnidentifiableFinding(
+            "Cannot persist enrichment: no finding_id was passed and the "
+            "finding dict has none. Pass finding_id=..., or persist=False."
+        )
+
     # Resolve before shaping input, so an unconfigured provider still reports
     # NoProviderConfigured rather than whatever a malformed finding raises.
     provider, model_id, claude_service = _resolve_provider(component)
 
-    summary = summarize_finding(finding)
-    finding_id = summary.finding_id
+    summary = summarize_finding(finding, finding_id=finding_id)
     prompt = build_prompt(summary)
 
     logger.info(

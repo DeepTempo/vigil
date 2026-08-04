@@ -25,6 +25,7 @@ from services.findings.enrichment.errors import (
     FindingNotFound,
     NoProviderConfigured,
     ProviderUnavailable,
+    UnidentifiableFinding,
 )
 from services.findings.enrichment.parse import extract_json_block, parse_enrichment
 from services.findings.enrichment.prompt import (
@@ -43,6 +44,7 @@ __all__ = [
     "FindingSummary",
     "NoProviderConfigured",
     "ProviderUnavailable",
+    "UnidentifiableFinding",
     "build_entity_string",
     "build_prompt",
     "build_techniques_string",

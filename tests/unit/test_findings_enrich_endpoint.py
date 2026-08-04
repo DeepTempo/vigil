@@ -156,6 +156,25 @@ async def test_handler_reuses_its_own_data_service_for_the_write(
     assert kwargs["data_service"] is stub_data_service
 
 
+async def test_handler_passes_the_path_param_as_the_authoritative_id(monkeypatch):
+    """The write target must be the path param, not the row's own key.
+
+    The pre-extraction handler persisted with the path param. A row whose
+    finding_id disagrees (or is absent) must not redirect or drop the write.
+    """
+    monkeypatch.setattr(
+        findings_api,
+        "data_service",
+        _StubDataService({"finding_id": None, "severity": "high"}),
+    )
+    calls = _stub_enrich(monkeypatch, result={})
+
+    await findings_api.get_or_generate_enrichment(FINDING_ID, False)
+
+    _, kwargs = calls[0]
+    assert kwargs["finding_id"] == FINDING_ID
+
+
 # ---------------------------------------------------------------------------
 # Domain error → status code
 # ---------------------------------------------------------------------------
