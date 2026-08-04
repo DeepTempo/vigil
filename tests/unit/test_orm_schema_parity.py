@@ -36,6 +36,16 @@ from database.schemas.case_entities import (
     SLAPolicySchema,
 )
 from database.schemas.finding import FindingSchema
+from database.schemas.workflow import (
+    ApprovalActionSchema,
+    CustomAgentSchema,
+    CustomWorkflowSchema,
+    InvestigationLogSchema,
+    InvestigationSchema,
+    SkillSchema,
+    WorkflowRunPhaseSchema,
+    WorkflowRunSchema,
+)
 from tests.unit.orm_sample_instances import build_empty, build_populated, build_related
 
 pytestmark = pytest.mark.unit
@@ -110,6 +120,23 @@ SCHEMA_REGISTRY: dict[str, dict] = {
     # Users and roles.
     "User": _standard(models.User, UserSchema),
     "Role": _standard(models.Role, RoleSchema),
+    # Workflows, skills and agents.
+    "CustomWorkflow": _standard(models.CustomWorkflow, CustomWorkflowSchema),
+    "WorkflowRunPhase": _standard(models.WorkflowRunPhase, WorkflowRunPhaseSchema),
+    "Skill": _standard(models.Skill, SkillSchema),
+    "CustomAgent": _standard(models.CustomAgent, CustomAgentSchema),
+    "ApprovalAction": _standard(models.ApprovalAction, ApprovalActionSchema),
+    "Investigation": _standard(models.Investigation, InvestigationSchema),
+    "InvestigationLog": _standard(models.InvestigationLog, InvestigationLogSchema),
+    "WorkflowRun": _variant(
+        models.WorkflowRun,
+        {
+            "populated.to_dict.with_result": WorkflowRunSchema.dump,
+            "populated.to_dict.without_result": WorkflowRunSchema.dump_summary,
+            "empty.to_dict.with_result": WorkflowRunSchema.dump,
+            "empty.to_dict.without_result": WorkflowRunSchema.dump_summary,
+        },
+    ),
 }
 
 
