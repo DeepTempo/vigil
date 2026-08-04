@@ -1,5 +1,5 @@
 """
-Unit tests for dotenv loading in tools/splunk.py.
+Unit tests for dotenv loading in core/integrations/splunk/tool.py.
 Verifies that credentials in a .env file are loaded into os.environ
 at module startup, and that the module starts without error when
 python-dotenv is not installed.
@@ -91,9 +91,9 @@ def test_missing_dotenv_does_not_raise():
 
 
 def test_tool_exists_at_the_path_mcp_config_runs():
-    """mcp-config.json launches "tools/splunk.py", so that path must resolve."""
+    """mcp-config.json launches the Splunk tool by path, so it must resolve."""
     repo_root = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..")
     )
-    tool_path = os.path.join(repo_root, "tools", "splunk.py")
+    tool_path = os.path.join(repo_root, "core", "integrations", "splunk", "tool.py")
     assert os.path.isfile(tool_path), f"{tool_path} is missing"

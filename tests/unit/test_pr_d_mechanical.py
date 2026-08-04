@@ -51,7 +51,7 @@ class TestFilterToolsByName:
 
     def test_mcp_prefixed_name_matches_bare_recommendation(self):
         """Tools arrive as ``<server>_<tool_name>`` from the MCP layer but
-        recommended_tools in soc_agents.py use bare names. The filter must
+        recommended_tools in core/agents/builtins.py use bare names. The filter must
         match both forms so agents don't accidentally ship an empty tool
         block.
         """
@@ -175,7 +175,7 @@ class TestTieredTruncation:
 
 class TestAgentProfileThinkingBudget:
     def test_thinking_agent_has_budget(self):
-        from services.soc_agents import SOCAgentLibrary
+        from core.agents.manager import SOCAgentLibrary
 
         agents = SOCAgentLibrary.get_all_agents()
         # Investigator is a deep-reasoning agent — should have a budget set.
@@ -187,7 +187,7 @@ class TestAgentProfileThinkingBudget:
     def test_auto_responder_budget_is_trimmed(self):
         """auto_responder runs high-confidence pre-approved actions —
         budget should be deliberately small to prevent cost drift."""
-        from services.soc_agents import SOCAgentLibrary
+        from core.agents.manager import SOCAgentLibrary
 
         agents = SOCAgentLibrary.get_all_agents()
         profile = agents["auto_responder"]
@@ -197,7 +197,7 @@ class TestAgentProfileThinkingBudget:
 
     def test_non_thinking_agent_has_no_budget(self):
         """Agents with thinking disabled shouldn't carry a budget."""
-        from services.soc_agents import SOCAgentLibrary
+        from core.agents.manager import SOCAgentLibrary
 
         agents = SOCAgentLibrary.get_all_agents()
         profile = agents["triage"]
@@ -205,9 +205,9 @@ class TestAgentProfileThinkingBudget:
         assert profile.thinking_budget is None
 
     def test_custom_agent_picks_up_budget_from_row(self):
-        from services.soc_agents import SOCAgentLibrary
+        from core.agents.manager import SOCAgentLibrary
 
-        profile = SOCAgentLibrary._build_from_custom(
+        profile = SOCAgentLibrary.build_profile(
             {
                 "id": "custom-1",
                 "name": "Custom",

@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from services.elastic_enrichment_service import ElasticEnrichmentService, _is_private_ip
+from core.integrations.elastic.enrichment import ElasticEnrichmentService, _is_private_ip
 
 
 @pytest.fixture

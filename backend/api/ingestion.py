@@ -310,7 +310,7 @@ async def get_csv_template(data_type: str):
 
 
 @router.post("/sync-s3")
-async def sync_from_s3():
+def sync_from_s3():
     """
     Sync findings and cases from AWS S3.
     
@@ -351,7 +351,7 @@ async def sync_from_s3():
 
 @router.post("/sync-s3-folder", response_model=IngestionStats)
 @router.post("/sync-s3-parquet", response_model=IngestionStats, include_in_schema=False)
-async def sync_s3_folder(prefix: Optional[str] = Query(None)):
+def sync_s3_folder(prefix: Optional[str] = Query(None)):
     """
     Discover and ingest all supported files from an S3 prefix.
 
@@ -480,7 +480,7 @@ def _get_s3_service():
 
 
 @router.get("/s3-files")
-async def list_s3_files(prefix: Optional[str] = Query("")):
+def list_s3_files(prefix: Optional[str] = Query("")):
     """
     List files in the configured S3 bucket with metadata.
 
@@ -513,7 +513,7 @@ class S3FileIngestRequest(BaseModel):
 
 
 @router.post("/s3-file", response_model=IngestionStats)
-async def ingest_s3_file(request: S3FileIngestRequest):
+def ingest_s3_file(request: S3FileIngestRequest):
     """
     Download and ingest a single file from S3 by key.
 
@@ -581,7 +581,7 @@ async def ingest_s3_file(request: S3FileIngestRequest):
 
 
 @router.get("/s3-status")
-async def get_s3_status():
+def get_s3_status():
     """
     Get S3 connection status.
     

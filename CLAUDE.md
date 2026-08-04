@@ -32,7 +32,6 @@ vigil/
 │   └── schemas/          # Pydantic request/response schemas
 ├── services/             # 70+ business logic service classes
 │   ├── claude_service.py # Central AI orchestration (largest file ~124KB)
-│   ├── soc_agents.py     # Agent prompt definitions
 │   ├── mcp_service.py    # MCP server coordination
 │   └── case_*_service.py # Case lifecycle services
 ├── daemon/               # Autonomous 24/7 SOC background process
@@ -42,13 +41,12 @@ vigil/
 │   ├── processor.py      # Processes findings through AI pipeline
 │   ├── responder.py      # Executes containment actions
 │   └── scheduler.py      # Cron-style scheduled tasks
-├── frontend/             # React + TypeScript + Vite SPA
+├── clients/web/             # React + TypeScript + Vite SPA
 │   └── src/
-│       ├── pages/        # Route-level page components
-│       ├── components/   # Feature components (16 subdirectories)
+│       ├── redesign/     # The SOC console — screens/, shell/, shared/
+│       ├── components/   # Cross-console components (auth, setup)
 │       ├── services/     # Axios API client services
-│       ├── contexts/     # React Context (auth, theme)
-│       └── theme/        # MUI customization
+│       └── contexts/     # React Context (auth, theme)
 ├── workflows/            # Workflow definitions as WORKFLOW.md files
 │   ├── incident-response/WORKFLOW.md
 │   ├── full-investigation/WORKFLOW.md
@@ -59,7 +57,7 @@ vigil/
 ├── deeptempo-core/       # Git submodule: core AI/detection library
 ├── database/
 │   └── init/             # PostgreSQL init SQL (docker-compose: lex order by filename; Helm: values.yaml dbInit.sqlFiles)
-├── core/                 # Config, secrets management, rate limiting
+├── core/                 # Config, secrets, rate limiting, agent definitions (agents/)
 ├── data/                 # Schemas, MITRE taxonomy, detection registry
 ├── tests/                # pytest + vitest test suites
 ├── docs/                 # Detailed documentation
@@ -92,7 +90,7 @@ source venv/bin/activate
 uvicorn backend.main:app --host 0.0.0.0 --port 6987 --reload
 
 # 3. Frontend
-cd frontend && npm run dev
+cd clients/web && npm run dev
 
 # 4. (Optional) Daemon
 ./start.sh --daemon
@@ -184,7 +182,7 @@ Available markers: `unit`, `integration`, `slow`, `auth`, `siem`, `claude`, `dat
 ### Frontend (vitest)
 
 ```bash
-cd frontend
+cd clients/web
 npm run test           # watch mode
 npm run test:run       # single run with verbose output
 npm run test:coverage  # with coverage report
@@ -201,7 +199,7 @@ isort .                # sort imports
 mypy . --ignore-missing-imports
 
 # TypeScript
-cd frontend && npm run lint
+cd clients/web && npm run lint
 
 # Pre-commit (runs black automatically)
 pre-commit run --all-files
@@ -288,9 +286,13 @@ Key config variables: `DAEMON_AUTO_TRIAGE`, `DAEMON_CONFIDENCE_THRESHOLD`, `ORCH
 ### TypeScript / React
 
 - **Framework**: React 18 + Vite 5 (not CRA)
-- **UI**: Material-UI (MUI) v5 — use MUI components, not custom CSS primitives
-- **State/data**: `@tanstack/react-query` for server state; React Context for auth/theme
-- **HTTP**: axios via `frontend/src/services/`
+- **UI**: Tailwind utility classes + the CSS custom properties in
+  `clients/web/src/redesign/styles.css`. Reuse the primitives in
+  `redesign/shared/` (`ui.tsx`, `formKit.tsx`, `icons.tsx`) — there is no
+  component library, so do not add one
+- **State/data**: plain hooks (`useState`/`useEffect`) over the axios services;
+  React Context for auth/theme/toasts
+- **HTTP**: axios via `clients/web/src/services/`
 - **Linter**: ESLint with `@typescript-eslint/recommended` + `react-hooks/recommended`
 - Component files: `PascalCase.tsx`
 - Service files: `camelCase.ts`
@@ -329,7 +331,7 @@ Register in `backend/main.py`.
 
 ### New Agent
 
-1. Add prompt definition in `services/soc_agents.py`
+1. Add the agent record in `core/agents/builtins.py` (prompt text lives in `core/agents/prompts.py`)
 2. Wire agent invocation in `services/claude_service.py`
 3. Expose via `backend/api/agents.py`
 4. Document in `docs/AGENTS.md`
@@ -346,7 +348,7 @@ Register in `backend/main.py`.
 2. Add service logic in `services/`
 3. Add Pydantic schema in `backend/schemas/` if needed
 4. Register router in `backend/main.py`
-5. Add corresponding frontend API call in `frontend/src/services/`
+5. Add corresponding frontend API call in `clients/web/src/services/`
 
 ---
 
@@ -357,7 +359,7 @@ GitHub Actions workflows in `.github/workflows/`:
 | Workflow | Trigger | Jobs |
 |----------|---------|------|
 | `ci-cd.yml` | Push/PR to main, develop | Lint → Unit Tests → Integration Tests → Security Scan → Docker Build |
-| `release-please.yml` | Push to `main`, manual | Read Conventional Commits since last tag → open/update a release PR with bumped `VERSION` / `Chart.yaml` (`appVersion` + `version`, lockstep) / `frontend/package.json` / `frontend/package-lock.json` + `CHANGELOG.md`. On merge, push `vX.Y.Z` tag and create the GitHub Release. See `RELEASING.md`. |
+| `release-please.yml` | Push to `main`, manual | Read Conventional Commits since last tag → open/update a release PR with bumped `VERSION` / `Chart.yaml` (`appVersion` + `version`, lockstep) / `clients/web/package.json` / `clients/web/package-lock.json` + `CHANGELOG.md`. On merge, push `vX.Y.Z` tag and create the GitHub Release. See `RELEASING.md`. |
 | `release.yml` | Version tags (`v*.*.*`) | Build & push `vigil-backend` + `vigil-daemon` images to GHCR → Trivy scan → smoke-test that they start → annotate the GitHub Release with image digests. **Publishes images only — it does not deploy.** Does **not** create the GitHub Release object either (release-please owns that). |
 | `nightly.yml` | Daily 2 AM UTC | Comprehensive security & performance audits |
 
@@ -379,7 +381,7 @@ All CI checks must pass before merging.
 |------|---------|
 | `backend/main.py` | FastAPI app, all router registrations |
 | `services/claude_service.py` | Central AI/agent orchestration (~124KB) |
-| `services/soc_agents.py` | All agent system prompts |
+| `core/agents/` | Agent records (`builtins.py`), prompt assembly (`prompts.py`), runtime manager (`manager.py`) |
 | `services/mcp_service.py` | MCP protocol coordination |
 | `database/init/` | Schema SQL — see Database section for the add/modify checklist |
 | `mcp-config.json` | All MCP server definitions |
@@ -393,7 +395,7 @@ All CI checks must pass before merging.
 
 ## Submodules
 
-This repo uses two Git submodules:
+This repo uses three Git submodules:
 
 ```bash
 # Initialize after cloning
@@ -407,8 +409,13 @@ git submodule update --remote
 |-----------|------|---------|
 | `deeptempo-core` | `./deeptempo-core` | Core AI and detection library |
 | `mcp-servers` | `./mcp-servers` | MCP server implementations |
+| `mempalace` | `./mempalace` | Agent memory / knowledge palace |
 
-Both are installed as editable packages (`-e ./deeptempo-core`, `-e ./mcp-servers`) in `requirements.txt`. If submodules aren't initialized, `start.sh` skips their installation gracefully.
+All three are installed as editable packages (`-e ./deeptempo-core`, `-e ./mcp-servers`, `-e ./mempalace`) in `requirements.txt`. If submodules aren't initialized, `start.sh` skips their installation gracefully.
+
+`mempalace` ships its own `tests/benchmarks/`, which a bare `pytest` from the
+repo root tries to collect and fails on. Scope your runs the way CI does
+(`pytest tests/unit/`, `pytest tests/integration/`).
 
 ---
 

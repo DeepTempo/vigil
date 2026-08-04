@@ -27,7 +27,10 @@ from backend.schemas.vstrike import (
 )
 from backend.middleware.auth import get_current_active_user
 from services.database_data_service import DatabaseDataService
-from services.vstrike_service import VStrikeToolNotImplemented, get_vstrike_service
+from core.integrations.vstrike.client import (
+    VStrikeToolNotImplemented,
+    get_vstrike_service,
+)
 from core.config import get_settings
 from core.secrets import get_secret
 
@@ -129,7 +132,7 @@ def verify_inbound_key(
 
 
 @router.post("/findings", response_model=VStrikePushResponse)
-async def ingest_findings(
+def ingest_findings(
     request: VStrikePushRequest,
     _auth: None = Depends(verify_inbound_key),
 ) -> VStrikePushResponse:

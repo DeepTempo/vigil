@@ -6,7 +6,7 @@ from pydantic import BaseModel
 import logging
 
 from services.defaults import DEFAULT_MODEL
-from services.soc_agents import SOCAgentLibrary, AgentManager, CUSTOM_AGENT_ID_PREFIX
+from core.agents.manager import AgentManager, CUSTOM_AGENT_ID_PREFIX
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

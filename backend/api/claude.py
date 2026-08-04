@@ -147,7 +147,7 @@ def _resolve_provider_model_for_request(
 
     if agent_id:
         try:
-            from services.soc_agents import AgentManager
+            from core.agents.manager import AgentManager
 
             agent = AgentManager().agents.get(agent_id)
             if agent is not None:
@@ -328,7 +328,7 @@ async def chat(request: ChatRequest):
     Returns:
         Claude's response
     """
-    from services.soc_agents import AgentManager
+    from core.agents.manager import AgentManager
     import uuid
     import time
 
@@ -691,7 +691,7 @@ async def chat_stream(
     recommended_tools = None
 
     if request.agent_id:
-        from services.soc_agents import AgentManager
+        from core.agents.manager import AgentManager
 
         agent_manager = AgentManager()
         agent = agent_manager.agents.get(request.agent_id)
@@ -1323,7 +1323,7 @@ async def run_agent_task(request: AgentTaskRequest):
     Returns:
         Task result with tool calls and final output
     """
-    from services.soc_agents import AgentManager
+    from core.agents.manager import AgentManager
 
     system_prompt = request.system_prompt
     allowed_tools = request.allowed_tools
@@ -1388,7 +1388,7 @@ async def stream_agent_task(request: AgentTaskRequest):
     Returns:
         Streaming response with task events
     """
-    from services.soc_agents import AgentManager
+    from core.agents.manager import AgentManager
 
     system_prompt = request.system_prompt
     allowed_tools = request.allowed_tools
@@ -1478,7 +1478,7 @@ async def websocket_agent(websocket: WebSocket):
 
             # Apply agent config
             if agent_id:
-                from services.soc_agents import AgentManager
+                from core.agents.manager import AgentManager
 
                 agent_manager = AgentManager()
                 agent = agent_manager.agents.get(agent_id)

@@ -1,10 +1,10 @@
-"""Unit tests for services/elastic_service.py."""
+"""Unit tests for core/integrations/elastic/client.py."""
 
 import pytest
 import httpx
 import respx
 
-from services.elastic_service import ElasticService
+from core.integrations.elastic.client import ElasticService
 
 
 ES_URL = "https://es.test:9200"

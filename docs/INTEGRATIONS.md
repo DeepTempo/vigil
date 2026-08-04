@@ -452,7 +452,7 @@ radius.
 | Vigil → VStrike | `POST /api/integrations/vstrike/network-graph` | Full network graph: `{label, nodes, edges, bbox}` |
 | Vigil → VStrike | `POST /api/integrations/vstrike/ui/legend-apply` | Apply selected legend in the iframe |
 | Vigil → VStrike | `POST /api/integrations/vstrike/ui/rightpanel-focus` | Open / focus the iframe's right-hand details panel |
-| MCP | `tools/vstrike.py` (`vstrike_*` tools) | Agent-invokable topology queries + UI control |
+| MCP | `core/integrations/vstrike/tool.py` (`vstrike_*` tools) | Agent-invokable topology queries + UI control |
 
 #### Recently added MCP tools
 
@@ -489,7 +489,7 @@ UI: **Settings → Integrations → CloudCurrent VStrike**.
 VStrike enrichment lives at `finding.entity_context["vstrike"]` (JSONB —
 no DB migration required). Shape is defined by
 `backend/schemas/vstrike.py::VStrikeEnrichment` and mirrored by
-`frontend/src/types/vstrike.ts`.
+`clients/web/src/types/vstrike.ts`.
 
 The ingest handler does read-modify-write on `entity_context` so existing
 keys (`src_ip`, `hostname`, etc.) are never clobbered.

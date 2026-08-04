@@ -145,7 +145,7 @@ class WorkflowAIGenerator:
 
     def _agents_context(self) -> str:
         try:
-            from services.soc_agents import SOCAgentLibrary
+            from core.agents.manager import SOCAgentLibrary
 
             agents = SOCAgentLibrary.get_all_agents()
         except Exception as e:

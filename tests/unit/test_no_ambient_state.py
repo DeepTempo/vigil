@@ -13,6 +13,10 @@ ENV_EXEMPT_FILES = {
     "backend/secrets_manager.py",
 }
 
+# The other side of that boundary: core/integrations/*/tool.py are standalone
+# MCP servers, spawned as child processes whose config arrives only as env.
+ENV_EXEMPT_GLOBS = ("core/integrations/*/tool.py",)
+
 # Existing module-level instantiations. Converting these to accessor calls is
 # import-timing churn across many handlers, so they are grandfathered by name.
 SINGLETON_ALLOWED = {
@@ -94,6 +98,8 @@ def test_no_raw_env_reads():
     violations = []
     for rel_path in _python_files():
         if rel_path.as_posix() in ENV_EXEMPT_FILES:
+            continue
+        if any(rel_path.match(glob) for glob in ENV_EXEMPT_GLOBS):
             continue
         for lineno, text in _env_reads(rel_path):
             violations.append(f"{rel_path}:{lineno}: {text}")

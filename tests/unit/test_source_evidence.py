@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import importlib.util
 import json
 import sys
@@ -217,7 +216,7 @@ def test_findings_list_omits_payload_while_detail_retains_it(monkeypatch):
     finding = _finding_with_evidence()
     monkeypatch.setattr(findings_api, "data_service", _FakeDataService(finding))
 
-    list_response = asyncio.run(findings_api.get_findings(
+    list_response = findings_api.get_findings(
         severity=None,
         data_source=None,
         cluster_id=None,
@@ -229,8 +228,8 @@ def test_findings_list_omits_payload_while_detail_retains_it(monkeypatch):
         sort_by="timestamp",
         sort_order="desc",
         force_refresh=False,
-    ))
-    detail_response = asyncio.run(findings_api.get_finding("f-source-1"))
+    )
+    detail_response = findings_api.get_finding("f-source-1")
 
     listed = list_response["findings"][0]["entity_context"]["source_evidence"]
     detailed = detail_response["entity_context"]["source_evidence"]

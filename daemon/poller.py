@@ -110,7 +110,7 @@ class DataPoller:
             # Initialize Splunk service if configured
             if is_integration_enabled('splunk'):
                 try:
-                    from services.splunk_service import SplunkService
+                    from core.integrations.splunk.client import SplunkService
                     splunk_config = get_integration_config('splunk')
                     self._splunk_service = SplunkService(
                         server_url=splunk_config.get('server_url', ''),
@@ -125,7 +125,7 @@ class DataPoller:
             # Initialize CrowdStrike service if configured
             if is_integration_enabled('crowdstrike'):
                 try:
-                    from services.crowdstrike_service import CrowdStrikeService
+                    from core.integrations.crowdstrike.client import CrowdStrikeService
                     cs_config = get_integration_config('crowdstrike')
                     self._crowdstrike_service = CrowdStrikeService(
                         client_id=cs_config.get('client_id', ''),
@@ -139,7 +139,7 @@ class DataPoller:
             # Initialize Azure Sentinel service if configured
             if is_integration_enabled('azure_sentinel'):
                 try:
-                    from services.azure_sentinel_ingestion import AzureSentinelIngestion
+                    from core.integrations.azure_sentinel.ingestion import AzureSentinelIngestion
                     self._azure_sentinel_service = AzureSentinelIngestion()
                     logger.info("Azure Sentinel service initialized")
                 except Exception as e:
@@ -148,7 +148,7 @@ class DataPoller:
             # Initialize AWS Security Hub service if configured
             if is_integration_enabled('aws_security_hub'):
                 try:
-                    from services.aws_security_hub_ingestion import AWSSecurityHubIngestion
+                    from core.integrations.aws_security_hub.ingestion import AWSSecurityHubIngestion
                     self._aws_security_hub_service = AWSSecurityHubIngestion()
                     logger.info("AWS Security Hub service initialized")
                 except Exception as e:
@@ -157,7 +157,7 @@ class DataPoller:
             # Initialize Microsoft Defender service if configured
             if is_integration_enabled('microsoft_defender'):
                 try:
-                    from services.microsoft_defender_ingestion import MicrosoftDefenderIngestion
+                    from core.integrations.microsoft_defender.ingestion import MicrosoftDefenderIngestion
                     self._microsoft_defender_service = MicrosoftDefenderIngestion()
                     logger.info("Microsoft Defender service initialized")
                 except Exception as e:
@@ -166,7 +166,7 @@ class DataPoller:
             # Initialize Elastic Security service if configured
             if is_integration_enabled('elastic-siem'):
                 try:
-                    from services.elastic_ingestion import ElasticIngestion
+                    from core.integrations.elastic.ingestion import ElasticIngestion
                     self._elastic_service = ElasticIngestion()
                     logger.info("Elastic Security service initialized")
                 except Exception as e:

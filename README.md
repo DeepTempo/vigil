@@ -179,7 +179,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Frontend setup
-cd frontend
+cd clients/web
 npm install
 cd ..
 ```
@@ -230,7 +230,7 @@ export PYTHONPATH="${PWD}:${PYTHONPATH}"
 uvicorn backend.main:app --host 127.0.0.1 --port 6987 --reload
 
 # Terminal 4: Start frontend
-cd frontend && npm run dev
+cd clients/web && npm run dev
 ```
 
 ### Shutdown
@@ -277,11 +277,11 @@ Build a local DMG (Apple Silicon shown; the image tarball is arch-specific):
 
 ```bash
 # 1. Build the backend image from source and stage it as an offline tarball
-bash desktop/scripts/bundle-image.sh linux/arm64
+bash clients/desktop/scripts/bundle-image.sh linux/arm64
 
 # 2. Package the app (copies the Bifrost config, bundles the tarball)
-cd desktop && npm run dist
-# -> desktop/release/Vigil-<version>-arm64.dmg
+cd clients/desktop && npm run dist
+# -> clients/desktop/release/Vigil-<version>-arm64.dmg
 ```
 
 > **macOS Gatekeeper (unsigned build).** Locally built DMGs are ad-hoc
@@ -352,7 +352,7 @@ vigil/
 ├── contrib/           # Community tools: auto-contributor, benchmarking
 ├── mcp-servers/       # MCP server implementations (30+)
 ├── backend/           # FastAPI backend API + Agent SDK tools
-├── frontend/          # React + MUI frontend
+├── clients/web/          # React + Tailwind frontend
 ├── services/          # Business logic (workflows service, etc.)
 ├── daemon/            # Headless autonomous SOC service
 ├── tools/             # Additional tool implementations

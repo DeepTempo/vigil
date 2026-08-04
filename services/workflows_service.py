@@ -670,7 +670,7 @@ For each phase:
         don't have structured phases. No approval gating possible —
         there's no phase_id to attach an approval to."""
         from core.llm.harness.claude import ClaudeService
-        from services.soc_agents import SOCAgentLibrary
+        from core.agents.manager import SOCAgentLibrary
         from services.workflow_run_service import get_workflow_run_service
 
         target_context = self._build_target_context(parameters)
@@ -843,7 +843,7 @@ For each phase:
         the run as appropriate."""
         from services.approval_service import ActionType, get_approval_service
         from core.llm.harness.claude import ClaudeService
-        from services.soc_agents import SOCAgentLibrary
+        from core.agents.manager import SOCAgentLibrary
         from services.workflow_run_service import get_workflow_run_service
 
         run_service = get_workflow_run_service()
@@ -1099,7 +1099,7 @@ For each phase:
 
         skill_tool_names: List[str] = []
         try:
-            from services.skill_tools_bridge import list_active_skill_tools
+            from core.skills.skill_tools_bridge import list_active_skill_tools
 
             skill_defs, _ = list_active_skill_tools()
             skill_tool_names = [t["name"] for t in skill_defs]

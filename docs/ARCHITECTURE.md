@@ -189,7 +189,7 @@ source venv/bin/activate
 uvicorn backend.main:app --host 127.0.0.1 --port 6987 --reload
 
 # Terminal 3: Frontend
-cd frontend && npm run dev
+cd clients/web && npm run dev
 ```
 
 ### Production (Docker)

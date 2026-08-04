@@ -1,6 +1,6 @@
 """Unit tests for the Claude Desktop skill zip importer (Issue #130).
 
-Exercises ``services.skill_importer.import_skill_zip`` against an
+Exercises ``core.skills.skill_importer.import_skill_zip`` against an
 in-memory fake service. No DB or HTTP involved.
 """
 
@@ -17,7 +17,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from services.skill_importer import (  # noqa: E402
+from core.skills.skill_importer import (  # noqa: E402
     MAX_ENTRIES,
     MAX_SKILL_MD_BYTES,
     MAX_ZIP_BYTES,
@@ -333,9 +333,10 @@ def test_too_many_entries_is_400():
 def test_router_path_uses_module_level_service(monkeypatch):
     """The importer looks up SkillService at call time so router-level
     patches propagate. Regression guard: if someone replaces the import
-    with `from services.skill_service import SkillService`, this breaks.
+    with `from core.skills.skill_service import SkillService` at
+    import time (instead of the module handle), this breaks.
     """
-    import services.skill_importer as importer_mod
+    from core.skills import skill_importer as importer_mod
 
     captured: Dict[str, Any] = {}
 
@@ -345,6 +346,7 @@ def test_router_path_uses_module_level_service(monkeypatch):
             captured["created_by"] = created_by
             return super().create_skill(data, created_by=created_by)
 
+    # Patch the real module handle (shim re-exports don't share globals).
     monkeypatch.setattr(importer_mod._skill_service_mod, "SkillService", SpyService)
 
     zip_bytes = _make_zip({"SKILL.md": VALID_SKILL_MD})

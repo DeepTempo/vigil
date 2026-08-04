@@ -125,7 +125,7 @@ def test_every_audited_integration_is_registered():
     its credentials would still flow through the plaintext path on save.
 
     The list below was derived by parsing
-    ``frontend/src/config/integrations.ts`` for ``type: 'password'`` fields
+    ``clients/web/src/config/integrations.ts`` for ``type: 'password'`` fields
     grouped by their parent integration ``id``. If a new integration with
     password-typed fields is added to the frontend, add it here AND to
     ``_SECRET_FIELDS`` in services.integration_secrets.

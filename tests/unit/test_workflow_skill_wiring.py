@@ -62,7 +62,7 @@ async def test_execute_workflow_includes_skill_tools_in_allowed_list(monkeypatch
     with patch(
         "core.llm.harness.claude.ClaudeService", return_value=fake
     ), patch(
-        "services.skill_tools_bridge.list_active_skill_tools",
+        "core.skills.skill_tools_bridge.list_active_skill_tools",
         return_value=(
             [
                 {
@@ -107,7 +107,7 @@ async def test_execute_workflow_no_skills_still_runs(monkeypatch):
     with patch(
         "core.llm.harness.claude.ClaudeService", return_value=fake
     ), patch(
-        "services.skill_tools_bridge.list_active_skill_tools",
+        "core.skills.skill_tools_bridge.list_active_skill_tools",
         return_value=([], {}),
     ):
         result = await service.execute_workflow("wf-test", {})
@@ -138,7 +138,7 @@ async def test_execute_workflow_does_not_use_agent_sdk(monkeypatch):
     with patch(
         "core.llm.harness.claude.ClaudeService", side_effect=_record_svc
     ), patch(
-        "services.skill_tools_bridge.list_active_skill_tools",
+        "core.skills.skill_tools_bridge.list_active_skill_tools",
         return_value=([], {}),
     ):
         await service.execute_workflow("wf-test", {})
@@ -167,7 +167,7 @@ async def test_execute_workflow_surfaces_chat_exception_as_error(monkeypatch):
     with patch(
         "core.llm.harness.claude.ClaudeService", return_value=svc
     ), patch(
-        "services.skill_tools_bridge.list_active_skill_tools",
+        "core.skills.skill_tools_bridge.list_active_skill_tools",
         return_value=([], {}),
     ):
         result = await service.execute_workflow("wf-test", {})

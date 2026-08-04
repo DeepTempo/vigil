@@ -38,7 +38,7 @@ def load_skill_tools() -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     unavailable.
     """
     try:
-        from services.skill_tools_bridge import list_active_skill_tools
+        from core.skills.skill_tools_bridge import list_active_skill_tools
 
         tools, index = list_active_skill_tools()
         return list(tools), index
@@ -53,7 +53,7 @@ def filter_tools_by_recommended(
     """Keep only tools whose name is in ``recommended``; no-op when falsy.
 
     MCP/server tools arrive prefixed as ``<server>_<tool>`` while per-agent
-    recommended lists (``soc_agents.py``) use bare names, so a tool matches if
+    recommended lists (``core/agents/builtins.py``) use bare names, so a tool matches if
     either its full name or its post-first-underscore suffix is recommended.
     """
     if not recommended:
@@ -298,7 +298,7 @@ async def execute_backend_tool(
     # through so a name that merely *looks* like a skill still tries the rest
     # of the chain.
     try:
-        from services.skill_tools_bridge import execute_skill_tool, is_skill_tool_name
+        from core.skills.skill_tools_bridge import execute_skill_tool, is_skill_tool_name
 
         if is_skill_tool_name(tool_name):
             return (

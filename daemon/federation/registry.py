@@ -80,14 +80,14 @@ def _ensure_builtins_loaded() -> None:
         return
     _BUILTINS_LOADED = True
     # Import for side effects (each module calls register_adapter at module scope).
+    # Every vendor adapter lives in its vertical slice; import the adapter module
+    # directly for the module-scope register_adapter() side effect.
     try:
-        from daemon.federation.adapters import (  # noqa: F401
-            aws_security_hub,
-            azure_sentinel,
-            crowdstrike,
-            elastic,
-            microsoft_defender,
-            splunk,
-        )
+        from core.integrations.aws_security_hub import adapter as _aws_adapter  # noqa: F401
+        from core.integrations.azure_sentinel import adapter as _azure_adapter  # noqa: F401
+        from core.integrations.crowdstrike import adapter as _crowdstrike_adapter  # noqa: F401
+        from core.integrations.elastic import adapter as _elastic_adapter  # noqa: F401
+        from core.integrations.microsoft_defender import adapter as _defender_adapter  # noqa: F401
+        from core.integrations.splunk import adapter as _splunk_adapter  # noqa: F401
     except Exception as e:
         logger.warning("Failed to load builtin federation adapters: %s", e)
