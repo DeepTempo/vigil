@@ -43,9 +43,9 @@ const SCREENS: Record<ScreenKey, (props: ScreenProps) => JSX.Element> = {
   settings: SettingsScreen,
 }
 
-/** Per-screen permission gate, mirroring the production ProtectedRoute routes
- *  (App.tsx). Screens absent here are ungated. In DEV_MODE the auth context
- *  grants every permission, so all items show in the preview. */
+/** Per-screen permission gate — the only permission check in the app
+ *  (ProtectedRoute handles auth alone). Screens absent here are ungated. In
+ *  DEV_MODE the auth context grants every permission, so all items show. */
 const SCREEN_PERMS: Partial<Record<ScreenKey, string>> = {
   cases: 'cases.read',
   decisions: 'ai_decisions.approve',

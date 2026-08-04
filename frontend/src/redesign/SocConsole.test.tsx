@@ -221,10 +221,12 @@ describe('SocConsole redesign', () => {
     expect(screen.getByText('Security operations overview')).toBeInTheDocument()
   })
 
-  it('renders the 404 screen for an unknown path and routes home', () => {
+  it('renders the 404 screen for an unknown path and routes home', async () => {
     renderConsole('/does-not-exist')
     expect(title()).toBe('Page not found')
-    expect(screen.getByText('404')).toBeInTheDocument()
+    // An unknown path is first probed as a page extension, so the 404 body
+    // only lands once that resolution settles.
+    expect(await screen.findByText('404')).toBeInTheDocument()
     // the in-shell "Back to dashboard" action returns to a real screen
     fireEvent.click(screen.getByRole('button', { name: /Back to dashboard/ }))
     expect(title()).toBe('Dashboard')
@@ -303,6 +305,9 @@ describe('SocConsole redesign', () => {
 
   it('restores and persists the preferred chat width', () => {
     localStorage.setItem('soc.chat.width.v1', '500')
+    // A wide viewport keeps the 516 step inside the band; jsdom's 1024 default
+    // caps the dock at half the screen (512), which is the next test's subject.
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 })
     renderConsole()
     fireEvent.click(screen.getByRole('button', { name: /Ask Vigil/ }))
 

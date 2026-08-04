@@ -517,24 +517,7 @@ class ComponentAssignment:
 # on whichever page load falls on the expiry boundary.
 
 
-class _ProviderModelCache:
-    def __init__(self):
-        self._entries: Dict[str, List[str]] = {}
-
-    def get(self, provider_id: str) -> Optional[List[str]]:
-        return self._entries.get(provider_id)
-
-    def set(self, provider_id: str, models: List[str]) -> None:
-        self._entries[provider_id] = models
-
-    def invalidate(self, provider_id: Optional[str] = None) -> None:
-        if provider_id is None:
-            self._entries.clear()
-        else:
-            self._entries.pop(provider_id, None)
-
-
-_MODEL_LIST_CACHE = _ProviderModelCache()
+_MODEL_LIST_CACHE: Dict[str, List[str]] = {}
 
 
 # Cold-boot fallback lists — used only when the live upstream API is
@@ -654,7 +637,7 @@ async def fetch_provider_models(row) -> List[str]:
     for mid in extras:
         if mid not in fallback:
             fallback.append(mid)
-    _MODEL_LIST_CACHE.set(row.provider_id, fallback)
+    _MODEL_LIST_CACHE[row.provider_id] = fallback
     return fallback
 
 
@@ -1048,7 +1031,10 @@ def invalidate_model_cache(provider_id: Optional[str] = None) -> None:
     """Callers that change provider config (add/update/delete) can drop
     the per-provider model-list cache + the discovery module's meta cache
     so the UI sees fresh data."""
-    _MODEL_LIST_CACHE.invalidate(provider_id)
+    if provider_id is None:
+        _MODEL_LIST_CACHE.clear()
+    else:
+        _MODEL_LIST_CACHE.pop(provider_id, None)
     # Provider-scoped live meta / discovery cache invalidation — best
     # effort. ``provider_id`` is a DB id, not a provider_type, so we can't
     # surgically drop a single entry; clear all meta + discovery cache
@@ -1068,7 +1054,7 @@ def find_provider_for_model(model_id: str) -> Optional[str]:
     Returns the first provider_id whose cached model list contains model_id,
     or None if not found.
     """
-    for pid, models in _MODEL_LIST_CACHE._entries.items():
+    for pid, models in _MODEL_LIST_CACHE.items():
         if model_id in models:
             return pid
     return None

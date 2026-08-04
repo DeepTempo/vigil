@@ -1,6 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react'
-import { ThemeProvider as MuiThemeProvider, CssBaseline } from '@mui/material'
-import { createM3Theme } from '../theme'
+import React, { createContext, useContext, useState, useEffect } from 'react'
 import { configApi } from '../services/api'
 
 interface ThemeContextType {
@@ -33,14 +31,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const toggleTheme = () => setMode(mode === 'light' ? 'dark' : 'light')
 
-  const theme = useMemo(() => createM3Theme(mode), [mode])
-
   return (
     <ThemeContext.Provider value={{ mode, toggleTheme, setMode }}>
-      <MuiThemeProvider theme={theme}>
-        <CssBaseline />
-        {children}
-      </MuiThemeProvider>
+      {children}
     </ThemeContext.Provider>
   )
 }

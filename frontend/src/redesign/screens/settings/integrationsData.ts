@@ -6,7 +6,7 @@
    ============================================================ */
 
 import { getAllIntegrations } from '../../../config/integrations'
-import type { IntegrationMetadata } from '../../../components/settings/IntegrationWizard'
+import type { IntegrationMetadata } from '../../../config/integrationSchema'
 
 /** Core deps hidden from the grid (always-on / merged duplicates). */
 export const HIDDEN_MCP_SERVERS = new Set(['mempalace', 'splunk-selfhosted'])

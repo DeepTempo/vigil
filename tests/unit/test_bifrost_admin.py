@@ -201,7 +201,7 @@ def _patch_db(monkeypatch, rows):
 def _reset_registry():
     from services import model_registry
 
-    model_registry._MODEL_LIST_CACHE.invalidate()
+    model_registry._MODEL_LIST_CACHE.clear()
     model_registry._EXTRA_IDS.clear()
     model_registry.clear_live_meta()
 
@@ -405,8 +405,8 @@ def test_cache_has_no_ttl(monkeypatch):
     """
     from services.model_registry import _MODEL_LIST_CACHE
 
-    _MODEL_LIST_CACHE.invalidate()
-    _MODEL_LIST_CACHE.set("p1", ["a", "b"])
+    _MODEL_LIST_CACHE.clear()
+    _MODEL_LIST_CACHE["p1"] = ["a", "b"]
 
     # Pretend a long time has passed. Cache should still return the entry.
     import time as _time
@@ -420,7 +420,7 @@ def test_cache_has_no_ttl(monkeypatch):
         assert _MODEL_LIST_CACHE.get("p1") == ["a", "b"]
     finally:
         _time.time = original  # type: ignore[assignment]
-    _MODEL_LIST_CACHE.invalidate()
+    _MODEL_LIST_CACHE.clear()
 
 
 def test_fetch_meta_for_row_ollama_bypasses_ssrf_ip_gate():

@@ -352,7 +352,7 @@ vigil/
 ├── contrib/           # Community tools: auto-contributor, benchmarking
 ├── mcp-servers/       # MCP server implementations (30+)
 ├── backend/           # FastAPI backend API + Agent SDK tools
-├── frontend/          # React + MUI frontend
+├── frontend/          # React + Tailwind frontend
 ├── services/          # Business logic (workflows service, etc.)
 ├── daemon/            # Headless autonomous SOC service
 ├── tools/             # Additional tool implementations
