@@ -1,9 +1,6 @@
 """Input shaping and prompt construction for finding enrichment.
 
-Pure functions — no provider, no database, no HTTP. Moved verbatim out of
-``backend/api/findings.py``'s ``get_or_generate_enrichment`` (#470) so the
-singular/plural entity handling and the MITRE fallback can be unit-tested
-without an HTTP round-trip.
+Pure functions — no provider, no database, no HTTP.
 """
 
 from dataclasses import dataclass

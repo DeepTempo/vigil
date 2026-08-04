@@ -350,7 +350,7 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
     import asyncio
 
     # Get the finding. The data layer is synchronous SQLAlchemy, so keep it off
-    # the event loop (#518) — this handler stays async because it awaits the LLM.
+    # the event loop — this handler stays async because it awaits the LLM.
     finding = await asyncio.to_thread(data_service.get_finding, finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
@@ -367,11 +367,11 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
             "enrichment": existing_enrichment
         }
 
-    # Generate new enrichment using the configured reporting provider.
-    # The flow itself lives in services/findings/enrichment/ so ingestion, the
-    # daemon and agents can reuse it; this handler owns only the translation
-    # from domain errors to status codes (#470). The write that used to sit here
-    # moved into that module's _persist(), which keeps the to_thread offload.
+    # Generate new enrichment using the configured reporting provider. The flow
+    # lives in services/findings/enrichment/ so ingestion, the daemon and agents
+    # can reuse it; this handler owns only the domain-error → status-code
+    # translation. The write that used to sit here moved into that module's
+    # _persist(), which keeps the to_thread offload.
     try:
         # Pass the path param, not the id off the row we just read — it's the
         # authoritative write target, exactly as the pre-extraction handler did.

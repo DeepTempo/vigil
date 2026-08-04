@@ -1,9 +1,8 @@
 """Response parsing for finding enrichment.
 
-Pure functions — moved verbatim out of ``backend/api/findings.py`` (#470).
 Local models in particular wrap their JSON in markdown fences or trail prose
-after it, so extraction is deliberately forgiving and falls back to a
-synthesized payload rather than failing the request.
+after it, so extraction is forgiving and falls back to a synthesized payload
+rather than failing the request.
 """
 
 import json

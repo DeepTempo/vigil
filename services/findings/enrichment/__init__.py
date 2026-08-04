@@ -1,22 +1,8 @@
 """Finding AI-enrichment: prompt building, provider dispatch, response parsing.
 
-Extracted from the 333-line ``get_or_generate_enrichment`` handler in
-``backend/api/findings.py`` so the flow is reachable from more than one HTTP
-path — ingestion, the daemon and agents can call the same seam (#470).
-
-The single entry point is :func:`enrich`::
-
-    from services.findings.enrichment import enrich, EnrichmentError
-
-    try:
-        payload = await enrich(finding)             # persists by default
-    except EnrichmentError as exc:
-        ...
-
-Callers that want to compose their own database write pass ``persist=False``.
-Failures are domain exceptions (see :mod:`~services.findings.enrichment.errors`),
-never ``HTTPException`` — translation to status codes belongs to the HTTP
-boundary in ``backend/api/findings.py``.
+``enrich()`` is the entry point. It persists by default; pass ``persist=False``
+to compose your own write. Failures are domain exceptions from ``errors``, never
+``HTTPException``.
 """
 
 from services.findings.enrichment.errors import (

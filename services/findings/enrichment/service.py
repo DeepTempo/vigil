@@ -1,20 +1,16 @@
 """The ``enrich()`` seam: resolve provider → dispatch → parse → stamp → persist.
 
-Extracted from ``backend/api/findings.py`` ``get_or_generate_enrichment`` handler so ingestion,
-the daemon and agents can reuse the flow instead of it being reachable only over HTTP.
+Two known-imperfect behaviours are carried over from the old inline handler
+rather than fixed here, so any regression stays bisectable:
 
-Behaviour is preserved exactly as it was in the handler, including two things
-that are known-imperfect and deliberately *not* fixed here:
-
-* **Asymmetric dispatch** — Anthropic runs on a threadpool with no retry;
-  other providers get ``LLMRouter`` + retry + local-Bifrost recovery.
-* **A full-replace write on a column with two writers** — ``daemon/processor``
-  stores triage keys (``ai_triage``, ``triage_confidence``, …) in the same
-  JSONB column this module fills with analysis keys (``threat_summary``, …),
-  and the two sets don't overlap. So: a daemon payload satisfies the API's
-  cache check but renders as ``undefined``; writing here wipes daemon triage;
-  and the finding then leaves the daemon's ``ai_enrichment IS NULL`` backfill
-  for good.
+* Dispatch is asymmetric — Anthropic runs on a threadpool with no retry; other
+  providers get ``LLMRouter`` + retry + local-Bifrost recovery.
+* The ``ai_enrichment`` write is a full replace, and ``daemon/processor`` writes
+  a disjoint set of triage keys to the same column. So a daemon payload can
+  satisfy the API's cache check yet render as ``undefined``, writing here wipes
+  daemon triage, and the finding then leaves the daemon's
+  ``ai_enrichment IS NULL`` backfill for good. ``persist=False`` is the seam for
+  fixing that separately.
 """
 
 import asyncio
@@ -177,14 +173,10 @@ async def _persist(
 ) -> bool:
     """Write ``enrichment`` to the finding's ``ai_enrichment`` column.
 
-    A **full replace**, not a merge — see the module docstring for the writer
-    collision this carries forward. A failed write is logged and swallowed:
-    the caller still gets the payload it paid a provider call for.
-
-    The write goes through ``asyncio.to_thread`` because the data layer is
-    synchronous SQLAlchemy and ``enrich()`` is called from the event loop.
-    The pre-extraction handler offloaded this same call (#518, refs #461);
-    moving it into a plain ``def`` here would have put it back on the loop.
+    A full replace, not a merge — see the module docstring. A failed write is
+    logged and swallowed: the caller still gets the payload it paid a provider
+    call for. Offloaded with ``to_thread`` because the data layer is sync
+    SQLAlchemy and this runs on the event loop.
     """
     service = data_service if data_service is not None else _default_data_service()
     success = await asyncio.to_thread(
