@@ -186,7 +186,7 @@ class WorkflowAIGenerator:
 
     def _exemplars_context(self) -> str:
         try:
-            from services.workflows_service import get_workflows_service
+            from core.workflows.workflows_service import get_workflows_service
 
             service = get_workflows_service()
             workflows = service.list_workflows()

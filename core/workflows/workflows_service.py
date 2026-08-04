@@ -296,7 +296,7 @@ class WorkflowsService:
     def _get_custom_workflow(self, workflow_id: str) -> Optional[WorkflowDefinition]:
         """Fetch a single custom workflow from the database by ID."""
         try:
-            from services.custom_workflow_service import get_custom_workflow_service
+            from core.workflows.custom_workflow_service import get_custom_workflow_service
 
             raw = get_custom_workflow_service().get(workflow_id)
         except Exception as e:
@@ -309,7 +309,7 @@ class WorkflowsService:
     def _list_custom_workflows(self) -> List[WorkflowDefinition]:
         """List active custom workflows from the database."""
         try:
-            from services.custom_workflow_service import get_custom_workflow_service
+            from core.workflows.custom_workflow_service import get_custom_workflow_service
 
             rows = get_custom_workflow_service().list(active_only=True)
         except Exception as e:
@@ -473,7 +473,7 @@ For each phase:
         On approve, re-enters the phase loop at the paused phase. On
         reject, finalises the run as ``cancelled``.
         """
-        from services.workflow_run_service import get_workflow_run_service
+        from core.workflows.workflow_run_service import get_workflow_run_service
 
         if decision not in ("approved", "rejected"):
             return {"success": False, "error": f"Invalid decision: {decision}"}
@@ -671,7 +671,7 @@ For each phase:
         there's no phase_id to attach an approval to."""
         from services.claude_service import ClaudeService
         from core.agents.manager import SOCAgentLibrary
-        from services.workflow_run_service import get_workflow_run_service
+        from core.workflows.workflow_run_service import get_workflow_run_service
 
         target_context = self._build_target_context(parameters)
         all_agents = SOCAgentLibrary.get_all_agents()
@@ -788,7 +788,7 @@ For each phase:
     ) -> Dict[str, Any]:
         """Phase-by-phase execution path for custom workflows (#128)."""
         from services.claude_service import ClaudeService
-        from services.workflow_run_service import get_workflow_run_service
+        from core.workflows.workflow_run_service import get_workflow_run_service
 
         if not ClaudeService(
             use_backend_tools=False, use_mcp_tools=False, use_agent_sdk=False
@@ -841,10 +841,10 @@ For each phase:
         """Shared phase-loop body used by both initial execute and
         resume. Walks phases from ``start_index``; pauses or completes
         the run as appropriate."""
-        from services.approval_service import ActionType, get_approval_service
+        from core.response.approval_service import ActionType, get_approval_service
         from services.claude_service import ClaudeService
         from core.agents.manager import SOCAgentLibrary
-        from services.workflow_run_service import get_workflow_run_service
+        from core.workflows.workflow_run_service import get_workflow_run_service
 
         run_service = get_workflow_run_service()
         approval_service = get_approval_service()
@@ -1240,7 +1240,7 @@ You have access to SOC tools and must ground every conclusion in tool output.
 
         if finding_id:
             try:
-                from services.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
 
                 data_service = DatabaseDataService()
                 finding = data_service.get_finding(finding_id)
@@ -1272,7 +1272,7 @@ You have access to SOC tools and must ground every conclusion in tool output.
 
         if case_id:
             try:
-                from services.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
 
                 data_service = DatabaseDataService()
                 case = data_service.get_case(case_id)

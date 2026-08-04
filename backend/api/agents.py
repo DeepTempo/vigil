@@ -132,7 +132,7 @@ async def start_investigation(request: InvestigationRequest):
     Returns:
         Investigation prompt and agent details
     """
-    from services.database_data_service import DatabaseDataService
+    from core.storage.database_data_service import DatabaseDataService
     
     try:
         # Get the finding
@@ -207,7 +207,7 @@ async def run_agent(request: AgentRunRequest):
     Returns:
         Agent execution result with tool calls and analysis
     """
-    from services.database_data_service import DatabaseDataService
+    from core.storage.database_data_service import DatabaseDataService
     from services.claude_service import ClaudeService
     
     try:

@@ -35,7 +35,7 @@ async def list_sources():
         List of sources with metadata (name, format, rule count, status, etc.)
     """
     try:
-        from services.detection_rules_service import get_detection_rules_service
+        from core.detections.detection_rules_service import get_detection_rules_service
         service = get_detection_rules_service()
         sources = service.list_sources()
         return {"sources": sources, "count": len(sources)}
@@ -56,7 +56,7 @@ async def get_source(source_id: str):
         Source details
     """
     try:
-        from services.detection_rules_service import get_detection_rules_service
+        from core.detections.detection_rules_service import get_detection_rules_service
         service = get_detection_rules_service()
         source = service.get_source(source_id)
         if not source:
@@ -81,7 +81,7 @@ async def add_source(request: AddSourceRequest):
         The newly created source
     """
     try:
-        from services.detection_rules_service import get_detection_rules_service
+        from core.detections.detection_rules_service import get_detection_rules_service
         service = get_detection_rules_service()
         source = service.add_source(
             name=request.name,
@@ -113,7 +113,7 @@ async def remove_source(source_id: str, delete_files: bool = False):
         Success status
     """
     try:
-        from services.detection_rules_service import get_detection_rules_service
+        from core.detections.detection_rules_service import get_detection_rules_service
         service = get_detection_rules_service()
         success = service.remove_source(source_id, delete_files=delete_files)
         if not success:
@@ -138,7 +138,7 @@ async def update_source(source_id: str):
         Updated source details
     """
     try:
-        from services.detection_rules_service import get_detection_rules_service
+        from core.detections.detection_rules_service import get_detection_rules_service
         service = get_detection_rules_service()
         source = service.update_source(source_id)
         
@@ -162,7 +162,7 @@ async def update_all_sources():
         Results for each source update
     """
     try:
-        from services.detection_rules_service import get_detection_rules_service
+        from core.detections.detection_rules_service import get_detection_rules_service
         service = get_detection_rules_service()
         results = service.update_all()
         
@@ -184,7 +184,7 @@ async def get_stats():
         Statistics including total rules, breakdown by format, and per-source counts
     """
     try:
-        from services.detection_rules_service import get_detection_rules_service
+        from core.detections.detection_rules_service import get_detection_rules_service
         service = get_detection_rules_service()
         stats = service.get_stats()
         return stats
@@ -202,7 +202,7 @@ async def get_mcp_env():
         Dictionary of environment variable names to their values
     """
     try:
-        from services.detection_rules_service import get_detection_rules_service
+        from core.detections.detection_rules_service import get_detection_rules_service
         service = get_detection_rules_service()
         env_vars = service.get_mcp_env_vars()
         return {"env_vars": env_vars}
@@ -221,7 +221,7 @@ async def reload_service():
         Success status with updated stats
     """
     try:
-        from services.detection_rules_service import get_detection_rules_service
+        from core.detections.detection_rules_service import get_detection_rules_service
         service = get_detection_rules_service()
         
         # Re-read config
@@ -262,7 +262,7 @@ async def _restart_security_detections_mcp():
             
             if server_name in mcp_service.servers:
                 # Update the server's env vars with latest paths from detection_rules_service
-                from services.detection_rules_service import get_detection_rules_service
+                from core.detections.detection_rules_service import get_detection_rules_service
                 detection_service = get_detection_rules_service()
                 env_vars = detection_service.get_mcp_env_vars()
                 

@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from abc import ABC, abstractmethod
 
-from services.ingestion_service import IngestionService
+from core.ingestion.ingestion_service import IngestionService
 
 logger = logging.getLogger(__name__)
 

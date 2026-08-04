@@ -24,7 +24,7 @@ class AutonomousResponseService:
     def _load_services(self):
         """Load required services."""
         try:
-            from services.approval_service import get_approval_service, ActionType
+            from core.response.approval_service import get_approval_service, ActionType
             self.approval_service = get_approval_service()
             self.ActionType = ActionType
         except Exception as e:
@@ -448,7 +448,7 @@ Please review and approve/reject in the SOC dashboard.
             return []
         
         try:
-            from services.approval_service import ActionStatus
+            from core.response.approval_service import ActionStatus
             
             # Get approved but not executed actions
             approved_actions = self.approval_service.list_actions(status=ActionStatus.APPROVED)
@@ -516,7 +516,7 @@ Please review and approve/reject in the SOC dashboard.
         """
         try:
             # Load finding
-            from services.database_data_service import DatabaseDataService
+            from core.storage.database_data_service import DatabaseDataService
             data_service = DatabaseDataService()
             finding = data_service.get_finding(finding_id)
             

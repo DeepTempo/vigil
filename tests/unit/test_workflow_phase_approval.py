@@ -82,7 +82,7 @@ def clean_tables():
 
 def _make_workflow(approval_on_phase_2: bool = True):
     """Build an in-memory WorkflowDefinition with 2 phases."""
-    from services.workflows_service import WorkflowDefinition
+    from core.workflows.workflows_service import WorkflowDefinition
 
     phases: List[Dict[str, Any]] = [
         {
@@ -156,7 +156,7 @@ class TestPhasedExecutionPauseResume:
     def _patched_service(self, workflow):
         """Return a WorkflowsService wired so .get_workflow yields our
         in-memory fixture and ClaudeService is the fake."""
-        from services import workflows_service as ws
+        from core.workflows import workflows_service as ws
 
         svc = ws.WorkflowsService()
         svc.get_workflow = lambda wid: workflow  # type: ignore[method-assign]
@@ -164,7 +164,7 @@ class TestPhasedExecutionPauseResume:
 
     def test_pauses_before_phase_requiring_approval(self, clean_tables):
         from services import claude_service as cs_module
-        from services.workflow_run_service import get_workflow_run_service
+        from core.workflows.workflow_run_service import get_workflow_run_service
 
         workflow = _make_workflow(approval_on_phase_2=True)
         svc = self._patched_service(workflow)
@@ -194,8 +194,8 @@ class TestPhasedExecutionPauseResume:
 
     def test_resume_approved_completes_run(self, clean_tables):
         from services import claude_service as cs_module
-        from services.approval_service import get_approval_service
-        from services.workflow_run_service import get_workflow_run_service
+        from core.response.approval_service import get_approval_service
+        from core.workflows.workflow_run_service import get_workflow_run_service
 
         workflow = _make_workflow(approval_on_phase_2=True)
         svc = self._patched_service(workflow)
@@ -227,8 +227,8 @@ class TestPhasedExecutionPauseResume:
 
     def test_resume_rejected_cancels_run(self, clean_tables):
         from services import claude_service as cs_module
-        from services.approval_service import get_approval_service
-        from services.workflow_run_service import get_workflow_run_service
+        from core.response.approval_service import get_approval_service
+        from core.workflows.workflow_run_service import get_workflow_run_service
 
         workflow = _make_workflow(approval_on_phase_2=True)
         svc = self._patched_service(workflow)
@@ -266,7 +266,7 @@ class TestPhasedExecutionPauseResume:
 
     def test_no_approval_required_runs_straight_through(self, clean_tables):
         from services import claude_service as cs_module
-        from services.workflow_run_service import get_workflow_run_service
+        from core.workflows.workflow_run_service import get_workflow_run_service
 
         workflow = _make_workflow(approval_on_phase_2=False)
         svc = self._patched_service(workflow)
@@ -284,11 +284,11 @@ class TestPhasedExecutionPauseResume:
 
 class TestApprovalActionWorkflowLinkage:
     def test_create_action_persists_workflow_linkage(self, clean_tables):
-        from services.approval_service import (
+        from core.response.approval_service import (
             ActionType,
             get_approval_service,
         )
-        from services.workflow_run_service import get_workflow_run_service
+        from core.workflows.workflow_run_service import get_workflow_run_service
 
         run_id = get_workflow_run_service().begin_run(
             workflow_id="test-phase-linkage",

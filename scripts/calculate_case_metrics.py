@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import DatabaseManager
 from database.models import Case
-from services.case_metrics_service import CaseMetricsService
+from core.cases.case_metrics_service import CaseMetricsService
 
 
 def main():

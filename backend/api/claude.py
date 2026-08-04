@@ -63,7 +63,7 @@ def _persist_chat_turn(
     ``session_id``.
     """
     try:
-        from services import conversation_service
+        from core.chat import conversation_service
 
         conversation_service.ensure_conversation(
             session_id=session_id,
@@ -1578,7 +1578,7 @@ async def analyze_finding(finding_id: str, context: Optional[str] = None):
     Returns:
         Analysis result
     """
-    from services.database_data_service import DatabaseDataService
+    from core.storage.database_data_service import DatabaseDataService
 
     data_service = DatabaseDataService()
     finding = data_service.get_finding(finding_id)
@@ -1650,7 +1650,7 @@ async def generate_chat_report(request: ChatReportRequest):
     Returns:
         Report file information
     """
-    from services.report_service import ReportService, REPORTLAB_AVAILABLE
+    from core.reporting.report_service import ReportService, REPORTLAB_AVAILABLE
     from pathlib import Path
     from datetime import datetime
 

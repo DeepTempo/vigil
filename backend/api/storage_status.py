@@ -29,7 +29,7 @@ async def get_storage_status():
         Dictionary with storage backend information
     """
     try:
-        from services.database_data_service import DatabaseDataService
+        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
 
         test_service = DatabaseDataService()
@@ -107,7 +107,7 @@ async def check_storage_health():
         Health status of the storage backend
     """
     try:
-        from services.database_data_service import DatabaseDataService
+        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
 
         service = DatabaseDataService()

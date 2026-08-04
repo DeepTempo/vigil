@@ -29,7 +29,7 @@ class SessionManager:
     def _get_sessions_dir(self) -> Optional[Path]:
         if self._mempalace is None:
             try:
-                from services.mempalace_paths import get_palace_path
+                from core.platform.mempalace_paths import get_palace_path
 
                 sessions_dir = get_palace_path() / "sessions"
                 sessions_dir.mkdir(parents=True, exist_ok=True)

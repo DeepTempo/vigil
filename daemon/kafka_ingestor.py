@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 
 from daemon.config import KafkaConfig
 from daemon.dedup import RedisDedupSet
-from services.kafka_consumer_service import KafkaConsumerService
+from core.ingestion.kafka_consumer_service import KafkaConsumerService
 
 logger = logging.getLogger(__name__)
 

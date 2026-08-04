@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from services.workflow_run_service import (
+from core.workflows.workflow_run_service import (
     WorkflowRunService,
     generate_run_id,
     get_workflow_run_service,

@@ -11,10 +11,10 @@ from typing import Dict, List, Optional
 
 from database.connection import get_db_session
 from database.models import Case, CaseSLA, CaseNotification
-from services.case_sla_service import CaseSLAService
-from services.case_workflow_service import CaseWorkflowService
-from services.case_notification_service import CaseNotificationService
-from services.case_metrics_service import CaseMetricsService
+from core.cases.case_sla_service import CaseSLAService
+from core.cases.case_workflow_service import CaseWorkflowService
+from core.cases.case_notification_service import CaseNotificationService
+from core.cases.case_metrics_service import CaseMetricsService
 
 logger = logging.getLogger(__name__)
 
@@ -320,7 +320,7 @@ def cluster_findings_by_attack_path(finding_ids: List[str]) -> List[str]:
     Findings without a `vstrike` sub-dict in `entity_context` are skipped —
     this function is VStrike-specific by design.
     """
-    from services.database_data_service import DatabaseDataService
+    from core.storage.database_data_service import DatabaseDataService
 
     data_service = DatabaseDataService()
 

@@ -125,7 +125,7 @@ class TaskScheduler:
     def _init_services(self):
         """Initialize required services."""
         try:
-            from services.database_data_service import DatabaseDataService
+            from core.storage.database_data_service import DatabaseDataService
             self._data_service = DatabaseDataService()
             logger.info("Database service initialized for scheduler")
         except Exception as e:

@@ -38,7 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
-from services.url_safety import UrlSafetyError, validate_provider_url
+from core.platform.url_safety import UrlSafetyError, validate_provider_url
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,7 @@ async def fetch_anthropic_models(
     for on-prem / private Anthropic-compatible deployments. The full
     models URL is derived as ``{base_url}/models``.
 
-    The URL is run through :func:`services.url_safety.validate_provider_url`
+    The URL is run through :func:`core.platform.url_safety.validate_provider_url`
     before any request — it must use http/https, must not point at a
     loopback/private/link-local address (unless the host is in the
     public allowlist), and any query string is stripped. Bearer/x-api-key
@@ -257,7 +257,7 @@ async def fetch_openai_models(
     (0/False) defaults unless an override is registered in the static
     catalog.
 
-    The URL is validated by :func:`services.url_safety.validate_provider_url`
+    The URL is validated by :func:`core.platform.url_safety.validate_provider_url`
     before any request, and the bearer token is omitted when targeting
     non-allowlisted hosts so user-supplied custom URLs can't exfiltrate
     the configured key (see 2026-05 SSRF disclosure).

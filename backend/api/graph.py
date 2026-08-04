@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 import logging
 
-from services.database_data_service import DatabaseDataService
+from core.storage.database_data_service import DatabaseDataService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

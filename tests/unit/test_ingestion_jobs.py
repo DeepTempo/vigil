@@ -8,8 +8,8 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services import ingestion_service  # noqa: E402
-from services.ingestion_jobs import (  # noqa: E402
+from core.ingestion import ingestion_service  # noqa: E402
+from core.ingestion.ingestion_jobs import (  # noqa: E402
     FAILED,
     RUNNING,
     SUCCEEDED,

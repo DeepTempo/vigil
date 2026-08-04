@@ -20,15 +20,15 @@ from pathlib import Path
 from starlette.concurrency import run_in_threadpool
 import tempfile
 
-from services.ingestion_service import IngestionService
-from services.ingestion_jobs import (
+from core.ingestion.ingestion_service import IngestionService
+from core.ingestion.ingestion_jobs import (
     IngestionJob,
     IngestionJobConflict,
     get_job_registry,
     run_job,
     summarize_stats,
 )
-from services.database_data_service import DatabaseDataService
+from core.storage.database_data_service import DatabaseDataService
 
 logger = logging.getLogger(__name__)
 
@@ -438,7 +438,7 @@ def _get_s3_service():
     """
     from database.config_service import get_config_service
     from backend.secrets_manager import get_secret
-    from services.s3_service import S3Service
+    from core.storage.s3_service import S3Service
 
     config_service = get_config_service()
     s3_integration = config_service.get_integration_config('s3')

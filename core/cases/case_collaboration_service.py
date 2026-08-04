@@ -12,7 +12,7 @@ from sqlalchemy import and_
 
 from database.models import CaseComment, CaseWatcher, Case
 from database.connection import get_db_session
-from services.case_notification_service import CaseNotificationService
+from core.cases.case_notification_service import CaseNotificationService
 
 logger = logging.getLogger(__name__)
 

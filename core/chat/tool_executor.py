@@ -14,7 +14,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from services.chat.context_manager import ContextManager
+from core.chat.context_manager import ContextManager
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ class ToolExecutor:
                     "update_case",
                     "add_resolution_step",
                 ):
-                    from services.database_data_service import DatabaseDataService
+                    from core.storage.database_data_service import DatabaseDataService
 
                     data_service = DatabaseDataService()
                     result = await _dispatch_findings_tool(
@@ -105,7 +105,7 @@ class ToolExecutor:
 
                 # ATT&CK tools
                 elif tool_name in ("get_attack_layer", "get_technique_rollup"):
-                    from services.database_data_service import DatabaseDataService
+                    from core.storage.database_data_service import DatabaseDataService
 
                     data_service = DatabaseDataService()
                     result = _dispatch_attack_tool(tool_name, arguments, data_service)
@@ -118,7 +118,7 @@ class ToolExecutor:
                     "reject_action",
                     "get_approval_stats",
                 ):
-                    from services.approval_service import ApprovalService
+                    from core.response.approval_service import ApprovalService
 
                     result = _dispatch_approval_tool(
                         tool_name, arguments, ApprovalService()

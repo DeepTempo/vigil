@@ -12,7 +12,7 @@ class TestBaseClassContract:
 
     def test_update_upstream_raises_not_implemented(self):
         """Default implementation should raise NotImplementedError."""
-        from services.siem_ingestion_service import SIEMIngestionService
+        from core.ingestion.siem_ingestion_service import SIEMIngestionService
 
         class StubSIEM(SIEMIngestionService):
             async def fetch_alerts(self, **kw):

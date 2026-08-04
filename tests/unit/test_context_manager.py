@@ -1,4 +1,4 @@
-"""Unit tests for services.chat.context_manager (GH #341).
+"""Unit tests for core.chat.context_manager (GH #341).
 
 The rolling-summary compression (``fold_overflow`` + summary prepending) is
 central to the non-Anthropic / long-conversation behaviour introduced in the
@@ -22,7 +22,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.chat.context_manager import (  # noqa: E402
+from core.chat.context_manager import (  # noqa: E402
     _SUMMARY_MAX_CHARS,
     ContextManager,
     _prepend_summary_block,

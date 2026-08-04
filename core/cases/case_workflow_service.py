@@ -244,7 +244,7 @@ class CaseWorkflowService:
             
             # Assign SLA if template has one
             if template.default_sla_policy_id:
-                from services.case_sla_service import CaseSLAService
+                from core.cases.case_sla_service import CaseSLAService
                 sla_service = CaseSLAService()
                 sla_service.assign_sla_to_case(
                     case.case_id,

@@ -61,7 +61,7 @@ class ThreatFeedPoller:
 
         try:
             from core.config import get_integration_config
-            from services import threat_feed_service as feed
+            from core.threat_intel import threat_feed_service as feed
         except Exception as e:  # noqa: BLE001
             logger.warning("Threat feed dependencies unavailable: %s", e)
             return {"error": str(e)}

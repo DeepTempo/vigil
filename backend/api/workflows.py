@@ -90,7 +90,7 @@ async def list_workflows():
         { workflows: [...], count: int }
     """
     try:
-        from services.workflows_service import get_workflows_service
+        from core.workflows.workflows_service import get_workflows_service
 
         service = get_workflows_service()
         workflows = service.list_workflows()
@@ -110,7 +110,7 @@ async def reload_workflows():
     Does not affect database-backed custom workflows.
     """
     try:
-        from services.workflows_service import get_workflows_service
+        from core.workflows.workflows_service import get_workflows_service
 
         service = get_workflows_service()
         service.reload()
@@ -135,7 +135,7 @@ async def reload_workflows():
 async def list_custom_workflows(active_only: bool = True):
     """List database-backed custom workflows."""
     try:
-        from services.custom_workflow_service import get_custom_workflow_service
+        from core.workflows.custom_workflow_service import get_custom_workflow_service
 
         rows = get_custom_workflow_service().list(active_only=active_only)
         return {"workflows": rows, "count": len(rows)}
@@ -148,7 +148,7 @@ async def list_custom_workflows(active_only: bool = True):
 async def create_custom_workflow(payload: CustomWorkflowCreate):
     """Create a new custom workflow."""
     try:
-        from services.custom_workflow_service import get_custom_workflow_service
+        from core.workflows.custom_workflow_service import get_custom_workflow_service
 
         service = get_custom_workflow_service()
         created = service.create(payload.model_dump())
@@ -164,7 +164,7 @@ async def create_custom_workflow(payload: CustomWorkflowCreate):
 async def get_custom_workflow(workflow_id: str):
     """Fetch a single custom workflow."""
     try:
-        from services.custom_workflow_service import get_custom_workflow_service
+        from core.workflows.custom_workflow_service import get_custom_workflow_service
 
         wf = get_custom_workflow_service().get(workflow_id)
         if not wf:
@@ -184,7 +184,7 @@ async def get_custom_workflow(workflow_id: str):
 async def update_custom_workflow(workflow_id: str, payload: CustomWorkflowUpdate):
     """Update an existing custom workflow. Increments version."""
     try:
-        from services.custom_workflow_service import get_custom_workflow_service
+        from core.workflows.custom_workflow_service import get_custom_workflow_service
 
         service = get_custom_workflow_service()
         updates = {k: v for k, v in payload.model_dump().items() if v is not None}
@@ -208,7 +208,7 @@ async def update_custom_workflow(workflow_id: str, payload: CustomWorkflowUpdate
 async def delete_custom_workflow(workflow_id: str):
     """Soft-delete a custom workflow (sets is_active=False)."""
     try:
-        from services.custom_workflow_service import get_custom_workflow_service
+        from core.workflows.custom_workflow_service import get_custom_workflow_service
 
         ok = get_custom_workflow_service().delete(workflow_id)
         if not ok:
@@ -237,7 +237,7 @@ async def generate_workflow(payload: WorkflowGenerateRequest):
     Does NOT save. Frontend can tweak the draft and POST to /workflows/custom.
     """
     try:
-        from services.workflow_ai_generator import get_workflow_ai_generator
+        from core.workflows.workflow_ai_generator import get_workflow_ai_generator
 
         result = await get_workflow_ai_generator().generate(payload.description)
         if not result.get("success"):
@@ -265,7 +265,7 @@ async def get_workflow(workflow_id: str):
     Get full details for a specific workflow (custom or file-based).
     """
     try:
-        from services.workflows_service import get_workflows_service
+        from core.workflows.workflows_service import get_workflows_service
 
         service = get_workflows_service()
         workflow = service.get_workflow_dict(workflow_id, include_body=True)
@@ -291,7 +291,7 @@ async def execute_workflow(workflow_id: str, request: WorkflowExecuteRequest):
     methodologies, then executes it via ClaudeService.run_agent_task().
     """
     try:
-        from services.workflows_service import get_workflows_service
+        from core.workflows.workflows_service import get_workflows_service
 
         service = get_workflows_service()
 
@@ -349,7 +349,7 @@ async def get_workflow_run(run_id: str):
     (#128). For one-shot runs with no phase rows, ``phases`` is just
     an empty list.
     """
-    from services.workflow_run_service import get_workflow_run_service
+    from core.workflows.workflow_run_service import get_workflow_run_service
 
     run_service = get_workflow_run_service()
     row = run_service.get_run(run_id)
@@ -367,12 +367,12 @@ async def resume_workflow_run(run_id: str, request: WorkflowRunResumeRequest):
     re-enters the phase loop. If there is no pending approval action
     linked to the run, returns 409.
     """
-    from services.approval_service import (
+    from core.response.approval_service import (
         ActionStatus,
         get_approval_service,
     )
-    from services.workflow_run_service import get_workflow_run_service
-    from services.workflows_service import get_workflows_service
+    from core.workflows.workflow_run_service import get_workflow_run_service
+    from core.workflows.workflows_service import get_workflows_service
 
     run_service = get_workflow_run_service()
     run = run_service.get_run(run_id)
@@ -412,12 +412,12 @@ async def cancel_workflow_run(run_id: str, request: WorkflowRunCancelRequest):
     Rejects any pending approval action on the run and finalises it
     as ``cancelled`` with the supplied reason.
     """
-    from services.approval_service import (
+    from core.response.approval_service import (
         ActionStatus,
         get_approval_service,
     )
-    from services.workflow_run_service import get_workflow_run_service
-    from services.workflows_service import get_workflows_service
+    from core.workflows.workflow_run_service import get_workflow_run_service
+    from core.workflows.workflows_service import get_workflows_service
 
     run_service = get_workflow_run_service()
     run = run_service.get_run(run_id)
@@ -476,7 +476,7 @@ async def list_workflow_runs(
     Omits ``result_summary`` from each entry so the listing stays
     light; use GET /workflows/runs/{run_id} for the full detail.
     """
-    from services.workflow_run_service import get_workflow_run_service
+    from core.workflows.workflow_run_service import get_workflow_run_service
 
     # Light-touch bounds so a buggy caller can't ask for 10k rows.
     limit = max(1, min(limit, 200))

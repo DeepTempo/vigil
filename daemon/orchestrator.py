@@ -121,7 +121,7 @@ class Orchestrator:
     def _init_services(self):
         if self._data_service is None:
             try:
-                from services.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
 
                 self._data_service = DatabaseDataService()
                 logger.info("Orchestrator: Database service initialized")
@@ -713,7 +713,7 @@ class Orchestrator:
     async def _create_approval_action(self, inv_id: str, action: Dict):
         """Create an approval action for proposed response."""
         try:
-            from services.approval_service import ActionType, get_approval_service
+            from core.response.approval_service import ActionType, get_approval_service
 
             service = get_approval_service()
 
@@ -850,7 +850,7 @@ class Orchestrator:
         try:
             # Route through the single helper (#129) so the daemon,
             # MCP server, and ClaudeService all resolve the same path.
-            from services.mempalace_paths import get_closed_cases_dir, get_palace_path
+            from core.platform.mempalace_paths import get_closed_cases_dir, get_palace_path
 
             data_dir = get_palace_path()
             get_closed_cases_dir()  # mkdir side-effect for investigation snapshots

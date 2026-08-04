@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 from typing import List
 
-from services.service_manager import REQUIRED_SERVICES, SERVICES
+from core.platform.service_manager import REQUIRED_SERVICES, SERVICES
 
 logger = logging.getLogger(__name__)
 
