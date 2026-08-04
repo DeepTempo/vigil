@@ -43,6 +43,17 @@ from database.schemas.case_entities import (
     CaseWatcherSchema,
     SLAPolicySchema,
 )
+from database.schemas.config import (
+    AttackLayerSchema,
+    ConfigAuditLogSchema,
+    FederationSourceSchema,
+    IntegrationConfigSchema,
+    SharedIOCSchema,
+    SketchMappingSchema,
+    SystemConfigSchema,
+    ThreatIndicatorSchema,
+    UserPreferenceSchema,
+)
 from database.schemas.finding import FindingSchema
 from database.schemas.workflow import (
     ApprovalActionSchema,
@@ -178,6 +189,16 @@ SCHEMA_REGISTRY: dict[str, dict] = {
             "related.to_summary_dict.default": ConversationSchema.dump_summary,
         },
     ),
+    # Configuration and threat intel.
+    "SystemConfig": _standard(models.SystemConfig, SystemConfigSchema),
+    "UserPreference": _standard(models.UserPreference, UserPreferenceSchema),
+    "IntegrationConfig": _standard(models.IntegrationConfig, IntegrationConfigSchema),
+    "ConfigAuditLog": _standard(models.ConfigAuditLog, ConfigAuditLogSchema),
+    "FederationSource": _standard(models.FederationSource, FederationSourceSchema),
+    "SharedIOC": _standard(models.SharedIOC, SharedIOCSchema),
+    "ThreatIndicator": _standard(models.ThreatIndicator, ThreatIndicatorSchema),
+    "SketchMapping": _standard(models.SketchMapping, SketchMappingSchema),
+    "AttackLayer": _standard(models.AttackLayer, AttackLayerSchema),
 }
 
 
@@ -217,3 +238,23 @@ def test_schema_matches_golden_contract(golden, model_name, case_key):
 
 def test_golden_fixture_is_present(golden):
     assert golden, "golden serialization fixture is empty"
+
+
+def test_registry_covers_every_model(golden):
+    """Every model in the capture must have a schema behind it.
+
+    Guards against a model keeping an unreplaced serializer, or a new model
+    landing without a declared contract.
+    """
+    missing = sorted(set(golden) - set(SCHEMA_REGISTRY))
+    assert not missing, f"models with no registered schema: {missing}"
+
+
+def test_registry_covers_every_captured_case(golden):
+    """Every captured shape must be asserted, not just one per model."""
+    gaps = {
+        name: sorted(set(golden[name]) - set(spec["cases"]))
+        for name, spec in SCHEMA_REGISTRY.items()
+        if set(golden[name]) - set(spec["cases"])
+    }
+    assert not gaps, f"captured cases with no parity assertion: {gaps}"
