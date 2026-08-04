@@ -16,6 +16,7 @@ import pathlib
 import pytest
 
 import database.models as models
+from database.schemas.auth import RoleSchema, UserSchema
 from database.schemas.case import CaseSchema, CaseWithFindingsSchema
 from database.schemas.case_entities import (
     CaseAttachmentSchema,
@@ -106,6 +107,9 @@ SCHEMA_REGISTRY: dict[str, dict] = {
     "CaseEscalation": _standard(models.CaseEscalation, CaseEscalationSchema),
     "CaseAuditLog": _standard(models.CaseAuditLog, CaseAuditLogSchema),
     "CaseNotification": _standard(models.CaseNotification, CaseNotificationSchema),
+    # Users and roles.
+    "User": _standard(models.User, UserSchema),
+    "Role": _standard(models.Role, RoleSchema),
 }
 
 
