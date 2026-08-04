@@ -105,7 +105,7 @@ daemon:
 llmWorker:
   enabled: true
   replicaCount: 2
-  # Shares the backend image — command is overridden to run core.llm.gateway.run_worker.
+  # Shares the backend image — command is overridden to run services.worker.
   image:
     repository: ""   # inherits backend.image.repository when empty
     tag: ""

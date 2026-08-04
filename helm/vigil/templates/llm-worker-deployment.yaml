@@ -35,7 +35,7 @@ spec:
           command:
             - python
             - -m
-            - core.llm.gateway.run_worker
+            - services.worker
           envFrom:
             {{- include "vigil.envFrom" . | nindent 12 }}
           env:

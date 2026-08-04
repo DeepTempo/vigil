@@ -67,7 +67,7 @@ class SOCDaemon:
         from daemon.scheduler import TaskScheduler
         from daemon.metrics import MetricsServer
         from daemon.orchestrator import Orchestrator
-        from daemon.llm_worker_manager import LLMWorkerManager
+        from services.worker.manager import LLMWorkerManager
         from daemon.kafka_ingestor import KafkaIngestor
 
         self._poller = DataPoller(self.config.polling)
