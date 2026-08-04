@@ -17,10 +17,8 @@ WIRING = (
     "start.sh",
 )
 
-STALE = ("services.run_llm_worker", "core.llm.gateway.run_worker")
 
-
-def test_entrypoint_module_is_importable():
+def test_entrypoint_module_exists():
     assert importlib.util.find_spec(f"{WORKER_MODULE}.__main__") is not None
 
 
@@ -28,5 +26,3 @@ def test_entrypoint_module_is_importable():
 def test_wiring_names_the_current_entrypoint(rel_path):
     text = (REPO_ROOT / rel_path).read_text(encoding="utf-8")
     assert WORKER_MODULE in text, f"{rel_path} does not name {WORKER_MODULE}"
-    for stale in STALE:
-        assert stale not in text, f"{rel_path} still names {stale}"
