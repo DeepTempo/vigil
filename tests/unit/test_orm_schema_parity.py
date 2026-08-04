@@ -16,6 +16,14 @@ import pathlib
 import pytest
 
 import database.models as models
+from database.schemas.ai import (
+    AIDecisionLogSchema,
+    AIModelConfigSchema,
+    ChatMessageSchema,
+    ConversationSchema,
+    LLMInteractionLogSchema,
+    LLMProviderConfigSchema,
+)
 from database.schemas.auth import RoleSchema, UserSchema
 from database.schemas.case import CaseSchema, CaseWithFindingsSchema
 from database.schemas.case_entities import (
@@ -135,6 +143,39 @@ SCHEMA_REGISTRY: dict[str, dict] = {
             "populated.to_dict.without_result": WorkflowRunSchema.dump_summary,
             "empty.to_dict.with_result": WorkflowRunSchema.dump,
             "empty.to_dict.without_result": WorkflowRunSchema.dump_summary,
+        },
+    ),
+    # AI and LLM bookkeeping.
+    "AIDecisionLog": _standard(models.AIDecisionLog, AIDecisionLogSchema),
+    "AIModelConfig": _standard(models.AIModelConfig, AIModelConfigSchema),
+    "ChatMessage": _standard(models.ChatMessage, ChatMessageSchema),
+    "LLMProviderConfig": _variant(
+        models.LLMProviderConfig,
+        {
+            "populated.to_dict.with_secrets": LLMProviderConfigSchema.dump_with_secrets,
+            "populated.to_dict.without_secrets": LLMProviderConfigSchema.dump,
+            "empty.to_dict.with_secrets": LLMProviderConfigSchema.dump_with_secrets,
+            "empty.to_dict.without_secrets": LLMProviderConfigSchema.dump,
+        },
+    ),
+    "LLMInteractionLog": _variant(
+        models.LLMInteractionLog,
+        {
+            "populated.to_dict.default": LLMInteractionLogSchema.dump,
+            "populated.to_summary_dict.default": LLMInteractionLogSchema.dump_summary,
+            "empty.to_dict.default": LLMInteractionLogSchema.dump,
+            "empty.to_summary_dict.default": LLMInteractionLogSchema.dump_summary,
+        },
+    ),
+    "Conversation": _variant(
+        models.Conversation,
+        {
+            "populated.to_dict.default": ConversationSchema.dump,
+            "populated.to_summary_dict.default": ConversationSchema.dump_summary,
+            "empty.to_dict.default": ConversationSchema.dump,
+            "empty.to_summary_dict.default": ConversationSchema.dump_summary,
+            "related.to_dict.default": ConversationSchema.dump,
+            "related.to_summary_dict.default": ConversationSchema.dump_summary,
         },
     ),
 }
