@@ -2,7 +2,7 @@ import asyncio
 
 from arq.worker import run_worker
 
-from core.llm.gateway.worker import WorkerSettings
+from services.worker.jobs import WorkerSettings
 
 
 def main():
