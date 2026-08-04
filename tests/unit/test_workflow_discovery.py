@@ -6,7 +6,7 @@ parsed and exposed by WorkflowsService.
 
 import pytest
 
-from services.workflows_service import WorkflowsService
+from core.workflows.workflows_service import WorkflowsService
 
 
 def test_cloud_incident_workflow_is_discovered():

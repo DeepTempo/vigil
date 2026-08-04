@@ -3,7 +3,7 @@
 The four cloud SIEMs (Azure Sentinel, AWS Security Hub, Microsoft Defender,
 Elastic Security) all expose ``async fetch_alerts(start_time, limit)`` and
 ``transform_alert_to_finding(alert)`` via the
-:class:`services.siem_ingestion_service.SIEMIngestionService` base class. This
+:class:`core.ingestion.siem_ingestion_service.SIEMIngestionService` base class. This
 adapter wraps that contract so each concrete source needs only a one-line
 factory module.
 """

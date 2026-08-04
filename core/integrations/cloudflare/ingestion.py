@@ -30,7 +30,7 @@ class CloudyIngestionService:
     def __init__(self):
         # Lazy import: ingestion_service is also lazy elsewhere in the codebase;
         # this keeps Cloudy off the hot import path when the flag is off.
-        from services.ingestion_service import IngestionService
+        from core.ingestion.ingestion_service import IngestionService
 
         self.ingestion_service = IngestionService()
 

@@ -49,7 +49,7 @@ class DatabaseDataService:
 
         if self._demo_mode:
             logger.info("Demo mode enabled - using generated sample data")
-            from services.demo_data_service import get_demo_service
+            from core.platform.demo_data_service import get_demo_service
             self._demo_service = get_demo_service()
         else:
             self._init_database(require_db)
@@ -653,7 +653,7 @@ class DatabaseDataService:
             else:
                 bucket_name = raw_bucket
 
-            from services.s3_service import S3Service
+            from core.storage.s3_service import S3Service
 
             auth_method = s3_config.get('auth_method', 'credentials')
             aws_profile = s3_config.get('aws_profile', '')

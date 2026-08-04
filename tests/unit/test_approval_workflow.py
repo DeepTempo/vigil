@@ -10,8 +10,8 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
-from services.approval_service import ApprovalService
-from services.autonomous_response_service import AutonomousResponseService
+from core.response.approval_service import ApprovalService
+from core.response.autonomous_response_service import AutonomousResponseService
 
 
 class TestConfidenceThresholds:
@@ -205,7 +205,7 @@ class TestActionExecution:
         # This test would require CrowdStrike service integration
         pytest.skip("CrowdStrike service not yet integrated")
         
-        with patch('services.approval_service.CrowdStrikeService') as mock_cs:
+        with patch('core.response.approval_service.CrowdStrikeService') as mock_cs:
             mock_cs.isolate_host.side_effect = Exception("Host not found")
             
             result = service.execute_action(action)

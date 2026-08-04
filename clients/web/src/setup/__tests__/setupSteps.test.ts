@@ -1,4 +1,3 @@
-// frontend/src/setup/__tests__/setupSteps.test.ts
 import { describe, it, expect } from 'vitest'
 import {
   SETUP_STEPS,

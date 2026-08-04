@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
 
-from services.case_metrics_service import CaseMetricsService
+from core.cases.case_metrics_service import CaseMetricsService
 
 router = APIRouter()
 metrics_service = CaseMetricsService()
@@ -45,7 +45,7 @@ async def get_sla_compliance(
     Returns:
         SLA compliance statistics
     """
-    from services.case_sla_service import CaseSLAService
+    from core.cases.case_sla_service import CaseSLAService
     sla_service = CaseSLAService()
     report = sla_service.get_sla_compliance_report(start_date, end_date)
     return report
@@ -206,7 +206,7 @@ async def get_breached_cases():
     Returns:
         List of breached cases
     """
-    from services.case_sla_service import CaseSLAService
+    from core.cases.case_sla_service import CaseSLAService
     sla_service = CaseSLAService()
     breached = sla_service.get_breached_cases()
     return {"breached_cases": breached}

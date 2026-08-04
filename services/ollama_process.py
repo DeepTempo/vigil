@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Optional
 from services.provider_model_discovery import ollama_ping
 
 if TYPE_CHECKING:
-    from services.service_manager import ActionResult, ServiceSpec, ServiceStatus
+    from core.platform.service_manager import ActionResult, ServiceSpec, ServiceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ def _managed_by_vigil() -> bool:
 
 
 def status(spec: "ServiceSpec") -> "ServiceStatus":
-    from services.service_manager import ServiceStatus
+    from core.platform.service_manager import ServiceStatus
 
     installed = binary_path() is not None
     running = ollama_ping(base_url())
@@ -136,7 +136,7 @@ def status(spec: "ServiceSpec") -> "ServiceStatus":
 
 
 def start(spec: "ServiceSpec", *, timeout: int = 30) -> "ActionResult":
-    from services.service_manager import ActionResult
+    from core.platform.service_manager import ActionResult
 
     url = base_url()
     if ollama_ping(url):
@@ -244,7 +244,7 @@ def main() -> int:
     module keeps one implementation of the probe/pidfile/session semantics.
     """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    from services.service_manager import SERVICES
+    from core.platform.service_manager import SERVICES
 
     result = start(SERVICES["ollama"])
     print(result.message)

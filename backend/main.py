@@ -725,7 +725,7 @@ async def startup_event():
     # A configured connector with no allowlisted origin will be blocked by the
     # default CSP — warn rather than fail silently. Best-effort.
     try:
-        from services.extension_trust import connector_allowlist_origins
+        from core.auth.extension_trust import connector_allowlist_origins
 
         if not connector_allowlist_origins():
             from services.integration_bridge_service import get_integration_bridge
@@ -751,7 +751,7 @@ async def startup_event():
     # Initialize data storage backend
     logger.info("Initializing data storage...")
     try:
-        from services.database_data_service import DatabaseDataService
+        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
         import os
 
@@ -921,7 +921,7 @@ async def metrics():
 async def health_check():
     """Health check endpoint with storage backend info."""
     try:
-        from services.database_data_service import DatabaseDataService
+        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
 
         service = DatabaseDataService()
@@ -998,7 +998,7 @@ if frontend_build_dir.exists() and (frontend_build_dir / "index.html").exists():
             # SSRF guard). A <meta>, not an inline <script>, because CSP is
             # script-src 'self'.
             try:
-                from services.extension_trust import connector_allowlist_origins
+                from core.auth.extension_trust import connector_allowlist_origins
 
                 origins = connector_allowlist_origins()
                 if origins:

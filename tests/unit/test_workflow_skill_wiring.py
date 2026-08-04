@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from services.workflows_service import WorkflowDefinition, WorkflowsService
+from core.workflows.workflows_service import WorkflowDefinition, WorkflowsService
 
 
 def _make_workflow(agents=("investigator",), tools=("list_findings",)):

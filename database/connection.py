@@ -18,7 +18,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.engine import Engine
 
 if TYPE_CHECKING:
-    from services.db_proxy import ProxyConfig
+    from core.storage.db_proxy import ProxyConfig
 
 from database.models import Base
 
@@ -83,17 +83,17 @@ _PLATFORM_DB_PROXY_KEYS = {
 def _load_platform_db_proxy() -> "ProxyConfig":
     """Read platform-DB proxy settings from the encrypted secrets store.
 
-    Imports are local because services.db_proxy imports
+    Imports are local because core.storage.db_proxy imports
     ``backend.secrets_manager`` which itself isn't part of database/'s
     boot dependency. Returns a disabled ProxyConfig when nothing is
     configured.
     """
     try:
-        from services.db_proxy import ProxyConfig
+        from core.storage.db_proxy import ProxyConfig
         from backend.secrets_manager import get_secret
     except ImportError:
         # If the secrets manager isn't importable yet skip proxy support gracefully.
-        from services.db_proxy import ProxyConfig
+        from core.storage.db_proxy import ProxyConfig
 
         return ProxyConfig()
 
@@ -245,7 +245,7 @@ class DatabaseConfig:
             self.proxy = _load_platform_db_proxy()
         except Exception as e:  # noqa: BLE001
             # A malformed proxy secret must not make retarget unrecoverable.
-            from services.db_proxy import ProxyConfig
+            from core.storage.db_proxy import ProxyConfig
 
             logger.error("Ignoring invalid platform DB proxy config: %s", e)
             self.proxy = ProxyConfig()
@@ -388,7 +388,7 @@ class DatabaseManager:
         """
         host, port, proxy = config.host, config.port, None
         if config.proxy.enabled:
-            from services.db_proxy import apply as apply_proxy
+            from core.storage.db_proxy import apply as apply_proxy
 
             proxy = apply_proxy(host, port, config.proxy)
             host, port = proxy.host, proxy.port

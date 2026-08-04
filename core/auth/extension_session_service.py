@@ -15,7 +15,7 @@ import httpx
 from backend.secrets_manager import get_secret
 from database.config_service import get_config_service
 from services.integration_secrets import secret_fields_for
-from services.extension_trust import is_trusted_connector_url
+from core.auth.extension_trust import is_trusted_connector_url
 
 logger = logging.getLogger(__name__)
 

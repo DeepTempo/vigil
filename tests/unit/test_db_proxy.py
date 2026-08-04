@@ -1,4 +1,4 @@
-"""Unit tests for services.db_proxy.
+"""Unit tests for core.storage.db_proxy.
 
 Each proxy mode is exercised with a dummy secrets-manager and (for the
 SSH tunnel mode) a stubbed ``sshtunnel.SSHTunnelForwarder`` so the test
@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from services import db_proxy
-from services.db_proxy import (
+from core.storage import db_proxy
+from core.storage.db_proxy import (
     ProxyConfig,
     apply,
     child_env_for_proxy,

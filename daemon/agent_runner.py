@@ -253,7 +253,7 @@ class AgentRunner:
 
         if self._data_service is None:
             try:
-                from services.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
 
                 self._data_service = DatabaseDataService()
             except Exception as e:
@@ -1361,7 +1361,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
     ) -> str:
         """Create an approval request and put the agent into waiting_approval state."""
         try:
-            from services.approval_service import ActionType, get_approval_service
+            from core.response.approval_service import ActionType, get_approval_service
 
             service = get_approval_service()
 
@@ -1445,7 +1445,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
             return None
 
         try:
-            from services.approval_service import ActionStatus, get_approval_service
+            from core.response.approval_service import ActionStatus, get_approval_service
 
             service = get_approval_service()
             action = service.get_action(action_id)

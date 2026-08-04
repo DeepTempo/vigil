@@ -211,7 +211,7 @@ Agents access external tools through the MCP protocol. Tool definitions live in 
   `helm/vigil/values.yaml`'s `dbInit.sqlFiles` list in the **order
   written there** — prefixes are decorative for the chart path
 - pgvector extension for embeddings
-- Use `services/database_data_service.py` for data access — do not query the DB directly from API handlers
+- Use `core/storage/database_data_service.py` for data access — do not query the DB directly from API handlers
 
 **When adding or modifying an init SQL file under `database/init/`:** the
 chart bundles a *copy* under `helm/vigil/files/database-init/` (Helm can
@@ -401,4 +401,4 @@ repo root tries to collect and fails on. Scope your runs the way CI does
 - `DEV_MODE=true` disables all auth — **never enable in production**
 - Default PostgreSQL password in `docker-compose.yml` must be changed for production
 - Bandit runs in CI to catch common Python security issues
-- MCP tool calls that perform actions (host isolation, firewall rules) require approval workflow by default — see `services/approval_service.py`
+- MCP tool calls that perform actions (host isolation, firewall rules) require approval workflow by default — see `core/response/approval_service.py`

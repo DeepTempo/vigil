@@ -242,7 +242,7 @@ class IngestionService:
                     return False
             else:
                 # Fallback to JSON file storage
-                from services.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
                 data_service = DatabaseDataService()
                 findings = data_service.get_findings()
                 
@@ -365,7 +365,7 @@ class IngestionService:
                     return False
             else:
                 # Fallback to JSON file storage
-                from services.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
                 data_service = DatabaseDataService()
                 cases = data_service.get_cases()
                 

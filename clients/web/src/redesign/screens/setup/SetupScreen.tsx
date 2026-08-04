@@ -1,5 +1,3 @@
-// frontend/src/redesign/screens/setup/SetupScreen.tsx
-//
 // Standalone /setup screen. Step logic is design-agnostic (setupSteps +
 // useSetupChecklist); this file is the presentation + the inline step panels.
 import { Fragment, useEffect, useState } from 'react'

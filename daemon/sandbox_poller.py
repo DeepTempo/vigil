@@ -45,14 +45,14 @@ class SandboxPoller:
     def _init_services(self) -> None:
         if self._data_service is None:
             try:
-                from services.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
 
                 self._data_service = DatabaseDataService()
             except Exception as e:
                 logger.warning(f"Sandbox poller could not init data service: {e}")
         if self._correlation is None:
             try:
-                from services.sandbox_correlation_service import (
+                from core.cases.sandbox_correlation_service import (
                     SandboxCorrelationService,
                 )
 

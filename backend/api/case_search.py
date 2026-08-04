@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from datetime import datetime
 
-from services.case_search_service import CaseSearchService
+from core.cases.case_search_service import CaseSearchService
 
 router = APIRouter()
 search_service = CaseSearchService()

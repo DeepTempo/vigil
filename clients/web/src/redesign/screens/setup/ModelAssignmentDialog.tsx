@@ -1,5 +1,3 @@
-// frontend/src/redesign/screens/setup/ModelAssignmentDialog.tsx
-//
 // Setup step panel — assign models per component (mirrors Settings → AI Config).
 // chat_default is the required base every unset component inherits; the rest are
 // optional overrides.

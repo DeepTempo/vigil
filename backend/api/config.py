@@ -184,7 +184,7 @@ async def reset_demo_data():
         if not is_demo_mode():
             raise HTTPException(status_code=400, detail="Demo mode is not enabled")
 
-        from services.demo_data_service import get_demo_service
+        from core.platform.demo_data_service import get_demo_service
 
         demo_service = get_demo_service()
         demo_service.reset()
@@ -549,7 +549,7 @@ def test_s3_connection():
         Connection test result
     """
     try:
-        from services.s3_service import S3Service
+        from core.storage.s3_service import S3Service
 
         # Load S3 config
         config_service = get_config_service()
@@ -1498,7 +1498,7 @@ async def get_mempalace_health():
     """
     import asyncio
 
-    from services.mempalace_paths import (
+    from core.platform.mempalace_paths import (
         get_closed_cases_dir,
         get_palace_path,
     )

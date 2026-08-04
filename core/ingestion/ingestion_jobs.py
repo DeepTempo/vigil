@@ -157,7 +157,7 @@ def summarize_stats(stats: Dict[str, int]) -> tuple:
 
 def run_job(job: IngestionJob, source_path: Path) -> None:
     """Ingest source_path on a worker thread, then delete it. Never raises."""
-    from services.ingestion_service import IngestionService
+    from core.ingestion.ingestion_service import IngestionService
 
     try:
         service = IngestionService()

@@ -311,7 +311,7 @@ async def execute_backend_tool(
         logger.warning("Skill tool dispatch failed for %s: %s", tool_name, exc)
 
     if tool_name in _FINDINGS_CASE_TOOLS:
-        from services.database_data_service import DatabaseDataService
+        from core.storage.database_data_service import DatabaseDataService
 
         return _execute_findings_case_tool(DatabaseDataService(), tool_name, arguments)
 
@@ -324,7 +324,7 @@ async def execute_backend_tool(
         return await handler(**arguments), True
 
     if tool_name in _ATTACK_TOOLS:
-        from services.database_data_service import DatabaseDataService
+        from core.storage.database_data_service import DatabaseDataService
 
         return _execute_attack_tool(DatabaseDataService(), tool_name, arguments), True
 
@@ -543,7 +543,7 @@ def _execute_attack_tool(
 def _execute_approval_tool(tool_name: str, args: Dict[str, Any]) -> Any:
     from dataclasses import asdict
 
-    from services.approval_service import ApprovalService
+    from core.response.approval_service import ApprovalService
 
     approval_service = ApprovalService()
 
