@@ -11,7 +11,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,9 +23,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from secrets_manager import delete_secret, get_secret, set_secret  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from backend.dependencies import UnitOfWorkSession  # noqa: E402
 from backend.middleware.auth import get_current_active_user  # noqa: E402
 from backend.services.auth_service import AuthService  # noqa: E402
-from database.connection import get_db  # noqa: E402
 from database.models import AIModelConfig, LLMProviderConfig, User  # noqa: E402
 from services.bifrost_admin import push_provider_key  # noqa: E402
 from services.url_safety import (  # noqa: E402
@@ -244,8 +244,8 @@ def _schedule_catalog_resync(reason: str) -> None:
 @router.get("", response_model=List[LLMProviderResponse])
 @router.get("/", response_model=List[LLMProviderResponse])
 async def list_providers(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    db: UnitOfWorkSession,
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ):
     rows = db.query(LLMProviderConfig).order_by(LLMProviderConfig.created_at).all()
     return [_to_response(r) for r in rows]
@@ -255,8 +255,8 @@ async def list_providers(
 @router.post("/", response_model=LLMProviderResponse, status_code=201)
 async def create_provider(
     payload: LLMProviderCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    db: UnitOfWorkSession,
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ):
     _require_settings_admin(current_user)
     _validate_type(payload.provider_type)
@@ -293,7 +293,8 @@ async def create_provider(
     if payload.is_default:
         _clear_other_defaults(db, payload.provider_type, provider_id)
 
-    db.commit()
+    # Flush so the read-back sees server defaults; the request's unit of work commits.
+    db.flush()
     db.refresh(row)
     _schedule_catalog_resync(f"created provider {provider_id}")
     return _to_response(row)
@@ -303,8 +304,8 @@ async def create_provider(
 async def update_provider(
     provider_id: str,
     payload: LLMProviderUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    db: UnitOfWorkSession,
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ):
     _require_settings_admin(current_user)
     _validate_provider_base_url_shape(payload.base_url)
@@ -364,7 +365,8 @@ async def update_provider(
                 )
         row.is_default = False
 
-    db.commit()
+    # Flush so the read-back sees server defaults; the request's unit of work commits.
+    db.flush()
     db.refresh(row)
     _schedule_catalog_resync(f"updated provider {provider_id}")
     return _to_response(row)
@@ -373,8 +375,8 @@ async def update_provider(
 @router.delete("/{provider_id}")
 async def delete_provider(
     provider_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    db: UnitOfWorkSession,
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ):
     _require_settings_admin(current_user)
     row = db.get(LLMProviderConfig, provider_id)
@@ -423,7 +425,6 @@ async def delete_provider(
         _reconcile_bifrost_key_for_type(db, row.provider_type, provider_id)
 
     db.delete(row)
-    db.commit()
     _schedule_catalog_resync(f"deleted provider {provider_id}")
     return {"success": True, "provider_id": provider_id}
 
@@ -431,8 +432,8 @@ async def delete_provider(
 @router.post("/{provider_id}/set-default", response_model=LLMProviderResponse)
 async def set_default_provider(
     provider_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    db: UnitOfWorkSession,
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ):
     _require_settings_admin(current_user)
     row = db.get(LLMProviderConfig, provider_id)
@@ -440,7 +441,8 @@ async def set_default_provider(
         raise HTTPException(status_code=404, detail="provider not found")
     row.is_default = True
     _clear_other_defaults(db, row.provider_type, provider_id)
-    db.commit()
+    # Flush so the read-back sees server defaults; the request's unit of work commits.
+    db.flush()
     db.refresh(row)
     return _to_response(row)
 
@@ -566,8 +568,8 @@ async def _probe_provider_connection(
 @router.post("/{provider_id}/test")
 async def test_provider(
     provider_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    db: UnitOfWorkSession,
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ):
     _require_settings_admin(current_user)
     row = db.get(LLMProviderConfig, provider_id)
@@ -587,7 +589,6 @@ async def test_provider(
     row.last_test_at = datetime.utcnow()
     row.last_test_success = success
     row.last_error = None if success else error
-    db.commit()
 
     return {"success": success, "provider_id": provider_id, "error": error}
 
@@ -709,8 +710,8 @@ async def test_connection(
 @router.get("/{provider_id}/models")
 async def list_models(
     provider_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    db: UnitOfWorkSession,
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ):
     row = db.get(LLMProviderConfig, provider_id)
     if row is None:
@@ -731,8 +732,8 @@ async def list_models(
 @router.post("/{provider_id}/refresh-models")
 async def refresh_provider_models(
     provider_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    db: UnitOfWorkSession,
+    current_user: Annotated[User, Depends(get_current_active_user)],
 ):
     """Force a live rediscovery for one provider and push the union of
     same-type providers' models to Bifrost's allow-list. Invalidates the

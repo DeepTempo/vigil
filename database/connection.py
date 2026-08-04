@@ -503,8 +503,8 @@ class DatabaseManager:
 
         # retarget() validates with a synchronous engine.connect(); on the
         # asyncio event loop that blocks every coroutine on this worker for up
-        # to the 5s connect timeout. Depends(get_db) runs in a threadpool and is
-        # fine, but async handlers that call get_db_session() directly land here
+        # to the 5s connect timeout. Sync request handlers run in a threadpool
+        # and are fine, but async handlers that call get_db_session() land here
         # on the loop — so when a loop is running, do the swap on a background
         # thread and return on the current engine. The change is adopted a beat
         # later; other refresh_if_stale calls see the pinned generation and the
@@ -750,23 +750,6 @@ def get_db_session() -> Session:
     # worker and daemon notice a retarget the backend performed. Rate-limited.
     db_manager.refresh_if_stale()
     return db_manager.get_session()
-
-
-def get_db() -> Generator[Session, None, None]:
-    """Generator dependency for FastAPI — always closes the session after the request.
-
-    Use this with ``Depends(get_db)`` instead of ``Depends(get_db_session)``.
-    ``get_db_session`` returns a plain Session; FastAPI only calls cleanup for
-    generator dependencies, so ``Depends(get_db_session)`` leaks a connection
-    on every request.
-    """
-    manager = get_db_manager()
-    manager.refresh_if_stale()  # rate-limited; adopts another process's retarget
-    session = manager.get_session()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 def get_session() -> Session:

@@ -12,11 +12,12 @@ from functools import wraps
 from fastapi import HTTPException, Header, Depends, Request, status
 from sqlalchemy.orm import Session
 
+from backend.dependencies import UnitOfWorkSession
 from backend.services.auth_cookies import ACCESS_COOKIE_NAME
 from backend.services.auth_service import AuthService
 from backend.services.token_blacklist import is_token_revoked
 from database.models import User
-from database.connection import get_db, get_db_session
+from database.connection import get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,8 @@ def _get_dev_user(session: Session) -> User:
 async def get_current_user(
     request: Request,
     authorization: Optional[str] = Header(None),
-    session: Session = Depends(get_db),
+    *,
+    session: UnitOfWorkSession,
 ) -> User:
     """
     Resolve the authenticated user from either the access_token HttpOnly
@@ -322,7 +324,7 @@ def require_role(role_name: str):
         async def wrapper(
             *args,
             current_user: User = Depends(get_current_user),
-            session: Session = Depends(get_db),
+            session: UnitOfWorkSession,
             **kwargs,
         ):
             from database.models import Role
@@ -351,7 +353,8 @@ def require_role(role_name: str):
 async def get_optional_user(
     request: Request,
     authorization: Optional[str] = Header(None),
-    session: Session = Depends(get_db),
+    *,
+    session: UnitOfWorkSession,
 ) -> Optional[User]:
     """
     Dependency to optionally get the current user.
@@ -372,6 +375,6 @@ async def get_optional_user(
         return None
 
     try:
-        return await get_current_user(request, authorization, session)
+        return await get_current_user(request, authorization, session=session)
     except HTTPException:
         return None

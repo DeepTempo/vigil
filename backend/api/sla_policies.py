@@ -5,8 +5,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
 
+from backend.dependencies import UnitOfWorkSession
 from database.models import SLAPolicy
-from database.connection import get_db_session
 
 router = APIRouter()
 
@@ -41,6 +41,7 @@ class SLAPolicyUpdate(BaseModel):
 
 @router.get("/")
 async def list_sla_policies(
+    session: UnitOfWorkSession,
     active_only: bool = False,
     priority_level: Optional[str] = None,
     default_only: bool = False
@@ -56,31 +57,27 @@ async def list_sla_policies(
     Returns:
         List of SLA policies
     """
-    session = get_db_session()
-    try:
-        query = session.query(SLAPolicy)
-        
-        if active_only:
-            query = query.filter(SLAPolicy.is_active == True)
-        
-        if priority_level:
-            query = query.filter(SLAPolicy.priority_level == priority_level)
-        
-        if default_only:
-            query = query.filter(SLAPolicy.is_default == True)
-        
-        policies = query.all()
-        
-        return {
-            "policies": [p.to_dict() for p in policies],
-            "total": len(policies)
-        }
-    finally:
-        session.close()
+    query = session.query(SLAPolicy)
+
+    if active_only:
+        query = query.filter(SLAPolicy.is_active == True)
+
+    if priority_level:
+        query = query.filter(SLAPolicy.priority_level == priority_level)
+
+    if default_only:
+        query = query.filter(SLAPolicy.is_default == True)
+
+    policies = query.all()
+
+    return {
+        "policies": [p.to_dict() for p in policies],
+        "total": len(policies)
+    }
 
 
 @router.get("/{policy_id}")
-async def get_sla_policy(policy_id: str):
+async def get_sla_policy(policy_id: str, session: UnitOfWorkSession):
     """
     Get a specific SLA policy by ID.
     
@@ -90,22 +87,18 @@ async def get_sla_policy(policy_id: str):
     Returns:
         SLA policy details
     """
-    session = get_db_session()
-    try:
-        policy = session.query(SLAPolicy).filter(
-            SLAPolicy.policy_id == policy_id
-        ).first()
-        
-        if not policy:
-            raise HTTPException(status_code=404, detail="SLA policy not found")
-        
-        return policy.to_dict()
-    finally:
-        session.close()
+    policy = session.query(SLAPolicy).filter(
+        SLAPolicy.policy_id == policy_id
+    ).first()
+
+    if not policy:
+        raise HTTPException(status_code=404, detail="SLA policy not found")
+
+    return policy.to_dict()
 
 
 @router.post("/")
-async def create_sla_policy(data: SLAPolicyCreate):
+async def create_sla_policy(data: SLAPolicyCreate, session: UnitOfWorkSession):
     """
     Create a new SLA policy.
     
@@ -115,7 +108,6 @@ async def create_sla_policy(data: SLAPolicyCreate):
     Returns:
         Created SLA policy
     """
-    session = get_db_session()
     try:
         # Check if policy ID already exists
         existing = session.query(SLAPolicy).filter(
@@ -178,23 +170,25 @@ async def create_sla_policy(data: SLAPolicyCreate):
         )
         
         session.add(policy)
-        session.commit()
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
         session.refresh(policy)
         
         return policy.to_dict()
     
     except HTTPException:
-        session.rollback()
         raise
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to create policy: {str(e)}")
-    finally:
-        session.close()
 
 
 @router.put("/{policy_id}")
-async def update_sla_policy(policy_id: str, data: SLAPolicyUpdate):
+async def update_sla_policy(
+    policy_id: str,
+    data: SLAPolicyUpdate,
+    session: UnitOfWorkSession,
+):
     """
     Update an existing SLA policy.
     
@@ -205,7 +199,6 @@ async def update_sla_policy(policy_id: str, data: SLAPolicyUpdate):
     Returns:
         Updated SLA policy
     """
-    session = get_db_session()
     try:
         policy = session.query(SLAPolicy).filter(
             SLAPolicy.policy_id == policy_id
@@ -268,23 +261,25 @@ async def update_sla_policy(policy_id: str, data: SLAPolicyUpdate):
             policy.is_default = data.is_default
         
         policy.updated_at = datetime.utcnow()
-        session.commit()
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
         session.refresh(policy)
         
         return policy.to_dict()
     
     except HTTPException:
-        session.rollback()
         raise
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to update policy: {str(e)}")
-    finally:
-        session.close()
 
 
 @router.delete("/{policy_id}")
-async def delete_sla_policy(policy_id: str, force: bool = False):
+async def delete_sla_policy(
+    policy_id: str,
+    session: UnitOfWorkSession,
+    force: bool = False,
+):
     """
     Delete an SLA policy.
     
@@ -295,7 +290,6 @@ async def delete_sla_policy(policy_id: str, force: bool = False):
     Returns:
         Success message
     """
-    session = get_db_session()
     try:
         policy = session.query(SLAPolicy).filter(
             SLAPolicy.policy_id == policy_id
@@ -318,7 +312,6 @@ async def delete_sla_policy(policy_id: str, force: bool = False):
             )
         
         session.delete(policy)
-        session.commit()
         
         return {
             "success": True,
@@ -326,17 +319,13 @@ async def delete_sla_policy(policy_id: str, force: bool = False):
         }
     
     except HTTPException:
-        session.rollback()
         raise
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete policy: {str(e)}")
-    finally:
-        session.close()
 
 
 @router.post("/{policy_id}/set-default")
-async def set_default_policy(policy_id: str):
+async def set_default_policy(policy_id: str, session: UnitOfWorkSession):
     """
     Set a policy as the default for its priority level.
     
@@ -346,7 +335,6 @@ async def set_default_policy(policy_id: str):
     Returns:
         Updated policy
     """
-    session = get_db_session()
     try:
         policy = session.query(SLAPolicy).filter(
             SLAPolicy.policy_id == policy_id
@@ -365,23 +353,21 @@ async def set_default_policy(policy_id: str):
         # Set this as default
         policy.is_default = True
         policy.updated_at = datetime.utcnow()
-        session.commit()
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
         session.refresh(policy)
         
         return policy.to_dict()
     
     except HTTPException:
-        session.rollback()
         raise
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to set default policy: {str(e)}")
-    finally:
-        session.close()
 
 
 @router.get("/{policy_id}/usage")
-async def get_policy_usage(policy_id: str):
+async def get_policy_usage(policy_id: str, session: UnitOfWorkSession):
     """
     Get usage statistics for an SLA policy.
     
@@ -391,58 +377,55 @@ async def get_policy_usage(policy_id: str):
     Returns:
         Usage statistics
     """
-    session = get_db_session()
-    try:
-        policy = session.query(SLAPolicy).filter(
-            SLAPolicy.policy_id == policy_id
-        ).first()
-        
-        if not policy:
-            raise HTTPException(status_code=404, detail="SLA policy not found")
-        
-        from database.models import CaseSLA, Case
-        from sqlalchemy import func
-        
-        # Total cases using this policy
-        total_cases = session.query(CaseSLA).filter(
-            CaseSLA.sla_policy_id == policy_id
-        ).count()
-        
-        # Active cases (not resolved)
-        active_cases = session.query(CaseSLA).join(Case).filter(
-            CaseSLA.sla_policy_id == policy_id,
-            Case.status.notin_(["resolved", "closed"])
-        ).count()
-        
-        # Breached cases
-        breached_cases = session.query(CaseSLA).filter(
-            CaseSLA.sla_policy_id == policy_id,
-            CaseSLA.breached == True
-        ).count()
-        
-        # Compliance rate
-        compliance_rate = 0.0
-        if total_cases > 0:
-            compliant_cases = total_cases - breached_cases
-            compliance_rate = (compliant_cases / total_cases) * 100
-        
-        return {
-            "policy_id": policy_id,
-            "policy_name": policy.name,
-            "total_cases": total_cases,
-            "active_cases": active_cases,
-            "breached_cases": breached_cases,
-            "compliance_rate": round(compliance_rate, 2),
-            "is_active": policy.is_active,
-            "is_default": policy.is_default
-        }
-    finally:
-        session.close()
+    policy = session.query(SLAPolicy).filter(
+        SLAPolicy.policy_id == policy_id
+    ).first()
+
+    if not policy:
+        raise HTTPException(status_code=404, detail="SLA policy not found")
+
+    from database.models import CaseSLA, Case
+    from sqlalchemy import func
+
+    # Total cases using this policy
+    total_cases = session.query(CaseSLA).filter(
+        CaseSLA.sla_policy_id == policy_id
+    ).count()
+
+    # Active cases (not resolved)
+    active_cases = session.query(CaseSLA).join(Case).filter(
+        CaseSLA.sla_policy_id == policy_id,
+        Case.status.notin_(["resolved", "closed"])
+    ).count()
+
+    # Breached cases
+    breached_cases = session.query(CaseSLA).filter(
+        CaseSLA.sla_policy_id == policy_id,
+        CaseSLA.breached == True
+    ).count()
+
+    # Compliance rate
+    compliance_rate = 0.0
+    if total_cases > 0:
+        compliant_cases = total_cases - breached_cases
+        compliance_rate = (compliant_cases / total_cases) * 100
+
+    return {
+        "policy_id": policy_id,
+        "policy_name": policy.name,
+        "total_cases": total_cases,
+        "active_cases": active_cases,
+        "breached_cases": breached_cases,
+        "compliance_rate": round(compliance_rate, 2),
+        "is_active": policy.is_active,
+        "is_default": policy.is_default
+    }
 
 
 @router.get("/{policy_id}/cases")
 async def get_policy_cases(
     policy_id: str,
+    session: UnitOfWorkSession,
     status: Optional[str] = None,
     breached_only: bool = False
 ):
@@ -457,34 +440,30 @@ async def get_policy_cases(
     Returns:
         List of cases
     """
-    session = get_db_session()
-    try:
-        policy = session.query(SLAPolicy).filter(
-            SLAPolicy.policy_id == policy_id
-        ).first()
-        
-        if not policy:
-            raise HTTPException(status_code=404, detail="SLA policy not found")
-        
-        from database.models import CaseSLA, Case
-        
-        query = session.query(Case).join(CaseSLA).filter(
-            CaseSLA.sla_policy_id == policy_id
-        )
-        
-        if status:
-            query = query.filter(Case.status == status)
-        
-        if breached_only:
-            query = query.filter(CaseSLA.breached == True)
-        
-        cases = query.all()
-        
-        return {
-            "policy_id": policy_id,
-            "cases": [c.to_dict() for c in cases],
-            "total": len(cases)
-        }
-    finally:
-        session.close()
+    policy = session.query(SLAPolicy).filter(
+        SLAPolicy.policy_id == policy_id
+    ).first()
+
+    if not policy:
+        raise HTTPException(status_code=404, detail="SLA policy not found")
+
+    from database.models import CaseSLA, Case
+
+    query = session.query(Case).join(CaseSLA).filter(
+        CaseSLA.sla_policy_id == policy_id
+    )
+
+    if status:
+        query = query.filter(Case.status == status)
+
+    if breached_only:
+        query = query.filter(CaseSLA.breached == True)
+
+    cases = query.all()
+
+    return {
+        "policy_id": policy_id,
+        "cases": [c.to_dict() for c in cases],
+        "total": len(cases)
+    }
 

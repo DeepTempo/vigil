@@ -803,40 +803,39 @@ class OpenAIAgentService:
     ) -> None:
         """Persist an LLMInteractionLog row (non-fatal, fire-and-forget)."""
         try:
-            from database.connection import get_db_session
             from database.models import LLMInteractionLog
 
-            session = get_db_session()
+            from services.unit_of_work import unit_of_work
+
             try:
-                log = LLMInteractionLog(
-                    interaction_id=interaction_id,
-                    session_id=session_id,
-                    agent_id=agent_id,
-                    model=model,
-                    request_messages=[],
-                    thinking_enabled=False,
-                    response_content=(text_content[:2000] if text_content else None),
-                    tool_calls=(
-                        [{"iteration": iteration}] if tool_calls_count > 0 else []
-                    ),
-                    tool_results=[],
-                    stop_reason=finish_reason,
-                    input_tokens=int(input_tokens or 0),
-                    output_tokens=int(output_tokens or 0),
-                    cache_read_tokens=0,
-                    cache_creation_tokens=0,
-                    cost_usd=float(cost_usd or 0.0),
-                    duration_ms=duration_ms,
-                )
-                session.add(log)
-                session.commit()
+                with unit_of_work() as session:
+                    log = LLMInteractionLog(
+                        interaction_id=interaction_id,
+                        session_id=session_id,
+                        agent_id=agent_id,
+                        model=model,
+                        request_messages=[],
+                        thinking_enabled=False,
+                        response_content=(
+                            text_content[:2000] if text_content else None
+                        ),
+                        tool_calls=(
+                            [{"iteration": iteration}] if tool_calls_count > 0 else []
+                        ),
+                        tool_results=[],
+                        stop_reason=finish_reason,
+                        input_tokens=int(input_tokens or 0),
+                        output_tokens=int(output_tokens or 0),
+                        cache_read_tokens=0,
+                        cache_creation_tokens=0,
+                        cost_usd=float(cost_usd or 0.0),
+                        duration_ms=duration_ms,
+                    )
+                    session.add(log)
             except Exception as exc:
                 # DB is reachable but the insert failed — worth surfacing,
                 # since it means audit/cost rows are being silently dropped.
                 logger.warning("Interaction log insert failed: %s", exc)
-                session.rollback()
-            finally:
-                session.close()
         except Exception as exc:
             # DB simply unavailable (e.g. dev without Postgres) — expected.
             logger.debug("Interaction log skipped: %s", exc)

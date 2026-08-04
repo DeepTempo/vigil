@@ -9,7 +9,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from database.connection import get_db_session
+from services.unit_of_work import unit_of_work
 from database.models import Case, CaseSLA, CaseNotification
 from services.case_sla_service import CaseSLAService
 from services.case_workflow_service import CaseWorkflowService
@@ -63,51 +63,47 @@ class CaseAutomationService:
     
     async def _check_sla_deadlines(self):
         """Check SLA deadlines and send notifications."""
-        session = get_db_session()
         try:
-            # Get all active SLAs
-            active_slas = session.query(CaseSLA).filter(
-                CaseSLA.resolution_completed_at == None,
-                CaseSLA.is_paused == False
-            ).all()
-            
-            current_time = datetime.utcnow()
-            
-            for sla in active_slas:
-                # Get SLA status
-                status = self.sla_service.get_sla_status(sla.case_id, session)
-                if not status:
-                    continue
-                
-                # Check if we need to send notifications
-                response_pct = status.get('response_percent_elapsed', 0)
-                resolution_pct = status.get('resolution_percent_elapsed', 0)
-                
-                # Send notifications at 75%, 90%, 100% thresholds
-                thresholds = [75, 90, 100]
-                for threshold in thresholds:
-                    if response_pct >= threshold and not sla.response_completed_at:
-                        self.notification_service.notify_sla_warning(
-                            sla.case_id, threshold, 'response', session
-                        )
-                    
-                    if resolution_pct >= threshold and not sla.resolution_completed_at:
-                        self.notification_service.notify_sla_warning(
-                            sla.case_id, threshold, 'resolution', session
-                        )
-                
-                # Mark as breached if over 100%
-                if (resolution_pct >= 100 or response_pct >= 100) and not sla.breached:
-                    sla.breached = True
-                    sla.breach_time = current_time
-                    sla.breach_reason = "SLA deadline exceeded"
-                    session.commit()
-            
+            with unit_of_work() as session:
+                # Get all active SLAs
+                active_slas = session.query(CaseSLA).filter(
+                    CaseSLA.resolution_completed_at == None,
+                    CaseSLA.is_paused == False
+                ).all()
+
+                current_time = datetime.utcnow()
+
+                for sla in active_slas:
+                    # Get SLA status
+                    status = self.sla_service.get_sla_status(sla.case_id, session)
+                    if not status:
+                        continue
+
+                    # Check if we need to send notifications
+                    response_pct = status.get('response_percent_elapsed', 0)
+                    resolution_pct = status.get('resolution_percent_elapsed', 0)
+
+                    # Send notifications at 75%, 90%, 100% thresholds
+                    thresholds = [75, 90, 100]
+                    for threshold in thresholds:
+                        if response_pct >= threshold and not sla.response_completed_at:
+                            self.notification_service.notify_sla_warning(
+                                sla.case_id, threshold, 'response', session
+                            )
+
+                        if resolution_pct >= threshold and not sla.resolution_completed_at:
+                            self.notification_service.notify_sla_warning(
+                                sla.case_id, threshold, 'resolution', session
+                            )
+
+                    # Mark as breached if over 100%
+                    if (resolution_pct >= 100 or response_pct >= 100) and not sla.breached:
+                        sla.breached = True
+                        sla.breach_time = current_time
+                        sla.breach_reason = "SLA deadline exceeded"
+
         except Exception as e:
             logger.error(f"Error checking SLA deadlines: {e}")
-            session.rollback()
-        finally:
-            session.close()
     
     async def metrics_update_task(self):
         """Update case metrics periodically."""
@@ -122,21 +118,19 @@ class CaseAutomationService:
     
     async def _update_case_metrics(self):
         """Update metrics for all open cases."""
-        session = get_db_session()
         try:
-            # Get all open cases
-            open_cases = session.query(Case).filter(
-                Case.status.in_(['open', 'in-progress', 'investigating'])
-            ).all()
-            
-            for case in open_cases:
-                self.metrics_service.calculate_case_metrics(case.case_id, session)
-            
-            logger.info(f"Updated metrics for {len(open_cases)} cases")
+            with unit_of_work() as session:
+                # Get all open cases
+                open_cases = session.query(Case).filter(
+                    Case.status.in_(['open', 'in-progress', 'investigating'])
+                ).all()
+
+                for case in open_cases:
+                    self.metrics_service.calculate_case_metrics(case.case_id, session)
+
+                logger.info(f"Updated metrics for {len(open_cases)} cases")
         except Exception as e:
             logger.error(f"Error updating case metrics: {e}")
-        finally:
-            session.close()
     
     async def stale_case_detector_task(self):
         """Detect and flag stale cases."""
@@ -151,35 +145,33 @@ class CaseAutomationService:
     
     async def _detect_stale_cases(self):
         """Detect cases with no activity for extended periods."""
-        session = get_db_session()
         try:
-            # Define stale threshold (7 days)
-            stale_threshold = datetime.utcnow() - timedelta(days=7)
-            
-            # Find cases not updated recently
-            stale_cases = session.query(Case).filter(
-                Case.status.in_(['open', 'in-progress', 'investigating']),
-                Case.updated_at < stale_threshold
-            ).all()
-            
-            for case in stale_cases:
-                # Notify assignee
-                if case.assignee:
-                    self.notification_service.create_notification(
-                        user_id=case.assignee,
-                        notification_type='stale_case',
-                        title='Stale Case Alert',
-                        message=f'Case "{case.title}" has had no activity for 7+ days',
-                        case_id=case.case_id,
-                        priority='normal',
-                        session=session
-                    )
-            
-            logger.info(f"Detected {len(stale_cases)} stale cases")
+            with unit_of_work() as session:
+                # Define stale threshold (7 days)
+                stale_threshold = datetime.utcnow() - timedelta(days=7)
+
+                # Find cases not updated recently
+                stale_cases = session.query(Case).filter(
+                    Case.status.in_(['open', 'in-progress', 'investigating']),
+                    Case.updated_at < stale_threshold
+                ).all()
+
+                for case in stale_cases:
+                    # Notify assignee
+                    if case.assignee:
+                        self.notification_service.create_notification(
+                            user_id=case.assignee,
+                            notification_type='stale_case',
+                            title='Stale Case Alert',
+                            message=f'Case "{case.title}" has had no activity for 7+ days',
+                            case_id=case.case_id,
+                            priority='normal',
+                            session=session
+                        )
+
+                logger.info(f"Detected {len(stale_cases)} stale cases")
         except Exception as e:
             logger.error(f"Error detecting stale cases: {e}")
-        finally:
-            session.close()
     
     async def digest_generator_task(self):
         """Generate daily digest emails."""
@@ -204,25 +196,23 @@ class CaseAutomationService:
     
     async def _generate_daily_digest(self):
         """Generate and send daily digest."""
-        session = get_db_session()
         try:
-            # Get metrics for last 24 hours
-            yesterday = datetime.utcnow() - timedelta(days=1)
-            metrics = self.metrics_service.get_dashboard_metrics(
-                start_date=yesterday,
-                session=session
-            )
-            
-            # Get breached cases
-            breached = self.sla_service.get_breached_cases(session)
-            
-            # In a real implementation, would send digest emails here
-            logger.info(f"Daily digest: {metrics.get('total_cases', 0)} total cases, "
-                       f"{len(breached)} breached")
+            with unit_of_work() as session:
+                # Get metrics for last 24 hours
+                yesterday = datetime.utcnow() - timedelta(days=1)
+                metrics = self.metrics_service.get_dashboard_metrics(
+                    start_date=yesterday,
+                    session=session
+                )
+
+                # Get breached cases
+                breached = self.sla_service.get_breached_cases(session)
+
+                # In a real implementation, would send digest emails here
+                logger.info(f"Daily digest: {metrics.get('total_cases', 0)} total cases, "
+                           f"{len(breached)} breached")
         except Exception as e:
             logger.error(f"Error generating digest: {e}")
-        finally:
-            session.close()
     
     def auto_assign_new_case(
         self,
@@ -261,33 +251,30 @@ class CaseAutomationService:
     
     def auto_escalate_breached_cases(self):
         """Auto-escalate cases that have breached SLA."""
-        session = get_db_session()
         try:
-            breached_cases = self.sla_service.get_breached_cases(session)
-            
-            for case_data in breached_cases:
-                case_id = case_data['case_id']
-                case = session.query(Case).filter(Case.case_id == case_id).first()
-                
-                if case and case.assignee:
-                    # In real implementation, would determine escalation target
-                    escalation_target = "soc_manager"  # Placeholder
-                    
-                    self.workflow_service.escalate_case(
-                        case_id,
-                        escalated_from=case.assignee,
-                        escalated_to=escalation_target,
-                        reason="SLA breach - automatic escalation",
-                        urgency_level="critical",
-                        session=session
-                    )
-                    
-                    logger.info(f"Auto-escalated breached case {case_id}")
+            with unit_of_work() as session:
+                breached_cases = self.sla_service.get_breached_cases(session)
+
+                for case_data in breached_cases:
+                    case_id = case_data['case_id']
+                    case = session.query(Case).filter(Case.case_id == case_id).first()
+
+                    if case and case.assignee:
+                        # In real implementation, would determine escalation target
+                        escalation_target = "soc_manager"  # Placeholder
+
+                        self.workflow_service.escalate_case(
+                            case_id,
+                            escalated_from=case.assignee,
+                            escalated_to=escalation_target,
+                            reason="SLA breach - automatic escalation",
+                            urgency_level="critical",
+                            session=session
+                        )
+
+                        logger.info(f"Auto-escalated breached case {case_id}")
         except Exception as e:
             logger.error(f"Error auto-escalating cases: {e}")
-            session.rollback()
-        finally:
-            session.close()
 
 
 # Singleton instance

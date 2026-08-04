@@ -15,12 +15,11 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from database.connection import get_db, get_db_session
+from backend.dependencies import UnitOfWorkSession  # noqa: E402
 from database.models import AIModelConfig, LLMProviderConfig  # noqa: E402
 from services.model_registry import (  # noqa: E402
     COMPONENTS,
@@ -81,7 +80,7 @@ class ModelsListResponse(BaseModel):
 
 
 @router.get("/config", response_model=AIConfigResponse)
-def get_ai_config(db: Session = Depends(get_db)):
+def get_ai_config(db: UnitOfWorkSession):
     rows = db.query(AIModelConfig).all()
     assignments = {
         r.component: ComponentAssignmentResponse(
@@ -101,7 +100,7 @@ def get_ai_config(db: Session = Depends(get_db)):
 def set_component_assignment(
     component: str,
     payload: ComponentAssignmentUpdate,
-    db: Session = Depends(get_db),
+    db: UnitOfWorkSession,
 ):
     if not is_valid_component(component):
         raise HTTPException(status_code=400, detail=f"unknown component: {component}")
@@ -131,7 +130,9 @@ def set_component_assignment(
         row.provider_id = payload.provider_id
         row.model_id = payload.model_id
         row.settings = payload.settings
-    db.commit()
+    # Flush so server-side defaults (updated_at) land before we read them back;
+    # the request's unit of work owns the commit.
+    db.flush()
     db.refresh(row)
 
     return ComponentAssignmentResponse(
@@ -145,14 +146,13 @@ def set_component_assignment(
 
 
 @router.delete("/config/{component}")
-def clear_component_assignment(component: str, db: Session = Depends(get_db)):
+def clear_component_assignment(component: str, db: UnitOfWorkSession):
     if not is_valid_component(component):
         raise HTTPException(status_code=400, detail=f"unknown component: {component}")
     row = db.get(AIModelConfig, component)
     if row is None:
         return {"component": component, "cleared": False}
     db.delete(row)
-    db.commit()
     return {"component": component, "cleared": True}
 
 

@@ -26,8 +26,8 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "backend"))
 
 from backend.api.llm_providers import router as llm_providers_router
+from backend.dependencies import request_unit_of_work
 from backend.middleware.auth import get_current_active_user
-from database.connection import get_db
 from database.models import LLMProviderConfig, User
 
 
@@ -64,7 +64,7 @@ class _FakeSession:
     def __init__(self):
         self._store: Dict[str, LLMProviderConfig] = {}
         self._added = []
-        self.commits = 0
+        self.flushes = 0
 
     @property
     def no_autoflush(self):
@@ -75,6 +75,9 @@ class _FakeSession:
         return nullcontext()
 
     def flush(self):
+        # Endpoints no longer commit — the request's unit of work owns that —
+        # so flush is the only write barrier they ask the session for.
+        self.flushes += 1
         return None
 
     def query(self, _model):
@@ -89,9 +92,6 @@ class _FakeSession:
 
     def delete(self, row):
         self._store.pop(row.provider_id, None)
-
-    def commit(self):
-        self.commits += 1
 
     def refresh(self, _row):
         return None
@@ -126,7 +126,7 @@ def client(session):
     def _get_session():
         return session
 
-    app.dependency_overrides[get_db] = _get_session
+    app.dependency_overrides[request_unit_of_work] = _get_session
     # Bypass cookie/JWT auth for unit tests — the security-coverage tests
     # in tests/security/ exercise the real path.
     app.dependency_overrides[get_current_active_user] = _fake_admin_user

@@ -1,13 +1,17 @@
-"""Unit tests for services.sandbox_correlation_service normalisation helpers.
+"""Unit tests for services.sandbox_correlation_service.
 
-The DB-writing path (``SandboxCorrelationService.attach_report``) is
-integration-only — these tests cover the pure helpers that don't need a
-live database.
+Most tests cover the pure normalisation helpers. ``TestAttachReportAtomicity``
+covers the DB-writing path's transaction boundary with a mock session — the
+real inserts remain integration-only.
 """
+
+from unittest.mock import MagicMock
 
 import pytest
 
+import services.unit_of_work as uow_module
 from services.sandbox_correlation_service import (
+    SandboxCorrelationService,
     _cape_verdict,
     _iter_iocs,
     _normalise_cape,
@@ -123,3 +127,64 @@ class TestDispatch:
         }
         out = _normalise_report("cape-sandbox", report)
         assert out["verdict"] == "malicious"
+
+
+@pytest.mark.unit
+class TestAttachReportAtomicity:
+    """attach_report writes one evidence row plus N IOC rows, all or nothing."""
+
+    REPORT = {
+        "data": {
+            "target": {"file": {"md5": "a" * 32, "sha256": "b" * 64}},
+            "info": {"score": 9},
+            "network": {"hosts": [{"ip": "1.2.3.4"}, "5.6.7.8"]},
+            "signatures": [],
+        }
+    }
+
+    @pytest.fixture
+    def session(self, monkeypatch):
+        mock_session = MagicMock()
+        # No pre-existing IOC rows, so each one takes the insert path.
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+        monkeypatch.setattr(uow_module, "get_db_session", lambda: mock_session)
+        return mock_session
+
+    def _attach(self):
+        return SandboxCorrelationService().attach_report(
+            case_id="case-1",
+            sandbox_name="cape",
+            task_id="task-1",
+            report=self.REPORT,
+        )
+
+    def test_commits_once_when_every_step_succeeds(self, session):
+        result = self._attach()
+
+        assert "error" not in result
+        assert result["iocs_added"] == 2
+        session.commit.assert_called_once()
+        session.rollback.assert_not_called()
+
+    def test_failure_partway_rolls_back_the_evidence_row_too(
+        self, session, monkeypatch
+    ):
+        # Let the first IOC through, then blow up on the second.
+        calls = {"n": 0}
+
+        def _flaky_upsert(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise RuntimeError("constraint violation on the second IOC")
+            return True
+
+        monkeypatch.setattr(SandboxCorrelationService, "_upsert_ioc", _flaky_upsert)
+
+        result = self._attach()
+
+        # The evidence row was added before the failure, but nothing commits.
+        assert "error" in result
+        session.add.assert_called_once()
+        session.commit.assert_not_called()
+        session.rollback.assert_called_once()
+        session.close.assert_called_once()

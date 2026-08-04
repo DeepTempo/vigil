@@ -21,7 +21,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "backend"))
 
 from backend.api.ai_config import router as ai_config_router  # noqa: E402
-from database.connection import get_db  # noqa: E402
+from backend.dependencies import request_unit_of_work  # noqa: E402
 from database.models import AIModelConfig, LLMProviderConfig  # noqa: E402
 from services.model_registry import ModelInfo  # noqa: E402
 
@@ -64,7 +64,7 @@ class _FakeSession:
         if isinstance(row, AIModelConfig):
             self.assignments.pop(row.component, None)
 
-    def commit(self):
+    def flush(self):
         pass
 
     def refresh(self, row):
@@ -108,7 +108,7 @@ def client(session):
     def _get_session():
         return session
 
-    app.dependency_overrides[get_db] = _get_session
+    app.dependency_overrides[request_unit_of_work] = _get_session
     return TestClient(app)
 
 

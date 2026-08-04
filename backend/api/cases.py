@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from pathlib import Path
 
+from backend.dependencies import UnitOfWorkSession
 from backend.middleware.auth import get_current_user
 from backend.services.auth_service import AuthService
 from database.models import User
@@ -81,14 +82,16 @@ async def get_cases(
 
 
 @router.delete("/all")
-async def clear_all_cases(current_user: User = Depends(get_current_user)):
+async def clear_all_cases(
+    session: UnitOfWorkSession,
+    current_user: User = Depends(get_current_user),
+):
     """Delete all cases and case-derived generated data (requires cases.delete)."""
     if not AuthService.check_permission(current_user.user_id, "cases.delete"):
         raise HTTPException(
             status_code=403, detail="Permission denied: cases.delete required"
         )
     try:
-        from database.connection import get_session
         from database.models import (
             AIDecisionLog,
             AttackLayer,
@@ -111,43 +114,41 @@ async def clear_all_cases(current_user: User = Depends(get_current_user)):
             case_findings,
         )
 
-        with get_session() as session:
-            count = session.query(Case).count()
+        count = session.query(Case).count()
 
-            for model in (
-                CaseAttachment,
-                CaseClosureInfo,
-                CaseEscalation,
-                CaseEvidence,
-                CaseIOC,
-                CaseMetrics,
-                CaseNotification,
-                CaseRelationship,
-                CaseSLA,
-                CaseTask,
-                CaseWatcher,
-                CaseComment,
-            ):
-                session.query(model).delete(synchronize_session=False)
+        for model in (
+            CaseAttachment,
+            CaseClosureInfo,
+            CaseEscalation,
+            CaseEvidence,
+            CaseIOC,
+            CaseMetrics,
+            CaseNotification,
+            CaseRelationship,
+            CaseSLA,
+            CaseTask,
+            CaseWatcher,
+            CaseComment,
+        ):
+            session.query(model).delete(synchronize_session=False)
 
-            session.execute(case_findings.delete())
-            session.query(SketchMapping).filter(SketchMapping.case_id.isnot(None)).delete(
-                synchronize_session=False
-            )
-            session.query(AIDecisionLog).filter(AIDecisionLog.case_id.isnot(None)).delete(
-                synchronize_session=False
-            )
-            session.query(Investigation).filter(Investigation.case_id.isnot(None)).update(
-                {"case_id": None},
-                synchronize_session=False,
-            )
-            session.query(AttackLayer).filter(AttackLayer.case_id.isnot(None)).update(
-                {"case_id": None},
-                synchronize_session=False,
-            )
-            session.query(CaseAuditLog).delete(synchronize_session=False)
-            session.query(Case).delete(synchronize_session=False)
-            session.commit()
+        session.execute(case_findings.delete())
+        session.query(SketchMapping).filter(SketchMapping.case_id.isnot(None)).delete(
+            synchronize_session=False
+        )
+        session.query(AIDecisionLog).filter(AIDecisionLog.case_id.isnot(None)).delete(
+            synchronize_session=False
+        )
+        session.query(Investigation).filter(Investigation.case_id.isnot(None)).update(
+            {"case_id": None},
+            synchronize_session=False,
+        )
+        session.query(AttackLayer).filter(AttackLayer.case_id.isnot(None)).update(
+            {"case_id": None},
+            synchronize_session=False,
+        )
+        session.query(CaseAuditLog).delete(synchronize_session=False)
+        session.query(Case).delete(synchronize_session=False)
 
         return {
             "success": True,
@@ -833,12 +834,10 @@ class TaskAdd(BaseModel):
 
 
 @router.post("/{case_id}/tasks")
-async def add_task(case_id: str, data: TaskAdd):
+async def add_task(case_id: str, data: TaskAdd, session: UnitOfWorkSession):
     """Add task to case."""
-    from database.connection import get_session
     from database.models import CaseTask
-    
-    session = get_session()
+
     try:
         task = CaseTask(
             case_id=case_id,
@@ -851,28 +850,22 @@ async def add_task(case_id: str, data: TaskAdd):
             checklist_items=data.checklist_items or []
         )
         session.add(task)
-        session.commit()
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
         return task.to_dict()
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to add task: {str(e)}")
-    finally:
-        session.close()
 
 
 @router.get("/{case_id}/tasks")
-async def get_tasks(case_id: str):
+async def get_tasks(case_id: str, session: UnitOfWorkSession):
     """Get all tasks for case."""
-    from database.connection import get_db_session
     from database.models import CaseTask
-    
+
     try:
-        session = get_db_session()
-        try:
-            tasks = session.query(CaseTask).filter(CaseTask.case_id == case_id).all()
-            return {"tasks": [t.to_dict() for t in tasks]}
-        finally:
-            session.close()
+        tasks = session.query(CaseTask).filter(CaseTask.case_id == case_id).all()
+        return {"tasks": [t.to_dict() for t in tasks]}
     except Exception as e:
         # If database is not available, return empty list
         return {"tasks": []}
@@ -891,12 +884,12 @@ class TaskUpdate(BaseModel):
 
 
 @router.put("/{case_id}/tasks/{task_id}")
-async def update_task(case_id: str, task_id: int, data: TaskUpdate):
+async def update_task(
+    case_id: str, task_id: int, data: TaskUpdate, session: UnitOfWorkSession
+):
     """Update task."""
-    from database.connection import get_session
     from database.models import CaseTask
-    
-    session = get_session()
+
     try:
         task = session.query(CaseTask).filter(CaseTask.task_id == task_id).first()
         if not task:
@@ -919,13 +912,12 @@ async def update_task(case_id: str, task_id: int, data: TaskUpdate):
         if data.actual_hours is not None:
             task.actual_hours = data.actual_hours
         
-        session.commit()
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
         return task.to_dict()
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to update task: {str(e)}")
-    finally:
-        session.close()
 
 
 # Case Relationships
@@ -938,12 +930,12 @@ class RelationshipAdd(BaseModel):
 
 
 @router.post("/{case_id}/relationships")
-async def add_relationship(case_id: str, data: RelationshipAdd):
+async def add_relationship(
+    case_id: str, data: RelationshipAdd, session: UnitOfWorkSession
+):
     """Link related case."""
-    from database.connection import get_session
     from database.models import CaseRelationship
-    
-    session = get_session()
+
     try:
         rel = CaseRelationship(
             case_id=case_id,
@@ -953,29 +945,25 @@ async def add_relationship(case_id: str, data: RelationshipAdd):
             notes=data.notes
         )
         session.add(rel)
-        session.commit()
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
         return rel.to_dict()
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to add relationship: {str(e)}")
-    finally:
-        session.close()
 
 
 @router.get("/{case_id}/relationships")
-async def get_relationships(case_id: str):
+async def get_relationships(case_id: str, session: UnitOfWorkSession):
     """Get related cases."""
-    from database.connection import get_session
     from database.models import CaseRelationship
-    
-    session = get_session()
-    try:
-        rels = session.query(CaseRelationship).filter(
-            CaseRelationship.case_id == case_id
-        ).all()
-        return {"relationships": [r.to_dict() for r in rels]}
-    finally:
-        session.close()
+
+    rels = (
+        session.query(CaseRelationship)
+        .filter(CaseRelationship.case_id == case_id)
+        .all()
+    )
+    return {"relationships": [r.to_dict() for r in rels]}
 
 
 # Case Closure
@@ -990,12 +978,10 @@ class ClosureInfo(BaseModel):
 
 
 @router.post("/{case_id}/close")
-async def close_case(case_id: str, data: ClosureInfo):
+async def close_case(case_id: str, data: ClosureInfo, session: UnitOfWorkSession):
     """Close case with closure metadata."""
-    from database.connection import get_session
     from database.models import CaseClosureInfo, Case
-    
-    session = get_session()
+
     try:
         # Update case status
         case = session.query(Case).filter(Case.case_id == case_id).first()
@@ -1021,13 +1007,12 @@ async def close_case(case_id: str, data: ClosureInfo):
         sla_service = CaseSLAService()
         sla_service.mark_resolution_complete(case_id, session)
         
-        session.commit()
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
         return {"success": True, "closure": closure.to_dict()}
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to close case: {str(e)}")
-    finally:
-        session.close()
 
 
 # Case Escalation
@@ -1054,19 +1039,14 @@ async def escalate_case(case_id: str, data: EscalationAdd):
 
 
 @router.get("/{case_id}/escalations")
-async def get_escalations(case_id: str):
+async def get_escalations(case_id: str, session: UnitOfWorkSession):
     """Get escalation history."""
-    from database.connection import get_session
     from database.models import CaseEscalation
-    
-    session = get_session()
-    try:
-        escalations = session.query(CaseEscalation).filter(
-            CaseEscalation.case_id == case_id
-        ).all()
-        return {"escalations": [e.to_dict() for e in escalations]}
-    finally:
-        session.close()
+
+    escalations = (
+        session.query(CaseEscalation).filter(CaseEscalation.case_id == case_id).all()
+    )
+    return {"escalations": [e.to_dict() for e in escalations]}
 
 
 # Case Merge
