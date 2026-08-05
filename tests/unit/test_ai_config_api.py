@@ -23,7 +23,7 @@ sys.path.insert(0, str(REPO / "backend"))
 from services.api.routers.ai_config import router as ai_config_router  # noqa: E402
 from core.storage.connection import get_db  # noqa: E402
 from core.storage.models import AIModelConfig, LLMProviderConfig  # noqa: E402
-from services.model_registry import ModelInfo  # noqa: E402
+from core.llm.providers.registry import ModelInfo  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -243,7 +243,7 @@ def test_list_models(client):
         return stub_models
 
     with patch(
-        "services.model_registry.ModelRegistry.list_available_models",
+        "core.llm.providers.registry.ModelRegistry.list_available_models",
         side_effect=fake_list,
     ):
         r = client.get("/api/ai/models")
@@ -259,7 +259,7 @@ def test_model_info_404_when_missing(client):
         return []
 
     with patch(
-        "services.model_registry.ModelRegistry.list_available_models",
+        "core.llm.providers.registry.ModelRegistry.list_available_models",
         side_effect=fake_list,
     ):
         r = client.get("/api/ai/models/nothing/info")

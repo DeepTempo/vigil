@@ -20,9 +20,9 @@ import base64
 from services.api.middleware.auth import get_current_user
 from backend.schemas.system_prompt import validate_system_prompt
 from core.storage.models import User
-from services.claude_service import ClaudeService
+from core.llm.harness.claude import ClaudeService
 from services.defaults import DEFAULT_MODEL
-from services.model_registry import get_registry
+from core.llm.providers.registry import get_registry
 from core.routing import Auth, RouterMeta
 from core.rate_limit import rate_limit_dependency
 
@@ -228,7 +228,7 @@ def _select_active_provider(provider_id: Optional[str]):
     Returns a ``ProviderSpec`` or ``None``. Lookups are wrapped so a transient
     DB error degrades to the ClaudeService/Anthropic path rather than 500-ing.
     """
-    from services.llm_router import (
+    from core.llm.router.router import (
         get_default_provider_spec,
         get_provider_spec,
     )
@@ -491,7 +491,7 @@ async def chat(request: ChatRequest):
         # The router path has no tools, so send the no-tools guardrail prompt
         # rather than the agentic system prompt.
         if use_router:
-            from services.llm_router import LLMRouter
+            from core.llm.router.router import LLMRouter
 
             logger.info(
                 f"💬 [RequestID: {request_id}] Starting router chat ({active_provider.provider_type}) "
@@ -540,7 +540,7 @@ async def chat(request: ChatRequest):
             logger.info(
                 f"💬 Starting chat with {len(messages)} messages, thinking={enable_thinking}, budget={thinking_budget}"
             )
-            from services.llm_gateway import get_llm_gateway
+            from core.llm.gateway.gateway import get_llm_gateway
 
             gateway = await get_llm_gateway()
             response = await gateway.submit_chat(
@@ -610,7 +610,7 @@ async def chat(request: ChatRequest):
         # the direct claude_service.client.messages.create call sites that
         # don't go through llm_router yet.
         try:
-            from services.budget_service import BudgetExceeded as _BE
+            from core.llm.cost.budget import BudgetExceeded as _BE
         except Exception:
             _BE = None  # type: ignore[assignment]
 
@@ -846,7 +846,7 @@ async def chat_stream(
                 model_id = request.model or active_provider.default_model
                 enable_agent_tools = False
                 try:
-                    from services.model_registry import ModelRegistry
+                    from core.llm.providers.registry import ModelRegistry
 
                     model_info = ModelRegistry().get_model_info(
                         active_provider.provider_id,
@@ -861,7 +861,7 @@ async def chat_stream(
 
                 agent = None
                 if enable_agent_tools:
-                    from services.openai_agent_service import OpenAIAgentService
+                    from core.llm.harness.openai import OpenAIAgentService
 
                     agent = OpenAIAgentService(recommended_tools=recommended_tools)
                     # Claims tool support but nothing loadable — fall back to the
@@ -908,7 +908,7 @@ async def chat_stream(
                         history_assistant_parts.append(chunk.get("content", ""))
                         yield f"data: {json.dumps(chunk)}\n\n"
                 else:
-                    from services.llm_router import LLMRouter
+                    from core.llm.router.router import LLMRouter
 
                     async for chunk in LLMRouter().dispatch_openai_stream(
                         provider=active_provider,
@@ -1181,7 +1181,7 @@ async def get_models():
     # the chat picker. Signal is the registry's is_embedding flag (from the
     # provider capability array), with a name heuristic as fallback for
     # providers/paths that don't carry live capability meta.
-    from services.provider_model_discovery import is_embedding_model_id
+    from core.llm.providers.discovery import is_embedding_model_id
 
     seen: set = set()
     models = []
@@ -1270,7 +1270,7 @@ CONVERSATION:
 Provide a structured summary that captures all essential context for continuing the conversation."""
 
     try:
-        from services.llm_gateway import get_llm_gateway
+        from core.llm.gateway.gateway import get_llm_gateway
 
         # GH #89: resolve summarization model via ai_model_configs.
         model = request.model or _resolve_model_for_request(None, None)
@@ -1624,7 +1624,7 @@ Please provide:
 4. Related MITRE ATT&CK techniques"""
 
     try:
-        from services.llm_gateway import get_llm_gateway
+        from core.llm.gateway.gateway import get_llm_gateway
 
         gateway = await get_llm_gateway()
         response = await gateway.submit_chat(

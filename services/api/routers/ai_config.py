@@ -23,7 +23,7 @@ from core.routing import Auth, RouterMeta
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.storage.connection import get_db, get_db_session
 from core.storage.models import AIModelConfig, LLMProviderConfig  # noqa: E402
-from services.model_registry import (  # noqa: E402
+from core.llm.providers.registry import (  # noqa: E402
     COMPONENTS,
     ModelInfo,
     get_registry,

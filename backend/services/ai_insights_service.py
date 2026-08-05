@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from backend.secrets_manager import get_secret
 from services.defaults import DEFAULT_MODEL
-from services.llm_clients import create_anthropic_client
+from core.llm.providers.clients import create_anthropic_client
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +223,7 @@ Provide ONLY the JSON array, no other text."""
     async def _call_claude(self, context: str) -> str:
         """Call Claude API via the LLM queue for global rate limiting."""
         try:
-            from services.llm_gateway import get_llm_gateway
+            from core.llm.gateway.gateway import get_llm_gateway
             gateway = await get_llm_gateway()
             result = await gateway.submit_insights(
                 prompt=context,
@@ -393,7 +393,7 @@ Respond with JSON:
   "severity": "low|medium|high|critical"
 }}"""
 
-            from services.llm_gateway import get_llm_gateway
+            from core.llm.gateway.gateway import get_llm_gateway
             gateway = await get_llm_gateway()
             raw = await gateway.submit_insights(
                 prompt=prompt,
@@ -446,7 +446,7 @@ Respond with JSON array of forecasts:
   ...
 ]"""
 
-            from services.llm_gateway import get_llm_gateway
+            from core.llm.gateway.gateway import get_llm_gateway
             gateway = await get_llm_gateway()
             raw = await gateway.submit_insights(
                 prompt=prompt,

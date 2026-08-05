@@ -796,7 +796,7 @@ def _cost_time_series_from_bifrost(start_time, end_time) -> Optional[Dict[str, A
     keeps working with the local aggregations.
     """
     try:
-        from services.bifrost_cost_client import histogram_cost
+        from core.llm.bifrost.costs import histogram_cost
 
         return histogram_cost(
             start_time=start_time.isoformat() if start_time else None,
@@ -916,7 +916,7 @@ def _cost_group_by_model(db: Session, base_filter) -> List[Dict[str, Any]]:
     # tier-regex pricing (or $0 for unknown) and need to be visually
     # distinguishable from "exact" rows. Provider is inferred from the
     # model id since LLMInteractionLog doesn't carry provider_type.
-    from services.model_registry import (
+    from core.llm.providers.registry import (
         get_registry,
         infer_provider_type,
     )
@@ -1018,8 +1018,8 @@ async def estimate_cost_endpoint(payload: EstimateCostRequest) -> Dict[str, Any]
     out ``max_tokens`` of output. Real-world cost lands in between, and
     is typically much closer to ``low_usd`` for cache-friendly workloads.
     """
-    from services.cost_estimator import estimate_cost
-    from services.model_registry import get_registry, infer_provider_type
+    from core.llm.cost.estimator import estimate_cost
+    from core.llm.providers.registry import get_registry, infer_provider_type
 
     # The chat composer can't reliably know which provider serves a given
     # model (the bare model id it picked routes to the active default on the
@@ -1099,7 +1099,7 @@ async def recalculate_cost_endpoint(
     many rows still need processing. The UI button loops until
     ``remaining == 0`` (or fails fast on a 5xx).
     """
-    from services.bifrost_cost_client import recalculate_cost
+    from core.llm.bifrost.costs import recalculate_cost
 
     p = payload or RecalculateCostRequest()
     filters: Dict[str, Any] = {}

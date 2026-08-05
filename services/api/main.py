@@ -188,14 +188,14 @@ async def _connect_external_services():
     import asyncio
 
     try:
-        from services.bifrost_admin import sync_all_provider_keys
+        from core.llm.bifrost.admin import sync_all_provider_keys
 
         sync_all_provider_keys()
     except Exception as e:
         logger.warning(f"Bifrost provider sync skipped: {e}")
 
     try:
-        from services.bifrost_admin import sync_all_provider_models
+        from core.llm.bifrost.admin import sync_all_provider_models
 
         refresh_interval_s = get_settings().model_catalog_refresh_interval_s
 
@@ -218,7 +218,7 @@ async def _connect_external_services():
 
     logger.info("Initializing LLM Gateway (ARQ / Redis)...")
     try:
-        from services.llm_gateway import get_llm_gateway
+        from core.llm.gateway.gateway import get_llm_gateway
 
         await get_llm_gateway()
         logger.info("✓ LLM Gateway connected to Redis")
@@ -578,7 +578,7 @@ async def shutdown_event():
     """Clean up LLM gateway and MCP connections on shutdown."""
     logger.info("Shutting down LLM Gateway...")
     try:
-        from services.llm_gateway import close_llm_gateway
+        from core.llm.gateway.gateway import close_llm_gateway
 
         await close_llm_gateway()
         logger.info("LLM Gateway closed")

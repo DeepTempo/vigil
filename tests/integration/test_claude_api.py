@@ -25,7 +25,7 @@ pytest.importorskip("services.api.main", reason="Requires backend application to
 def mock_llm_gateway():
     """Mock the LLM Gateway to prevent async Redis connections during tests.
 
-    Patches services.llm_gateway.get_llm_gateway so that no real Redis pool
+    Patches core.llm.gateway.gateway.get_llm_gateway so that no real Redis pool
     is created.  This eliminates the ``RuntimeError: Event loop is closed``
     error that occurs when a Redis connection outlives the test event loop.
     """
@@ -37,7 +37,7 @@ def mock_llm_gateway():
 
     mock_get_gw = AsyncMock(return_value=mock_gw)
 
-    with patch("services.llm_gateway.get_llm_gateway", mock_get_gw):
+    with patch("core.llm.gateway.gateway.get_llm_gateway", mock_get_gw):
         yield mock_gw
 
 

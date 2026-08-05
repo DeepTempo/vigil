@@ -215,7 +215,7 @@ async def run_agent(request: AgentRunRequest):
         Agent execution result with tool calls and analysis
     """
     from core.storage.database_data_service import DatabaseDataService
-    from services.claude_service import ClaudeService
+    from core.llm.harness.claude import ClaudeService
     
     try:
         agent = _resolve_agent(request.agent_id)

@@ -98,7 +98,7 @@ class TestSerializationHelpers:
     """Pure-function helpers — no mocks, no DB."""
 
     def test_serialize_response_blocks_dict_input(self):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         raw = [
             {"type": "text", "text": "hello"},
@@ -114,7 +114,7 @@ class TestSerializationHelpers:
 
     def test_serialize_response_blocks_handles_sdk_objects(self):
         """SDK blocks expose attributes rather than dict keys."""
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         class _Block:
             def __init__(self, **kw):
@@ -132,13 +132,13 @@ class TestSerializationHelpers:
         assert out[2]["name"] == "search" and out[2]["input"] == {"x": 1}
 
     def test_serialize_empty(self):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         assert ClaudeService._serialize_response_blocks(None) == []
         assert ClaudeService._serialize_response_blocks([]) == []
 
     def test_sanitize_messages_strips_image_base64(self):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         msgs = [
             {"role": "user", "content": "plain string"},
@@ -160,7 +160,7 @@ class TestSerializationHelpers:
         assert second[1] == {"type": "image", "source": {"type": "redacted"}}
 
     def test_extract_prior_tool_results(self):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         messages = [
             {"role": "user", "content": "initial question"},
@@ -183,7 +183,7 @@ class TestSerializationHelpers:
         assert out[0]["tool_use_id"] == "t1"
 
     def test_extract_prior_tool_results_none_when_no_tool_result(self):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         messages = [
             {"role": "user", "content": "just a chat"},
@@ -196,7 +196,7 @@ class TestPersistInteractionRobustness:
 
     def test_persist_swallows_db_errors(self, monkeypatch, caplog):
         """If the DB isn't available, the helper must log-and-move-on."""
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         # Force get_db_manager to blow up
         def _boom():

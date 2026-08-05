@@ -18,6 +18,8 @@ from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
 
 from core.storage.models import User, Role
+from core.config import get_settings
+from core.secrets import get_secret
 from core.storage.connection import get_db_session
 from core.config import get_settings
 from core.secrets import get_secret

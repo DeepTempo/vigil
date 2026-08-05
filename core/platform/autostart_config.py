@@ -25,6 +25,7 @@ import tempfile
 from pathlib import Path
 from typing import List
 
+from core.config import get_settings
 from core.platform.service_manager import REQUIRED_SERVICES, SERVICES
 from core.config import get_settings
 

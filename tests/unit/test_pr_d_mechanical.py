@@ -28,20 +28,20 @@ pytestmark = pytest.mark.unit
 
 class TestFilterToolsByName:
     def test_none_recommended_is_noop(self):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         tools = [{"name": "a"}, {"name": "b"}]
         assert ClaudeService._filter_tools_by_name(tools, None) is tools
 
     def test_empty_recommended_is_noop(self):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         tools = [{"name": "a"}, {"name": "b"}]
         # Empty list returns the original (falsy guard).
         assert ClaudeService._filter_tools_by_name(tools, []) is tools
 
     def test_exact_name_match(self):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         tools = [{"name": "get_finding"}, {"name": "create_case"}, {"name": "list_findings"}]
         out = ClaudeService._filter_tools_by_name(
@@ -55,7 +55,7 @@ class TestFilterToolsByName:
         match both forms so agents don't accidentally ship an empty tool
         block.
         """
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         tools = [
             {"name": "vt_get_file_report"},
@@ -71,7 +71,7 @@ class TestFilterToolsByName:
         assert "splunk_search" not in names
 
     def test_unknown_name_is_dropped(self):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         tools = [{"name": "a"}, {"name": "b"}]
         assert ClaudeService._filter_tools_by_name(tools, ["c"]) == []
@@ -84,14 +84,14 @@ class TestFilterToolsByName:
 
 class TestApplyHistoryWindow:
     def test_short_history_untouched(self, monkeypatch):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "20")
         msgs = [{"role": "user", "content": f"m{i}"} for i in range(5)]
         assert ClaudeService._apply_history_window(msgs) == msgs
 
     def test_long_history_trimmed_to_tail(self, monkeypatch):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "3")
         # 3 turns = 6 messages; build 10 messages and confirm the last 6 win.
@@ -102,14 +102,14 @@ class TestApplyHistoryWindow:
         assert out[-1]["content"] == "m9"
 
     def test_zero_disables_window(self, monkeypatch):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "0")
         msgs = [{"role": "user", "content": f"m{i}"} for i in range(100)]
         assert ClaudeService._apply_history_window(msgs) == msgs
 
     def test_bad_env_value_falls_back_to_default(self, monkeypatch):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "not-a-number")
         # Default is 20 turns = 40 messages; 30 messages fits untrimmed.
@@ -124,7 +124,7 @@ class TestApplyHistoryWindow:
 
 class TestTieredTruncation:
     def test_per_tool_override_wins_over_default(self, monkeypatch):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         monkeypatch.setenv("TOOL_RESPONSE_BUDGET_DEFAULT", "1000")
         assert ClaudeService._response_budget_for("get_raw_logs") == 30000
@@ -133,28 +133,28 @@ class TestTieredTruncation:
         assert ClaudeService._response_budget_for("never_heard_of_it") == 1000
 
     def test_mcp_prefixed_lookup(self):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         # "splunk_search" is registered; "logs_splunk_search" (prefixed by
         # server name) must still resolve to the same budget.
         assert ClaudeService._response_budget_for("logs_splunk_search") == 30000
 
     def test_no_name_falls_through_to_default(self, monkeypatch):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         monkeypatch.setenv("TOOL_RESPONSE_BUDGET_DEFAULT", "5000")
         assert ClaudeService._response_budget_for(None) == 5000
         assert ClaudeService._response_budget_for("") == 5000
 
     def test_hard_default_when_env_missing(self, monkeypatch):
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         monkeypatch.delenv("TOOL_RESPONSE_BUDGET_DEFAULT", raising=False)
         assert ClaudeService._response_budget_for("unknown") == 8000
 
     def test_truncate_respects_per_tool_budget(self, monkeypatch):
         """Regression: previously everything used the 30k constant."""
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         monkeypatch.setenv("TOOL_RESPONSE_BUDGET_DEFAULT", "100")
         svc = ClaudeService.__new__(ClaudeService)

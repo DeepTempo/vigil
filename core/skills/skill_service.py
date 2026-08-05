@@ -154,7 +154,7 @@ class SkillService:
         an answer, and re-invoke with the accumulated conversation_history.
         """
         try:
-            from services.claude_service import ClaudeService
+            from core.llm.harness.claude import ClaudeService
 
             claude = ClaudeService(use_mcp_tools=False)
             if not claude.has_api_key():
