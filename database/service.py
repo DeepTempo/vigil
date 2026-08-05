@@ -21,6 +21,7 @@ from database.models import (
 )
 from database.connection import get_db_manager
 from database.case_repository import CaseRepository
+from database.schemas import FindingSchema
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +266,7 @@ class DatabaseService:
                     cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
                     query = query.where(Finding.timestamp >= cutoff)
                 query = query.order_by(Finding.timestamp.asc()).limit(limit)
-                return [f.to_dict() for f in session.execute(query).scalars().all()]
+                return FindingSchema.dump_many(session.execute(query).scalars().all())
         except Exception as e:
             logger.error(f"Error getting findings missing enrichment: {e}")
             return []

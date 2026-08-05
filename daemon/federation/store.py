@@ -65,10 +65,11 @@ def list_sources() -> List[Dict[str, Any]]:
     try:
         from database.connection import get_db_manager
         from database.models import FederationSource
+        from database.schemas import FederationSourceSchema
 
         with get_db_manager().session_scope() as session:
             rows = session.query(FederationSource).all()
-            return [r.to_dict() for r in rows]
+            return FederationSourceSchema.dump_many(rows)
     except Exception as e:
         logger.debug("list federation_sources failed: %s", e)
         return []
@@ -78,10 +79,11 @@ def get_source(source_id: str) -> Optional[Dict[str, Any]]:
     try:
         from database.connection import get_db_manager
         from database.models import FederationSource
+        from database.schemas import FederationSourceSchema
 
         with get_db_manager().session_scope() as session:
             row = session.get(FederationSource, source_id)
-            return row.to_dict() if row else None
+            return FederationSourceSchema.dump(row) if row else None
     except Exception as e:
         logger.debug("get federation_source(%s) failed: %s", source_id, e)
         return None
@@ -96,6 +98,7 @@ def upsert_source(source_id: str, defaults: Dict[str, Any]) -> Optional[Dict[str
     try:
         from database.connection import get_db_manager
         from database.models import FederationSource
+        from database.schemas import FederationSourceSchema
 
         with get_db_manager().session_scope() as session:
             row = session.get(FederationSource, source_id)
@@ -103,7 +106,7 @@ def upsert_source(source_id: str, defaults: Dict[str, Any]) -> Optional[Dict[str
                 row = FederationSource(source_id=source_id, **defaults)
                 session.add(row)
                 session.flush()
-            return row.to_dict()
+            return FederationSourceSchema.dump(row)
     except Exception as e:
         logger.warning("upsert federation_source(%s) failed: %s", source_id, e)
         return None
@@ -114,6 +117,7 @@ def update_source(source_id: str, fields: Dict[str, Any]) -> Optional[Dict[str, 
     try:
         from database.connection import get_db_manager
         from database.models import FederationSource
+        from database.schemas import FederationSourceSchema
 
         with get_db_manager().session_scope() as session:
             row = session.get(FederationSource, source_id)
@@ -123,7 +127,7 @@ def update_source(source_id: str, fields: Dict[str, Any]) -> Optional[Dict[str, 
                 if hasattr(row, k):
                     setattr(row, k, v)
             session.flush()
-            return row.to_dict()
+            return FederationSourceSchema.dump(row)
     except Exception as e:
         logger.warning("update federation_source(%s) failed: %s", source_id, e)
         return None

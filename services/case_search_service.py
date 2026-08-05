@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, text
 
 from database.models import Case, CaseComment, CaseEvidence, CaseIOC
+from database.schemas import CaseSchema
 from database.case_repository import CaseRepository
 from services.unit_of_work import unit_of_work
 
@@ -81,7 +82,7 @@ class CaseSearchService:
             )
 
             return {
-                'results': [case.to_dict() for case in cases],
+                'results': CaseSchema.dump_many(cases),
                 'total': total_count,
                 'limit': limit,
                 'offset': offset,
@@ -209,8 +210,8 @@ class CaseSearchService:
                 Case.case_id.in_(case_ids)
             ).all()
 
-            return [case.to_dict() for case in cases]
-    
+            return CaseSchema.dump_many(cases)
+
     def get_related_cases(
         self,
         case_id: str,
@@ -295,7 +296,7 @@ class CaseSearchService:
                     Case.case_id == case_id_rel
                 ).first()
                 if rel_case:
-                    case_dict = rel_case.to_dict()
+                    case_dict = CaseSchema.dump(rel_case)
                     case_dict['similarity_score'] = meta['score']
                     case_dict['similarity_reasons'] = meta['reasons']
                     result.append(case_dict)

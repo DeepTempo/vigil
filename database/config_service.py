@@ -12,6 +12,11 @@ from contextlib import contextmanager
 
 from database.connection import get_db_manager
 from database.models import SystemConfig, UserPreference, IntegrationConfig, ConfigAuditLog
+from database.schemas import (
+    ConfigAuditLogSchema,
+    IntegrationConfigSchema,
+    SystemConfigSchema,
+)
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -198,7 +203,7 @@ class ConfigService:
                     query = query.filter_by(config_type=config_type)
                 
                 configs = query.all()
-                return [config.to_dict() for config in configs]
+                return SystemConfigSchema.dump_many(configs)
                 
         except Exception as e:
             logger.error(f"Error listing system configs: {e}")
@@ -334,7 +339,7 @@ class ConfigService:
                 ).first()
                 
                 if integration:
-                    return integration.to_dict()
+                    return IntegrationConfigSchema.dump(integration)
                 
                 return None
                 
@@ -506,7 +511,7 @@ class ConfigService:
                     query = query.filter_by(enabled=True)
                 
                 integrations = query.all()
-                return [integration.to_dict() for integration in integrations]
+                return IntegrationConfigSchema.dump_many(integrations)
                 
         except Exception as e:
             logger.error(f"Error listing integrations: {e}")
@@ -613,7 +618,7 @@ class ConfigService:
                     query = query.filter_by(config_key=config_key)
                 
                 entries = query.limit(limit).all()
-                return [entry.to_dict() for entry in entries]
+                return ConfigAuditLogSchema.dump_many(entries)
                 
         except Exception as e:
             logger.error(f"Error getting audit log: {e}")

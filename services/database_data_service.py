@@ -10,6 +10,7 @@ import numpy as np
 
 from database.connection import get_db_manager, init_database
 from database.service import DatabaseService
+from database.schemas import CaseSchema, FindingSchema
 from core.exceptions import DatabaseError
 from core.config import is_demo_mode
 
@@ -176,7 +177,9 @@ class DatabaseDataService:
                     limit=limit, offset=offset,
                     sort_by=sort_by, sort_order=sort_order,
                 )
-                return [f.to_dict(include_embedding=include_embedding) for f in findings]
+                if include_embedding:
+                    return FindingSchema.dump_many(findings)
+                return FindingSchema.dump_many_summary(findings)
             except Exception as e:
                 logger.error(f"Error getting findings from DB: {e}")
                 return []
@@ -264,7 +267,7 @@ class DatabaseDataService:
         if self._db_available:
             try:
                 finding = self._db_service.get_finding(finding_id)
-                return finding.to_dict() if finding else None
+                return FindingSchema.dump(finding) if finding else None
             except Exception as e:
                 logger.error(f"Error getting finding from DB: {e}")
                 return None
@@ -314,7 +317,7 @@ class DatabaseDataService:
         if self._db_available:
             try:
                 findings_objs = self._db_service.get_findings(limit=10000)
-                findings = [f.to_dict() for f in findings_objs]
+                findings = FindingSchema.dump_many(findings_objs)
             except Exception as e:
                 logger.error(f"Error getting findings from DB for nearest_neighbors: {e}")
                 return {"error": str(e)}
@@ -370,7 +373,7 @@ class DatabaseDataService:
                     severity=finding_data.get('severity'),
                     status=finding_data.get('status', 'new')
                 )
-                return finding.to_dict() if finding else None
+                return FindingSchema.dump(finding) if finding else None
             except Exception as e:
                 logger.error(f"Error creating finding in DB: {e}")
                 return None
@@ -409,7 +412,7 @@ class DatabaseDataService:
         if self._db_available:
             try:
                 cases = self._db_service.get_cases(limit=limit)
-                return [c.to_dict() for c in cases]
+                return CaseSchema.dump_many(cases)
             except Exception as e:
                 logger.error(f"Error getting cases from DB: {e}")
                 return []
@@ -424,7 +427,7 @@ class DatabaseDataService:
         if self._db_available:
             try:
                 case = self._db_service.get_case(case_id, include_findings=True)
-                return case.to_dict() if case else None
+                return CaseSchema.dump(case) if case else None
             except Exception as e:
                 logger.error(f"Error getting case from DB: {e}")
                 return None
@@ -448,7 +451,7 @@ class DatabaseDataService:
                     case_id=case_id, title=title, finding_ids=finding_ids,
                     description=description, status=status, priority=priority
                 )
-                return case.to_dict() if case else None
+                return CaseSchema.dump(case) if case else None
             except Exception as e:
                 logger.error(f"Error creating case in DB: {e}")
                 return None
@@ -483,7 +486,7 @@ class DatabaseDataService:
                     status=case_data.get('status', 'open'),
                     priority=case_data.get('priority', 'medium')
                 )
-                return case.to_dict() if case else None
+                return CaseSchema.dump(case) if case else None
             except Exception as e:
                 logger.error(f"Error creating case in DB: {e}")
                 return None
@@ -553,7 +556,7 @@ class DatabaseDataService:
                 # Get case with findings
                 case = self._db_service.get_case(case_id, include_findings=True)
                 if case and case.findings:
-                    return [f.to_dict() for f in case.findings]
+                    return FindingSchema.dump_many(case.findings)
                 return []
             except Exception as e:
                 logger.error(f"Error getting findings for case from DB: {e}")

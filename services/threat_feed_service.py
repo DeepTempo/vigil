@@ -284,6 +284,7 @@ def lookup_indicators(
     try:
         from database.connection import get_db_manager
         from database.models import ThreatIndicator
+        from database.schemas import ThreatIndicatorSchema
     except Exception as e:  # noqa: BLE001
         logger.debug("ThreatIndicator lookup unavailable: %s", e)
         return {}
@@ -297,5 +298,5 @@ def lookup_indicators(
             .all()
         )
         for row in rows:
-            out.setdefault(row.indicator_value, row.to_dict())
+            out.setdefault(row.indicator_value, ThreatIndicatorSchema.dump(row))
     return out

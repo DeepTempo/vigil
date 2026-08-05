@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from database.connection import get_db_manager
 from database.models import Skill
+from database.schemas import SkillSchema
 
 logger = logging.getLogger(__name__)
 
@@ -63,13 +64,13 @@ class SkillService:
             if is_active is not None:
                 q = q.filter(Skill.is_active == is_active)
             q = q.order_by(Skill.created_at.desc())
-            return [s.to_dict() for s in q.all()]
+            return SkillSchema.dump_many(q.all())
 
     def get_skill(self, skill_id: str) -> Optional[Dict[str, Any]]:
         """Fetch one skill by id, or None."""
         with get_db_manager().session_scope() as session:
             row = session.get(Skill, skill_id)
-            return row.to_dict() if row else None
+            return SkillSchema.dump(row) if row else None
 
     def create_skill(
         self,
@@ -94,7 +95,7 @@ class SkillService:
             )
             session.add(skill)
             session.flush()
-            return skill.to_dict()
+            return SkillSchema.dump(skill)
 
     def update_skill(
         self,
@@ -128,7 +129,7 @@ class SkillService:
             if bumped:
                 row.version = (row.version or 1) + 1
             session.flush()
-            return row.to_dict()
+            return SkillSchema.dump(row)
 
     def delete_skill(self, skill_id: str) -> bool:
         """Hard-delete a skill. Returns True on success, False if not found."""

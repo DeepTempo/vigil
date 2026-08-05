@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from database.connection import get_db_manager
 from database.models import CustomWorkflow
+from database.schemas import CustomWorkflowSchema
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ class CustomWorkflowService:
             )
             session.add(wf)
             session.flush()
-            result = wf.to_dict()
+            result = CustomWorkflowSchema.dump(wf)
         logger.info(f"Created custom workflow: {workflow_id}")
         return result
 
@@ -119,7 +120,7 @@ class CustomWorkflowService:
         db = get_db_manager()
         with db.session_scope() as session:
             wf = session.get(CustomWorkflow, workflow_id)
-            return wf.to_dict() if wf else None
+            return CustomWorkflowSchema.dump(wf) if wf else None
 
     def list(self, active_only: bool = True) -> List[Dict[str, Any]]:
         """List custom workflows."""
@@ -130,7 +131,7 @@ class CustomWorkflowService:
                 stmt = stmt.where(CustomWorkflow.is_active.is_(True))
             stmt = stmt.order_by(CustomWorkflow.updated_at.desc())
             rows = session.execute(stmt).scalars().all()
-            return [r.to_dict() for r in rows]
+            return CustomWorkflowSchema.dump_many(rows)
 
     def update(
         self, workflow_id: str, updates: Dict[str, Any]
@@ -169,7 +170,7 @@ class CustomWorkflowService:
             wf.version = (wf.version or 1) + 1
             wf.updated_at = datetime.utcnow()
             session.flush()
-            result = wf.to_dict()
+            result = CustomWorkflowSchema.dump(wf)
         logger.info(
             f"Updated custom workflow: {workflow_id} (version={result['version']})"
         )

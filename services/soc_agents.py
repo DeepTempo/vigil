@@ -658,6 +658,7 @@ class AgentManager:
         try:
             from database.connection import get_db_manager
             from database.models import CustomAgent
+            from database.schemas import CustomAgentSchema
         except Exception as e:
             logger.warning(f"CustomAgent model unavailable, skipping refresh: {e}")
             return 0
@@ -669,7 +670,9 @@ class AgentManager:
                 loaded = 0
                 for row in rows:
                     try:
-                        profile = SOCAgentLibrary._build_from_custom(row.to_dict())
+                        profile = SOCAgentLibrary._build_from_custom(
+                            CustomAgentSchema.dump(row)
+                        )
                         self.agents[profile.id] = profile
                         loaded += 1
                     except Exception as e:

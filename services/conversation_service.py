@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 
 from database.connection import get_db_manager
 from database.models import ChatMessage, Conversation
+from database.schemas import ConversationSchema
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +202,7 @@ def list_conversations(
         if offset > 0:
             stmt = stmt.offset(offset)
         rows = session.execute(stmt).scalars().all()
-        return [c.to_summary_dict() for c in rows]
+        return [ConversationSchema.dump_summary(c) for c in rows]
 
 
 def get_conversation(conversation_id: str, user_id: Optional[str]) -> Optional[dict]:
@@ -211,7 +212,7 @@ def get_conversation(conversation_id: str, user_id: Optional[str]) -> Optional[d
         conv = _owned(session, conversation_id, user_id)
         if conv is None:
             return None
-        return conv.to_dict()
+        return ConversationSchema.dump(conv)
 
 
 def rename(
@@ -225,7 +226,7 @@ def rename(
             return None
         conv.title = (title or "").strip()[:200] or None
         session.flush()
-        return conv.to_summary_dict()
+        return ConversationSchema.dump_summary(conv)
 
 
 def set_archived(
@@ -239,7 +240,7 @@ def set_archived(
             return None
         conv.archived = bool(archived)
         session.flush()
-        return conv.to_summary_dict()
+        return ConversationSchema.dump_summary(conv)
 
 
 def delete(conversation_id: str, user_id: Optional[str]) -> bool:
