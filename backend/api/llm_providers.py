@@ -27,6 +27,7 @@ from backend.dependencies import UnitOfWorkSession  # noqa: E402
 from backend.middleware.auth import get_current_active_user  # noqa: E402
 from backend.services.auth_service import AuthService  # noqa: E402
 from database.models import AIModelConfig, LLMProviderConfig, User  # noqa: E402
+from database.schemas import LLMProviderConfigSchema  # noqa: E402
 from services.bifrost_admin import push_provider_key  # noqa: E402
 from services.url_safety import (  # noqa: E402
     UrlSafetyError,
@@ -143,7 +144,7 @@ class LLMProviderResponse(BaseModel):
 
 
 def _to_response(row: LLMProviderConfig) -> Dict[str, Any]:
-    d = row.to_dict()
+    d = LLMProviderConfigSchema.dump(row)
     d.pop("api_key_ref", None)
     return d
 
