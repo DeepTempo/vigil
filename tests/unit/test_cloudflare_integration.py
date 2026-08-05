@@ -163,7 +163,7 @@ def test_parse_stix_indicator_skips_non_indicator():
 def _load_webhook_module():
     spec = importlib.util.spec_from_file_location(
         "cloudflare_webhooks_under_test",
-        _REPO_ROOT / "services" / "api" / "routers" / "cloudflare_webhooks.py",
+        _REPO_ROOT / "core" / "integrations" / "cloudflare" / "cloudflare_webhooks_router.py",
     )
     mod = importlib.util.module_from_spec(spec)
     sys.modules["cloudflare_webhooks_under_test"] = mod
