@@ -40,11 +40,12 @@ export const AGENT_META: Record<string, { label: string; color: string }> = {
   auto_responder: { label: 'Auto-Response', color: '#FF6B6B' },
 }
 
-/** "mitre_analyst" → "Mitre Analyst" — fallback for unknown/custom handles. */
+/** "mitre_mapping" → "MITRE Mapping" — labels every agent and action id. */
 export function prettyHandle(handle: string): string {
   return handle
     .replace(/[._-]+/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\bMitre\b/g, 'MITRE')
     .trim()
 }
 

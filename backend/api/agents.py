@@ -6,7 +6,12 @@ from pydantic import BaseModel
 import logging
 
 from services.defaults import DEFAULT_MODEL
-from services.soc_agents import SOCAgentLibrary, AgentManager, CUSTOM_AGENT_ID_PREFIX
+from services.soc_agents import (
+    SOCAgentLibrary,
+    AgentManager,
+    CUSTOM_AGENT_ID_PREFIX,
+    DEFAULT_AGENT_ID,
+)
 from api._meta import Auth, RouterMeta
 
 router = APIRouter()
@@ -40,7 +45,7 @@ def _resolve_agent(agent_id: str):
 class InvestigationRequest(BaseModel):
     """Request to start an investigation with an agent."""
     finding_id: str
-    agent_id: Optional[str] = "investigator"
+    agent_id: Optional[str] = DEFAULT_AGENT_ID
     additional_context: Optional[str] = None
 
 
@@ -196,7 +201,7 @@ class AgentRunRequest(BaseModel):
     finding_id: Optional[str] = None
     case_id: Optional[str] = None
     task: Optional[str] = None
-    agent_id: str = "investigator"
+    agent_id: str = DEFAULT_AGENT_ID
     use_agent_sdk: bool = True
 
 

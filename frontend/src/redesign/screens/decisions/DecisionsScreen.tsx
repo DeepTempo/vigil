@@ -5,7 +5,7 @@
    analytics + feedback, and a separate pending-approvals queue.
    See DECISIONS_WIRING.md.
    ============================================================ */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { format } from 'date-fns'
 import { Icon } from '../../shared/icons'
 import { Hbars, type HbarItem } from '../../shared/charts'
@@ -14,6 +14,7 @@ import type { Decision, Outcome } from '../../data/appData'
 import type { ScreenProps } from '../../shared/types'
 import {
   useDecisions,
+  useDecisionAgentIds,
   usePendingDecisions,
   useDecisionStats,
   usePendingApprovals,
@@ -28,8 +29,6 @@ import { EmptyState, Popup, Field, TextInput, Select, Rating, Slider, Dropdown, 
 type DecTab = 'pending' | 'all' | 'analytics' | 'approvals'
 type Assessment = 'agree' | 'partial' | 'disagree'
 
-const AGENT_IDS = ['all', 'triage', 'investigation', 'correlation', 'auto_responder', 'threat_hunter', 'orchestrator']
-const AGENT_OPTS = AGENT_IDS.map((id) => ({ value: id, label: id === 'all' ? 'All agents' : getAgentDisplayName(id) }))
 const STATUS_OPTS = [
   { value: 'all', label: 'All status' },
   { value: 'pending', label: 'Awaiting feedback' },
@@ -610,6 +609,14 @@ export default function DecisionsScreen({ setViewFull }: ScreenProps) {
   const pending = usePendingDecisions()
   const all = useDecisions(agentF, statusF)
   const approvals = usePendingApprovals()
+  const agentIds = useDecisionAgentIds()
+  const agentOpts = useMemo(
+    () => [
+      { value: 'all', label: 'All agents' },
+      ...agentIds.map((id) => ({ value: id, label: getAgentDisplayName(id) })),
+    ],
+    [agentIds],
+  )
 
   useEffect(() => {
     setViewFull(selected !== null)
@@ -695,7 +702,7 @@ export default function DecisionsScreen({ setViewFull }: ScreenProps) {
         <div className="bar-row" style={{ paddingTop: 8 }}>
           {tab === 'all' && (
             <>
-              <Dropdown label="Agent" value={agentF} options={AGENT_OPTS} onSelect={setAgentF} selected={agentF !== 'all'} onClear={() => setAgentF('all')} />
+              <Dropdown label="Agent" value={agentF} options={agentOpts} onSelect={setAgentF} selected={agentF !== 'all'} onClear={() => setAgentF('all')} />
               <Dropdown label="Status" value={statusF} options={STATUS_OPTS} onSelect={(v) => setStatusF(v as DecisionStatus)} selected={statusF !== 'all'} onClear={() => setStatusF('all')} />
             </>
           )}

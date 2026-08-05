@@ -5,6 +5,8 @@ import logging
 from typing import Dict, List, Optional, Tuple, Callable, Any
 from datetime import datetime
 
+from services.soc_agents import AgentId
+
 logger = logging.getLogger(__name__)
 
 
@@ -329,7 +331,7 @@ Please review and approve/reject in the SOC dashboard.
                 confidence=confidence,
                 reason=reason,
                 evidence=evidence,
-                created_by="auto_responder",
+                created_by=AgentId.AUTO_RESPONDER.value,
                 parameters={
                     "hostname": hostname,
                     "correlation": correlation_data
@@ -678,7 +680,7 @@ Please review and approve/reject in the SOC dashboard.
                 confidence=confidence,
                 reason=reason,
                 evidence=evidence,
-                created_by="auto_responder",
+                created_by=AgentId.AUTO_RESPONDER.value,
                 parameters=parameters,
             )
 
