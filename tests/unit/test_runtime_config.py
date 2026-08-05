@@ -222,7 +222,7 @@ class TestConsumerIntegration:
 
     def test_thinking_budget_respects_db(self):
         from services import runtime_config
-        from daemon.agent_runner import _default_thinking_budget
+        from services.daemon.agent_runner import _default_thinking_budget
 
         with patch.object(
             runtime_config, "_fetch_db_config", return_value={"thinking_budget": 2048}

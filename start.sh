@@ -169,7 +169,7 @@ else
         exit 1
     fi
 
-    nohup "${PWD}/venv/bin/python" daemon/main.py > logs/daemon.log 2>&1 &
+    nohup "${PWD}/venv/bin/python" services/daemon/main.py > logs/daemon.log 2>&1 &
     echo $! > logs/daemon.pid
 
     if [ "$SKIP_FRONTEND" -eq 0 ] && [ -d "clients/web/node_modules" ]; then

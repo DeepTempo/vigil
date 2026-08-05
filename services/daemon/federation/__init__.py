@@ -8,7 +8,7 @@ source on a configurable cadence and yields normalized findings. The
 configured (default disabled, opt-in).
 """
 
-from daemon.federation.registry import (
+from services.daemon.federation.registry import (
     FederationAdapter,
     FetchResult,
     get_adapter,

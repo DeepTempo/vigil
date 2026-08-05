@@ -34,18 +34,19 @@ vigil/
 │   ├── services/         # Auth services (auth_service, token_blacklist, …); pending move to core/auth/
 │   ├── monitoring.py     # Sentry + Prometheus helpers
 │   └── secrets_manager.py
-├── services/             # 70+ business logic service classes
+├── services/             # 70+ business logic service classes + runtimes
 │   ├── api/              # API composition root: main.py (app entry), discovery.py, middleware/, routers/ (parked routers)
+│   ├── daemon/           # Autonomous 24/7 SOC background process
+│   │   ├── main.py       # Daemon entry point (python services/daemon/main.py)
+│   │   ├── orchestrator.py   # Main autonomous agent orchestrator
+│   │   ├── agent_runner.py   # Executes agents with cost/resource guardrails
+│   │   ├── poller.py         # Fetches alerts from SIEM/EDR
+│   │   ├── processor.py      # Processes findings through AI pipeline
+│   │   ├── responder.py      # Executes containment actions
+│   │   └── scheduler.py      # Cron-style scheduled tasks
 │   ├── claude_service.py # Central AI orchestration (largest file ~124KB)
 │   ├── mcp_service.py    # MCP server coordination
 │   └── case_*_service.py # Case lifecycle services
-├── daemon/               # Autonomous 24/7 SOC background process
-│   ├── orchestrator.py   # Main autonomous agent orchestrator
-│   ├── agent_runner.py   # Executes agents with cost/resource guardrails
-│   ├── poller.py         # Fetches alerts from SIEM/EDR
-│   ├── processor.py      # Processes findings through AI pipeline
-│   ├── responder.py      # Executes containment actions
-│   └── scheduler.py      # Cron-style scheduled tasks
 ├── clients/web/             # React + TypeScript + Vite SPA
 │   └── src/
 │       ├── redesign/     # The SOC console — screens/, shell/, shared/
@@ -322,7 +323,7 @@ two filenames that are reserved and must never be reused.
 
 ### Daemon / Autonomous Mode
 
-The daemon (`daemon/`) runs as a separate process with its own orchestration loop. It polls for new alerts, processes them through the AI pipeline, and can execute automated responses. Cost and resource guardrails are enforced by `daemon/agent_runner.py`.
+The daemon (`services/daemon/`) runs as a separate process with its own orchestration loop (`python services/daemon/main.py`). It polls for new alerts, processes them through the AI pipeline, and can execute automated responses. Cost and resource guardrails are enforced by `services/daemon/agent_runner.py`.
 
 Key config variables: `DAEMON_AUTO_TRIAGE`, `DAEMON_CONFIDENCE_THRESHOLD`, `ORCHESTRATOR_MAX_COST`, `ORCHESTRATOR_MAX_HOURLY_COST`
 

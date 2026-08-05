@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional
 from aiohttp import web
 
 from core.config import get_settings
-from daemon.config import MetricsConfig
+from services.daemon.config import MetricsConfig
 
 logger = logging.getLogger(__name__)
 

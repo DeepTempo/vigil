@@ -2,7 +2,7 @@
 # =============================================================================
 # Headless SOC daemon — autonomous orchestrator, no HTTP frontend
 #
-# Final image runs:  python daemon/main.py
+# Final image runs:  python services/daemon/main.py
 # Exposes ports:
 #   8081  webhook receiver  (DAEMON_WEBHOOK_PORT)
 #   9090  Prometheus metrics (DAEMON_METRICS_PORT)
@@ -57,7 +57,6 @@ WORKDIR /app
 COPY --from=python-deps /install/deps /usr/local
 
 # Daemon-specific source
-COPY --chown=vigil:vigil daemon/      ./daemon/
 COPY --chown=vigil:vigil backend/     ./backend/
 COPY --chown=vigil:vigil core/        ./core/
 COPY --chown=vigil:vigil services/    ./services/
@@ -92,4 +91,4 @@ EXPOSE 8081 9090 9091
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl -fsS http://localhost:9091/health || exit 1
 
-CMD ["python", "daemon/main.py"]
+CMD ["python", "services/daemon/main.py"]

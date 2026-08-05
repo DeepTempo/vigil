@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
-from daemon.config import ResponseConfig, EscalationConfig
+from services.daemon.config import ResponseConfig, EscalationConfig
 
 logger = logging.getLogger(__name__)
 

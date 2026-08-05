@@ -21,8 +21,8 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from daemon.agent_runner import AgentRunner
-from daemon.config import OrchestratorConfig
+from services.daemon.agent_runner import AgentRunner
+from services.daemon.config import OrchestratorConfig
 
 pytestmark = pytest.mark.unit
 
@@ -116,7 +116,7 @@ def test_update_db_record_logs_error_with_traceback_on_failure(caplog):
     db_manager.session_scope = broken_scope
 
     with patch("core.storage.connection.get_db_manager", return_value=db_manager):
-        with caplog.at_level(logging.ERROR, logger="daemon.agent_runner"):
+        with caplog.at_level(logging.ERROR, logger="services.daemon.agent_runner"):
             runner._update_db_record("inv-test-3", {"cost_usd": 1.0})
 
     error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
@@ -132,7 +132,7 @@ def test_update_db_record_warns_when_row_missing():
     with patch("core.storage.connection.get_db_manager", return_value=db_manager):
         with patch("core.storage.models.Investigation"):
             with patch.object(
-                __import__("daemon.agent_runner", fromlist=["logger"]).logger,
+                __import__("services.daemon.agent_runner", fromlist=["logger"]).logger,
                 "warning",
             ) as warn:
                 runner._update_db_record("inv-missing", {"cost_usd": 0.0})

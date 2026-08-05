@@ -226,18 +226,18 @@ class TestAgentProfileThinkingBudget:
 class TestDaemonDefaultThinkingBudget:
     def test_default_value(self, monkeypatch):
         monkeypatch.delenv("CLAUDE_THINKING_BUDGET", raising=False)
-        from daemon.agent_runner import _default_thinking_budget
+        from services.daemon.agent_runner import _default_thinking_budget
 
         assert _default_thinking_budget() == 10000
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("CLAUDE_THINKING_BUDGET", "4096")
-        from daemon.agent_runner import _default_thinking_budget
+        from services.daemon.agent_runner import _default_thinking_budget
 
         assert _default_thinking_budget() == 4096
 
     def test_bad_env_falls_back_to_default(self, monkeypatch):
         monkeypatch.setenv("CLAUDE_THINKING_BUDGET", "not-a-number")
-        from daemon.agent_runner import _default_thinking_budget
+        from services.daemon.agent_runner import _default_thinking_budget
 
         assert _default_thinking_budget() == 10000

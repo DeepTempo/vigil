@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.config import get_settings
-from daemon.agent_runner import AgentRunner
-from daemon.config import OrchestratorConfig
+from services.daemon.agent_runner import AgentRunner
+from services.daemon.config import OrchestratorConfig
 
 try:
     from core.telemetry import get_meter, get_tracer, inject_traceparent
@@ -56,7 +56,7 @@ try:
 except Exception:
     _tracer = None  # type: ignore[assignment]
     _inv_created = _inv_completed = _inv_failed = _dedup_prevented = _stuck_agents = None  # type: ignore[assignment]
-from daemon.plan_generator import (
+from services.daemon.plan_generator import (
     count_steps,
     generate_case_review_context,
     generate_case_review_plan,
@@ -65,8 +65,8 @@ from daemon.plan_generator import (
     generate_plan,
     select_workflow,
 )
-from daemon.shared_intel import SharedIntelligence
-from daemon.workdir import WorkdirManager
+from services.daemon.shared_intel import SharedIntelligence
+from services.daemon.workdir import WorkdirManager
 
 logger = logging.getLogger(__name__)
 

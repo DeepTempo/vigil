@@ -7,7 +7,7 @@ from typing import Optional, Dict, List, Any, Callable
 from dataclasses import dataclass, field
 
 from core.config import get_settings
-from daemon.config import SchedulerConfig
+from services.daemon.config import SchedulerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class TaskScheduler:
 
         # Threat-feed poller — only runs when the Cloudforce One integration is enabled.
         try:
-            from daemon.threat_feed_poller import ThreatFeedPoller
+            from services.daemon.threat_feed_poller import ThreatFeedPoller
             if ThreatFeedPoller.is_enabled():
                 self._tasks.append(ScheduledTask(
                     name="threat_feed_poll",
@@ -391,7 +391,7 @@ class TaskScheduler:
     async def _run_sandbox_poll(self):
         """Advance pending sandbox submissions to completed reports."""
         try:
-            from daemon.sandbox_poller import SandboxPoller
+            from services.daemon.sandbox_poller import SandboxPoller
         except Exception as e:
             logger.warning(f"Sandbox poller unavailable: {e}")
             return
@@ -405,7 +405,7 @@ class TaskScheduler:
     async def _run_threat_feed_poll(self):
         """Pull Cloudforce One STIX/TAXII indicators into threat_indicators."""
         try:
-            from daemon.threat_feed_poller import ThreatFeedPoller
+            from services.daemon.threat_feed_poller import ThreatFeedPoller
         except Exception as e:
             logger.warning(f"Threat feed poller unavailable: {e}")
             return

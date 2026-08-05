@@ -774,7 +774,7 @@ class OpenAIAgentService:
         analytics buckets. Returns 0.0 if pricing can't be resolved.
         """
         try:
-            from daemon.agent_runner import compute_call_cost
+            from services.daemon.agent_runner import compute_call_cost
 
             return compute_call_cost(
                 model,

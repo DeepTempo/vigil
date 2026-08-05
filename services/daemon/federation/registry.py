@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from daemon.federation.contract import (
+from services.daemon.federation.contract import (
     _ADAPTER_FACTORIES,
     FederationAdapter,
     FetchResult,

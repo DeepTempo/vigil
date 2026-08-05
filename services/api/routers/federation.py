@@ -14,9 +14,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from daemon.federation import registry as fed_registry
-from daemon.federation import store as fed_store
-from daemon.federation.runner import request_poll_now
+from services.daemon.federation import registry as fed_registry
+from services.daemon.federation import store as fed_store
+from services.daemon.federation.runner import request_poll_now
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()

@@ -12,8 +12,8 @@ import asyncio
 import json
 import pytest
 
-from daemon.config import KafkaConfig
-from daemon.dedup import RedisDedupSet
+from services.daemon.config import KafkaConfig
+from services.daemon.dedup import RedisDedupSet
 from core.ingestion.kafka_consumer_service import KafkaConsumerService
 
 

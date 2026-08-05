@@ -7,10 +7,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add the repo root to sys.path (this file is services/daemon/main.py).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from daemon.config import DaemonConfig
+from services.daemon.config import DaemonConfig
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +61,14 @@ class SOCDaemon:
         logger.info("Initializing daemon components...")
         
         # Import here to avoid circular imports
-        from daemon.poller import DataPoller
-        from daemon.processor import FindingProcessor
-        from daemon.responder import AutonomousResponder
-        from daemon.scheduler import TaskScheduler
-        from daemon.metrics import MetricsServer
-        from daemon.orchestrator import Orchestrator
-        from daemon.llm_worker_manager import LLMWorkerManager
-        from daemon.kafka_ingestor import KafkaIngestor
+        from services.daemon.poller import DataPoller
+        from services.daemon.processor import FindingProcessor
+        from services.daemon.responder import AutonomousResponder
+        from services.daemon.scheduler import TaskScheduler
+        from services.daemon.metrics import MetricsServer
+        from services.daemon.orchestrator import Orchestrator
+        from services.daemon.llm_worker_manager import LLMWorkerManager
+        from services.daemon.kafka_ingestor import KafkaIngestor
 
         self._poller = DataPoller(self.config.polling)
         self._kafka_ingestor = KafkaIngestor(self.config.kafka)

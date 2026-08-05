@@ -15,8 +15,8 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Optional
 
 from core.config import is_integration_enabled
-from daemon.federation.adapters._base import fresh_cursor, parse_cursor_since
-from daemon.federation.contract import FetchResult
+from services.daemon.federation.adapters._base import fresh_cursor, parse_cursor_since
+from services.daemon.federation.contract import FetchResult
 
 logger = logging.getLogger(__name__)
 

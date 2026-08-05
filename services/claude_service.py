@@ -1225,7 +1225,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                 # #184 Phase 3: include cache tokens so reads (0.1×) and
                 # writes (1.25×) are priced correctly instead of being
                 # treated as full-rate input.
-                from daemon.agent_runner import compute_call_cost
+                from services.daemon.agent_runner import compute_call_cost
 
                 cost_usd = compute_call_cost(
                     model,
@@ -2270,7 +2270,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     # GH #89: use the model registry for per-provider pricing.
                     # #184 Phase 3: include cache tokens at provider-specific
                     # rates (Anthropic: 0.1× read / 1.25× write).
-                    from daemon.agent_runner import compute_call_cost
+                    from services.daemon.agent_runner import compute_call_cost
 
                     _cost = compute_call_cost(
                         model,

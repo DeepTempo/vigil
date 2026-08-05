@@ -26,9 +26,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from core.config import DEFAULT_REDIS_URL, get_settings
-from daemon.dedup import RedisDedupSet
-from daemon.federation import registry, store
-from daemon.federation.seed import seed_federation_sources
+from services.daemon.dedup import RedisDedupSet
+from services.daemon.federation import registry, store
+from services.daemon.federation.seed import seed_federation_sources
 
 logger = logging.getLogger(__name__)
 

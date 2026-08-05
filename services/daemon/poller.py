@@ -22,9 +22,9 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 from dataclasses import dataclass
 
-from daemon.config import PollingConfig
-from daemon.dedup import RedisDedupSet
-from daemon.federation.runner import FederationRunner
+from services.daemon.config import PollingConfig
+from services.daemon.dedup import RedisDedupSet
+from services.daemon.federation.runner import FederationRunner
 
 logger = logging.getLogger(__name__)
 

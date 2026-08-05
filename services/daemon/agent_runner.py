@@ -36,9 +36,9 @@ def _default_thinking_budget() -> int:
     return get_ai_operations_setting("thinking_budget", 10000)
 
 
-from daemon.config import OrchestratorConfig
-from daemon.plan_generator import DEFAULT_STEPS, WORKFLOW_STEP_MAP
-from daemon.workdir import WorkdirManager
+from services.daemon.config import OrchestratorConfig
+from services.daemon.plan_generator import DEFAULT_STEPS, WORKFLOW_STEP_MAP
+from services.daemon.workdir import WorkdirManager
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,8 @@
 -- 14_threat_indicators.sql
 -- Global threat-indicator pool sourced from external feeds (Cloudforce One STIX/TAXII,
 -- and any future feed-driven sources). Distinct from `case_iocs`, which is case-scoped.
--- Indicators are pulled by daemon/threat_feed_poller.py and used during finding
--- enrichment in daemon/processor.py.
+-- Indicators are pulled by services/daemon/threat_feed_poller.py and used during finding
+-- enrichment in services/daemon/processor.py.
 
 CREATE TABLE IF NOT EXISTS threat_indicators (
     id              BIGSERIAL PRIMARY KEY,

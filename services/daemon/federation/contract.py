@@ -8,7 +8,7 @@ contract here (a module that imports nothing from ``daemon.federation``) breaks
 what would otherwise be an adapter <-> registry import cycle.
 
 The registry re-exports these names, so existing
-``from daemon.federation.registry import FetchResult`` imports keep working.
+``from services.daemon.federation.registry import FetchResult`` imports keep working.
 """
 
 from __future__ import annotations

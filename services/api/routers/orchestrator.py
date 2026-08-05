@@ -34,8 +34,8 @@ def _get_orchestrator():
     if _cached_orchestrator is not None:
         return _cached_orchestrator
     try:
-        from daemon.orchestrator import Orchestrator
-        from daemon.config import OrchestratorConfig
+        from services.daemon.orchestrator import Orchestrator
+        from services.daemon.config import OrchestratorConfig
 
         config = OrchestratorConfig()
         orch = Orchestrator(config)

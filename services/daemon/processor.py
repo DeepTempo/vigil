@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 
-from daemon.config import ProcessingConfig
+from services.daemon.config import ProcessingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,7 @@ class FindingProcessor:
 
         # Sandbox auto-submission (opt-in, disabled by default)
         try:
-            from daemon.sandbox_submitter import SandboxSubmitter
+            from services.daemon.sandbox_submitter import SandboxSubmitter
 
             submitter = SandboxSubmitter()
             if submitter.enabled():

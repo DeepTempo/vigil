@@ -13,8 +13,8 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from daemon.config import ProcessingConfig  # noqa: E402
-from daemon.processor import FindingProcessor  # noqa: E402
+from services.daemon.config import ProcessingConfig  # noqa: E402
+from services.daemon.processor import FindingProcessor  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
