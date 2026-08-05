@@ -125,12 +125,12 @@ if [ "$DAEMON" -eq 0 ]; then
         [ -n "${BACKEND_PID:-}" ] && kill $BACKEND_PID 2>/dev/null
         [ -n "${WORKER_PID:-}" ] && kill $WORKER_PID 2>/dev/null
         [ -n "${FRONTEND_PID:-}" ] && kill $FRONTEND_PID 2>/dev/null
-        pkill -f "uvicorn backend.main:app" 2>/dev/null
+        pkill -f "uvicorn services.api.main:app" 2>/dev/null
         exit 0
     }
     trap cleanup INT TERM EXIT
 
-    uvicorn backend.main:app --host "$BIND_HOST" --port 6987 --reload \
+    uvicorn services.api.main:app --host "$BIND_HOST" --port 6987 --reload \
         --reload-dir backend --reload-dir services --reload-dir database &
     BACKEND_PID=$!
 
@@ -150,11 +150,11 @@ if [ "$DAEMON" -eq 0 ]; then
 else
     # Daemon
     mkdir -p logs
-    [ "$(pgrep -f 'uvicorn backend.main:app' | wc -l)" -gt 0 ] && {
+    [ "$(pgrep -f 'uvicorn services.api.main:app' | wc -l)" -gt 0 ] && {
         echo "Backend already running. Use ./shutdown_all.sh to stop."; exit 1;
     }
 
-    nohup uvicorn backend.main:app --host "$BIND_HOST" --port 6987 --reload \
+    nohup uvicorn services.api.main:app --host "$BIND_HOST" --port 6987 --reload \
         --reload-dir backend --reload-dir services --reload-dir database \
         > logs/backend.log 2>&1 &
     BACKEND_PID=$!
@@ -169,7 +169,7 @@ else
         exit 1
     fi
 
-    nohup "${PWD}/venv/bin/python" daemon/main.py > logs/daemon.log 2>&1 &
+    nohup "${PWD}/venv/bin/python" services/daemon/main.py > logs/daemon.log 2>&1 &
     echo $! > logs/daemon.pid
 
     if [ "$SKIP_FRONTEND" -eq 0 ] && [ -d "clients/web/node_modules" ]; then

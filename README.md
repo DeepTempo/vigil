@@ -227,7 +227,7 @@ python scripts/demo.py
 # Terminal 3: Start backend
 source venv/bin/activate
 export PYTHONPATH="${PWD}:${PYTHONPATH}"
-uvicorn backend.main:app --host 127.0.0.1 --port 6987 --reload
+uvicorn services.api.main:app --host 127.0.0.1 --port 6987 --reload
 
 # Terminal 4: Start frontend
 cd clients/web && npm run dev

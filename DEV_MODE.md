@@ -435,7 +435,7 @@ npm run dev
 echo "DEV_MODE=true" >> .env
 
 # 2. Start API
-uvicorn backend.main:app --reload
+uvicorn services.api.main:app --reload
 
 # 3. Test endpoints with curl (no auth needed)
 curl http://localhost:6987/api/cases
@@ -443,7 +443,7 @@ curl http://localhost:6987/api/cases
 
 # 4. When done, disable for testing
 sed -i 's/DEV_MODE=true/DEV_MODE=false/' .env
-uvicorn backend.main:app --reload
+uvicorn services.api.main:app --reload
 
 # 5. Test with real auth
 curl -H "Authorization: Bearer $TOKEN" \

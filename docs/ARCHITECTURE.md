@@ -186,7 +186,7 @@ cd docker && docker-compose up -d postgres
 
 # Terminal 2: Backend
 source venv/bin/activate
-uvicorn backend.main:app --host 127.0.0.1 --port 6987 --reload
+uvicorn services.api.main:app --host 127.0.0.1 --port 6987 --reload
 
 # Terminal 3: Frontend
 cd clients/web && npm run dev
@@ -378,7 +378,7 @@ pytest tests/unit/
 - [Backend Tools Guide](BACKEND_TOOLS.md) - Detailed tool documentation
 - [Detection Engineering](DETECTION_ENGINEERING.md) - Detection rule usage
 - [Integrations](INTEGRATIONS.md) - Backend tool integration overview
-- [API Reference](../backend/main.py) - FastAPI documentation
+- [API Reference](../services/api/main.py) - FastAPI documentation
 
 ## Support
 

@@ -17,7 +17,7 @@ from typing import Iterable, Optional
 def get_time_range(time_range: str) -> tuple[datetime, datetime]:
     """Get start and end datetime for the given time range.
 
-    Lives here (not in backend.api.analytics) so that `services/` and
+    Lives here (not in services.api.routers.analytics) so that `services/` and
     `backend/api/` modules can both depend on it without forming a cycle
     through `backend/api/__init__.py`.
     """

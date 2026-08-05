@@ -20,16 +20,16 @@ ENV_EXEMPT_GLOBS = ("core/integrations/*/tool.py",)
 # Existing module-level instantiations. Converting these to accessor calls is
 # import-timing churn across many handlers, so they are grandfathered by name.
 SINGLETON_ALLOWED = {
-    ("backend/api/agents.py", "agent_manager"),
-    ("backend/api/analytics.py", "ai_insights_service"),
-    ("backend/api/attack.py", "data_service"),
-    ("backend/api/case_metrics.py", "metrics_service"),
-    ("backend/api/case_search.py", "search_service"),
-    ("backend/api/case_templates.py", "workflow_service"),
-    ("backend/api/cases.py", "data_service"),
-    ("backend/api/custom_agents.py", "service"),
-    ("backend/api/findings.py", "data_service"),
-    ("backend/api/vstrike.py", "data_service"),
+    ("services/api/routers/agents.py", "agent_manager"),
+    ("services/api/routers/analytics.py", "ai_insights_service"),
+    ("core/threat_intel/attack_router.py", "data_service"),
+    ("core/cases/case_metrics_router.py", "metrics_service"),
+    ("core/cases/case_search_router.py", "search_service"),
+    ("core/cases/case_templates_router.py", "workflow_service"),
+    ("services/api/routers/cases.py", "data_service"),
+    ("services/api/routers/custom_agents.py", "service"),
+    ("services/api/routers/findings.py", "data_service"),
+    ("services/api/routers/vstrike.py", "data_service"),
     ("core/cases/case_automation_service.py", "automation_service"),
     ("core/ingestion/ingestion_jobs.py", "_registry"),
 }

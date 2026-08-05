@@ -39,8 +39,8 @@ def _runner(*, max_cost_per_investigation: float):
     ``self.config.plan_model``, ``self._claude_service``,
     ``self.workdir.append_log``, and ``self._mark_failed``.
     """
-    from daemon.agent_runner import AgentRunner
-    from daemon.config import OrchestratorConfig
+    from services.daemon.agent_runner import AgentRunner
+    from services.daemon.config import OrchestratorConfig
 
     cfg = OrchestratorConfig()
     cfg.max_cost_per_investigation = max_cost_per_investigation

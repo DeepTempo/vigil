@@ -28,7 +28,7 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture(scope="module")
 def client():
-    from backend.main import app
+    from services.api.main import app
 
     with TestClient(app) as c:
         yield c
@@ -37,7 +37,7 @@ def client():
 @pytest.fixture
 def fake_server_known():
     """Patch mcp_service so ``deeptempo-findings`` is a known, settable server."""
-    from api import mcp as mcp_api
+    from services.api.routers import mcp as mcp_api
 
     # Make set_server_enabled succeed (server exists); status is the stdio
     with patch.object(

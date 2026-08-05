@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import pytest
 
-from daemon.dedup import RedisDedupSet
+from services.daemon.dedup import RedisDedupSet
 
 
 @pytest.fixture

@@ -40,8 +40,7 @@ def get_palace_path(*, ensure_exists: bool = True) -> Path:
         try:
             palace.mkdir(parents=True, exist_ok=True)
         except OSError as e:
-            # A missing palace is degraded but survivable; don't kill the caller.
-            logger.warning("Could not create palace dir %s: %s", palace, e)
+            logger.warning("Could not create palace dir %s: %s", palace, e)  # survivable
     return palace
 
 

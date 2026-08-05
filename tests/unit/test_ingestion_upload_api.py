@@ -15,7 +15,7 @@ for p in (str(_REPO_ROOT), str(_BACKEND_DIR)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from backend.api import ingestion as ingestion_api  # noqa: E402
+from services.api.routers import ingestion as ingestion_api  # noqa: E402
 from core.ingestion import ingestion_service  # noqa: E402
 from core.ingestion.ingestion_jobs import IngestionJobRegistry  # noqa: E402
 

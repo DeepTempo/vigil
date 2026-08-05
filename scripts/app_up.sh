@@ -97,19 +97,19 @@ step backend start
 # The backend caches index.html in memory, so a reused backend would keep
 # serving the old asset hashes after a rebuild (blank window). Restart it if we
 # just rebuilt the SPA.
-if [ "$REBUILT_FRONTEND" = "1" ] && [ -n "$(pgrep -f 'uvicorn backend.main:app')" ]; then
+if [ "$REBUILT_FRONTEND" = "1" ] && [ -n "$(pgrep -f 'uvicorn services.api.main:app')" ]; then
     echo "SPA rebuilt; restarting backend to serve the fresh bundle." >&2
-    pkill -f 'uvicorn backend.main:app' 2>/dev/null || true
+    pkill -f 'uvicorn services.api.main:app' 2>/dev/null || true
     sleep 2
 fi
-if [ -n "$(pgrep -f 'uvicorn backend.main:app')" ]; then
+if [ -n "$(pgrep -f 'uvicorn services.api.main:app')" ]; then
     echo "Backend already running; reusing it." >&2
 else
     mkdir -p "$REPO_ROOT/logs"
     cd "$REPO_ROOT"
     # Fully detach the daemon: stdin from /dev/null and disown so this script
     # doesn't wait4() the backgrounded uvicorn and can return once it's healthy.
-    nohup "$VENV_UVICORN" backend.main:app --host "$BIND_HOST" --port 6987 \
+    nohup "$VENV_UVICORN" services.api.main:app --host "$BIND_HOST" --port 6987 \
         </dev/null > "$REPO_ROOT/logs/backend.log" 2>&1 &
     BACKEND_PID=$!
     echo "$BACKEND_PID" > "$REPO_ROOT/logs/backend.pid"

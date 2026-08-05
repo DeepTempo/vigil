@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch
 
-from daemon.sandbox_submitter import SandboxSettings, SandboxSubmitter
+from services.daemon.sandbox_submitter import SandboxSettings, SandboxSubmitter
 
 
 @pytest.mark.unit

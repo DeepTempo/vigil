@@ -1403,7 +1403,7 @@ class TestExecuteBackendTool:
         service._execute_backend_tool = fake_backend_tool
 
         # Import AgentRunner and wire up a minimal instance
-        from daemon.agent_runner import AgentRunner
+        from services.daemon.agent_runner import AgentRunner
         runner = object.__new__(AgentRunner)
         runner._claude_service = service
         runner._dry_run = False
@@ -1412,7 +1412,7 @@ class TestExecuteBackendTool:
         # Patch module-level _get_tool_tier to return "auto" so it doesn't short-circuit
         runner.config = MagicMock()
         runner.config.dry_run = False
-        with patch('daemon.agent_runner._get_tool_tier', return_value="auto"):
+        with patch('services.daemon.agent_runner._get_tool_tier', return_value="auto"):
             result = await runner._execute_external_tool("inv1", "my_mcp_tool", {"key": "val"})
 
         assert call_record == [("my_mcp_tool", {"key": "val"})]
