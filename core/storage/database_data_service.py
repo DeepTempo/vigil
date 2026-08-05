@@ -16,7 +16,7 @@ from core.config import vigil_path
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 FINDINGS_FILE = DATA_DIR / "findings.json"
 CASES_FILE = DATA_DIR / "cases.json"
 

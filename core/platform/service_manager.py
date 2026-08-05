@@ -29,8 +29,8 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-COMPOSE_FILE = REPO_ROOT / "docker" / "docker-compose.yml"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+COMPOSE_FILE = REPO_ROOT / "infra" / "docker" / "docker-compose.yml"
 
 
 @dataclass(frozen=True)
