@@ -25,7 +25,7 @@ for p in (str(_REPO_ROOT), str(_BACKEND_DIR)):
 
 def _load_config_module():
     spec = importlib.util.spec_from_file_location(
-        "config_under_test", _BACKEND_DIR / "api" / "config.py"
+        "config_under_test", _REPO_ROOT / "services" / "api" / "routers" / "config.py"
     )
     mod = importlib.util.module_from_spec(spec)
     sys.modules["config_under_test"] = mod

@@ -1,4 +1,4 @@
-from backend.main import _mcp_auto_connect_enabled
+from services.api.main import _mcp_auto_connect_enabled
 
 
 def test_mcp_auto_connect_is_off_by_default_in_dev(monkeypatch):

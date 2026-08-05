@@ -25,7 +25,7 @@ os.environ.setdefault("DEV_MODE", "true")
 
 def _post_payload():
     """Realistic VStrike save payload from the Settings UI (JWT-only auth)."""
-    from backend.api.config import IntegrationsConfig
+    from services.api.routers.config import IntegrationsConfig
 
     return IntegrationsConfig(
         enabled_integrations=["vstrike"],
@@ -42,7 +42,7 @@ def _post_payload():
 
 def _invoke_post(payload, *, set_secret=None, config_service=None, tmp_home=None):
     """Run the async handler with patched secrets writer + config service."""
-    from backend.api import config as config_module
+    from services.api.routers import config as config_module
 
     set_secret = set_secret or MagicMock(return_value=True)
     config_service = config_service or MagicMock()
@@ -103,7 +103,7 @@ def test_post_strips_secrets_from_json_mirror(tmp_path):
 
 def test_post_skips_empty_secret_means_keep_existing(tmp_path):
     """Empty-string secret fields must NOT call set_secret (overwrite-skip)."""
-    from backend.api.config import IntegrationsConfig
+    from services.api.routers.config import IntegrationsConfig
 
     payload = IntegrationsConfig(
         enabled_integrations=["vstrike"],
@@ -125,7 +125,7 @@ def test_post_skips_empty_secret_means_keep_existing(tmp_path):
 
 def test_post_unregistered_integration_pass_through(tmp_path):
     """Integrations without a secret-field registry retain old behavior."""
-    from backend.api.config import IntegrationsConfig
+    from services.api.routers.config import IntegrationsConfig
 
     payload = IntegrationsConfig(
         enabled_integrations=["brand-new-thing"],
@@ -142,7 +142,7 @@ def test_post_unregistered_integration_pass_through(tmp_path):
 
 def test_get_redacts_registered_secret_fields(tmp_path):
     """GET handler must strip registered secret fields on read."""
-    from backend.api import config as config_module
+    from services.api.routers import config as config_module
 
     fake_service = MagicMock()
     fake_service.list_integrations.return_value = [

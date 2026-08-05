@@ -20,7 +20,7 @@ REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "backend"))
 
-from backend.api.ai_config import router as ai_config_router  # noqa: E402
+from services.api.routers.ai_config import router as ai_config_router  # noqa: E402
 from core.storage.connection import get_db  # noqa: E402
 from core.storage.models import AIModelConfig, LLMProviderConfig  # noqa: E402
 from core.llm.providers.registry import ModelInfo  # noqa: E402

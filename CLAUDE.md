@@ -6,12 +6,16 @@ This file provides guidance for AI assistants (Claude Code and similar tools) wo
 
 ## Project Overview
 
-**Vigil** is an open-source, AI-native Security Operations Center (SOC) platform. It orchestrates 13 specialized AI agents via Claude to perform triage, investigation, threat hunting, forensics, and automated response across 30+ security integrations.
+**Vigil** is an open-source, AI-native Security Operations Center (SOC) platform. It orchestrates 13 specialized AI agents via Claude to perform triage, investigation, threat hunting, forensics, and automated response across 40 security integrations.
 
 **Core pillars:**
-- **Agents** — 13 specialized AI agents (Triage, Investigator, Threat Hunter, Correlator, Responder, Reporter, MITRE Analyst, Forensics, Threat Intel, Compliance, Malware Analyst, Network Analyst)
+- **Agents** — 13 agents defined in `AGENT_CONFIGS`, which is the authoritative
+  list: triage, investigator, threat_hunter, correlator, responder, reporter,
+  mitre_analyst, forensics, threat_intel, compliance, malware_analyst,
+  network_analyst, auto_responder. (The README says "12" — it omits
+  `auto_responder`.)
 - **Workflows** — Multi-agent orchestrated playbooks (Incident Response, Full Investigation, Threat Hunt, Forensic Analysis)
-- **Integrations** — 30+ tools via MCP protocol (Splunk, CrowdStrike, VirusTotal, Shodan, Timesketch, Jira, Slack, etc.)
+- **Integrations** — 40 MCP servers in `mcp-config.json` (Splunk, CrowdStrike, VirusTotal, Shodan, Timesketch, Jira, Slack, etc.). Count only dict-valued keys: the `mcpServers` object also holds 7 `_comment_*` string keys used as section separators.
 
 **Ports:**
 - Backend API: `http://localhost:6987`
@@ -25,22 +29,24 @@ This file provides guidance for AI assistants (Claude Code and similar tools) wo
 
 ```
 vigil/
-├── backend/              # FastAPI REST API
-│   ├── main.py           # App entry point, router registration
-│   ├── api/              # 38 route modules (findings, cases, claude, auth, etc.)
-│   ├── middleware/       # Auth middleware
-│   └── schemas/          # Pydantic request/response schemas
-├── services/             # 70+ business logic service classes
+├── backend/              # Legacy package, being retired into services/ + core/
+│   ├── schemas/          # Pydantic request/response schemas
+│   ├── services/         # Auth services (auth_service, token_blacklist, …); pending move to core/auth/
+│   ├── monitoring.py     # Sentry + Prometheus helpers
+│   └── secrets_manager.py
+├── services/             # 70+ business logic service classes + runtimes
+│   ├── api/              # API composition root: main.py (app entry), discovery.py, middleware/, routers/ (parked routers)
+│   ├── daemon/           # Autonomous 24/7 SOC background process
+│   │   ├── main.py       # Daemon entry point (python services/daemon/main.py)
+│   │   ├── orchestrator.py   # Main autonomous agent orchestrator
+│   │   ├── agent_runner.py   # Executes agents with cost/resource guardrails
+│   │   ├── poller.py         # Fetches alerts from SIEM/EDR
+│   │   ├── processor.py      # Processes findings through AI pipeline
+│   │   ├── responder.py      # Executes containment actions
+│   │   └── scheduler.py      # Cron-style scheduled tasks
 │   ├── claude_service.py # Central AI orchestration (largest file ~124KB)
 │   ├── mcp_service.py    # MCP server coordination
 │   └── case_*_service.py # Case lifecycle services
-├── daemon/               # Autonomous 24/7 SOC background process
-│   ├── orchestrator.py   # Main autonomous agent orchestrator
-│   ├── agent_runner.py   # Executes agents with cost/resource guardrails
-│   ├── poller.py         # Fetches alerts from SIEM/EDR
-│   ├── processor.py      # Processes findings through AI pipeline
-│   ├── responder.py      # Executes containment actions
-│   └── scheduler.py      # Cron-style scheduled tasks
 ├── clients/web/             # React + TypeScript + Vite SPA
 │   └── src/
 │       ├── redesign/     # The SOC console — screens/, shell/, shared/
@@ -55,7 +61,7 @@ vigil/
 ├── tools/                # MCP tool implementations (15+ integrations)
 ├── mcp-servers/          # Git submodule: MCP server implementations
 ├── deeptempo-core/       # Git submodule: core AI/detection library
-├── core/                 # Config, secrets, rate limiting, agent definitions (agents/); storage/ holds the DB layer (models, connection, service)
+├── core/                 # Shared library: config, secrets, agents/, storage/ (DB layer); API routers colocate at core/<domain>/*_router.py
 ├── data/                 # Schemas, MITRE taxonomy, detection registry
 ├── tests/                # pytest + vitest test suites
 ├── docs/                 # Detailed documentation
@@ -64,9 +70,16 @@ vigil/
 │   ├── helm/             # Helm chart (vigil/)
 │   └── database/init/    # PostgreSQL init SQL (docker-compose: lex order by filename; Helm: values.yaml dbInit.sqlFiles)
 ├── scripts/              # Init and utility shell scripts
-├── mcp-config.json       # 30+ MCP server definitions
+├── mcp-config.json       # 40 MCP server definitions (+ `_comment_*` separator keys)
 └── env.example           # Template for all 220+ environment variables
 ```
+
+> **sys.path quirk:** `services/api/main.py` puts `backend/` on `sys.path`, so modules
+> there are imported *bare* — `from secrets_manager import get_secret`, not
+> `from backend.secrets_manager import …`. `setup.cfg` (`mypy_path = backend`) and
+> `pyrightconfig.json` (`extraPaths`) mirror this so static analysis resolves them.
+> Note the resulting name collisions: `backend/services/` and `backend/tools/` are
+> **not** the top-level `services/` and `tools/` packages.
 
 ---
 
@@ -88,7 +101,7 @@ cd infra/docker && docker compose up -d postgres redis
 
 # 2. Backend (from repo root)
 source venv/bin/activate
-uvicorn backend.main:app --host 0.0.0.0 --port 6987 --reload
+uvicorn services.api.main:app --host 0.0.0.0 --port 6987 --reload
 
 # 3. Frontend
 cd clients/web && npm run dev
@@ -96,6 +109,18 @@ cd clients/web && npm run dev
 # 4. (Optional) Daemon
 ./start.sh --daemon
 ```
+
+### Desktop (Electron)
+
+```bash
+cd desktop && npm run dev    # builds TS, launches Electron
+cd desktop && npm run dist   # packages a .dmg via electron-builder
+```
+
+The desktop app drives the stack through `scripts/app_up.sh` / `app_down.sh`
+rather than `start.sh`: no `--reload`, no Vite (the built SPA is served by the
+backend at :6987), and it **forces `DEV_MODE=false`** because its login and
+first-run bootstrap are the point.
 
 ### Fresh Environment
 
@@ -162,23 +187,29 @@ need no adaptation), and genuinely dynamic variable names.
 
 ### Python (pytest)
 
-```bash
-# All tests
-pytest
+The pytest config lives at **`tests/pytest.ini`** — there is no root-level
+`pytest.ini` and no `[tool:pytest]` in `setup.cfg`. A bare `pytest` from the repo
+root therefore finds no ini file: markers go unregistered, `--asyncio-mode=auto`
+and the coverage flags are skipped, and collection starts from the CWD instead of
+`testpaths = tests`. Always scope to `tests/` (or pass `-c tests/pytest.ini`).
 
-# With coverage
-pytest --cov=. --cov-report=html
+```bash
+# All tests, with the intended config
+pytest tests/
 
 # By marker
-pytest -m unit
-pytest -m integration   # requires running PostgreSQL
-pytest -m "not slow"
+pytest tests/ -m unit
+pytest tests/ -m integration   # requires running PostgreSQL
+pytest tests/ -m "not external_service"   # what CI's main unit job runs
 
 # Specific file
-pytest tests/test_backend_tools.py -v
+pytest tests/unit/test_backend_tools.py -v
 ```
 
-Available markers: `unit`, `integration`, `slow`, `auth`, `siem`, `claude`, `database`, `api`, `daemon`, `performance`
+Available markers: `unit`, `integration`, `slow`, `auth`, `siem`, `claude`,
+`database`, `api`, `daemon`, `performance`, `external_service`.
+`--strict-markers` is on, so an unregistered marker is an error — add new ones to
+`tests/pytest.ini`.
 
 ### Frontend (vitest)
 
@@ -214,12 +245,38 @@ pre-commit run --all-files
 
 All FastAPI endpoints and service methods use `async/await`. Long-running LLM operations go through the ARQ Redis queue (worker pattern). Never add blocking I/O to endpoint handlers.
 
+**The DB layer is synchronous SQLAlchemy — there is no `AsyncSession` in this
+repo.** `database/connection.py` exposes a `sessionmaker` and a `get_db()`
+dependency yielding a plain `Session`. So don't type a dependency as
+`AsyncSession` or `await` a session call. Handlers that are fully synchronous can
+be plain `def` (FastAPI runs those in a threadpool); handlers that must stay
+`async` should push sync DB calls through `asyncio.to_thread` rather than
+blocking the loop.
+
+### LLM Traffic Routes Through Bifrost
+
+All LLM calls — including Anthropic — go through the **Bifrost** gateway
+(`BIFROST_URL`, default `http://bifrost:8080`), which layers on caching,
+centralized cost tracking, and budget enforcement.
+
+- **Never instantiate `Anthropic()` directly.** Import
+  `create_anthropic_client` / `create_async_anthropic_client` from
+  `services/llm_clients.py` — the single source of truth for client
+  construction. The one exception is key-validation endpoints that must hit the
+  real upstream to verify a user-supplied credential.
+- `services/llm_router.py` dispatches and translates Bifrost's budget/rate-limit
+  responses (HTTP 402/429) into `services.budget_service.BudgetExceeded`.
+- `services/model_registry.py` resolves component→provider+model assignments and
+  owns the pricing/capability catalog.
+- Provider API keys are **not** in `.env` — they live in the encrypted secrets
+  store and are configured via the UI.
+
 ### Service Layer
 
-Business logic lives in `services/`, not in API route handlers. Route handlers in `backend/api/` should delegate to service classes. When adding a feature:
+Business logic lives in `services/`, not in API route handlers. A router lives with its domain as `core/<domain>/<name>_router.py` (or, until that domain is in `core/`, parked in `services/api/routers/`) and delegates to service classes. When adding a feature:
 1. Add logic to an existing service or create `services/your_feature_service.py`
-2. Add the route in `backend/api/your_feature.py`
-3. Register the router in `backend/main.py`
+2. Add the router module (a `router` **and** a `ROUTER_META`) under `core/<domain>/` or `services/api/routers/`
+3. Nothing to register — `services/api/discovery.py` scans both locations and mounts it at startup (issues #478, #488)
 
 ### MCP Tool Access
 
@@ -227,7 +284,8 @@ Agents access external tools through the MCP protocol. Tool definitions live in 
 
 ### Database
 
-- PostgreSQL 16 via SQLAlchemy ORM (`core/storage/models.py`)
+- PostgreSQL 16 via SQLAlchemy ORM — models in `core/storage/models.py`, sessions
+  and the `get_db` dependency in `core/storage/connection.py`
 - Schema initialized by `infra/database/init/` SQL files. **Execution order
   differs by deploy path:** docker-compose mounts the directory at
   `/docker-entrypoint-initdb.d`, where Postgres runs files in
@@ -260,12 +318,12 @@ two filenames that are reserved and must never be reused.
 ### Authentication
 
 - `DEV_MODE=true` (default) bypasses all auth — use for local development
-- Production uses JWT tokens via `backend/api/auth.py` + `backend/middleware/`
+- Production uses JWT tokens via `services/api/routers/auth.py` + `services/api/middleware/`
 - RBAC is implemented in `infra/database/init/06_auth_tables.sql`
 
 ### Daemon / Autonomous Mode
 
-The daemon (`daemon/`) runs as a separate process with its own orchestration loop. It polls for new alerts, processes them through the AI pipeline, and can execute automated responses. Cost and resource guardrails are enforced by `daemon/agent_runner.py`.
+The daemon (`services/daemon/`) runs as a separate process with its own orchestration loop (`python services/daemon/main.py`). It polls for new alerts, processes them through the AI pipeline, and can execute automated responses. Cost and resource guardrails are enforced by `services/daemon/agent_runner.py`.
 
 Key config variables: `DAEMON_AUTO_TRIAGE`, `DAEMON_CONFIDENCE_THRESHOLD`, `ORCHESTRATOR_MAX_COST`, `ORCHESTRATOR_MAX_HOURLY_COST`
 
@@ -310,14 +368,19 @@ Key config variables: `DAEMON_AUTO_TRIAGE`, `DAEMON_CONFIDENCE_THRESHOLD`, `ORCH
 
 Follow the existing pattern:
 ```python
-# backend/api/your_feature.py
-router = APIRouter(prefix="/api/your-feature", tags=["your-feature"])
+# core/<domain>/your_feature_router.py   (or services/api/routers/your_feature.py)
+from sqlalchemy.orm import Session
+from core.storage.connection import get_db
+from core.routing import Auth, RouterMeta
+
+router = APIRouter()   # prefix/tags live in ROUTER_META, not here
+ROUTER_META = RouterMeta(prefix="/api/your-feature", tags=["your-feature"], auth=Auth.REQUIRED)
 
 @router.get("/")
-async def list_items(db: AsyncSession = Depends(get_db)):
-    return await your_feature_service.list(db)
+async def list_items(db: Session = Depends(get_db)):
+    return your_feature_service.list(db)   # sync Session — do not await it
 ```
-Register in `backend/main.py`.
+No registration step — discovery mounts every module that exports a `router` and a `ROUTER_META`.
 
 ---
 
@@ -334,7 +397,7 @@ Register in `backend/main.py`.
 
 1. Add the agent record in `core/agents/builtins.py` (prompt text lives in `core/agents/prompts.py`)
 2. Wire agent invocation in `services/claude_service.py`
-3. Expose via `backend/api/agents.py`
+3. Expose via `services/api/routers/agents.py`
 4. Document in `docs/AGENTS.md`
 
 ### New Workflow
@@ -345,10 +408,10 @@ Register in `backend/main.py`.
 
 ### New API Endpoint
 
-1. Add route handler in `backend/api/` (new file or extend existing)
+1. Add the router module (with `router` + `ROUTER_META`) under `core/<domain>/` or `services/api/routers/`
 2. Add service logic in `services/`
 3. Add Pydantic schema in `backend/schemas/` if needed
-4. Register router in `backend/main.py`
+4. No registration — discovery mounts it automatically
 5. Add corresponding frontend API call in `clients/web/src/services/`
 
 ---
@@ -362,6 +425,7 @@ GitHub Actions workflows in `.github/workflows/`:
 | `ci-cd.yml` | Push/PR to main, develop | Lint → Unit Tests → Integration Tests → Security Scan → Docker Build |
 | `release-please.yml` | Push to `main`, manual | Read Conventional Commits since last tag → open/update a release PR with bumped `VERSION` / `Chart.yaml` (`appVersion` + `version`, lockstep) / `clients/web/package.json` / `clients/web/package-lock.json` + `CHANGELOG.md`. On merge, push `vX.Y.Z` tag and create the GitHub Release. See `RELEASING.md`. |
 | `release.yml` | Version tags (`v*.*.*`) | Build & push `vigil-backend` + `vigil-daemon` images to GHCR → Trivy scan → smoke-test that they start → annotate the GitHub Release with image digests. **Publishes images only — it does not deploy.** Does **not** create the GitHub Release object either (release-please owns that). |
+| `helm-chart.yml` | Push/PR touching `helm/` | Verify `database/init/` ↔ chart-bundle copies are in sync (`diff -r`) → `helm lint`/`template` across default, dev, and Bitnami-subchart values → kubeconform → `ct lint` |
 | `nightly.yml` | Daily 2 AM UTC | Comprehensive security & performance audits |
 
 CI runs:
@@ -380,7 +444,9 @@ All CI checks must pass before merging.
 
 | File | Purpose |
 |------|---------|
-| `backend/main.py` | FastAPI app, all router registrations |
+| `services/api/main.py` | FastAPI app entry, middleware wiring, startup/shutdown |
+| `services/api/discovery.py` | Router auto-discovery — scans `core/**/*_router.py` + `services/api/routers/` |
+| `core/routing.py` | `Auth` + `RouterMeta` — the declarative mount metadata every router exports |
 | `services/claude_service.py` | Central AI/agent orchestration (~124KB) |
 | `core/agents/` | Agent records (`builtins.py`), prompt assembly (`prompts.py`), runtime manager (`manager.py`) |
 | `services/mcp_service.py` | MCP protocol coordination |

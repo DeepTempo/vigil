@@ -57,7 +57,7 @@ The `models` array under each `providers.<name>.keys[0]` in `config.json` is a *
 **Single source of truth.** `sync_all_provider_models()` is the only writer to both caches — the UI dropdown and Bifrost's allow-list come from the same call over the same upstream fetch, so they cannot drift. `fetch_provider_models()` on the read path is a pure cache lookup that falls back to a lazy sync on a cold-start miss.
 
 **When it runs:**
-- At backend startup — launched as a background task ([backend/main.py](../../backend/main.py) startup handler).
+- At backend startup — launched as a background task ([services/api/main.py](../../services/api/main.py) startup handler).
 - **Periodically** — `MODEL_CATALOG_REFRESH_INTERVAL_S` (default 300s / 5min). Set to `0` to disable the loop and only sync once at startup.
 - On demand — `POST /api/llm-providers/refresh-models` (all) or `POST /api/llm-providers/{id}/refresh-models` (one).
 - Whenever a provider is added, updated, or deleted via the Providers UI — CRUD handlers invalidate the cache and schedule a background resync.

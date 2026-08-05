@@ -44,7 +44,7 @@ def _fake_status(**overrides):
 
 
 def test_status_route_returns_backend_state():
-    from backend.api import config as config_module
+    from services.api.routers import config as config_module
 
     mgr = MagicMock()
     mgr.get_backend_status.return_value = _fake_status()
@@ -55,7 +55,7 @@ def test_status_route_returns_backend_state():
 
 
 def test_reinit_route_force_reloads_singleton():
-    from backend.api import config as config_module
+    from services.api.routers import config as config_module
 
     mgr = MagicMock()
     mgr.get_backend_status.return_value = _fake_status(write_backend="encrypted")
@@ -72,8 +72,8 @@ def test_reinit_route_force_reloads_singleton():
 def test_reinit_route_accepts_write_backend_override():
     """Pass {'write_backend': 'encrypted'} to force a backend even when
     os.environ['SECRETS_BACKEND'] is stale (e.g. user just edited .env)."""
-    from backend.api import config as config_module
-    from backend.api.config import _SecretsReinitRequest
+    from services.api.routers import config as config_module
+    from services.api.routers.config import _SecretsReinitRequest
 
     mgr = MagicMock()
     mgr.get_backend_status.return_value = _fake_status(write_backend="encrypted")
@@ -89,8 +89,8 @@ def test_reinit_route_accepts_write_backend_override():
 
 
 def test_migrate_route_routes_to_secrets_manager_helper():
-    from backend.api import config as config_module
-    from backend.api.config import _SecretsMigrateRequest
+    from services.api.routers import config as config_module
+    from services.api.routers.config import _SecretsMigrateRequest
 
     mgr = MagicMock()
     mgr.migrate_dotenv_secrets_to_encrypted.return_value = {
@@ -116,7 +116,7 @@ def test_migrate_route_routes_to_secrets_manager_helper():
 
 def test_migrate_route_defaults_when_body_omitted():
     """Body is optional; defaults are keys=None, remove_from_dotenv=True."""
-    from backend.api import config as config_module
+    from services.api.routers import config as config_module
 
     mgr = MagicMock()
     mgr.migrate_dotenv_secrets_to_encrypted.return_value = {

@@ -3,7 +3,7 @@
 Vigil's persistence story for integration credentials is split:
 
 - **Non-secret config** (URLs, regions, verify_ssl flags, paths) goes into the
-  ``IntegrationConfig`` database table via ``database.config_service`` and is
+  ``IntegrationConfig`` database table via ``core.storage.config_service`` and is
   mirrored to ``~/.vigil/integrations_config.json`` for back-compat.
 - **Secret credentials** (API keys, passwords, bearer tokens) go into the
   encrypted secrets store at ``~/.vigil/secrets.enc`` via

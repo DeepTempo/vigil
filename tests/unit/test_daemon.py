@@ -7,10 +7,10 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, MagicMock
 
-from daemon.poller import DataPoller
-from daemon.processor import FindingProcessor
-from daemon.responder import AutonomousResponder
-from daemon.scheduler import TaskScheduler
+from services.daemon.poller import DataPoller
+from services.daemon.processor import FindingProcessor
+from services.daemon.responder import AutonomousResponder
+from services.daemon.scheduler import TaskScheduler
 
 
 class TestPollingLogic:
@@ -19,7 +19,7 @@ class TestPollingLogic:
     @pytest.mark.skip(reason="Methods don't exist in DataPoller - needs rewrite for async polling")
     def test_calculate_next_poll_time(self):
         """Test calculating next poll time based on interval."""
-        from daemon.config import PollingConfig
+        from services.daemon.config import PollingConfig
         config = PollingConfig()
         poller = DataPoller(config)
         interval = 300  # 5 minutes
@@ -35,7 +35,7 @@ class TestPollingLogic:
     @pytest.mark.skip(reason="Methods don't exist in DataPoller - needs rewrite for async polling")
     def test_should_poll_true(self):
         """Test polling when interval has elapsed."""
-        from daemon.config import PollingConfig
+        from services.daemon.config import PollingConfig
         config = PollingConfig()
         poller = DataPoller(config)
         last_poll = datetime.utcnow() - timedelta(seconds=400)
@@ -48,7 +48,7 @@ class TestPollingLogic:
     @pytest.mark.skip(reason="Methods don't exist in DataPoller - needs rewrite for async polling")
     def test_should_poll_false(self):
         """Test not polling when interval hasn't elapsed."""
-        from daemon.config import PollingConfig
+        from services.daemon.config import PollingConfig
         config = PollingConfig()
         poller = DataPoller(config)
         last_poll = datetime.utcnow() - timedelta(seconds=100)
@@ -59,7 +59,7 @@ class TestPollingLogic:
         assert should_poll is False
     
     @pytest.mark.skip(reason="Methods don't exist in DataPoller - needs rewrite for async polling")
-    @patch('daemon.poller.SplunkService')
+    @patch('services.daemon.poller.SplunkService')
     def test_poll_splunk(self, mock_splunk):
         """Test polling Splunk for new events."""
         mock_splunk.search.return_value = [
@@ -67,7 +67,7 @@ class TestPollingLogic:
             {"id": "2", "severity": "medium"}
         ]
         
-        from daemon.config import PollingConfig
+        from services.daemon.config import PollingConfig
         config = PollingConfig()
         poller = DataPoller(config)
         events = poller.poll_splunk(query="search index=security")
@@ -77,14 +77,14 @@ class TestPollingLogic:
         mock_splunk.search.assert_called_once()
     
     @pytest.mark.skip(reason="Methods don't exist in DataPoller - needs rewrite for async polling")
-    @patch('daemon.poller.CrowdStrikeService')
+    @patch('services.daemon.poller.CrowdStrikeService')
     def test_poll_crowdstrike(self, mock_cs):
         """Test polling CrowdStrike for alerts."""
         mock_cs.get_alerts.return_value = [
             {"alert_id": "cs-001", "severity": "critical"}
         ]
         
-        from daemon.config import PollingConfig
+        from services.daemon.config import PollingConfig
         config = PollingConfig()
         poller = DataPoller(config)
         alerts = poller.poll_crowdstrike()
@@ -210,7 +210,7 @@ class TestAutoEnrichment:
         assert isinstance(result, bool)
     
     @pytest.mark.skip(reason="Methods don't exist in FindingProcessor - needs rewrite")
-    @patch('daemon.processor.ClaudeService')
+    @patch('services.daemon.processor.ClaudeService')
     def test_auto_enrich_finding(self, mock_claude):
         """Test auto-enriching a finding."""
         mock_claude.enrich_finding.return_value = {
@@ -299,7 +299,7 @@ class TestAutoResponse:
         assert should_respond is False
     
     @pytest.mark.skip(reason="Methods don't exist in AutonomousResponder - needs rewrite")
-    @patch('daemon.responder.ApprovalService')
+    @patch('services.daemon.responder.ApprovalService')
     def test_create_approval_action(self, mock_approval):
         """Test creating approval action."""
         mock_approval.create_action.return_value = {"id": "action-123"}
@@ -349,7 +349,7 @@ class TestEscalation:
         assert should_escalate is False
     
     @pytest.mark.skip(reason="Methods don't exist in AutonomousResponder - needs rewrite")
-    @patch('daemon.responder.SlackService')
+    @patch('services.daemon.responder.SlackService')
     def test_escalate_to_slack(self, mock_slack):
         """Test escalating to Slack."""
         mock_slack.send_alert.return_value = {"ok": True}
@@ -367,7 +367,7 @@ class TestEscalation:
         mock_slack.send_alert.assert_called_once()
     
     @pytest.mark.skip(reason="Methods don't exist in AutonomousResponder - needs rewrite")
-    @patch('daemon.responder.PagerDutyService')
+    @patch('services.daemon.responder.PagerDutyService')
     def test_escalate_to_pagerduty(self, mock_pd):
         """Test escalating to PagerDuty."""
         mock_pd.create_incident.return_value = {"incident_id": "pd-123"}
@@ -413,7 +413,7 @@ class TestScheduledTasks:
         assert scheduler.get_threat_hunt_interval() == 86400
     
     @pytest.mark.skip(reason="Methods don't exist in TaskScheduler - needs rewrite")
-    @patch('daemon.scheduler.ThreatHunter')
+    @patch('services.daemon.scheduler.ThreatHunter')
     def test_run_threat_hunt(self, mock_hunter):
         """Test running threat hunt."""
         mock_hunter.run_hunt.return_value = {
@@ -446,7 +446,7 @@ class TestDaemonMetrics:
     
     def test_record_poll_metric(self):
         """Test recording poll metric."""
-        from daemon.metrics import DaemonMetrics
+        from services.daemon.metrics import DaemonMetrics
         
         metrics = DaemonMetrics()
         metrics.record_poll("splunk", duration=2.5, events_count=10)
@@ -455,7 +455,7 @@ class TestDaemonMetrics:
     
     def test_record_processing_metric(self):
         """Test recording processing metric."""
-        from daemon.metrics import DaemonMetrics
+        from services.daemon.metrics import DaemonMetrics
         
         metrics = DaemonMetrics()
         metrics.record_processing(findings_count=5, duration=1.2)
@@ -464,7 +464,7 @@ class TestDaemonMetrics:
     
     def test_get_metrics_summary(self):
         """Test getting metrics summary."""
-        from daemon.metrics import DaemonMetrics
+        from services.daemon.metrics import DaemonMetrics
         
         metrics = DaemonMetrics()
         metrics.record_poll("splunk", duration=2.0, events_count=5)
@@ -481,26 +481,26 @@ class TestDaemonMetrics:
 class TestDaemonLifecycle:
     """Test complete daemon lifecycle."""
     
-    @patch('daemon.main.DataPoller')
-    @patch('daemon.main.FindingProcessor')
-    @patch('daemon.main.AutonomousResponder')
+    @patch('services.daemon.main.DataPoller')
+    @patch('services.daemon.main.FindingProcessor')
+    @patch('services.daemon.main.AutonomousResponder')
     def test_daemon_startup(self, mock_responder, mock_processor, mock_poller):
         """Test daemon startup."""
-        from daemon.main import DaemonService
+        from services.daemon.main import DaemonService
         
         daemon = DaemonService()
         daemon.start()
         
         assert daemon.is_running is True
     
-    @patch('daemon.main.DataPoller')
+    @patch('services.daemon.main.DataPoller')
     def test_daemon_poll_cycle(self, mock_poller):
         """Test one poll cycle."""
         mock_poller.poll_all.return_value = [
             {"id": "f1", "severity": "high"}
         ]
         
-        from daemon.main import DaemonService
+        from services.daemon.main import DaemonService
         
         daemon = DaemonService()
         findings = daemon.poll_cycle()
@@ -509,7 +509,7 @@ class TestDaemonLifecycle:
     
     def test_daemon_graceful_shutdown(self):
         """Test graceful shutdown."""
-        from daemon.main import DaemonService
+        from services.daemon.main import DaemonService
         
         daemon = DaemonService()
         daemon.start()

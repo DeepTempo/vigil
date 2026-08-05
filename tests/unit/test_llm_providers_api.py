@@ -25,8 +25,8 @@ REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "backend"))
 
-from backend.api.llm_providers import router as llm_providers_router
-from backend.middleware.auth import get_current_active_user
+from services.api.routers.llm_providers import router as llm_providers_router
+from services.api.middleware.auth import get_current_active_user
 from core.storage.connection import get_db
 from core.storage.models import LLMProviderConfig, User
 
@@ -154,9 +154,9 @@ def secrets_store():
         store.pop(key, None)
         return True
 
-    with patch("backend.api.llm_providers.set_secret", side_effect=fake_set), patch(
-        "backend.api.llm_providers.get_secret", side_effect=fake_get
-    ), patch("backend.api.llm_providers.delete_secret", side_effect=fake_delete):
+    with patch("services.api.routers.llm_providers.set_secret", side_effect=fake_set), patch(
+        "services.api.routers.llm_providers.get_secret", side_effect=fake_get
+    ), patch("services.api.routers.llm_providers.delete_secret", side_effect=fake_delete):
         yield store
 
 
@@ -279,7 +279,7 @@ def bifrost_pushes():
         calls.append((provider_type, value))
         return True
 
-    with patch("backend.api.llm_providers.push_provider_key", side_effect=fake_push):
+    with patch("services.api.routers.llm_providers.push_provider_key", side_effect=fake_push):
         yield calls
 
 

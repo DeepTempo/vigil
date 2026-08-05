@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # NOTE: Imports commented out to prevent DB connection on collection
 # These need to be updated to match current project structure
 # from deeptempo_core.database.models import Base, User, Finding, Case, Role
-# from backend.main import app
+# from services.api.main import app
 
 # Placeholder imports to prevent errors
 Base = None

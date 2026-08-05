@@ -17,8 +17,8 @@ from tests.fixtures.claude_responses import (
 )
 
 
-# Skip if backend.main cannot be imported (e.g., no database available)
-pytest.importorskip("backend.main", reason="Requires backend application to be importable")
+# Skip if services.api.main cannot be imported (e.g., no database available)
+pytest.importorskip("services.api.main", reason="Requires backend application to be importable")
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def test_client(mock_llm_gateway):
     the event loop is torn down -- preventing RuntimeError: Event loop is
     closed.
     """
-    from backend.main import app
+    from services.api.main import app
     with TestClient(app) as client:
         yield client
 
@@ -59,9 +59,9 @@ def test_client(mock_llm_gateway):
 @pytest.fixture
 def mock_claude_service(mock_llm_gateway):
     """Mock the ClaudeService to avoid actual API calls."""
-    # backend/main.py adds backend_dir to sys.path, so the module is registered
-    # as 'api.claude' (not 'backend.api.claude') at runtime.
-    with patch('api.claude.ClaudeService') as mock_service_class:
+    # Patch ClaudeService where the claude router looks it up, so the endpoint
+    # constructs the mock instead of the real service.
+    with patch('services.api.routers.claude.ClaudeService') as mock_service_class:
 
         mock_service = Mock()
         mock_service_class.return_value = mock_service
@@ -122,7 +122,7 @@ class TestChatEndpoint:
 
     def test_chat_endpoint_no_api_key(self, test_client, mock_llm_gateway):
         """Test chat request when API key is not configured."""
-        with patch('api.claude.ClaudeService') as mock_service_class:
+        with patch('services.api.routers.claude.ClaudeService') as mock_service_class:
 
             mock_service = Mock()
             mock_service_class.return_value = mock_service

@@ -24,8 +24,8 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from daemon.config import KafkaConfig
-from daemon.dedup import RedisDedupSet
+from services.daemon.config import KafkaConfig
+from services.daemon.dedup import RedisDedupSet
 
 logger = logging.getLogger(__name__)
 
