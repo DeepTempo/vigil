@@ -7,6 +7,7 @@ from sqlalchemy import select, func
 
 from database.connection import get_db_manager
 from database.models import LLMInteractionLog
+from database.schemas import LLMInteractionLogSchema
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,7 @@ async def list_interactions(
                 "total": int(total),
                 "limit": limit,
                 "offset": offset,
-                "interactions": [r.to_summary_dict() for r in rows],
+                "interactions": [LLMInteractionLogSchema.dump_summary(r) for r in rows],
             }
     except Exception as e:
         logger.error(f"Error listing interactions: {e}")
@@ -145,7 +146,7 @@ async def get_interaction(session_id: str, interaction_id: str):
 
             if row is None:
                 raise HTTPException(status_code=404, detail="Interaction not found")
-            return row.to_dict()
+            return LLMInteractionLogSchema.dump(row)
     except HTTPException:
         raise
     except Exception as e:
@@ -185,7 +186,7 @@ async def list_investigation_interactions(
                 "total": int(total),
                 "limit": limit,
                 "offset": offset,
-                "interactions": [r.to_dict() for r in rows],
+                "interactions": LLMInteractionLogSchema.dump_many(rows),
             }
     except Exception as e:
         logger.error(f"Error listing investigation interactions: {e}")

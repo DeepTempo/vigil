@@ -530,6 +530,11 @@ def _assemble_chain_of_custody(investigation_id: str) -> Dict[str, Any]:
     """
     from database.connection import get_db_manager
     from database.models import Investigation, InvestigationLog, LLMInteractionLog
+    from database.schemas import (
+        InvestigationLogSchema,
+        InvestigationSchema,
+        LLMInteractionLogSchema,
+    )
 
     db_manager = get_db_manager()
     result: Dict[str, Any] = {
@@ -551,7 +556,7 @@ def _assemble_chain_of_custody(investigation_id: str) -> Dict[str, Any]:
                 status_code=404,
                 detail=f"Investigation not found: {investigation_id}",
             )
-        result["investigation"] = inv.to_dict()
+        result["investigation"] = InvestigationSchema.dump(inv)
 
         # OTEL trace correlation: stored in workdir state if enabled
         try:
@@ -573,7 +578,7 @@ def _assemble_chain_of_custody(investigation_id: str) -> Dict[str, Any]:
             .order_by(InvestigationLog.timestamp.asc())
             .all()
         )
-        result["logs"] = [l.to_dict() for l in logs]
+        result["logs"] = InvestigationLogSchema.dump_many(logs)
 
         llm_rows = (
             session.query(LLMInteractionLog)
@@ -581,7 +586,7 @@ def _assemble_chain_of_custody(investigation_id: str) -> Dict[str, Any]:
             .order_by(LLMInteractionLog.created_at.asc())
             .all()
         )
-        result["llm_interactions"] = [r.to_dict() for r in llm_rows]
+        result["llm_interactions"] = LLMInteractionLogSchema.dump_many(llm_rows)
 
     # Workdir files (best-effort; missing files are omitted)
     try:
