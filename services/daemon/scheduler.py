@@ -126,7 +126,7 @@ class TaskScheduler:
             logger.error(f"Failed to initialize database service: {e}")
         
         try:
-            from services.claude_service import ClaudeService
+            from core.llm.harness.claude import ClaudeService
             self._claude_service = ClaudeService()
             logger.info("Claude service initialized for scheduler")
         except Exception as e:
