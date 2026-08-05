@@ -43,13 +43,51 @@ const SCREENS: Record<ScreenKey, (props: ScreenProps) => JSX.Element> = {
   settings: SettingsScreen,
 }
 
-/** Per-screen permission gate, mirroring the production ProtectedRoute routes
- *  (App.tsx). Screens absent here are ungated. In DEV_MODE the auth context
- *  grants every permission, so all items show in the preview. */
+/** Per-screen permission gate — the only permission check in the app
+ *  (ProtectedRoute handles auth alone). Screens absent here are ungated. In
+ *  DEV_MODE the auth context grants every permission, so all items show. */
 const SCREEN_PERMS: Partial<Record<ScreenKey, string>> = {
   cases: 'cases.read',
   decisions: 'ai_decisions.approve',
   settings: 'settings.read',
+}
+
+/* ---------- resizable chat dock (#401) ----------
+ * The dock width is an operator preference persisted in localStorage and
+ * clamped to a sensible band; on narrow viewports the dock goes full-width and
+ * resizing is disabled. These module-level helpers back that behaviour. */
+const CHAT_MIN_WIDTH = 360
+const CHAT_MAX_WIDTH = 720
+const CHAT_DEFAULT_WIDTH = 420
+const CHAT_WIDTH_STORAGE_KEY = 'soc.chat.width.v1'
+
+/** Clamp a requested dock width to the [min, max] band (rounded to a whole px). */
+function clampChatPreference(width: number): number {
+  return Math.min(CHAT_MAX_WIDTH, Math.max(CHAT_MIN_WIDTH, Math.round(width)))
+}
+
+/** Largest dock width allowed for a viewport — never more than half the screen
+ *  (so the main canvas stays usable) and never beyond the hard max. */
+function chatMaxForViewport(viewportWidth: number): number {
+  return Math.min(
+    CHAT_MAX_WIDTH,
+    Math.max(CHAT_MIN_WIDTH, Math.floor(viewportWidth * 0.5)),
+  )
+}
+
+/** Restore the persisted dock-width preference, clamped; default when unset or
+ *  when localStorage is unavailable. */
+function readChatWidth(): number {
+  try {
+    const raw = localStorage.getItem(CHAT_WIDTH_STORAGE_KEY)
+    if (raw) {
+      const parsed = Number.parseInt(raw, 10)
+      if (Number.isFinite(parsed)) return clampChatPreference(parsed)
+    }
+  } catch {
+    /* localStorage unavailable — fall through to the default */
+  }
+  return CHAT_DEFAULT_WIDTH
 }
 
 export default function SocConsole() {
@@ -68,30 +106,6 @@ export default function SocConsole() {
 /** Like data.ts `NAV`, but the key is a plain string so extension screens
  *  (keys outside the built-in `ScreenKey` union) can join the rail. */
 type NavItem = [IconName, string, string | null, NavGate?]
-
-// Resizable Vigil Assistant dock. The desktop width is user-preferred and
-// persisted; the effective width is always clamped to the viewport.
-const CHAT_MIN_WIDTH = 360
-const CHAT_MAX_WIDTH = 720
-const CHAT_DEFAULT_WIDTH = 420
-const CHAT_WIDTH_STORAGE_KEY = 'soc.chat.width.v1'
-
-const clampChatPreference = (width: number) =>
-  Math.min(CHAT_MAX_WIDTH, Math.max(CHAT_MIN_WIDTH, Math.round(width)))
-
-const chatMaxForViewport = (viewport: number) =>
-  Math.max(CHAT_MIN_WIDTH, Math.min(CHAT_MAX_WIDTH, viewport))
-
-function readChatWidth(): number {
-  if (typeof window === 'undefined') return CHAT_DEFAULT_WIDTH
-  try {
-    const stored = Number(window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY))
-    if (!Number.isFinite(stored) || stored <= 0) return CHAT_DEFAULT_WIDTH
-    return clampChatPreference(stored)
-  } catch {
-    return CHAT_DEFAULT_WIDTH
-  }
-}
 
 function SocConsoleInner() {
   // the active screen comes from the URL (/<screen>); the cases screen

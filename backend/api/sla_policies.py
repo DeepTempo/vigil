@@ -7,8 +7,15 @@ from datetime import datetime
 
 from backend.dependencies import UnitOfWorkSession
 from database.models import SLAPolicy
+from api._meta import Auth, RouterMeta
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/sla-policies",
+    tags=["sla-policies"],
+    auth=Auth.REQUIRED,
+)
 
 
 class SLAPolicyCreate(BaseModel):

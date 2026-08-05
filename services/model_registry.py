@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.secrets import get_secret
+
 logger = logging.getLogger(__name__)
 
 
@@ -517,24 +519,7 @@ class ComponentAssignment:
 # on whichever page load falls on the expiry boundary.
 
 
-class _ProviderModelCache:
-    def __init__(self):
-        self._entries: Dict[str, List[str]] = {}
-
-    def get(self, provider_id: str) -> Optional[List[str]]:
-        return self._entries.get(provider_id)
-
-    def set(self, provider_id: str, models: List[str]) -> None:
-        self._entries[provider_id] = models
-
-    def invalidate(self, provider_id: Optional[str] = None) -> None:
-        if provider_id is None:
-            self._entries.clear()
-        else:
-            self._entries.pop(provider_id, None)
-
-
-_MODEL_LIST_CACHE = _ProviderModelCache()
+_MODEL_LIST_CACHE: Dict[str, List[str]] = {}
 
 
 # Cold-boot fallback lists — used only when the live upstream API is
@@ -585,7 +570,8 @@ def get_extra_model_ids(provider_type: str) -> Tuple[str, ...]:
     """Return the extra model IDs for a provider type, honoring env
     overrides. Empty string disables; missing env falls back to defaults."""
     env_name = f"{provider_type.upper()}_EXTRA_MODELS"
-    raw = os.getenv(env_name)
+    # Provider-derived name, so this stays a dynamic lookup rather than a field.
+    raw = os.getenv(env_name)  # noqa: ENV001
     if raw is None:
         return _DEFAULT_EXTRA_MODELS.get(provider_type, ())
     # Present but empty → explicitly disabled.
@@ -654,7 +640,7 @@ async def fetch_provider_models(row) -> List[str]:
     for mid in extras:
         if mid not in fallback:
             fallback.append(mid)
-    _MODEL_LIST_CACHE.set(row.provider_id, fallback)
+    _MODEL_LIST_CACHE[row.provider_id] = fallback
     return fallback
 
 
@@ -663,14 +649,10 @@ async def fetch_provider_models(row) -> List[str]:
 ANTHROPIC_STATIC_MODELS: Tuple[str, ...] = _FALLBACK_MODELS_BY_PROVIDER["anthropic"]
 
 
+# The provider's own api_key_ref wins; otherwise the common key names, so local
+# dev works without an explicit provider row.
 async def _resolve_provider_key(row) -> Optional[str]:
-    """Resolve a provider's API key via secrets_manager with env fallbacks."""
-    try:
-        from secrets_manager import get_secret  # type: ignore
-    except Exception:
-        get_secret = None  # type: ignore
-
-    if row.api_key_ref and get_secret is not None:
+    if row.api_key_ref:
         try:
             key = get_secret(row.api_key_ref)
             if key:
@@ -679,9 +661,9 @@ async def _resolve_provider_key(row) -> Optional[str]:
             logger.debug("secret lookup for %s failed: %s", row.api_key_ref, exc)
 
     if row.provider_type == "anthropic":
-        return os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
+        return get_secret("ANTHROPIC_API_KEY") or get_secret("CLAUDE_API_KEY")
     if row.provider_type == "openai":
-        return os.getenv("OPENAI_API_KEY")
+        return get_secret("OPENAI_API_KEY")
     return None
 
 
@@ -1048,7 +1030,10 @@ def invalidate_model_cache(provider_id: Optional[str] = None) -> None:
     """Callers that change provider config (add/update/delete) can drop
     the per-provider model-list cache + the discovery module's meta cache
     so the UI sees fresh data."""
-    _MODEL_LIST_CACHE.invalidate(provider_id)
+    if provider_id is None:
+        _MODEL_LIST_CACHE.clear()
+    else:
+        _MODEL_LIST_CACHE.pop(provider_id, None)
     # Provider-scoped live meta / discovery cache invalidation — best
     # effort. ``provider_id`` is a DB id, not a provider_type, so we can't
     # surgically drop a single entry; clear all meta + discovery cache
@@ -1068,7 +1053,7 @@ def find_provider_for_model(model_id: str) -> Optional[str]:
     Returns the first provider_id whose cached model list contains model_id,
     or None if not found.
     """
-    for pid, models in _MODEL_LIST_CACHE._entries.items():
+    for pid, models in _MODEL_LIST_CACHE.items():
         if model_id in models:
             return pid
     return None

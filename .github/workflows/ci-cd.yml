@@ -40,7 +40,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install flake8 black isort mypy
-      
+
       - name: Run flake8
         run: flake8 backend/ services/ daemon/ database/ core/ --max-line-length=120 --exclude=venv,__pycache__
         continue-on-error: true
@@ -121,6 +121,9 @@ jobs:
         run: |
           # Exclude tests needing external services (e.g. PostgreSQL) — the unit
           # job runs without them. Such tests are marked @pytest.mark.external_service.
+          # This step also carries the #415 ratchets (test_no_ambient_state,
+          # test_settings_env_example): no continue-on-error here, unlike the lint
+          # job, so a new raw env read or env.example drift fails the pipeline.
           pytest tests/unit/ -m "not external_service" -v --cov=backend --cov=services --cov=daemon --cov-report=xml --cov-report=term
         env:
           TESTING: "true"
@@ -155,8 +158,7 @@ jobs:
       
       - name: Run unit tests
         working-directory: frontend
-        run: npm run test:unit || echo "Frontend tests not yet implemented"
-        continue-on-error: true
+        run: npm run test:run
 
   # ============================================================================
   # Integration Tests
@@ -409,7 +411,11 @@ jobs:
     name: Build Frontend
     runs-on: ubuntu-latest
     needs: [lint-frontend]
-    if: github.event_name == 'push' && github.repository == 'Vigil-SOC/vigil'
+    # Runs on PRs too, not just push. This is the only job that type-checks
+    # (tsc); gating it to post-merge let type errors land on main. The
+    # pull_request build compiles the PR merged into its base, so it also
+    # catches breakage that only appears after the merge.
+    if: github.repository == 'Vigil-SOC/vigil'
     steps:
       - uses: actions/checkout@v5
       
@@ -429,6 +435,7 @@ jobs:
         run: npm run build
       
       - name: Upload build artifacts
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v5
         with:
           name: frontend-build

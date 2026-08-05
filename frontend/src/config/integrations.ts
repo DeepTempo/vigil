@@ -1,4 +1,4 @@
-import { IntegrationMetadata } from '../components/settings/IntegrationWizard'
+import { IntegrationMetadata } from './integrationSchema'
 import { basePath } from './basePath'
 
 export const INTEGRATIONS: IntegrationMetadata[] = [
