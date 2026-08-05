@@ -42,15 +42,15 @@ jobs:
           pip install flake8 black isort mypy
 
       - name: Run flake8
-        run: flake8 backend/ services/ daemon/ database/ core/ --max-line-length=120 --exclude=venv,__pycache__
+        run: flake8 backend/ services/ core/ --max-line-length=120 --exclude=venv,__pycache__
         continue-on-error: true
       
       - name: Run black
-        run: black --check backend/ services/ daemon/ database/ core/ --exclude=venv
+        run: black --check backend/ services/ core/ --exclude=venv
         continue-on-error: true
       
       - name: Run isort
-        run: isort --check-only backend/ services/ daemon/ database/ core/
+        run: isort --check-only backend/ services/ core/
         continue-on-error: true
       
       - name: Run mypy
@@ -214,7 +214,7 @@ jobs:
 
       - name: Initialize schema
         run: |
-          python -c "from database.connection import init_database; init_database()"
+          python -c "from core.storage.connection import init_database; init_database()"
 
       - name: Run integration tests
         run: |
@@ -282,7 +282,7 @@ jobs:
 
       - name: Initialize schema
         run: |
-          python -c "from database.connection import init_database; init_database()"
+          python -c "from core.storage.connection import init_database; init_database()"
 
       - name: Run DB-backed unit tests
         run: |
@@ -311,7 +311,7 @@ jobs:
         run: pip install bandit[toml]
       
       - name: Run Bandit
-        run: bandit -r backend/ services/ daemon/ -f json -o bandit-report.json || true
+        run: bandit -r backend/ services/ -f json -o bandit-report.json || true
       
       - name: Upload Bandit results
         uses: actions/upload-artifact@v5
