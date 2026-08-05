@@ -1,7 +1,7 @@
 """Unit tests for LLM reasoning-trace persistence (GH #79).
 
 Covers:
-- LLMInteractionLog model registration + to_dict / to_summary_dict shape
+- LLMInteractionLog model registration + LLMInteractionLogSchema shape
 - ClaudeService serialization helpers (static methods — no DB, no API)
 - ClaudeService._persist_interaction graceful failure when DB is unavailable
 """
@@ -22,6 +22,7 @@ class TestLLMInteractionLogModel:
     def test_to_summary_dict_has_no_heavy_fields(self):
         """List endpoints must not leak heavy text/JSONB columns."""
         from database.models import LLMInteractionLog
+        from database.schemas import LLMInteractionLogSchema
 
         row = LLMInteractionLog(
             interaction_id="abc-123",
@@ -45,7 +46,7 @@ class TestLLMInteractionLogModel:
             cost_usd=0.001,
             duration_ms=1234,
         )
-        summary = row.to_summary_dict()
+        summary = LLMInteractionLogSchema.dump_summary(row)
 
         # heavy fields absent
         assert "thinking_content" not in summary
@@ -63,6 +64,7 @@ class TestLLMInteractionLogModel:
     def test_to_dict_includes_heavy_fields(self):
         """Detail endpoint must expose the full interaction."""
         from database.models import LLMInteractionLog
+        from database.schemas import LLMInteractionLogSchema
 
         row = LLMInteractionLog(
             interaction_id="abc-123",
@@ -84,7 +86,7 @@ class TestLLMInteractionLogModel:
             cost_usd=0.0,
             duration_ms=50,
         )
-        full = row.to_dict()
+        full = LLMInteractionLogSchema.dump(row)
         assert "thinking_content" in full
         assert "response_content" in full
         assert "request_messages" in full

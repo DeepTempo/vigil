@@ -24,20 +24,36 @@ FIXED_DT = datetime(2024, 3, 14, 15, 9, 26, 535000, tzinfo=timezone.utc)
 
 
 def iter_serializable_models():
-    """Yield (name, class) for every mapped model exposing to_dict/schema."""
+    """Yield (name, class) for every mapped ORM model."""
     for name in sorted(dir(models)):
         obj = getattr(models, name)
         if pyi.isclass(obj) and hasattr(obj, "__tablename__"):
             yield name, obj
 
 
-def _json_default_is_list(model, column_key):
-    """True when the model treats a JSON column as a list rather than a map.
+def _schema_for(model):
+    """The ``{Model}Schema`` that owns this model's contract, or None."""
+    import database.schemas as schemas
 
-    Prefers the column's own ``Mapped[...]`` annotation, which is the model's
-    real declaration, and falls back to the serializer's ``or []`` / ``or {}``
-    coercion where no annotation is available.
+    return getattr(schemas, f"{model.__name__}Schema", None)
+
+
+def _json_default_is_list(model, column_key):
+    """True when a JSON column serializes as a list, False for a map.
+
+    The schema field type is the authority — ``JsonList``/``StrList`` resolve
+    to ``list`` and ``JsonDict`` to ``dict``. A pass-through ``Optional[Any]``
+    field constrains nothing, so the model's ``Mapped[...]`` annotation breaks
+    the tie. Returns None when neither settles it.
     """
+    schema = _schema_for(model)
+    if schema is not None and column_key in schema.model_fields:
+        field_type = str(schema.model_fields[column_key].annotation)
+        if re.search(r"\blist\b", field_type):
+            return True
+        if re.search(r"\bdict\b", field_type):
+            return False
+
     for klass in model.__mro__:
         annotation = getattr(klass, "__annotations__", {}).get(column_key)
         if annotation is None:
@@ -46,19 +62,6 @@ def _json_default_is_list(model, column_key):
         if re.search(r"\b(List|list)\[", text):
             return True
         if re.search(r"\b(Dict|dict)\b", text):
-            return False
-
-    for method in ("to_dict", "to_summary_dict"):
-        fn = getattr(model, method, None)
-        if fn is None:
-            continue
-        try:
-            src = pyi.getsource(fn)
-        except (OSError, TypeError):
-            continue
-        if re.search(rf"self\.{re.escape(column_key)} or \[\]", src):
-            return True
-        if re.search(rf"self\.{re.escape(column_key)} or \{{\}}", src):
             return False
     return None
 

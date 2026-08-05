@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import get_db_manager
 from database.models import Finding, Case
+from database.schemas import CaseSchema, FindingSchema
 from sqlalchemy import func
 
 # Disable SSL warnings for self-signed certificates
@@ -133,7 +134,7 @@ class PostgresToSplunkExporter:
             Dictionary formatted for Splunk HEC
         """
         # Get the finding as dict
-        finding_dict = finding.to_dict()
+        finding_dict = FindingSchema.dump(finding)
         
         # Create event for Splunk
         event = {
@@ -189,7 +190,7 @@ class PostgresToSplunkExporter:
             Dictionary formatted for Splunk HEC
         """
         # Get the case as dict
-        case_dict = case.to_dict(include_findings=False)
+        case_dict = CaseSchema.dump(case)
         
         # Create event for Splunk
         event = {
