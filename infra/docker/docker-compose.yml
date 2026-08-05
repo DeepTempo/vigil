@@ -169,7 +169,7 @@ services:
       context: ../..
       dockerfile: infra/docker/Dockerfile.backend
     container_name: deeptempo-llm-worker
-    command: ["python", "-m", "services.run_llm_worker"]
+    command: ["python", "-m", "core.llm.gateway.run_worker"]
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432

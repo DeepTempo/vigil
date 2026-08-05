@@ -5,7 +5,6 @@ Handles login, logout, token refresh, password management, and MFA.
 """
 
 import logging
-import os
 from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, Header, Request, Response, status
@@ -43,6 +42,7 @@ from backend.middleware.auth import get_current_active_user
 from backend.middleware.rate_limit import limiter
 from core.storage.models import User
 from core.storage.connection import get_db
+from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -786,7 +786,7 @@ async def password_reset_request(
     user = session.query(User).filter(User.email == body.email).first()
     if user and user.is_active:
         token = generate_reset_token(user.user_id)
-        frontend_base = os.getenv("VIGIL_FRONTEND_URL", "").rstrip("/")
+        frontend_base = get_settings().vigil_frontend_url.rstrip("/")
         if frontend_base:
             reset_link = f"{frontend_base}/reset-password?token={token}"
         else:

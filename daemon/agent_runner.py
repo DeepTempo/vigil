@@ -58,63 +58,7 @@ except Exception:
     _tracer = None  # type: ignore[assignment]
 
 
-def compute_call_cost(
-    model_id: Optional[str],
-    provider_type: Optional[str],
-    input_tokens: int,
-    output_tokens: int,
-    cache_read_tokens: int = 0,
-    cache_creation_tokens: int = 0,
-) -> float:
-    """Compute USD cost of a single LLM call.
-
-    Looks up per-token rates from ``services.model_registry.get_cost_rates()``
-    and per-provider cache multipliers from ``get_cache_rates()``. Cache
-    tokens are billed at provider-specific rates (#184 Phase 3): Anthropic
-    ephemeral cache reads at 0.1× input, writes at 1.25× input; OpenAI
-    cached input at 0.5×. Counting them at full input rate (the pre-#184
-    behavior) over-bills cache reads by 10× and under-bills cache writes
-    by 25%, so this matters for any workload that uses prompt caching —
-    which after #84 PR-C is most of Vigil's traffic.
-
-    GH #84 PR-E removed the previous Sonnet-pricing fallback: with
-    per-component model selection (#89) active, silently billing a GPT-4o
-    or Ollama call at Sonnet rates would misattribute cost. On an
-    unresolved model/provider we return 0.0 and log at WARNING so the
-    call surfaces as a visible zero on the ``/analytics/cost`` dashboard
-    rather than hiding inside a misattributed bucket.
-    """
-    if not model_id or not provider_type:
-        logger.warning(
-            "compute_call_cost: missing model_id/provider_type (got %r / %r); "
-            "recording cost as $0.00 (GH #84 PR-E)",
-            model_id,
-            provider_type,
-        )
-        return 0.0
-    try:
-        from services.model_registry import get_registry
-
-        registry = get_registry()
-        in_rate, out_rate = registry.get_cost_rates(model_id, provider_type)
-        cache_read_rate, cache_creation_rate = registry.get_cache_rates(
-            model_id, provider_type
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "compute_call_cost: model_registry lookup failed for %s/%s (%s); "
-            "recording cost as $0.00",
-            provider_type,
-            model_id,
-            exc,
-        )
-        return 0.0
-    return (
-        input_tokens * in_rate
-        + output_tokens * out_rate
-        + cache_read_tokens * cache_read_rate
-        + cache_creation_tokens * cache_creation_rate
-    )
+from core.llm.cost.calls import compute_call_cost
 
 
 WORKDIR_TOOLS = [
@@ -238,7 +182,7 @@ class AgentRunner:
     def _init_services(self):
         if self._claude_service is None:
             try:
-                from services.claude_service import ClaudeService
+                from core.llm.harness.claude import ClaudeService
 
                 self._claude_service = ClaudeService(
                     use_backend_tools=True,
@@ -296,7 +240,7 @@ class AgentRunner:
         result = True
         if provider_id:
             try:
-                from services.llm_router import get_provider_spec
+                from core.llm.router.router import get_provider_spec
 
                 spec = get_provider_spec(provider_id)
                 if spec is not None:
@@ -312,7 +256,7 @@ class AgentRunner:
         """Lazily initialise the LLM gateway."""
         if self._llm_gateway is None:
             try:
-                from services.llm_gateway import get_llm_gateway
+                from core.llm.gateway.gateway import get_llm_gateway
 
                 self._llm_gateway = await get_llm_gateway()
                 logger.info("AgentRunner: LLM gateway connected")
@@ -698,7 +642,7 @@ class AgentRunner:
         block dispatch.
         """
         try:
-            from services.cost_estimator import estimate_cost
+            from core.llm.cost.estimator import estimate_cost
         except Exception as e:
             logger.debug(
                 "%s: estimate_cost import failed (%s); skipping gate", inv_id, e

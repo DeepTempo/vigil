@@ -201,9 +201,9 @@ def docker_available() -> tuple[bool, str]:
 def _compose(
     args: List[str], profile: Optional[str], timeout: int
 ) -> subprocess.CompletedProcess:
-    from services.ollama_process import container_base_url
+    from core.llm.providers.ollama import container_base_url
 
-    env = os.environ.copy()
+    env = os.environ.copy()  # noqa: ENV001 - child process env
     if profile:
         env["COMPOSE_PROFILES"] = profile
     # Containers reach the host-native Ollama via host.docker.internal; the
@@ -294,7 +294,7 @@ def status(
     instead of spawning a fresh pair of subprocesses per service."""
     spec = _spec(name)
     if spec.container is None:
-        from services import ollama_process
+        from core.llm.providers import ollama as ollama_process
 
         return ollama_process.status(spec)
 
@@ -336,7 +336,7 @@ def start(name: str, *, wait: bool = False, timeout: int = 120) -> ActionResult:
             False, f"{name} cannot be started by Vigil", code="not_startable"
         )
     if spec.container is None:
-        from services import ollama_process
+        from core.llm.providers import ollama as ollama_process
 
         return ollama_process.start(spec, timeout=min(timeout, 60))
 

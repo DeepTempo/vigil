@@ -20,11 +20,12 @@ import asyncio
 import hmac
 import json
 import logging
-import os
 from hashlib import sha256
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
+from core.config import get_settings
+from core.secrets import get_secret
 
 logger = logging.getLogger(__name__)
 
@@ -47,32 +48,15 @@ def cloudy_ingestion_enabled() -> bool:
                 return False
     except Exception as exc:  # noqa: BLE001
         logger.debug("system_config read for cloudflare.cloudy.enabled failed: %s", exc)
-    return os.environ.get("CLOUDY_INGESTION_ENABLED", "false").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    return get_settings().cloudy_ingestion_enabled
 
 
 def _get_secret() -> Optional[str]:
-    """HMAC shared secret. Prefer secrets manager; fall back to env."""
-    try:
-        from secrets_manager import get_secret as _gs
-        secret = _gs("CLOUDY_WEBHOOK_SECRET")
-        if secret:
-            return secret
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("secrets_manager lookup for CLOUDY_WEBHOOK_SECRET failed: %s", exc)
-    return os.environ.get("CLOUDY_WEBHOOK_SECRET") or None
+    return get_secret("CLOUDY_WEBHOOK_SECRET") or None
 
 
 def _get_max_body_bytes() -> int:
-    try:
-        kb = int(os.environ.get("CLOUDY_WEBHOOK_MAX_BODY_KB", "1024"))
-    except (TypeError, ValueError):
-        kb = 1024
-    return max(1, kb) * 1024
+    return max(1, get_settings().cloudy_webhook_max_body_kb) * 1024
 
 
 def _verify_signature(raw_body: bytes, provided: Optional[str]) -> bool:

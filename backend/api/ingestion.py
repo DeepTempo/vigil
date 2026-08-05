@@ -11,7 +11,6 @@ Handles uploading and ingesting findings/cases from various file formats:
 
 import asyncio
 import logging
-import os
 from datetime import datetime
 from typing import Dict, Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
@@ -29,12 +28,13 @@ from core.ingestion.ingestion_jobs import (
     summarize_stats,
 )
 from core.storage.database_data_service import DatabaseDataService
+from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "500")) * 1024 * 1024
+MAX_UPLOAD_SIZE_BYTES = get_settings().max_upload_size_mb * 1024 * 1024
 
 EXTENSION_FORMATS = {
     '.json': 'json',

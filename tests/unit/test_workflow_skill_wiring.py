@@ -60,7 +60,7 @@ async def test_execute_workflow_includes_skill_tools_in_allowed_list(monkeypatch
     fake = _fake_claude_service()
 
     with patch(
-        "services.claude_service.ClaudeService", return_value=fake
+        "core.llm.harness.claude.ClaudeService", return_value=fake
     ), patch(
         "core.skills.skill_tools_bridge.list_active_skill_tools",
         return_value=(
@@ -105,7 +105,7 @@ async def test_execute_workflow_no_skills_still_runs(monkeypatch):
 
     fake = _fake_claude_service()
     with patch(
-        "services.claude_service.ClaudeService", return_value=fake
+        "core.llm.harness.claude.ClaudeService", return_value=fake
     ), patch(
         "core.skills.skill_tools_bridge.list_active_skill_tools",
         return_value=([], {}),
@@ -136,7 +136,7 @@ async def test_execute_workflow_does_not_use_agent_sdk(monkeypatch):
         return _fake_claude_service()
 
     with patch(
-        "services.claude_service.ClaudeService", side_effect=_record_svc
+        "core.llm.harness.claude.ClaudeService", side_effect=_record_svc
     ), patch(
         "core.skills.skill_tools_bridge.list_active_skill_tools",
         return_value=([], {}),
@@ -165,7 +165,7 @@ async def test_execute_workflow_surfaces_chat_exception_as_error(monkeypatch):
     svc.chat = MagicMock(side_effect=RuntimeError("boom"))
 
     with patch(
-        "services.claude_service.ClaudeService", return_value=svc
+        "core.llm.harness.claude.ClaudeService", return_value=svc
     ), patch(
         "core.skills.skill_tools_bridge.list_active_skill_tools",
         return_value=([], {}),

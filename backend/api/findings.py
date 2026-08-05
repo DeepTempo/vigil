@@ -6,6 +6,7 @@ from pydantic import BaseModel
 import logging
 
 from core.storage.database_data_service import DatabaseDataService
+from core.config import vigil_path
 from services.source_evidence import (
     normalize_finding_source_evidence,
     project_finding_source_evidence_for_list,
@@ -140,10 +141,9 @@ def export_findings(output_format: str = "json"):
     Returns:
         Export result
     """
-    from pathlib import Path
     from datetime import datetime
     
-    output_dir = Path.home() / ".deeptempo" / "exports"
+    output_dir = vigil_path("exports", write=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -361,8 +361,8 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
     
     # Generate new enrichment using the configured reporting provider.
     try:
-        from services.llm_router import LLMRouter, get_provider_spec
-        from services.model_registry import get_registry
+        from core.llm.router.router import LLMRouter, get_provider_spec
+        from core.llm.providers.registry import get_registry
 
         resolved_model = get_registry().resolve_model_for_component("reporting")
         if not resolved_model:
@@ -380,7 +380,7 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
 
         claude_service = None
         if provider.provider_type == "anthropic":
-            from services.claude_service import ClaudeService
+            from core.llm.harness.claude import ClaudeService
 
             claude_service = ClaudeService(use_backend_tools=True, use_mcp_tools=False)
             if not claude_service.has_api_key():
@@ -531,7 +531,7 @@ Respond ONLY with valid JSON. Be specific and actionable. Focus on helping a SOC
                 "model": model_id,
                 "max_tokens": 1400,
             }
-            from services.local_ai_recovery import (
+            from core.llm.providers.recovery import (
                 is_gateway_connection_error,
                 local_bifrost_recovery_enabled,
                 local_bifrost_recovery_retry_limit,

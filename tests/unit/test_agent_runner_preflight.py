@@ -1,7 +1,7 @@
 """Pre-flight cost gate tests for ``daemon.agent_runner.AgentRunner``.
 
 The gate (added per #184 acceptance #4) is a thin wrapper around
-``services.cost_estimator.estimate_cost``. The post-hoc gate at
+``core.llm.cost.estimator.estimate_cost``. The post-hoc gate at
 ``_run_agent`` line ~460 still catches actual overruns; this gate just
 prevents one expensive iteration from blowing the budget before we look.
 
@@ -55,8 +55,8 @@ def _runner(*, max_cost_per_investigation: float):
 
 
 def _stub_estimate(high_usd: float, low_usd: float = 0.0, source: str = "exact"):
-    """Build an awaitable that mimics services.cost_estimator.estimate_cost."""
-    from services.cost_estimator import CostEstimate
+    """Build an awaitable that mimics core.llm.cost.estimator.estimate_cost."""
+    from core.llm.cost.estimator import CostEstimate
 
     estimate = CostEstimate(
         provider_type="anthropic",
@@ -81,7 +81,7 @@ def _run(coro):
 
 def test_preflight_proceeds_when_estimate_fits_budget():
     runner = _runner(max_cost_per_investigation=5.0)
-    with patch("services.cost_estimator.estimate_cost", _stub_estimate(high_usd=0.5)):
+    with patch("core.llm.cost.estimator.estimate_cost", _stub_estimate(high_usd=0.5)):
         blocked = _run(
             runner._preflight_budget_blocked(
                 inv_id="inv-1",
@@ -96,7 +96,7 @@ def test_preflight_proceeds_when_estimate_fits_budget():
 
 def test_preflight_blocks_when_projected_exceeds_budget():
     runner = _runner(max_cost_per_investigation=5.0)
-    with patch("services.cost_estimator.estimate_cost", _stub_estimate(high_usd=4.0)):
+    with patch("core.llm.cost.estimator.estimate_cost", _stub_estimate(high_usd=4.0)):
         blocked = _run(
             runner._preflight_budget_blocked(
                 inv_id="inv-1",
@@ -123,7 +123,7 @@ def test_preflight_blocks_at_exact_boundary_does_not_fire():
     """projected == budget should not block (the post-hoc gate uses >=,
     pre-flight uses > to leave one cent of slop for edge calls)."""
     runner = _runner(max_cost_per_investigation=5.0)
-    with patch("services.cost_estimator.estimate_cost", _stub_estimate(high_usd=3.0)):
+    with patch("core.llm.cost.estimator.estimate_cost", _stub_estimate(high_usd=3.0)):
         blocked = _run(
             runner._preflight_budget_blocked(
                 inv_id="inv-1",
@@ -144,7 +144,7 @@ def test_preflight_swallows_estimator_errors_and_proceeds(caplog):
     async def _raise(**kwargs):
         raise RuntimeError("count_tokens unavailable")
 
-    with patch("services.cost_estimator.estimate_cost", _raise):
+    with patch("core.llm.cost.estimator.estimate_cost", _raise):
         blocked = _run(
             runner._preflight_budget_blocked(
                 inv_id="inv-1",
@@ -163,7 +163,7 @@ def test_preflight_records_pricing_source_in_log():
     based on exact or approximate pricing."""
     runner = _runner(max_cost_per_investigation=5.0)
     with patch(
-        "services.cost_estimator.estimate_cost",
+        "core.llm.cost.estimator.estimate_cost",
         _stub_estimate(high_usd=10.0, source="heuristic"),
     ):
         _run(

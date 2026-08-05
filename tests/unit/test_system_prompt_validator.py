@@ -13,7 +13,7 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "backend"))
 
 from backend.schemas.system_prompt import validate_system_prompt  # noqa: E402
-from services.prompt_security import MAX_SYSTEM_PROMPT_BYTES  # noqa: E402
+from core.llm.security import MAX_SYSTEM_PROMPT_BYTES  # noqa: E402
 
 pytestmark = pytest.mark.unit
 

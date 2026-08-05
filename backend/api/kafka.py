@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from core.config import get_settings
 
 router = APIRouter(prefix="/api/kafka", tags=["kafka"])
 logger = logging.getLogger(__name__)
@@ -59,8 +59,9 @@ def _default_config() -> Dict[str, Any]:
 
 
 def _daemon_status_url() -> str:
-    host = os.getenv("DAEMON_HEALTH_HOST", "localhost")
-    port = os.getenv("DAEMON_HEALTH_PORT", "9091")
+    settings = get_settings()
+    host = settings.daemon_health_host
+    port = settings.daemon_health_port
     return f"http://{host}:{port}/status"
 
 

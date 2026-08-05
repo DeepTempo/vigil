@@ -18,7 +18,7 @@ import hashlib
 import logging
 from typing import Optional
 
-from services.prompt_security import (
+from core.llm.security import (
     MAX_SYSTEM_PROMPT_BYTES,
     has_disallowed_control_chars,
     scan_for_injection,

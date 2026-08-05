@@ -241,7 +241,7 @@ class WorkflowsService:
             workflows_dir: Directory containing workflow definitions (default: ./workflows)
         """
         if workflows_dir is None:
-            workflows_dir = Path(__file__).parent.parent / "workflows"
+            workflows_dir = Path(__file__).resolve().parents[2] / "workflows"
 
         self.workflows_dir = Path(workflows_dir)
         self._cache: Dict[str, WorkflowDefinition] = {}
@@ -601,8 +601,8 @@ For each phase:
         Any failure degrades to ``(None, DEFAULT_MODEL)`` (legacy behavior).
         """
         try:
-            from services.llm_router import get_provider_spec
-            from services.model_registry import get_registry
+            from core.llm.router.router import get_provider_spec
+            from core.llm.providers.registry import get_registry
 
             pick = get_registry().resolve_model_for_component(component)
             if not pick:
@@ -646,7 +646,7 @@ For each phase:
                 recommended_tools=recommended_tools,
             )
 
-        from services.openai_agent_service import OpenAIAgentService
+        from core.llm.harness.openai import OpenAIAgentService
 
         agent = OpenAIAgentService(recommended_tools=recommended_tools)
         return await agent.run(
@@ -669,7 +669,7 @@ For each phase:
         """Legacy composite-prompt path for file-based workflows that
         don't have structured phases. No approval gating possible —
         there's no phase_id to attach an approval to."""
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
         from core.agents.manager import SOCAgentLibrary
         from core.workflows.workflow_run_service import get_workflow_run_service
 
@@ -710,7 +710,7 @@ For each phase:
         # Best-effort — telemetry never blocks a workflow.
         trigger_context = dict(parameters or {})
         try:
-            from services.cost_estimator import estimate_cost
+            from core.llm.cost.estimator import estimate_cost
 
             _est = await estimate_cost(
                 provider_type=(
@@ -787,7 +787,7 @@ For each phase:
         triggered_by: Optional[str],
     ) -> Dict[str, Any]:
         """Phase-by-phase execution path for custom workflows (#128)."""
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
         from core.workflows.workflow_run_service import get_workflow_run_service
 
         if not ClaudeService(
@@ -842,7 +842,7 @@ For each phase:
         resume. Walks phases from ``start_index``; pauses or completes
         the run as appropriate."""
         from core.response.approval_service import ActionType, get_approval_service
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
         from core.agents.manager import SOCAgentLibrary
         from core.workflows.workflow_run_service import get_workflow_run_service
 
@@ -949,7 +949,7 @@ For each phase:
                 getattr(profile, "component_category", None) or "chat_default"
             )
             try:
-                from services.cost_estimator import estimate_cost
+                from core.llm.cost.estimator import estimate_cost
 
                 _est_provider, _est_model = self._resolve_agent_provider(
                     phase_component

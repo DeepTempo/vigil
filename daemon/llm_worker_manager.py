@@ -1,6 +1,6 @@
 """LLM Worker Manager — dynamically starts/stops the ARQ worker subprocess.
 
-The ARQ worker (``services.run_llm_worker``) processes queued Claude API
+The ARQ worker (``core.llm.gateway.run_worker``) processes queued Claude API
 calls.  Because ARQ's ``run_worker()`` blocks, it must live in a separate
 process.  This manager runs as an async task inside the daemon and polls
 the ``orchestrator.settings`` SystemConfig key every few seconds, reading
@@ -93,14 +93,14 @@ class LLMWorkerManager:
     # ------------------------------------------------------------------
 
     def _start_worker(self):
-        """Spawn the ARQ worker as a child process."""
-        env = {**os.environ, "PYTHONPATH": PROJECT_ROOT}
+        # Exports the parent env into a child process; not a config read.
+        env = {**os.environ, "PYTHONPATH": PROJECT_ROOT}  # noqa: ENV001
         log_path = Path(PROJECT_ROOT) / "logs" / "llm_worker.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             log_file = open(log_path, "a")
             self._process = subprocess.Popen(
-                [sys.executable, "-m", "services.run_llm_worker"],
+                [sys.executable, "-m", "core.llm.gateway.run_worker"],
                 cwd=PROJECT_ROOT,
                 env=env,
                 stdout=log_file,

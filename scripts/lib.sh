@@ -81,12 +81,12 @@ service_container() {
 }
 
 # --- Start the host-native Ollama (never containerized: no Metal in Docker) ---
-# Delegates to services/ollama_process.py rather than reimplementing the spawn:
+# Delegates to core/llm/providers/ollama.py rather than reimplementing the spawn:
 # macOS has no `setsid`, and a bare `nohup ... &` leaves Ollama in this script's
 # process group, where Ctrl+C would kill it. Never fatal - Ollama is optional.
 ensure_ollama() {
     PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
-        python3 -m services.ollama_process || \
+        python3 -m core.llm.providers.ollama || \
         echo "Warning: Ollama not started; see logs/ollama.log" >&2
     return 0
 }
@@ -203,7 +203,7 @@ ensure_container() {
 # postgres/redis/bifrost are prepended unconditionally: the app can't boot
 # without them (schema init hard-fails if postgres is down), so a saved list
 # that omits them — via a Settings toggle or a hand-edit — must not brick
-# startup. Mirrors REQUIRED_SERVICES in services/service_manager.py.
+# startup. Mirrors REQUIRED_SERVICES in core/platform/service_manager.py.
 start_autostart_services() {
     local svc profile container seen=" "
     for svc in postgres redis bifrost $(read_autostart); do
