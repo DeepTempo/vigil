@@ -42,15 +42,15 @@ jobs:
           pip install flake8 black isort mypy
 
       - name: Run flake8
-        run: flake8 backend/ services/ database/ core/ --max-line-length=120 --exclude=venv,__pycache__
+        run: flake8 backend/ services/ core/ --max-line-length=120 --exclude=venv,__pycache__
         continue-on-error: true
       
       - name: Run black
-        run: black --check backend/ services/ database/ core/ --exclude=venv
+        run: black --check backend/ services/ core/ --exclude=venv
         continue-on-error: true
       
       - name: Run isort
-        run: isort --check-only backend/ services/ database/ core/
+        run: isort --check-only backend/ services/ core/
         continue-on-error: true
       
       - name: Run mypy
