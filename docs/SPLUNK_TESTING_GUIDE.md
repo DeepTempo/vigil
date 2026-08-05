@@ -100,7 +100,7 @@ python scripts/test_splunk_claude_integration.py \
   SPLUNK_PASSWORD=your_password
   ```
 - An LLM provider configured in the UI (Settings → AI / LLM Providers)
-- Database running (`docker compose -f docker/docker-compose.yml up -d postgres`)
+- Database running (`docker compose -f infra/docker/docker-compose.yml up -d postgres`)
 
 ## Script Reference
 
@@ -191,7 +191,7 @@ Here's a complete end-to-end testing workflow:
 
 ```bash
 # Ensure database is running
-docker compose -f docker/docker-compose.yml up -d postgres
+docker compose -f infra/docker/docker-compose.yml up -d postgres
 
 # Configure Splunk credentials and an LLM provider via the web UI:
 #   Settings → Integrations → Splunk

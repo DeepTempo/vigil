@@ -9,8 +9,8 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from database.connection import get_db_session
-from database.models import Case, CaseSLA, CaseNotification
+from core.storage.connection import get_db_session
+from core.storage.models import Case, CaseSLA, CaseNotification
 from core.cases.case_sla_service import CaseSLAService
 from core.cases.case_workflow_service import CaseWorkflowService
 from core.cases.case_notification_service import CaseNotificationService

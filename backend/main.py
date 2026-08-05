@@ -636,7 +636,7 @@ async def startup_event():
     # would occupy threads that then block on the pool up to DB_POOL_TIMEOUT.
     try:
         import anyio.to_thread
-        from database.connection import get_db_manager
+        from core.storage.connection import get_db_manager
 
         _pool_cfg = get_db_manager().config
         _db_ceiling = _pool_cfg.pool_size + _pool_cfg.max_overflow
@@ -765,7 +765,7 @@ async def startup_event():
         data_backend_env = os.getenv("DATA_BACKEND", "database").lower()
         if not is_demo_mode() and data_backend_env == "database":
             try:
-                from database.connection import init_database
+                from core.storage.connection import init_database
 
                 init_database(echo=False, create_tables=True)
                 logger.info("✓ Database schema ensured (create_all)")

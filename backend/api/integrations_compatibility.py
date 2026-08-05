@@ -15,7 +15,7 @@ import logging
 
 from backend.middleware.auth import get_current_active_user
 from backend.services.auth_service import AuthService
-from database.models import User
+from core.storage.models import User
 from services.integration_compatibility_service import get_compatibility_service
 
 router = APIRouter()

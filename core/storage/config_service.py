@@ -10,8 +10,8 @@ from typing import Optional, Dict, Any, List, Set
 from datetime import datetime
 from contextlib import contextmanager
 
-from database.connection import get_db_manager
-from database.models import SystemConfig, UserPreference, IntegrationConfig, ConfigAuditLog
+from core.storage.connection import get_db_manager
+from core.storage.models import SystemConfig, UserPreference, IntegrationConfig, ConfigAuditLog
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 

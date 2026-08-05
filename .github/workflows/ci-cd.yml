@@ -90,7 +90,7 @@ jobs:
       - name: Run hadolint
         uses: hadolint/hadolint-action@v3.1.0
         with:
-          dockerfile: docker/Dockerfile.backend
+          dockerfile: infra/docker/Dockerfile.backend
           ignore: DL3008,DL3009
         continue-on-error: true
 
@@ -374,7 +374,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/Dockerfile.backend
+          file: infra/docker/Dockerfile.backend
           push: true
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
@@ -394,7 +394,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/Dockerfile.daemon
+          file: infra/docker/Dockerfile.daemon
           push: true
           tags: ${{ steps.meta-daemon.outputs.tags }}
           labels: ${{ steps.meta-daemon.outputs.labels }}

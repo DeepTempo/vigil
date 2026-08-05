@@ -20,8 +20,8 @@ Vigil follows [Semantic Versioning](https://semver.org/).
 | File                          | Field                              | Managed by release-please     |
 |-------------------------------|------------------------------------|-------------------------------|
 | `VERSION`                     | (whole file)                       | yes                           |
-| `helm/vigil/Chart.yaml`       | `appVersion`                       | yes                           |
-| `helm/vigil/Chart.yaml`       | `version`                          | yes (lockstep with appVersion)|
+| `infra/helm/vigil/Chart.yaml`       | `appVersion`                       | yes                           |
+| `infra/helm/vigil/Chart.yaml`       | `version`                          | yes (lockstep with appVersion)|
 | `clients/web/package.json`       | `version`                          | yes                           |
 | `clients/web/package-lock.json`  | `version` (root + `packages['']`)  | yes                           |
 
@@ -125,7 +125,7 @@ can produce semantically-equivalent but byte-different output).
 | Any release-please release          | bumps        | bumps           |
 
 If you ever need a chart-only fix between app releases (e.g. a Helm
-template hotfix with no app code change), edit `helm/vigil/Chart.yaml`'s
+template hotfix with no app code change), edit `infra/helm/vigil/Chart.yaml`'s
 `version` manually in a separate PR outside the release-please flow. This
 is the escape hatch, not the default path.
 
@@ -155,8 +155,8 @@ that overwrites it.
 1. Open a PR bumping the version to the new release (e.g. `0.2.0`) in
    all of the following:
    - `VERSION`
-   - `helm/vigil/Chart.yaml` `appVersion`
-   - `helm/vigil/Chart.yaml` `version` (lockstep with `appVersion`)
+   - `infra/helm/vigil/Chart.yaml` `appVersion`
+   - `infra/helm/vigil/Chart.yaml` `version` (lockstep with `appVersion`)
    - `clients/web/package.json` `version`
    - `clients/web/package-lock.json` — both `$.version` and
      `$.packages[''].version`

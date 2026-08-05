@@ -14,14 +14,14 @@ class TestLLMInteractionLogModel:
 
     def test_model_registered_in_metadata(self):
         """llm_interaction_logs must be in Base.metadata so create_all creates it."""
-        from database.models import Base
-        import database.connection  # noqa: F401 — side-effect import
+        from core.storage.models import Base
+        import core.storage.connection  # noqa: F401 — side-effect import
 
         assert "llm_interaction_logs" in Base.metadata.tables
 
     def test_to_summary_dict_has_no_heavy_fields(self):
         """List endpoints must not leak heavy text/JSONB columns."""
-        from database.models import LLMInteractionLog
+        from core.storage.models import LLMInteractionLog
 
         row = LLMInteractionLog(
             interaction_id="abc-123",
@@ -62,7 +62,7 @@ class TestLLMInteractionLogModel:
 
     def test_to_dict_includes_heavy_fields(self):
         """Detail endpoint must expose the full interaction."""
-        from database.models import LLMInteractionLog
+        from core.storage.models import LLMInteractionLog
 
         row = LLMInteractionLog(
             interaction_id="abc-123",
@@ -202,7 +202,7 @@ class TestPersistInteractionRobustness:
         def _boom():
             raise RuntimeError("no db for you")
 
-        monkeypatch.setattr("database.connection.get_db_manager", _boom)
+        monkeypatch.setattr("core.storage.connection.get_db_manager", _boom)
 
         svc = ClaudeService.__new__(
             ClaudeService

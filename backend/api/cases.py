@@ -8,7 +8,7 @@ from pathlib import Path
 
 from backend.middleware.auth import get_current_user
 from backend.services.auth_service import AuthService
-from database.models import User
+from core.storage.models import User
 from core.storage.database_data_service import DatabaseDataService
 from core.reporting.report_service import ReportService, REPORTLAB_AVAILABLE
 
@@ -88,8 +88,8 @@ async def clear_all_cases(current_user: User = Depends(get_current_user)):
             status_code=403, detail="Permission denied: cases.delete required"
         )
     try:
-        from database.connection import get_session
-        from database.models import (
+        from core.storage.connection import get_session
+        from core.storage.models import (
             AIDecisionLog,
             AttackLayer,
             Case,
@@ -835,8 +835,8 @@ class TaskAdd(BaseModel):
 @router.post("/{case_id}/tasks")
 async def add_task(case_id: str, data: TaskAdd):
     """Add task to case."""
-    from database.connection import get_session
-    from database.models import CaseTask
+    from core.storage.connection import get_session
+    from core.storage.models import CaseTask
     
     session = get_session()
     try:
@@ -863,8 +863,8 @@ async def add_task(case_id: str, data: TaskAdd):
 @router.get("/{case_id}/tasks")
 async def get_tasks(case_id: str):
     """Get all tasks for case."""
-    from database.connection import get_db_session
-    from database.models import CaseTask
+    from core.storage.connection import get_db_session
+    from core.storage.models import CaseTask
     
     try:
         session = get_db_session()
@@ -893,8 +893,8 @@ class TaskUpdate(BaseModel):
 @router.put("/{case_id}/tasks/{task_id}")
 async def update_task(case_id: str, task_id: int, data: TaskUpdate):
     """Update task."""
-    from database.connection import get_session
-    from database.models import CaseTask
+    from core.storage.connection import get_session
+    from core.storage.models import CaseTask
     
     session = get_session()
     try:
@@ -940,8 +940,8 @@ class RelationshipAdd(BaseModel):
 @router.post("/{case_id}/relationships")
 async def add_relationship(case_id: str, data: RelationshipAdd):
     """Link related case."""
-    from database.connection import get_session
-    from database.models import CaseRelationship
+    from core.storage.connection import get_session
+    from core.storage.models import CaseRelationship
     
     session = get_session()
     try:
@@ -965,8 +965,8 @@ async def add_relationship(case_id: str, data: RelationshipAdd):
 @router.get("/{case_id}/relationships")
 async def get_relationships(case_id: str):
     """Get related cases."""
-    from database.connection import get_session
-    from database.models import CaseRelationship
+    from core.storage.connection import get_session
+    from core.storage.models import CaseRelationship
     
     session = get_session()
     try:
@@ -992,8 +992,8 @@ class ClosureInfo(BaseModel):
 @router.post("/{case_id}/close")
 async def close_case(case_id: str, data: ClosureInfo):
     """Close case with closure metadata."""
-    from database.connection import get_session
-    from database.models import CaseClosureInfo, Case
+    from core.storage.connection import get_session
+    from core.storage.models import CaseClosureInfo, Case
     
     session = get_session()
     try:
@@ -1056,8 +1056,8 @@ async def escalate_case(case_id: str, data: EscalationAdd):
 @router.get("/{case_id}/escalations")
 async def get_escalations(case_id: str):
     """Get escalation history."""
-    from database.connection import get_session
-    from database.models import CaseEscalation
+    from core.storage.connection import get_session
+    from core.storage.models import CaseEscalation
     
     session = get_session()
     try:
@@ -1087,8 +1087,8 @@ async def merge_cases(case_id: str, data: MergeRequest):
     if case_id == data.source_case_id:
         raise HTTPException(status_code=400, detail="Cannot merge a case into itself")
 
-    from database.connection import get_db_manager
-    from database.models import (
+    from core.storage.connection import get_db_manager
+    from core.storage.models import (
         Case, case_findings, CaseRelationship,
     )
 
@@ -1144,7 +1144,7 @@ async def merge_cases(case_id: str, data: MergeRequest):
                 target.priority = source.priority
 
         try:
-            from database.models import CaseIOC
+            from core.storage.models import CaseIOC
             source_iocs = session.query(CaseIOC).filter_by(case_id=data.source_case_id).all()
             for ioc in source_iocs:
                 ioc.case_id = case_id
@@ -1152,7 +1152,7 @@ async def merge_cases(case_id: str, data: MergeRequest):
             pass
 
         try:
-            from database.models import CaseEvidence
+            from core.storage.models import CaseEvidence
             source_evidence = session.query(CaseEvidence).filter_by(case_id=data.source_case_id).all()
             for ev in source_evidence:
                 ev.case_id = case_id
@@ -1160,7 +1160,7 @@ async def merge_cases(case_id: str, data: MergeRequest):
             pass
 
         try:
-            from database.models import CaseTask
+            from core.storage.models import CaseTask
             source_tasks = session.query(CaseTask).filter_by(case_id=data.source_case_id).all()
             for task in source_tasks:
                 task.case_id = case_id
@@ -1168,7 +1168,7 @@ async def merge_cases(case_id: str, data: MergeRequest):
             pass
 
         try:
-            from database.models import CaseComment
+            from core.storage.models import CaseComment
             source_comments = session.query(CaseComment).filter_by(case_id=data.source_case_id).all()
             for comment in source_comments:
                 comment.case_id = case_id

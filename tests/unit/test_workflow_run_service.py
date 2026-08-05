@@ -20,7 +20,7 @@ from core.workflows.workflow_run_service import (
 
 def _db_available() -> bool:
     try:
-        from database.connection import get_db_manager
+        from core.storage.connection import get_db_manager
 
         m = get_db_manager()
         if m._engine is None:
@@ -52,7 +52,7 @@ def service():
 @pytest.fixture
 def clean_runs():
     """Delete all test runs before/after each test to keep DB tidy."""
-    from database.connection import get_db_manager
+    from core.storage.connection import get_db_manager
     from sqlalchemy import text
 
     def _clear():

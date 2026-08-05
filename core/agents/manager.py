@@ -89,8 +89,8 @@ class AgentManager:
             del self.agents[k]
 
         try:
-            from database.connection import get_db_manager
-            from database.models import CustomAgent
+            from core.storage.connection import get_db_manager
+            from core.storage.models import CustomAgent
         except Exception as e:
             logger.warning(f"CustomAgent model unavailable, skipping refresh: {e}")
             return 0

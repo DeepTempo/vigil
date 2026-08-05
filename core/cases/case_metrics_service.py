@@ -10,8 +10,8 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 
-from database.models import Case, CaseMetrics, CaseSLA, CaseTask
-from database.connection import get_db_session
+from core.storage.models import Case, CaseMetrics, CaseSLA, CaseTask
+from core.storage.connection import get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class CaseMetricsService:
                     )
             
             # Count activities
-            from database.models import CaseComment, CaseEvidence, CaseIOC
+            from core.storage.models import CaseComment, CaseEvidence, CaseIOC
             
             metrics.comment_count = session.query(CaseComment).filter(
                 CaseComment.case_id == case_id

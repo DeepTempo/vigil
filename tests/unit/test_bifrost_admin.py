@@ -192,7 +192,7 @@ class _M:
 def _patch_db(monkeypatch, rows):
     fake_db = _FakeDBManager(rows)
     monkeypatch.setattr(
-        "database.connection.get_db_manager",
+        "core.storage.connection.get_db_manager",
         lambda: fake_db,
         raising=False,
     )

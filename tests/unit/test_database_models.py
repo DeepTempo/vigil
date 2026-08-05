@@ -25,17 +25,17 @@ class TestDatabaseMetadataRegistration:
     """Validate that all SQLAlchemy models are registered with Base.metadata.
 
     These tests do NOT require a live database connection; they only check
-    that importing ``database.connection`` causes all model classes to be
+    that importing ``core.storage.connection`` causes all model classes to be
     registered with ``Base.metadata`` (so that ``create_all()`` creates
     every expected table on a fresh install).
     """
 
     def test_integration_configs_in_metadata(self):
         """integration_configs table must be present in Base.metadata.tables."""
-        # Importing database.connection triggers all model imports, which
+        # Importing core.storage.connection triggers all model imports, which
         # registers every model class with Base.metadata.
-        from database.models import Base
-        import database.connection  # noqa: F401 - side-effect import
+        from core.storage.models import Base
+        import core.storage.connection  # noqa: F401 - side-effect import
 
         assert "integration_configs" in Base.metadata.tables, (
             "integration_configs table is missing from Base.metadata — "
@@ -44,8 +44,8 @@ class TestDatabaseMetadataRegistration:
 
     def test_config_audit_log_in_metadata(self):
         """config_audit_log table must be present in Base.metadata.tables."""
-        from database.models import Base
-        import database.connection  # noqa: F401
+        from core.storage.models import Base
+        import core.storage.connection  # noqa: F401
 
         assert "config_audit_log" in Base.metadata.tables, (
             "config_audit_log table is missing from Base.metadata — "
@@ -53,9 +53,9 @@ class TestDatabaseMetadataRegistration:
         )
 
     def test_all_model_tables_in_metadata(self):
-        """Every model subclass defined in database.models must appear in Base.metadata.tables."""
-        from database.models import Base
-        import database.connection  # noqa: F401
+        """Every model subclass defined in core.storage.models must appear in Base.metadata.tables."""
+        from core.storage.models import Base
+        import core.storage.connection  # noqa: F401
 
         expected_tables = {
             "findings",
@@ -109,7 +109,7 @@ class TestUserModel:
 
     def test_create_user(self, db_session):
         """Test creating a user."""
-        from database.models import User
+        from core.storage.models import User
 
         user = User(
             username="analyst@company.com",
@@ -126,7 +126,7 @@ class TestUserModel:
 
     def test_user_unique_email(self, db_session):
         """Test email uniqueness constraint."""
-        from database.models import User
+        from core.storage.models import User
 
         user1 = User(
             username="user1",
@@ -150,7 +150,7 @@ class TestUserModel:
 
     def test_user_roles(self, db_session):
         """Test user role assignment."""
-        from database.models import User
+        from core.storage.models import User
 
         analyst = User(
             username="analyst",
@@ -173,7 +173,7 @@ class TestUserModel:
 
     def test_user_timestamp(self, db_session):
         """Test automatic timestamp creation."""
-        from database.models import User
+        from core.storage.models import User
 
         user = User(
             username="test",
@@ -195,7 +195,7 @@ class TestCaseModel:
 
     def test_create_case(self, db_session):
         """Test creating a case."""
-        from database.models import Case
+        from core.storage.models import Case
 
         case = Case(
             title="Security Incident",
@@ -213,7 +213,7 @@ class TestCaseModel:
 
     def test_case_priority_levels(self, db_session):
         """Test case priority levels."""
-        from database.models import Case
+        from core.storage.models import Case
 
         priorities = ["critical", "high", "medium", "low", "informational"]
 
@@ -233,7 +233,7 @@ class TestCaseModel:
 
     def test_case_status_transitions(self, db_session):
         """Test case status transitions."""
-        from database.models import Case
+        from core.storage.models import Case
 
         case = Case(
             title="Test Case",
@@ -261,7 +261,7 @@ class TestCaseModel:
 
     def test_case_assignee_relationship(self, db_session):
         """Test case-assignee relationship."""
-        from database.models import Case, User
+        from core.storage.models import Case, User
 
         user = User(
             username="analyst",
@@ -290,7 +290,7 @@ class TestFindingModel:
 
     def test_create_finding(self, db_session):
         """Test creating a finding."""
-        from database.models import Finding
+        from core.storage.models import Finding
 
         finding = Finding(
             title="Suspicious Login",
@@ -308,7 +308,7 @@ class TestFindingModel:
 
     def test_finding_case_relationship(self, db_session):
         """Test finding-case relationship."""
-        from database.models import Case, Finding
+        from core.storage.models import Case, Finding
 
         case = Case(
             title="Incident",
@@ -332,7 +332,7 @@ class TestFindingModel:
 
     def test_finding_iocs(self, db_session):
         """Test storing IOCs in finding."""
-        from database.models import Finding
+        from core.storage.models import Finding
 
         finding = Finding(
             title="Malicious Traffic",
@@ -353,7 +353,7 @@ class TestFindingModel:
 
     def test_finding_mitre_mapping(self, db_session):
         """Test MITRE ATT&CK mapping."""
-        from database.models import Finding
+        from core.storage.models import Finding
 
         finding = Finding(
             title="Lateral Movement",
@@ -374,7 +374,7 @@ class TestSLAPolicyModel:
 
     def test_create_sla_policy(self, db_session):
         """Test creating SLA policy."""
-        from database.models import SLAPolicy
+        from core.storage.models import SLAPolicy
 
         policy = SLAPolicy(
             name="Critical Incidents",
@@ -392,7 +392,7 @@ class TestSLAPolicyModel:
 
     def test_sla_policy_by_priority(self, db_session):
         """Test SLA policies for different priorities."""
-        from database.models import SLAPolicy
+        from core.storage.models import SLAPolicy
 
         policies = [
             SLAPolicy(name="Critical", priority="critical", response_time_minutes=15, resolution_time_minutes=240),
@@ -413,7 +413,7 @@ class TestModelRelationships:
 
     def test_case_findings_relationship(self, db_session):
         """Test one-to-many case-findings relationship."""
-        from database.models import Case, Finding
+        from core.storage.models import Case, Finding
 
         case = Case(
             title="Incident",
@@ -433,7 +433,7 @@ class TestModelRelationships:
 
     def test_cascade_delete(self, db_session):
         """Test cascade delete of related records."""
-        from database.models import Case, Finding
+        from core.storage.models import Case, Finding
 
         case = Case(
             title="Test Case",
@@ -462,7 +462,7 @@ class TestModelQueries:
 
     def test_query_open_cases(self, db_session):
         """Test querying open cases."""
-        from database.models import Case
+        from core.storage.models import Case
 
         cases = [
             Case(title="Case 1", priority="high", status="open", severity="high"),
@@ -483,7 +483,7 @@ class TestModelQueries:
 
     def test_query_high_priority_cases(self, db_session):
         """Test querying high priority cases."""
-        from database.models import Case
+        from core.storage.models import Case
 
         cases = [
             Case(title="Case 1", priority="critical", status="open", severity="critical"),
@@ -504,7 +504,7 @@ class TestModelQueries:
 
     def test_query_cases_with_sla_breach(self, db_session):
         """Test querying cases with SLA breach."""
-        from database.models import Case
+        from core.storage.models import Case
 
         old_case = Case(
             title="Old Case",

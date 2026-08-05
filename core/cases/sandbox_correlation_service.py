@@ -25,8 +25,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from database.models import CaseEvidence, CaseIOC
-from database.connection import get_db_session
+from core.storage.models import CaseEvidence, CaseIOC
+from core.storage.connection import get_db_session
 
 logger = logging.getLogger(__name__)
 

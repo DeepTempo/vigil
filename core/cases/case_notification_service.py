@@ -10,8 +10,8 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
-from database.models import CaseNotification, CaseWatcher, Case
-from database.connection import get_db_session
+from core.storage.models import CaseNotification, CaseWatcher, Case
+from core.storage.connection import get_db_session
 
 logger = logging.getLogger(__name__)
 

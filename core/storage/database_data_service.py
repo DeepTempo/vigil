@@ -8,8 +8,8 @@ import uuid
 
 import numpy as np
 
-from database.connection import get_db_manager, init_database
-from database.service import DatabaseService
+from core.storage.connection import get_db_manager, init_database
+from core.storage.service import DatabaseService
 from core.exceptions import DatabaseError
 from core.config import is_demo_mode
 
@@ -626,7 +626,7 @@ class DatabaseDataService:
         """
         try:
             # Load S3 config from database
-            from database.config_service import get_config_service
+            from core.storage.config_service import get_config_service
             from backend.secrets_manager import get_secret
             
             config_service = get_config_service()
@@ -719,7 +719,7 @@ class DatabaseDataService:
         
         try:
             # Load S3 config to get file paths
-            from database.config_service import get_config_service
+            from core.storage.config_service import get_config_service
             config_service = get_config_service()
             s3_config = config_service.get_integration_config('s3')
             

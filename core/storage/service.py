@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import Session
 
-from database.models import (
+from core.storage.models import (
     Case,
     Finding,
     SketchMapping,
@@ -19,7 +19,7 @@ from database.models import (
     case_findings,
     EMBEDDING_DIM,
 )
-from database.connection import get_db_manager
+from core.storage.connection import get_db_manager
 
 logger = logging.getLogger(__name__)
 

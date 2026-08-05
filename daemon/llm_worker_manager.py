@@ -68,8 +68,8 @@ class LLMWorkerManager:
         """Read the orchestrator enabled state from the single
         ``orchestrator.settings`` SystemConfig row."""
         try:
-            from database.connection import get_db_manager
-            from database.models import SystemConfig
+            from core.storage.connection import get_db_manager
+            from core.storage.models import SystemConfig
 
             with get_db_manager().session_scope() as session:
                 cfg = (

@@ -25,7 +25,7 @@ _container_ollama_url() {
 }
 dc() {
     OLLAMA_URL="$(_container_ollama_url)" \
-        "${_DC_CMD[@]}" -f "$REPO_ROOT/docker/docker-compose.yml" "$@"
+        "${_DC_CMD[@]}" -f "$REPO_ROOT/infra/docker/docker-compose.yml" "$@"
 }
 
 # --- Ensure the Docker daemon is reachable, launching Docker Desktop if not ---

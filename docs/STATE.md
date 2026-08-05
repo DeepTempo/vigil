@@ -105,7 +105,7 @@ problem. Instead:
 So the flow is: **UI → secrets_manager → bifrost_admin → Bifrost** in
 one synchronous chain. No container restart needed to rotate a key.
 
-The seed `docker/bifrost/config.json` still references `env.*` for
+The seed `infra/docker/bifrost/config.json` still references `env.*` for
 first-boot provider/model definitions, but the actual key *values* are
 overwritten at runtime.
 

@@ -18,8 +18,8 @@ import pyotp
 from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
 
-from database.models import User, Role
-from database.connection import get_db_session
+from core.storage.models import User, Role
+from core.storage.connection import get_db_session
 
 logger = logging.getLogger(__name__)
 

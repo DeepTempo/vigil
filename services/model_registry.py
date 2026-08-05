@@ -746,8 +746,8 @@ class ModelRegistry:
     def get_component_assignment(self, component: str) -> Optional[ComponentAssignment]:
         """Load a single `ai_model_configs` row. Returns None on cache miss."""
         try:
-            from database.connection import get_db_session
-            from database.models import AIModelConfig
+            from core.storage.connection import get_db_session
+            from core.storage.models import AIModelConfig
         except Exception as exc:  # noqa: BLE001
             logger.debug("AIModelConfig lookup skipped: %s", exc)
             return None
@@ -769,8 +769,8 @@ class ModelRegistry:
     def get_all_assignments(self) -> Dict[str, ComponentAssignment]:
         """Return every configured assignment keyed by component."""
         try:
-            from database.connection import get_db_session
-            from database.models import AIModelConfig
+            from core.storage.connection import get_db_session
+            from core.storage.models import AIModelConfig
         except Exception as exc:  # noqa: BLE001
             logger.debug("AIModelConfig listing skipped: %s", exc)
             return {}
@@ -832,8 +832,8 @@ class ModelRegistry:
 
     def _default_anthropic_provider(self) -> Optional[Dict[str, str]]:
         try:
-            from database.connection import get_db_session
-            from database.models import LLMProviderConfig
+            from core.storage.connection import get_db_session
+            from core.storage.models import LLMProviderConfig
         except Exception:
             return None
         session = get_db_session()
@@ -860,8 +860,8 @@ class ModelRegistry:
         without a live Postgres.
         """
         try:
-            from database.connection import get_db_session
-            from database.models import LLMProviderConfig
+            from core.storage.connection import get_db_session
+            from core.storage.models import LLMProviderConfig
         except Exception as exc:  # noqa: BLE001
             logger.debug("_active_providers: DB unreachable: %s", exc)
             return []

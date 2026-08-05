@@ -803,8 +803,8 @@ class OpenAIAgentService:
     ) -> None:
         """Persist an LLMInteractionLog row (non-fatal, fire-and-forget)."""
         try:
-            from database.connection import get_db_session
-            from database.models import LLMInteractionLog
+            from core.storage.connection import get_db_session
+            from core.storage.models import LLMInteractionLog
 
             session = get_db_session()
             try:

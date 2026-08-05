@@ -20,7 +20,7 @@ import pytest
 
 def _db_available() -> bool:
     try:
-        from database.connection import get_db_manager
+        from core.storage.connection import get_db_manager
 
         m = get_db_manager()
         if m._engine is None:
@@ -52,7 +52,7 @@ pytestmark = [
 @pytest.fixture
 def clean_tables():
     """Wipe the tables we touch before + after each test."""
-    from database.connection import get_db_manager
+    from core.storage.connection import get_db_manager
     from sqlalchemy import text
 
     def _clear():

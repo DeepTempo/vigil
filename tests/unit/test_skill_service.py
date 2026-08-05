@@ -18,7 +18,7 @@ for p in (str(_REPO_ROOT), str(_BACKEND_DIR)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-# Load the service module directly so we don't pull in database.connection's
+# Load the service module directly so we don't pull in core.storage.connection's
 # heavy model graph during unit tests.
 _spec = importlib.util.spec_from_file_location(
     "skill_service_under_test",
@@ -39,7 +39,7 @@ SKILL_ID_RE = re.compile(r"^s-\d{8}-[A-F0-9]{8}$")
 
 @pytest.mark.unit
 def test_skill_id_format():
-    from database.models import Skill
+    from core.storage.models import Skill
 
     for _ in range(5):
         assert SKILL_ID_RE.match(Skill.generate_skill_id())

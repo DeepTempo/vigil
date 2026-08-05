@@ -27,8 +27,8 @@ sys.path.insert(0, str(REPO / "backend"))
 
 from backend.api.llm_providers import router as llm_providers_router
 from backend.middleware.auth import get_current_active_user
-from database.connection import get_db
-from database.models import LLMProviderConfig, User
+from core.storage.connection import get_db
+from core.storage.models import LLMProviderConfig, User
 
 
 pytestmark = pytest.mark.unit

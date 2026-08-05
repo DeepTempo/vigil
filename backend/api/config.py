@@ -16,7 +16,7 @@ from secrets_manager import get_secret, set_secret, delete_secret, get_secrets_m
 
 # Import database config service
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from database.config_service import get_config_service
+from core.storage.config_service import get_config_service
 from services.defaults import DEFAULT_MODEL
 from services.integration_secrets import redact_secrets, secret_fields_for, split_secrets
 
@@ -252,8 +252,8 @@ async def set_claude_config(config: ClaudeConfig):
         # Anthropic default. Best-effort — a DB failure here should NOT
         # block the secret write that already succeeded.
         try:
-            from database.connection import get_db_session
-            from database.models import LLMProviderConfig
+            from core.storage.connection import get_db_session
+            from core.storage.models import LLMProviderConfig
 
             session = get_db_session()
             try:
@@ -419,7 +419,7 @@ async def set_s3_config(config: S3Config):
 
 
 # Maps the form field names exposed in the UI to the secrets-store keys
-# read by ``database.connection._load_platform_db_proxy`` at boot. These
+# read by ``core.storage.connection._load_platform_db_proxy`` at boot. These
 # live in the encrypted secrets store rather than ``SystemConfig`` so
 # they're readable before the metadata DB connection exists.
 _PLATFORM_DB_PROXY_KEYS = {

@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, BinaryIO
 from sqlalchemy.orm import Session
 
-from database.models import CaseEvidence
-from database.connection import get_db_session
+from core.storage.models import CaseEvidence
+from core.storage.connection import get_db_session
 
 logger = logging.getLogger(__name__)
 

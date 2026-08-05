@@ -215,8 +215,8 @@ def upsert_indicators(indicators: List[NormalizedIndicator]) -> Dict[str, int]:
         return {"inserted": 0, "updated": 0, "skipped": 0}
 
     try:
-        from database.connection import get_db_manager
-        from database.models import ThreatIndicator
+        from core.storage.connection import get_db_manager
+        from core.storage.models import ThreatIndicator
     except Exception as e:  # noqa: BLE001
         logger.error("Cannot import DB manager / ThreatIndicator: %s", e)
         return {"inserted": 0, "updated": 0, "skipped": len(indicators)}
@@ -282,8 +282,8 @@ def lookup_indicators(
     if not values:
         return {}
     try:
-        from database.connection import get_db_manager
-        from database.models import ThreatIndicator
+        from core.storage.connection import get_db_manager
+        from core.storage.models import ThreatIndicator
     except Exception as e:  # noqa: BLE001
         logger.debug("ThreatIndicator lookup unavailable: %s", e)
         return {}

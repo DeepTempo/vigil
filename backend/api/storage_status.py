@@ -10,7 +10,7 @@ import threading
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.middleware.auth import get_current_active_user, require_settings_admin
-from database.models import User
+from core.storage.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ def reconnect_database(current_user: User = Depends(get_current_active_user)):
     """
     require_settings_admin(current_user)
 
-    from database.connection import get_db_manager
+    from core.storage.connection import get_db_manager
 
     with _RETARGET_LOCK:
         db_manager = get_db_manager()
@@ -249,7 +249,7 @@ def _schema_message(schema: dict) -> str:
 def _audit_retarget(previous, current, user: User) -> None:
     """Record the target change. Best-effort: never fails the swap."""
     try:
-        from database.config_service import get_config_service
+        from core.storage.config_service import get_config_service
 
         def _target(t):
             return {"host": t.host, "port": t.port, "database": t.database} if t else None
@@ -288,7 +288,7 @@ def init_schema(current_user: User = Depends(get_current_active_user)):
     """
     require_settings_admin(current_user)
 
-    from database.connection import get_db_manager
+    from core.storage.connection import get_db_manager
 
     db_manager = get_db_manager()
     before = db_manager.schema_report()
