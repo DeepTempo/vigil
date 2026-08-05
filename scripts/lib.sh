@@ -81,12 +81,12 @@ service_container() {
 }
 
 # --- Start the host-native Ollama (never containerized: no Metal in Docker) ---
-# Delegates to services/ollama_process.py rather than reimplementing the spawn:
+# Delegates to core/llm/providers/ollama.py rather than reimplementing the spawn:
 # macOS has no `setsid`, and a bare `nohup ... &` leaves Ollama in this script's
 # process group, where Ctrl+C would kill it. Never fatal - Ollama is optional.
 ensure_ollama() {
     PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
-        python3 -m services.ollama_process || \
+        python3 -m core.llm.providers.ollama || \
         echo "Warning: Ollama not started; see logs/ollama.log" >&2
     return 0
 }
