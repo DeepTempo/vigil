@@ -7,7 +7,7 @@ in-cluster Postgres + Redis as a single release.
 ## TL;DR
 
 ```bash
-helm install vigil ./helm/vigil \
+helm install vigil ./infra/helm/vigil \
   --namespace vigil --create-namespace \
   --set secrets.anthropicApiKey=$ANTHROPIC_API_KEY \
   --set secrets.postgresPassword=$(openssl rand -hex 24)
@@ -16,8 +16,8 @@ helm install vigil ./helm/vigil \
 For a dev install with auth bypass:
 
 ```bash
-helm install vigil ./helm/vigil \
-  -f ./helm/vigil/values-dev.yaml \
+helm install vigil ./infra/helm/vigil \
+  -f ./infra/helm/vigil/values-dev.yaml \
   --namespace vigil --create-namespace \
   --set secrets.anthropicApiKey=$ANTHROPIC_API_KEY
 ```
@@ -38,7 +38,7 @@ kubectl port-forward -n vigil svc/vigil-backend 6987:6987
 | `vigil-llm-worker` | Deployment | 2 (default) | ARQ worker for Claude requests off Redis queue |
 | `vigil-postgres` | StatefulSet | 1 | Opt-out via `postgresql.enabled=false` |
 | `vigil-redis` | StatefulSet | 1 | Opt-out via `redis.enabled=false` |
-| `vigil-db-init` | Job (Helm hook) | 1 per install/upgrade | Applies `database/init/*.sql` idempotently |
+| `vigil-db-init` | Job (Helm hook) | 1 per install/upgrade | Applies `infra/database/init/*.sql` idempotently |
 
 ## Required inputs
 
@@ -90,7 +90,7 @@ integration creds you use (`SPLUNK_PASSWORD`, `SLACK_BOT_TOKEN`, …).
 ## Upgrades
 
 ```bash
-helm upgrade vigil ./helm/vigil -n vigil --reuse-values
+helm upgrade vigil ./infra/helm/vigil -n vigil --reuse-values
 ```
 
 The chart's default image tag resolves to `Chart.AppVersion`, which
@@ -101,7 +101,7 @@ to pin to a different tag than the chart's `appVersion` (for example,
 to deploy a `:latest` build for testing):
 
 ```bash
-helm upgrade vigil ./helm/vigil -n vigil --reuse-values \
+helm upgrade vigil ./infra/helm/vigil -n vigil --reuse-values \
   --set backend.image.tag=latest \
   --set daemon.image.tag=latest
 ```
@@ -119,10 +119,10 @@ applied files in a `_vigil_schema_versions` table.
 >
 > ```bash
 > # Helm 3.14+ — reset to new defaults, then layer user overrides on top
-> helm upgrade vigil ./helm/vigil -n vigil --reset-then-reuse-values
+> helm upgrade vigil ./infra/helm/vigil -n vigil --reset-then-reuse-values
 >
 > # Or pass an explicit values file so the new defaults aren't lost
-> helm upgrade vigil ./helm/vigil -n vigil -f my-values.yaml
+> helm upgrade vigil ./infra/helm/vigil -n vigil -f my-values.yaml
 > ```
 >
 > Subsequent upgrades that don't touch `dbInit.sqlFiles` can go back to
@@ -161,27 +161,27 @@ See [docs/HELM.md](../../docs/HELM.md) for end-to-end examples of each.
 
 ```bash
 # Lint
-helm lint helm/vigil
-helm lint helm/vigil -f helm/vigil/values-dev.yaml
+helm lint infra/helm/vigil
+helm lint infra/helm/vigil -f infra/helm/vigil/values-dev.yaml
 
 # Render without applying
-helm template vigil helm/vigil \
+helm template vigil infra/helm/vigil \
   --set secrets.anthropicApiKey=test \
   --set secrets.postgresPassword=test
 
 # Dry-run install
-helm install --dry-run --debug vigil helm/vigil \
+helm install --dry-run --debug vigil infra/helm/vigil \
   --set secrets.anthropicApiKey=test \
   --set secrets.postgresPassword=test
 ```
 
 ### Keeping SQL files in sync
 
-The chart bundles copies of `database/init/*.sql` under
-`helm/vigil/files/database-init/`. CI (`.github/workflows/helm-chart.yml`) will
+The chart bundles copies of `infra/database/init/*.sql` under
+`infra/helm/vigil/files/database-init/`. CI (`.github/workflows/helm-chart.yml`) will
 fail on drift. To sync after adding new init SQL:
 
 ```bash
-cp database/init/*.sql helm/vigil/files/database-init/
+cp infra/database/init/*.sql infra/helm/vigil/files/database-init/
 # then add the new filename to values.yaml -> dbInit.sqlFiles in order
 ```

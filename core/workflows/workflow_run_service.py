@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from database.connection import get_db_manager
-from database.models import WorkflowRun, WorkflowRunPhase
+from core.storage.connection import get_db_manager
+from core.storage.models import WorkflowRun, WorkflowRunPhase
 
 logger = logging.getLogger(__name__)
 

@@ -11,8 +11,8 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
-from database.models import Case, CaseSLA, SLAPolicy, CaseNotification
-from database.connection import get_db_session
+from core.storage.models import Case, CaseSLA, SLAPolicy, CaseNotification
+from core.storage.connection import get_db_session
 
 logger = logging.getLogger(__name__)
 

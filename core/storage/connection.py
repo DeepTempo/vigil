@@ -20,10 +20,10 @@ from sqlalchemy.engine import Engine
 if TYPE_CHECKING:
     from core.storage.db_proxy import ProxyConfig
 
-from database.models import Base
+from core.storage.models import Base
 
 # Import all models to register them with Base.metadata before create_all()
-from database.models import (
+from core.storage.models import (
     Finding,
     Case,
     SketchMapping,

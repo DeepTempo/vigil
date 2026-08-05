@@ -113,7 +113,7 @@ def set_settings(*, default_vk: str, budget_limit_usd: float, enforcement_mode: 
             f"enforcement_mode must be 'warning' or 'hard_stop', got {enforcement_mode!r}"
         )
     try:
-        from database.config_service import get_config_service
+        from core.storage.config_service import get_config_service
 
         get_config_service(user_id="api").set_system_config(
             key=GLOBAL_KEY,
@@ -133,7 +133,7 @@ def set_settings(*, default_vk: str, budget_limit_usd: float, enforcement_mode: 
 
 def _get_settings():
     try:
-        from database.config_service import get_config_service
+        from core.storage.config_service import get_config_service
 
         return get_config_service().get_system_config(GLOBAL_KEY)
     except Exception as e:

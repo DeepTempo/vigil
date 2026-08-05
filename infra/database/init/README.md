@@ -2,7 +2,7 @@
 
 These `*.sql` files are the canonical schema initialization scripts. The
 docker-compose stack reads them directly from this directory; the Helm
-chart reads from a **copy** under `helm/vigil/files/database-init/`
+chart reads from a **copy** under `infra/helm/vigil/files/database-init/`
 (Helm can only load files from inside the chart directory).
 
 ## Execution order — two different rules
@@ -18,9 +18,9 @@ file, you need to satisfy both.
   files your script depends on. (Note: zero-padded prefixes like `003_`
   sort *before* `01_` lexicographically.)
 - **Helm chart** — the `db-init` Job iterates over
-  `helm/vigil/values.yaml`'s `dbInit.sqlFiles` list in the **order
+  `infra/helm/vigil/values.yaml`'s `dbInit.sqlFiles` list in the **order
   written there**. Filename prefixes are decorative for this path; the
-  list is authoritative. Files in `helm/vigil/files/database-init/`
+  list is authoritative. Files in `infra/helm/vigil/files/database-init/`
   that aren't listed are bundled into the ConfigMap but never run.
 
 ## When you add a new init SQL file here
@@ -30,13 +30,13 @@ steps 2 and 3:
 
 1. **Copy the file into the chart bundle**:
    ```bash
-   cp database/init/NEWFILE.sql helm/vigil/files/database-init/
+   cp infra/database/init/NEWFILE.sql infra/helm/vigil/files/database-init/
    ```
    The `Helm Chart / Lint and Template` workflow runs
-   `diff -r database/init helm/vigil/files/database-init` on every PR and
+   `diff -r infra/database/init infra/helm/vigil/files/database-init` on every PR and
    will fail if these two directories drift.
 
-2. **Add the filename to `helm/vigil/values.yaml`** under
+2. **Add the filename to `infra/helm/vigil/values.yaml`** under
    `dbInit.sqlFiles` in the correct position for the Helm execution
    order (see above). Without this step, the chart bundles the file
    into the ConfigMap but the `db-init` Job never runs it — `helm
@@ -49,7 +49,7 @@ steps 2 and 3:
    of which are emitted regardless of whether the file is in
    `dbInit.sqlFiles`, so it will green-light a forgotten step 2:
    ```bash
-   helm template release-check helm/vigil \
+   helm template release-check infra/helm/vigil \
      --set secrets.anthropicApiKey=test \
      --set secrets.postgresPassword=test \
      | grep -E '^[[:space:]]*apply "NEWFILE\.sql"'
@@ -60,7 +60,7 @@ steps 2 and 3:
 
 **Don't name a file `003_add_ai_enrichment.sql` or `003_ai_decision_logs.sql`.**
 
-Earlier versions of `helm/vigil/values.yaml` listed these as ghost
+Earlier versions of `infra/helm/vigil/values.yaml` listed these as ghost
 entries in `dbInit.sqlFiles` — files that didn't exist on disk. The
 chart's `db-init` Job ran psql against them, got "file not found,"
 treated that as a benign warning (it has to, because some real
@@ -80,7 +80,7 @@ Pick any other prefix. The rest of this directory uses two-digit
 
 ## When you modify an existing init SQL file
 
-Same drill — copy the updated file to `helm/vigil/files/database-init/`
+Same drill — copy the updated file to `infra/helm/vigil/files/database-init/`
 so the chart bundle stays in sync. The `diff -r` lint check will fail
 otherwise.
 
@@ -92,7 +92,7 @@ manual three-step process is what we have.
 
 ## See also
 
-- [`helm/vigil/files/database-init/README.md`](../../helm/vigil/files/database-init/README.md)
+- [`infra/helm/vigil/files/database-init/README.md`](../../infra/helm/vigil/files/database-init/README.md)
   — chart-side notes on the same convention.
 - [`.github/workflows/helm-chart.yml`](../../.github/workflows/helm-chart.yml)
   — the CI check that enforces directory parity.

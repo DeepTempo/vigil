@@ -23,8 +23,8 @@ from typing import List, Optional
 
 from sqlalchemy import func, select
 
-from database.connection import get_db_manager
-from database.models import ChatMessage, Conversation
+from core.storage.connection import get_db_manager
+from core.storage.models import ChatMessage, Conversation
 
 logger = logging.getLogger(__name__)
 

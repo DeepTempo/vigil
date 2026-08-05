@@ -30,12 +30,12 @@
         },
         {
           "type": "yaml",
-          "path": "helm/vigil/Chart.yaml",
+          "path": "infra/helm/vigil/Chart.yaml",
           "jsonpath": "$.appVersion"
         },
         {
           "type": "yaml",
-          "path": "helm/vigil/Chart.yaml",
+          "path": "infra/helm/vigil/Chart.yaml",
           "jsonpath": "$.version"
         }
       ]

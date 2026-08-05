@@ -10,8 +10,8 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
-from database.models import CaseComment, CaseWatcher, Case
-from database.connection import get_db_session
+from core.storage.models import CaseComment, CaseWatcher, Case
+from core.storage.connection import get_db_session
 from core.cases.case_notification_service import CaseNotificationService
 
 logger = logging.getLogger(__name__)

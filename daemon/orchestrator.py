@@ -181,8 +181,8 @@ class Orchestrator:
         """Read the enabled state from the single ``orchestrator.settings``
         SystemConfig row (set by the API/UI toggle or the Settings page)."""
         try:
-            from database.connection import get_db_manager
-            from database.models import SystemConfig
+            from core.storage.connection import get_db_manager
+            from core.storage.models import SystemConfig
 
             with get_db_manager().session_scope() as session:
                 cfg = (
@@ -740,8 +740,8 @@ class Orchestrator:
     async def _maybe_trigger_case_review(self, case_id: str):
         """Trigger a case-review agent if one hasn't already run for this case."""
         try:
-            from database.connection import get_db_manager
-            from database.models import Investigation as InvModel
+            from core.storage.connection import get_db_manager
+            from core.storage.models import Investigation as InvModel
 
             with get_db_manager().session_scope() as session:
                 existing = (
@@ -934,8 +934,8 @@ class Orchestrator:
     ):
         """Log a master agent decision to the AIDecisionLog table."""
         try:
-            from database.connection import get_db_manager
-            from database.models import AIDecisionLog, Investigation
+            from core.storage.connection import get_db_manager
+            from core.storage.models import AIDecisionLog, Investigation
 
             with get_db_manager().session_scope() as session:
                 case_id = None
@@ -1076,8 +1076,8 @@ class Orchestrator:
     ):
         """Create a CaseNotification record for the investigation."""
         try:
-            from database.connection import get_db_manager
-            from database.models import CaseNotification, Investigation
+            from core.storage.connection import get_db_manager
+            from core.storage.models import CaseNotification, Investigation
 
             with get_db_manager().session_scope() as session:
                 inv = (
@@ -1155,8 +1155,8 @@ class Orchestrator:
     def _save_investigation(self, inv_record: Dict):
         """Save a new investigation record to the database."""
         try:
-            from database.connection import get_db_manager
-            from database.models import Investigation
+            from core.storage.connection import get_db_manager
+            from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
                 inv = Investigation(
@@ -1187,8 +1187,8 @@ class Orchestrator:
     def _get_investigations_by_status(self, status: str) -> List:
         """Query investigations by status from the database."""
         try:
-            from database.connection import get_db_manager
-            from database.models import Investigation
+            from core.storage.connection import get_db_manager
+            from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
                 results = session.query(Investigation).filter_by(status=status).all()
@@ -1200,8 +1200,8 @@ class Orchestrator:
     def get_all_investigations(self, status: Optional[str] = None) -> List[Dict]:
         """Get all investigations, optionally filtered by status."""
         try:
-            from database.connection import get_db_manager
-            from database.models import Investigation
+            from core.storage.connection import get_db_manager
+            from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
                 query = session.query(Investigation)
@@ -1217,8 +1217,8 @@ class Orchestrator:
 
     def get_investigation(self, inv_id: str) -> Optional[Dict]:
         try:
-            from database.connection import get_db_manager
-            from database.models import Investigation
+            from core.storage.connection import get_db_manager
+            from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
                 inv = (
@@ -1234,8 +1234,8 @@ class Orchestrator:
         self, inv_id: str, status: str, notes: Optional[str] = None
     ):
         try:
-            from database.connection import get_db_manager
-            from database.models import Investigation
+            from core.storage.connection import get_db_manager
+            from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
                 inv = (
@@ -1282,8 +1282,8 @@ class Orchestrator:
 
         deleted = 0
         try:
-            from database.connection import get_db_manager
-            from database.models import Investigation
+            from core.storage.connection import get_db_manager
+            from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
                 deleted = session.query(Investigation).delete(

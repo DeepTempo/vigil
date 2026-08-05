@@ -267,7 +267,7 @@ class AgentRunner:
             try:
                 from sqlalchemy import text
 
-                from database.connection import get_db_manager
+                from core.storage.connection import get_db_manager
 
                 with get_db_manager().session_scope() as session:
                     session.execute(text("SELECT 1"))
@@ -1588,8 +1588,8 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
         activity``.
         """
         try:
-            from database.connection import get_db_manager
-            from database.models import Investigation
+            from core.storage.connection import get_db_manager
+            from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
                 inv = (
@@ -1621,8 +1621,8 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
         audit logging can never break the agent loop. See sub-issue #193.
         """
         try:
-            from database.connection import get_db_manager
-            from database.models import InvestigationLog
+            from core.storage.connection import get_db_manager
+            from core.storage.models import InvestigationLog
 
             db_manager = get_db_manager()
             with db_manager.session_scope() as session:

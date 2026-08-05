@@ -194,7 +194,7 @@ postgresql:
   # through to the subchart (alias: bitnamiPostgresql in Chart.yaml).
   #
   # Prerequisites (ONE-TIME):
-  #   helm dependency update helm/vigil
+  #   helm dependency update infra/helm/vigil
   #
   # See https://artifacthub.io/packages/helm/bitnami/postgresql for the full
   # value schema — anything you add here flows through unchanged.
@@ -263,7 +263,7 @@ redis:
   # in-chart Redis and routes REDIS_URL at the subchart's -master service.
   #
   # Prerequisites (ONE-TIME):
-  #   helm dependency update helm/vigil
+  #   helm dependency update infra/helm/vigil
   #
   # See https://artifacthub.io/packages/helm/bitnami/redis
   bitnami:
@@ -282,7 +282,7 @@ redis:
 # -----------------------------------------------------------------------------
 # Database init Job
 # -----------------------------------------------------------------------------
-# Runs the SQL files under database/init/ in an explicit order to avoid the
+# Runs the SQL files under infra/database/init/ in an explicit order to avoid the
 # 003_* filename collision. Uses helm hooks to run on install + upgrade.
 dbInit:
   enabled: true
@@ -291,7 +291,7 @@ dbInit:
     repository: pgvector/pgvector
     tag: "pg16"
     pullPolicy: IfNotPresent
-  # Explicit ordering — files added under database/init/ will NOT auto-run.
+  # Explicit ordering — files added under infra/database/init/ will NOT auto-run.
   # Update this list when new init SQL lands.
   sqlFiles:
     - 01_init_schema.sql
@@ -628,7 +628,7 @@ extraConfig: {}
 #
 # Prerequisites (ONE-TIME):
 #   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-#   helm dependency update helm/vigil
+#   helm dependency update infra/helm/vigil
 #
 # When enabled, the chart auto-rewrites OTEL_EXPORTER_OTLP_ENDPOINT in the
 # app ConfigMap to the in-cluster Collector service. You still need to flip

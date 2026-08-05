@@ -1,6 +1,6 @@
 # Development overrides for the Vigil SOC chart.
 # Install with:
-#   helm install vigil helm/vigil -f helm/vigil/values-dev.yaml \
+#   helm install vigil infra/helm/vigil -f infra/helm/vigil/values-dev.yaml \
 #     --set secrets.anthropicApiKey=$ANTHROPIC_API_KEY \
 #     -n vigil --create-namespace
 #

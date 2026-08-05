@@ -25,8 +25,8 @@ from secrets_manager import delete_secret, get_secret, set_secret  # noqa: E402
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from backend.middleware.auth import get_current_active_user  # noqa: E402
 from backend.services.auth_service import AuthService  # noqa: E402
-from database.connection import get_db  # noqa: E402
-from database.models import AIModelConfig, LLMProviderConfig, User  # noqa: E402
+from core.storage.connection import get_db  # noqa: E402
+from core.storage.models import AIModelConfig, LLMProviderConfig, User  # noqa: E402
 from services.bifrost_admin import push_provider_key  # noqa: E402
 from core.platform.url_safety import (  # noqa: E402
     UrlSafetyError,

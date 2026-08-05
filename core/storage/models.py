@@ -2759,7 +2759,7 @@ class LLMProviderConfig(Base):
     """LLM provider configuration (Anthropic, OpenAI, Ollama, ...).
 
     Keys are not stored here — `api_key_ref` points to a secrets_manager key.
-    See database/init/09_llm_providers.sql for the table definition.
+    See infra/database/init/09_llm_providers.sql for the table definition.
     """
 
     __tablename__ = "llm_provider_configs"
@@ -2788,7 +2788,7 @@ class LLMProviderConfig(Base):
         Index("idx_llm_provider_active", "is_active"),
         # Partial unique index — enforces "one default per provider_type"
         # for non-Docker deployments too (Base.metadata.create_all path).
-        # Mirrors the SQL in database/init/07_llm_providers.sql.
+        # Mirrors the SQL in infra/database/init/07_llm_providers.sql.
         Index(
             "llm_provider_default_per_type",
             "provider_type",
@@ -2828,7 +2828,7 @@ class AIModelConfig(Base):
     `chat_default` row; if that is missing, callers fall back to the
     default Anthropic provider's default_model.
 
-    See database/init/10_ai_model_configs.sql for the table definition.
+    See infra/database/init/10_ai_model_configs.sql for the table definition.
     """
 
     __tablename__ = "ai_model_configs"
@@ -2868,7 +2868,7 @@ class ThreatIndicator(Base):
 
     Distinct from `CaseIOC` (case-scoped). Polled by `daemon/threat_feed_poller.py`
     and joined against finding IOCs during enrichment in `daemon/processor.py`.
-    See `database/init/14_threat_indicators.sql`.
+    See `infra/database/init/14_threat_indicators.sql`.
     """
 
     __tablename__ = "threat_indicators"

@@ -260,7 +260,7 @@ class DaemonConfig:
 
         # Override with DB-persisted settings (set via Settings UI)
         try:
-            from database.config_service import get_config_service
+            from core.storage.config_service import get_config_service
             config_service = get_config_service()
             db_config = config_service.get_system_config('orchestrator.settings')
             if db_config and isinstance(db_config, dict):
@@ -323,7 +323,7 @@ class DaemonConfig:
 
         # Kafka: merge non-secret DB settings on top of env defaults
         try:
-            from database.config_service import get_config_service
+            from core.storage.config_service import get_config_service
             config_service = get_config_service()
             kafka_db = config_service.get_system_config('kafka.settings')
             if kafka_db and isinstance(kafka_db, dict):

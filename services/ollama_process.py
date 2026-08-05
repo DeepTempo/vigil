@@ -206,7 +206,7 @@ def _sync_bifrost() -> dict:
     """Push the freshly-reachable Ollama catalog into Bifrost's live config.
 
     Starting Ollama alone accomplishes nothing user-visible: LLM traffic is
-    dispatched through Bifrost, and ``docker/bifrost/config.json`` is only a
+    dispatched through Bifrost, and ``infra/docker/bifrost/config.json`` is only a
     first-boot seed (live config lives in Bifrost's SQLite). Without this the
     button "succeeds" and no Ollama model is selectable.
 

@@ -354,7 +354,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
 
             # Fallback: pick up keys saved by the LLM Providers UI. Lazy
             # import keeps the legacy/no-DB code path (and the unit tests
-            # that pre-date this fallback) working when database.connection
+            # that pre-date this fallback) working when core.storage.connection
             # isn't importable.
             if not self.api_key:
                 try:
@@ -1208,8 +1208,8 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
         so persistence can never break the request path.
         """
         try:
-            from database.connection import get_db_manager
-            from database.models import LLMInteractionLog
+            from core.storage.connection import get_db_manager
+            from core.storage.models import LLMInteractionLog
 
             blocks = self._serialize_response_blocks(response_content or [])
             thinking_text = "\n\n".join(

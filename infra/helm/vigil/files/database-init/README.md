@@ -1,12 +1,12 @@
 # Database init SQL — chart copy
 
-These SQL files are **copies** of `database/init/*.sql` at the repo root.
+These SQL files are **copies** of `infra/database/init/*.sql` at the repo root.
 Helm charts can only read files inside the chart directory, so the init SQL has
 to live here for the `db-init` Job's ConfigMap to pick it up.
 
-When a new init SQL file lands under `database/init/`:
+When a new init SQL file lands under `infra/database/init/`:
 
-1. Copy it here: `cp database/init/NEWFILE.sql helm/vigil/files/database-init/`
+1. Copy it here: `cp infra/database/init/NEWFILE.sql infra/helm/vigil/files/database-init/`
 2. Add its filename to `values.yaml` under `dbInit.sqlFiles` **in the order
    it should execute** — for the chart path, the list order is authoritative
    and filename prefixes are decorative (this differs from the docker-compose
@@ -34,9 +34,9 @@ Two failure modes to know about:
   verification grep in step 3 is the only check that catches this.
 
 The CI check at `.github/workflows/helm-chart.yml` runs
-`diff -r database/init helm/vigil/files/database-init` and fails on
+`diff -r infra/database/init infra/helm/vigil/files/database-init` and fails on
 directory drift between the source and the bundle, but doesn't check
 either against `dbInit.sqlFiles`.
 
-See also: [`database/init/README.md`](../../../../database/init/README.md)
+See also: [`infra/database/init/README.md`](../../../../database/init/README.md)
 for the same convention from the source side.

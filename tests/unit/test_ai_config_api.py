@@ -21,8 +21,8 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "backend"))
 
 from backend.api.ai_config import router as ai_config_router  # noqa: E402
-from database.connection import get_db  # noqa: E402
-from database.models import AIModelConfig, LLMProviderConfig  # noqa: E402
+from core.storage.connection import get_db  # noqa: E402
+from core.storage.models import AIModelConfig, LLMProviderConfig  # noqa: E402
 from services.model_registry import ModelInfo  # noqa: E402
 
 pytestmark = pytest.mark.unit

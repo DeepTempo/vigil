@@ -91,8 +91,8 @@ async def get_mttr(
     Returns:
         MTTR metrics by priority and trend data
     """
-    from database.connection import get_db_session
-    from database.models import Case, CaseMetrics
+    from core.storage.connection import get_db_session
+    from core.storage.models import Case, CaseMetrics
     from collections import defaultdict
     
     session = get_db_session()
@@ -255,8 +255,8 @@ async def get_mttd(
     Returns:
         MTTD metrics by priority
     """
-    from database.connection import get_db_session
-    from database.models import Case, CaseMetrics
+    from core.storage.connection import get_db_session
+    from core.storage.models import Case, CaseMetrics
     from sqlalchemy import and_
     
     session = get_db_session()
@@ -323,8 +323,8 @@ async def get_by_priority(
     Returns:
         Case counts broken down by priority
     """
-    from database.connection import get_db_session
-    from database.models import Case
+    from core.storage.connection import get_db_session
+    from core.storage.models import Case
     
     session = get_db_session()
     try:
@@ -380,8 +380,8 @@ async def get_by_status(
     Returns:
         Case counts broken down by status
     """
-    from database.connection import get_db_session
-    from database.models import Case
+    from core.storage.connection import get_db_session
+    from core.storage.models import Case
     
     session = get_db_session()
     try:
@@ -429,8 +429,8 @@ async def get_all_analyst_performance(
     Returns:
         Performance metrics for all analysts
     """
-    from database.connection import get_db_session
-    from database.models import Case, CaseMetrics
+    from core.storage.connection import get_db_session
+    from core.storage.models import Case, CaseMetrics
     
     session = get_db_session()
     try:

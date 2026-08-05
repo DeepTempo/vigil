@@ -88,8 +88,8 @@ class IngestionService:
         """Initialize the ingestion service."""
         # Import here to avoid circular dependencies
         try:
-            from database.service import DatabaseService
-            from database.connection import get_db_manager
+            from core.storage.service import DatabaseService
+            from core.storage.connection import get_db_manager
             
             db_manager = get_db_manager()
             if db_manager.health_check():

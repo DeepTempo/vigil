@@ -2,7 +2,7 @@
 
 import pytest
 
-from database.connection import DatabaseConfig, parse_connection_string
+from core.storage.connection import DatabaseConfig, parse_connection_string
 
 pytestmark = [pytest.mark.unit, pytest.mark.database]
 

@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.middleware.auth import get_current_active_user, require_settings_admin
-from database.models import User
+from core.storage.models import User
 from core.platform import service_manager
 from core.platform.autostart_config import get_autostart_services, set_autostart_services
 from core.platform.service_manager import SERVICES, ActionResult, ServiceStatus

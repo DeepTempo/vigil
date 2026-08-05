@@ -51,8 +51,8 @@ def _p95(values: List[int]) -> int:
 def _fetch_rows(days: int) -> List[Dict]:
     """Pull the last ``days`` of LLMInteractionLog rows. Returns simple
     dicts so the caller doesn't need SQLAlchemy loaded."""
-    from database.connection import get_session
-    from database.models import LLMInteractionLog
+    from core.storage.connection import get_session
+    from core.storage.models import LLMInteractionLog
 
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     with get_session() as session:

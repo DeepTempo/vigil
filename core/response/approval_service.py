@@ -25,9 +25,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from database.config_service import get_config_service
-from database.connection import get_db_manager
-from database.models import ApprovalAction as ApprovalActionRow
+from core.storage.config_service import get_config_service
+from core.storage.connection import get_db_manager
+from core.storage.models import ApprovalAction as ApprovalActionRow
 
 logger = logging.getLogger(__name__)
 

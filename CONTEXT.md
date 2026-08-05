@@ -49,9 +49,12 @@ conversations; page-extension session tokens and origin trust.
 ### Shared-infrastructure tier
 
 **Storage** (`storage`):
-How Vigil persists and reads *its own* data — the metadata DB data-access layer,
-the S3 object-store client, and DB/connection proxies. A capability domain may
-depend on `storage`; `storage` depends on no capability domain.
+How Vigil persists and reads *its own* data — the full metadata-DB layer (ORM
+`models`, the engine/session in `connection`, `DatabaseService`, the DB-backed
+`config_service`), the higher-level data-access layer, DB/connection proxies, and
+the S3 object-store client. A capability domain may depend on `storage`;
+`storage` depends on no capability domain. There is **no** top-level `database/`
+Python package and **no** `core/platform/db/` — all DB code lives here.
 
 **Platform** (`platform`):
 Process/config/runtime plumbing — local service orchestration, autostart config,
@@ -80,3 +83,11 @@ file belongs here only if it's runtime plumbing with no owning capability.
 - **`s3_service`: ingestion or storage?** Its purpose is sourcing findings, but
   `storage`'s own data-access layer depends on it. Resolved: **storage** (an
   object-store client), so the layering isn't inverted.
+- **DB code: `platform/db/` or `storage`?** REARCHITECTURE §7 routed the
+  remaining top-level `database/*.py` (models, connection, service,
+  config_service) to `core/platform/db/`. Resolved (R6, epic #481): they join
+  **`core/storage/`** — storage already owned the data-access layer + `db_proxy`,
+  and a `platform/db/` split would only relocate the cross-domain reach
+  (`core/storage/database_data_service` → top-level `database`) instead of killing
+  it. No `core/platform/db/`; the top-level `database/` package is retired and its
+  SQL moves to `infra/database/init/`.

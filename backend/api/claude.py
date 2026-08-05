@@ -19,7 +19,7 @@ import base64
 
 from backend.middleware.auth import get_current_user
 from backend.schemas.system_prompt import validate_system_prompt
-from database.models import User
+from core.storage.models import User
 from services.claude_service import ClaudeService
 from services.defaults import DEFAULT_MODEL
 from services.model_registry import get_registry

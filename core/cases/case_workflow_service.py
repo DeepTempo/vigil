@@ -11,10 +11,10 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
-from database.models import (
+from core.storage.models import (
     Case, CaseTemplate, CaseTask, SLAPolicy, CaseSLA
 )
-from database.connection import get_db_session
+from core.storage.connection import get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +257,7 @@ class CaseWorkflowService:
             
             # Attach findings if provided
             if finding_ids:
-                from database.models import Finding
+                from core.storage.models import Finding
                 for finding_id in finding_ids:
                     finding = session.query(Finding).filter(
                         Finding.finding_id == finding_id
@@ -447,7 +447,7 @@ class CaseWorkflowService:
             session = get_db_session()
         
         try:
-            from database.models import CaseEscalation
+            from core.storage.models import CaseEscalation
             
             case = session.query(Case).filter(Case.case_id == case_id).first()
             if not case:

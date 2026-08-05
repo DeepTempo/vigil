@@ -10,8 +10,8 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, text
 
-from database.models import Case, CaseComment, CaseEvidence, CaseIOC
-from database.connection import get_db_session
+from core.storage.models import Case, CaseComment, CaseEvidence, CaseIOC
+from core.storage.connection import get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class CaseSearchService:
             
             # SLA breach filter
             if has_sla_breach is not None:
-                from database.models import CaseSLA
+                from core.storage.models import CaseSLA
                 if has_sla_breach:
                     query = query.join(CaseSLA).filter(CaseSLA.breached == True)
                 else:

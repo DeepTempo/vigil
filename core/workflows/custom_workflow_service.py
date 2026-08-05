@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 
-from database.connection import get_db_manager
-from database.models import CustomWorkflow
+from core.storage.connection import get_db_manager
+from core.storage.models import CustomWorkflow
 
 logger = logging.getLogger(__name__)
 
