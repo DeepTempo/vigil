@@ -31,7 +31,6 @@ vigil/
 │   ├── middleware/       # Auth middleware
 │   └── schemas/          # Pydantic request/response schemas
 ├── services/             # 70+ business logic service classes
-│   ├── claude_service.py # Central AI orchestration (largest file ~124KB)
 │   ├── mcp_service.py    # MCP server coordination
 │   └── case_*_service.py # Case lifecycle services
 ├── daemon/               # Autonomous 24/7 SOC background process
@@ -58,6 +57,7 @@ vigil/
 ├── database/
 │   └── init/             # PostgreSQL init SQL (docker-compose: lex order by filename; Helm: values.yaml dbInit.sqlFiles)
 ├── core/                 # Config, secrets, rate limiting, agent definitions (agents/)
+│   └── llm/              # The LLM layer: router/, harness/, providers/, cost/ — see core/llm/README.md
 ├── data/                 # Schemas, MITRE taxonomy, detection registry
 ├── tests/                # pytest + vitest test suites
 ├── docs/                 # Detailed documentation
@@ -332,7 +332,7 @@ Register in `backend/main.py`.
 ### New Agent
 
 1. Add the agent record in `core/agents/builtins.py` (prompt text lives in `core/agents/prompts.py`)
-2. Wire agent invocation in `services/claude_service.py`
+2. Wire agent invocation in `core/llm/harness/claude.py`
 3. Expose via `backend/api/agents.py`
 4. Document in `docs/AGENTS.md`
 
@@ -380,7 +380,7 @@ All CI checks must pass before merging.
 | File | Purpose |
 |------|---------|
 | `backend/main.py` | FastAPI app, all router registrations |
-| `services/claude_service.py` | Central AI/agent orchestration (~124KB) |
+| `core/llm/harness/claude.py` | Central AI/agent orchestration (~124KB) |
 | `core/agents/` | Agent records (`builtins.py`), prompt assembly (`prompts.py`), runtime manager (`manager.py`) |
 | `services/mcp_service.py` | MCP protocol coordination |
 | `database/init/` | Schema SQL — see Database section for the add/modify checklist |

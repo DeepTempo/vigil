@@ -29,7 +29,7 @@ GLOBAL_KEY = "bifrost.virtual_keys"
 
 
 # ---------------------------------------------------------------------------
-# Typed exception — surfaces from llm_router when Bifrost returns 429/402
+# Typed exception — surfaces from router/router.py when Bifrost returns 429/402
 # ---------------------------------------------------------------------------
 
 

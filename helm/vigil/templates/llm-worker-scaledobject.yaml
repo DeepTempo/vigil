@@ -1,7 +1,7 @@
 {{- if and .Values.llmWorker.enabled .Values.llmWorker.autoscaling.keda.enabled }}
 {{- /*
 KEDA ScaledObject for llm-worker. Scales the Deployment based on the
-depth of the ARQ Redis list (queue_name "arq:llm", see services/llm_gateway.py:24).
+depth of the ARQ Redis list (queue_name "arq:llm", see core/llm/gateway/gateway.py:27).
 
 Mutually exclusive with the CPU HPA: when keda.enabled=true, the CPU HPA
 template is suppressed — KEDA manages its own HPA under the hood.

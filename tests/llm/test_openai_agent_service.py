@@ -1,4 +1,4 @@
-"""Unit tests for the OpenAI-format agent loop (services/openai_agent_service.py).
+"""Unit tests for the OpenAI-format agent loop (core/llm/harness/openai.py).
 
 Covers the schema converter, loop-detection signature canonicalization, and the
 streaming tool loop (tool-call, error flag, malformed tool call) with a mocked

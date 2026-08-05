@@ -48,7 +48,7 @@ def build_thinking_kwargs(model: str, budget: Optional[int]) -> Dict[str, Any]:
     """Build the messages.create/stream kwargs that enable extended thinking.
 
     Two model families need different shapes, and the Bifrost gateway that all
-    Anthropic traffic routes through (``services/llm_clients.py``) constrains
+    Anthropic traffic routes through (``core/llm/providers/clients.py``) constrains
     what we can send:
 
     * **Adaptive-only models** (Opus 4.7/4.8, Fable 5, Mythos) reject

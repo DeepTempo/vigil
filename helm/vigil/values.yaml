@@ -134,7 +134,7 @@ llmWorker:
       cooldownPeriod: 300
       # How often KEDA polls Redis for the queue depth.
       pollingInterval: 15
-      # ARQ default queue name for the Vigil llm-worker (see services/llm_gateway.py).
+      # ARQ default queue name for the Vigil llm-worker (see core/llm/gateway/gateway.py).
       queueName: "arq:llm"
       # KEDA scales one replica per listLength items queued.
       listLength: "5"

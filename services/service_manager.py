@@ -116,7 +116,7 @@ SERVICES: Dict[str, ServiceSpec] = {
         description="OpenTelemetry collector",
     ),
     # Host-native (Docker on macOS has no Metal passthrough, so a container
-    # would be CPU-only). Never stopped: see services/ollama_process.py.
+    # would be CPU-only). Never stopped: see core/llm/providers/ollama.py.
     "ollama": ServiceSpec(
         "ollama",
         None,
