@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 
 from daemon.config import KafkaConfig
 from daemon.dedup import RedisDedupSet
-from services.kafka_consumer_service import KafkaConsumerService
+from core.ingestion.kafka_consumer_service import KafkaConsumerService
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class KafkaIngestor:
     def _sync_config_from_db(self) -> None:
         """Re-read ``kafka.settings`` from SystemConfig (non-secret fields only)."""
         try:
-            from database.config_service import get_config_service
+            from core.storage.config_service import get_config_service
 
             db_cfg = get_config_service().get_system_config("kafka.settings")
             if not db_cfg or not isinstance(db_cfg, dict):

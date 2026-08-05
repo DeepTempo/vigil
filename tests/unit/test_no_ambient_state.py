@@ -30,8 +30,8 @@ SINGLETON_ALLOWED = {
     ("backend/api/custom_agents.py", "service"),
     ("backend/api/findings.py", "data_service"),
     ("backend/api/vstrike.py", "data_service"),
-    ("services/case_automation_service.py", "automation_service"),
-    ("services/ingestion_jobs.py", "_registry"),
+    ("core/cases/case_automation_service.py", "automation_service"),
+    ("core/ingestion/ingestion_jobs.py", "_registry"),
 }
 
 

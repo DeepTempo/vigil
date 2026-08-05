@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from backend.services.auth_cookies import ACCESS_COOKIE_NAME
 from backend.services.auth_service import AuthService
 from backend.services.token_blacklist import is_token_revoked
-from database.models import User
-from database.connection import get_db, get_db_session
+from core.storage.models import User
+from core.storage.connection import get_db, get_db_session
 
 from core.config import get_settings
 
@@ -50,7 +50,7 @@ def _get_dev_user(session: Session) -> User:
 
         # If no admin, create a mock user object (won't be persisted)
         if _dev_user is None:
-            from database.models import Role
+            from core.storage.models import Role
             import uuid
 
             # Try to get admin role
@@ -326,7 +326,7 @@ def require_role(role_name: str):
             session: Session = Depends(get_db),
             **kwargs,
         ):
-            from database.models import Role
+            from core.storage.models import Role
 
             # Get user's role
             role = (

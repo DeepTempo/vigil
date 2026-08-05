@@ -55,13 +55,14 @@ vigil/
 ├── tools/                # MCP tool implementations (15+ integrations)
 ├── mcp-servers/          # Git submodule: MCP server implementations
 ├── deeptempo-core/       # Git submodule: core AI/detection library
-├── database/
-│   └── init/             # PostgreSQL init SQL (docker-compose: lex order by filename; Helm: values.yaml dbInit.sqlFiles)
-├── core/                 # Config, secrets, rate limiting, agent definitions (agents/)
+├── core/                 # Config, secrets, rate limiting, agent definitions (agents/); storage/ holds the DB layer (models, connection, service)
 ├── data/                 # Schemas, MITRE taxonomy, detection registry
 ├── tests/                # pytest + vitest test suites
 ├── docs/                 # Detailed documentation
-├── docker/               # docker-compose.yml + Dockerfiles
+├── infra/                # Deploy machinery (was docker/ + helm/ + database/init/)
+│   ├── docker/           # docker-compose.yml + Dockerfiles
+│   ├── helm/             # Helm chart (vigil/)
+│   └── database/init/    # PostgreSQL init SQL (docker-compose: lex order by filename; Helm: values.yaml dbInit.sqlFiles)
 ├── scripts/              # Init and utility shell scripts
 ├── mcp-config.json       # 30+ MCP server definitions
 └── env.example           # Template for all 220+ environment variables
@@ -83,7 +84,7 @@ cd vigil
 
 ```bash
 # 1. Start infrastructure
-cd docker && docker compose up -d postgres redis
+cd infra/docker && docker compose up -d postgres redis
 
 # 2. Backend (from repo root)
 source venv/bin/activate
@@ -226,21 +227,21 @@ Agents access external tools through the MCP protocol. Tool definitions live in 
 
 ### Database
 
-- PostgreSQL 16 via SQLAlchemy ORM (`services/models.py`)
-- Schema initialized by `database/init/` SQL files. **Execution order
+- PostgreSQL 16 via SQLAlchemy ORM (`core/storage/models.py`)
+- Schema initialized by `infra/database/init/` SQL files. **Execution order
   differs by deploy path:** docker-compose mounts the directory at
   `/docker-entrypoint-initdb.d`, where Postgres runs files in
   **lexicographic filename order** (the `01_`/`04_`/…/`16_` prefixes
   are authoritative there). The Helm chart, by contrast, iterates
-  `helm/vigil/values.yaml`'s `dbInit.sqlFiles` list in the **order
+  `infra/helm/vigil/values.yaml`'s `dbInit.sqlFiles` list in the **order
   written there** — prefixes are decorative for the chart path
 - pgvector extension for embeddings
-- Use `services/database_data_service.py` for data access — do not query the DB directly from API handlers
+- Use `core/storage/database_data_service.py` for data access — do not query the DB directly from API handlers
 
-**When adding or modifying an init SQL file under `database/init/`:** the
-chart bundles a *copy* under `helm/vigil/files/database-init/` (Helm can
+**When adding or modifying an init SQL file under `infra/database/init/`:** the
+chart bundles a *copy* under `infra/helm/vigil/files/database-init/` (Helm can
 only read files inside the chart directory). You must (1) copy the file
-into the chart bundle, (2) add it to `helm/vigil/values.yaml`
+into the chart bundle, (2) add it to `infra/helm/vigil/values.yaml`
 `dbInit.sqlFiles` in the correct execution order, and (3) verify with
 `helm template ... | grep -E '^[[:space:]]*apply "NEWFILE\.sql"'` that
 the dbInit Job script applies it (a bare `grep NEWFILE.sql` false-matches
@@ -253,14 +254,14 @@ filename already has a row in `_vigil_schema_versions`, in which case
 it SKIPs as already-applied (the marker-table check runs before the
 file-existence check, so legacy `003_*` ghost rows on v0.1.x upgrades
 don't break `helm upgrade --reuse-values`). See
-[`database/init/README.md`](database/init/README.md), which also lists
+[`infra/database/init/README.md`](infra/database/init/README.md), which also lists
 two filenames that are reserved and must never be reused.
 
 ### Authentication
 
 - `DEV_MODE=true` (default) bypasses all auth — use for local development
 - Production uses JWT tokens via `backend/api/auth.py` + `backend/middleware/`
-- RBAC is implemented in `database/init/06_auth_tables.sql`
+- RBAC is implemented in `infra/database/init/06_auth_tables.sql`
 
 ### Daemon / Autonomous Mode
 
@@ -383,10 +384,10 @@ All CI checks must pass before merging.
 | `services/claude_service.py` | Central AI/agent orchestration (~124KB) |
 | `core/agents/` | Agent records (`builtins.py`), prompt assembly (`prompts.py`), runtime manager (`manager.py`) |
 | `services/mcp_service.py` | MCP protocol coordination |
-| `database/init/` | Schema SQL — see Database section for the add/modify checklist |
+| `infra/database/init/` | Schema SQL — see Database section for the add/modify checklist |
 | `mcp-config.json` | All MCP server definitions |
 | `env.example` | Every supported environment variable |
-| `docker/docker-compose.yml` | Full local stack definition |
+| `infra/docker/docker-compose.yml` | Full local stack definition |
 | `docs/AGENTS.md` | Agent reference |
 | `docs/INTEGRATIONS.md` | Integration/MCP reference |
 | `DEV_MODE.md` | Development auth bypass details |
@@ -425,4 +426,4 @@ repo root tries to collect and fails on. Scope your runs the way CI does
 - `DEV_MODE=true` disables all auth — **never enable in production**
 - Default PostgreSQL password in `docker-compose.yml` must be changed for production
 - Bandit runs in CI to catch common Python security issues
-- MCP tool calls that perform actions (host isolation, firewall rules) require approval workflow by default — see `services/approval_service.py`
+- MCP tool calls that perform actions (host isolation, firewall rules) require approval workflow by default — see `core/response/approval_service.py`

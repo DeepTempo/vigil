@@ -1,6 +1,6 @@
 # Standalone stack: every service runs from a published image, so the app needs
 # no source tree, venv, Python or Node — only Docker. Mirrors
-# docker/docker-compose.yml minus the build: contexts and the dev-only services.
+# infra/docker/docker-compose.yml minus the build: contexts and the dev-only services.
 #
 # Its own project name and unnamed containers keep it isolated from a dev stack
 # (project "docker", containers deeptempo-*) so both can coexist on one machine.

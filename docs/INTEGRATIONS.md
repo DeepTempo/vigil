@@ -499,7 +499,7 @@ keys (`src_ip`, `hostname`, etc.) are never clobbered.
 When `auto_cluster_cases: true` (default), the ingest handler groups
 upserted findings by `(segment, attack_path[0] or asset_id)` and creates
 one case per group via
-`services.case_automation_service.cluster_findings_by_attack_path`.
+`core.cases.case_automation_service.cluster_findings_by_attack_path`.
 
 ### Authentication
 

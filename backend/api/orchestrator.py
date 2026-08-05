@@ -73,7 +73,7 @@ async def get_orchestrator_status():
         # See services/config_service and backend/api/config.py.
         enabled = False
         try:
-            from database.config_service import get_config_service
+            from core.storage.config_service import get_config_service
             settings = get_config_service().get_system_config('orchestrator.settings')
             if isinstance(settings, dict):
                 enabled = bool(settings.get("enabled", False))
@@ -88,7 +88,7 @@ async def get_orchestrator_status():
         
         max_agents = 3
         try:
-            from database.config_service import get_config_service
+            from core.storage.config_service import get_config_service
             orch_cfg = get_config_service().get_system_config('orchestrator.settings')
             if orch_cfg and isinstance(orch_cfg, dict):
                 max_agents = int(orch_cfg.get('max_concurrent_agents', 3))
@@ -121,7 +121,7 @@ def _persist_orchestrator_enabled(enabled: bool) -> None:
     defaults defined in backend/api/config.py.
     """
     try:
-        from database.config_service import get_config_service
+        from core.storage.config_service import get_config_service
         from backend.api.config import ORCHESTRATOR_DEFAULTS
 
         svc = get_config_service(user_id='web_ui')
@@ -363,8 +363,8 @@ async def review_investigation(investigation_id: str, request: ReviewRequest):
         new_status = "completed" if request.action == "approve" else "needs_rework"
         orch._update_investigation_status(investigation_id, new_status, request.notes)
 
-        from database.connection import get_db_manager
-        from database.models import Investigation as InvestigationModel
+        from core.storage.connection import get_db_manager
+        from core.storage.models import Investigation as InvestigationModel
 
         with get_db_manager().session_scope() as session:
             db_inv = session.query(InvestigationModel).filter_by(investigation_id=investigation_id).first()
@@ -434,8 +434,8 @@ async def scan_existing_findings(request: ScanFindingsRequest):
     setting -- investigations are queued and picked up as agent slots open.
     """
     try:
-        from database.connection import get_db_manager
-        from database.models import Finding, Investigation
+        from core.storage.connection import get_db_manager
+        from core.storage.models import Finding, Investigation
 
         skipped_existing = 0
 
@@ -528,8 +528,8 @@ def _assemble_chain_of_custody(investigation_id: str) -> Dict[str, Any]:
     Queries the DB for investigation metadata, InvestigationLog rows,
     LLMInteractionLog rows, and reads selected workdir files.
     """
-    from database.connection import get_db_manager
-    from database.models import Investigation, InvestigationLog, LLMInteractionLog
+    from core.storage.connection import get_db_manager
+    from core.storage.models import Investigation, InvestigationLog, LLMInteractionLog
 
     db_manager = get_db_manager()
     result: Dict[str, Any] = {

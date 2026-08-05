@@ -144,7 +144,7 @@ Auth bypass is enabled by default (`DEV_MODE=true`) for quick development. Full 
 - **Node.js 18+** (for frontend)
 - **Docker Desktop** (must be running — used for PostgreSQL)
 - **Git** (with submodule support)
-- An LLM provider key. Vigil supports Anthropic Claude (default), OpenAI, and Ollama (local) — configure providers in Settings → AI Config. See [`docker/bifrost/README.md`](docker/bifrost/README.md) for the multi-provider gateway. *(optional for initial testing)*
+- An LLM provider key. Vigil supports Anthropic Claude (default), OpenAI, and Ollama (local) — configure providers in Settings → AI Config. See [`infra/docker/bifrost/README.md`](infra/docker/bifrost/README.md) for the multi-provider gateway. *(optional for initial testing)*
 
 ### Default Login Credentials
 
@@ -188,10 +188,10 @@ cd ..
 
 ### Install on Kubernetes
 
-A production-style Helm chart lives at [`helm/vigil/`](helm/vigil/):
+A production-style Helm chart lives at [`infra/helm/vigil/`](infra/helm/vigil/):
 
 ```bash
-helm install vigil ./helm/vigil \
+helm install vigil ./infra/helm/vigil \
   --namespace vigil --create-namespace \
   --set secrets.anthropicApiKey="$ANTHROPIC_API_KEY" \
   --set secrets.postgresPassword="$(openssl rand -hex 24)" \

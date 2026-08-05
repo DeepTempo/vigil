@@ -618,8 +618,8 @@ def provider_spec_from_row(row) -> ProviderSpec:
 
 def get_provider_spec(provider_id: Optional[str]) -> Optional[ProviderSpec]:
     try:
-        from database.connection import get_db_session
-        from database.models import LLMProviderConfig
+        from core.storage.connection import get_db_session
+        from core.storage.models import LLMProviderConfig
     except Exception as exc:
         logger.debug("provider spec DB lookup skipped: %s", exc)
         return None
@@ -646,8 +646,8 @@ def get_provider_spec(provider_id: Optional[str]) -> Optional[ProviderSpec]:
 
 def get_default_provider_spec() -> Optional[ProviderSpec]:
     try:
-        from database.connection import get_db_session
-        from database.models import LLMProviderConfig
+        from core.storage.connection import get_db_session
+        from core.storage.models import LLMProviderConfig
     except Exception as exc:  # noqa: BLE001
         logger.debug("default provider spec DB lookup skipped: %s", exc)
         return None
@@ -707,8 +707,8 @@ def discover_anthropic_api_key() -> Optional[str]:
     if get_secret is None:
         return None
     try:
-        from database.connection import get_db_session
-        from database.models import LLMProviderConfig
+        from core.storage.connection import get_db_session
+        from core.storage.models import LLMProviderConfig
     except Exception as exc:  # noqa: BLE001
         logger.debug("anthropic key discovery: DB unavailable (%s)", exc)
         return None

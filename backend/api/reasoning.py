@@ -5,8 +5,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select, func
 
-from database.connection import get_db_manager
-from database.models import LLMInteractionLog
+from core.storage.connection import get_db_manager
+from core.storage.models import LLMInteractionLog
 
 logger = logging.getLogger(__name__)
 

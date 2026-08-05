@@ -36,7 +36,7 @@ router = APIRouter()
 def _get_settings() -> Dict[str, Any]:
     """Read darktrace.settings from system_config (DB). Falls back to env vars."""
     try:
-        from database.config_service import get_config_service
+        from core.storage.config_service import get_config_service
         value = get_config_service().get_system_config("darktrace.settings") or {}
         if value:
             return value

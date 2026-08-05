@@ -1,4 +1,4 @@
-"""Unit tests for services.sandbox_correlation_service normalisation helpers.
+"""Unit tests for core.cases.sandbox_correlation_service normalisation helpers.
 
 The DB-writing path (``SandboxCorrelationService.attach_report``) is
 integration-only — these tests cover the pure helpers that don't need a
@@ -7,7 +7,7 @@ live database.
 
 import pytest
 
-from services.sandbox_correlation_service import (
+from core.cases.sandbox_correlation_service import (
     _cape_verdict,
     _iter_iocs,
     _normalise_cape,

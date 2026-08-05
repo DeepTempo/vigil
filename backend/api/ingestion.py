@@ -19,15 +19,15 @@ from pathlib import Path
 from starlette.concurrency import run_in_threadpool
 import tempfile
 
-from services.ingestion_service import IngestionService
-from services.ingestion_jobs import (
+from core.ingestion.ingestion_service import IngestionService
+from core.ingestion.ingestion_jobs import (
     IngestionJob,
     IngestionJobConflict,
     get_job_registry,
     run_job,
     summarize_stats,
 )
-from services.database_data_service import DatabaseDataService
+from core.storage.database_data_service import DatabaseDataService
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -381,7 +381,7 @@ def sync_s3_folder(prefix: Optional[str] = Query(None)):
             )
 
         if prefix is None:
-            from database.config_service import get_config_service
+            from core.storage.config_service import get_config_service
             config_service = get_config_service()
             s3_config = config_service.get_integration_config('s3') or {}
             prefix = s3_config.get('parquet_prefix', '')
@@ -436,9 +436,9 @@ def _get_s3_service():
     Unlike DatabaseDataService.is_s3_configured() this skips the head_bucket
     test so it works with IAM policies that only grant list/get permissions.
     """
-    from database.config_service import get_config_service
+    from core.storage.config_service import get_config_service
     from backend.secrets_manager import get_secret
-    from services.s3_service import S3Service
+    from core.storage.s3_service import S3Service
 
     config_service = get_config_service()
     s3_integration = config_service.get_integration_config('s3')

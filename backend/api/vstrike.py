@@ -26,7 +26,7 @@ from backend.schemas.vstrike import (
     VStrikePushResponse,
 )
 from backend.middleware.auth import get_current_active_user
-from services.database_data_service import DatabaseDataService
+from core.storage.database_data_service import DatabaseDataService
 from core.integrations.vstrike.client import (
     VStrikeToolNotImplemented,
     get_vstrike_service,
@@ -257,7 +257,7 @@ def ingest_findings(
     case_ids: list[str] = []
     if request.auto_cluster_cases and upserted_ids:
         try:
-            from services.case_automation_service import (
+            from core.cases.case_automation_service import (
                 cluster_findings_by_attack_path,
             )
 

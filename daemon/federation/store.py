@@ -23,7 +23,7 @@ GLOBAL_KEY = "federation.settings"
 def get_global_settings() -> Dict[str, Any]:
     """Return the federation.settings JSON, defaulting to ``{"enabled": False}``."""
     try:
-        from database.config_service import get_config_service
+        from core.storage.config_service import get_config_service
 
         cfg = get_config_service().get_system_config(GLOBAL_KEY)
         if isinstance(cfg, dict):
@@ -36,7 +36,7 @@ def get_global_settings() -> Dict[str, Any]:
 def set_global_settings(value: Dict[str, Any], updated_by: str = "api") -> None:
     """Write ``federation.settings`` (read-modify-write so we don't drop fields)."""
     try:
-        from database.config_service import get_config_service
+        from core.storage.config_service import get_config_service
 
         current = get_global_settings()
         current.update(value)
@@ -63,8 +63,8 @@ def is_globally_enabled() -> bool:
 def list_sources() -> List[Dict[str, Any]]:
     """All federation_sources rows as dicts."""
     try:
-        from database.connection import get_db_manager
-        from database.models import FederationSource
+        from core.storage.connection import get_db_manager
+        from core.storage.models import FederationSource
 
         with get_db_manager().session_scope() as session:
             rows = session.query(FederationSource).all()
@@ -76,8 +76,8 @@ def list_sources() -> List[Dict[str, Any]]:
 
 def get_source(source_id: str) -> Optional[Dict[str, Any]]:
     try:
-        from database.connection import get_db_manager
-        from database.models import FederationSource
+        from core.storage.connection import get_db_manager
+        from core.storage.models import FederationSource
 
         with get_db_manager().session_scope() as session:
             row = session.get(FederationSource, source_id)
@@ -94,8 +94,8 @@ def upsert_source(source_id: str, defaults: Dict[str, Any]) -> Optional[Dict[str
     boot — see :func:`daemon.federation.seed.seed_federation_sources`.
     """
     try:
-        from database.connection import get_db_manager
-        from database.models import FederationSource
+        from core.storage.connection import get_db_manager
+        from core.storage.models import FederationSource
 
         with get_db_manager().session_scope() as session:
             row = session.get(FederationSource, source_id)
@@ -112,8 +112,8 @@ def upsert_source(source_id: str, defaults: Dict[str, Any]) -> Optional[Dict[str
 def update_source(source_id: str, fields: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Patch arbitrary columns on a source row. Caller validates fields."""
     try:
-        from database.connection import get_db_manager
-        from database.models import FederationSource
+        from core.storage.connection import get_db_manager
+        from core.storage.models import FederationSource
 
         with get_db_manager().session_scope() as session:
             row = session.get(FederationSource, source_id)
@@ -148,8 +148,8 @@ def record_success(
 def record_failure(source_id: str, error: str) -> None:
     """Increment consecutive_errors. We never auto-disable (per design)."""
     try:
-        from database.connection import get_db_manager
-        from database.models import FederationSource
+        from core.storage.connection import get_db_manager
+        from core.storage.models import FederationSource
 
         with get_db_manager().session_scope() as session:
             row = session.get(FederationSource, source_id)

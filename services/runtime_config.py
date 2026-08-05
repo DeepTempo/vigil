@@ -65,7 +65,7 @@ def clear_cache() -> None:
 def _fetch_db_config() -> Optional[Dict[str, Any]]:
     """Return the DB-backed config dict, or None if DB unavailable."""
     try:
-        from database.config_service import get_config_service
+        from core.storage.config_service import get_config_service
     except Exception as exc:  # noqa: BLE001
         logger.debug("runtime_config: config_service import failed: %s", exc)
         return None

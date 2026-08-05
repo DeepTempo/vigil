@@ -1,5 +1,3 @@
-// frontend/src/hooks/useSetupChecklist.ts
-//
 // Soft-checklist state: runs each step's readiness predicate over fetched state.
 // Purely additive — the hard gate lives in useSetupStatus / SetupGate.
 // `requiredReady` / `incompleteCount` feed a planned dashboard nudge (tests only).

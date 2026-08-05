@@ -14,8 +14,8 @@ from backend.services.auth_service import AuthService
 from backend.middleware.auth import get_current_user
 from backend.services.password_validator import PasswordPolicyError, validate_password_strength
 from backend.services.token_blacklist import revoke_all_for_user
-from database.models import User, Role
-from database.connection import get_db, get_db_session
+from core.storage.models import User, Role
+from core.storage.connection import get_db, get_db_session
 
 logger = logging.getLogger(__name__)
 

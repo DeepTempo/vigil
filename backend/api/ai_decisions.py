@@ -11,7 +11,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from database.service import DatabaseService
+from core.storage.service import DatabaseService
 
 logger = logging.getLogger(__name__)
 

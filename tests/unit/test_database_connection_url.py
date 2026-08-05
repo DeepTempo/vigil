@@ -10,7 +10,7 @@ silent authentication failure.
 import pytest
 from sqlalchemy.engine import make_url
 
-from database.connection import DatabaseConfig
+from core.storage.connection import DatabaseConfig
 
 
 # Characters called out in issue #306 plus the other userinfo delimiters.

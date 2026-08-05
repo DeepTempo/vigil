@@ -18,10 +18,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from database.models import Finding, Case, CaseClosureInfo, LLMInteractionLog
-from database.connection import get_db, get_db_session
+from core.storage.models import Finding, Case, CaseClosureInfo, LLMInteractionLog
+from core.storage.connection import get_db, get_db_session
 from backend.services.ai_insights_service import AIInsightsService
-from services.mitre_lookup import get_time_range, resolve_technique  # noqa: F401
+from core.threat_intel.mitre_lookup import get_time_range, resolve_technique  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -1114,7 +1114,7 @@ async def recalculate_cost_endpoint(
             detail=(
                 "Bifrost recalculate-cost call failed — check that Bifrost "
                 "is reachable and the logging plugin is enabled with a "
-                "persistence backend (see docker/bifrost/README.md)."
+                "persistence backend (see infra/docker/bifrost/README.md)."
             ),
         )
     return result

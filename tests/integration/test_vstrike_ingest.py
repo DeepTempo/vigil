@@ -129,7 +129,7 @@ def _invoke_ingest(fake_service: _FakeDataService, payload: Dict[str, Any]):
     """Call the handler with `data_service` patched to the fake.
 
     Patches both the imported reference in `backend.api.vstrike` and the
-    one used by `services.case_automation_service.cluster_findings_by_attack_path`.
+    one used by `core.cases.case_automation_service.cluster_findings_by_attack_path`.
     """
     from backend.api import vstrike as vstrike_module
     from backend.schemas.vstrike import VStrikePushRequest
@@ -137,7 +137,7 @@ def _invoke_ingest(fake_service: _FakeDataService, payload: Dict[str, Any]):
     req = VStrikePushRequest(**payload)
 
     with patch.object(vstrike_module, "data_service", fake_service), patch(
-        "services.database_data_service.DatabaseDataService",
+        "core.storage.database_data_service.DatabaseDataService",
         return_value=fake_service,
     ):
         response = vstrike_module.ingest_findings(req)

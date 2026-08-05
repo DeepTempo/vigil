@@ -92,7 +92,7 @@ async def _fetch_daemon_kafka_stats() -> Optional[Dict[str, Any]]:
 @router.get("/config")
 async def get_kafka_config() -> Dict[str, Any]:
     """Return the persisted Kafka config, falling back to defaults."""
-    from database.config_service import get_config_service
+    from core.storage.config_service import get_config_service
 
     try:
         stored = get_config_service().get_system_config(SYSTEMCONFIG_KEY) or {}
@@ -109,7 +109,7 @@ async def get_kafka_config() -> Dict[str, Any]:
 @router.put("/config")
 async def put_kafka_config(body: KafkaConfigBody) -> Dict[str, Any]:
     """Upsert the persisted Kafka config. Secrets are not accepted here."""
-    from database.config_service import get_config_service
+    from core.storage.config_service import get_config_service
 
     payload = body.model_dump()
     try:
@@ -134,7 +134,7 @@ async def put_kafka_config(body: KafkaConfigBody) -> Dict[str, Any]:
 @router.get("/status")
 async def get_kafka_status() -> Dict[str, Any]:
     """Return live consumer stats plus the persisted enabled/config state."""
-    from database.config_service import get_config_service
+    from core.storage.config_service import get_config_service
 
     try:
         stored = get_config_service().get_system_config(SYSTEMCONFIG_KEY) or {}

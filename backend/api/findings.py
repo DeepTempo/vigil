@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 import logging
 
-from services.database_data_service import DatabaseDataService
+from core.storage.database_data_service import DatabaseDataService
 from core.config import vigil_path
 from services.source_evidence import (
     normalize_finding_source_evidence,
@@ -650,8 +650,8 @@ Respond ONLY with valid JSON. Be specific and actionable. Focus on helping a SOC
 def clear_all_findings():
     """Delete all findings from the database."""
     try:
-        from database.connection import get_session
-        from database.models import Finding
+        from core.storage.connection import get_session
+        from core.storage.models import Finding
 
         with get_session() as session:
             count = session.query(Finding).count()

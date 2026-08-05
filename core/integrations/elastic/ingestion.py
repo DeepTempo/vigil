@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from services.siem_ingestion_service import SIEMIngestionService
+from core.ingestion.siem_ingestion_service import SIEMIngestionService
 from core.integrations.elastic.client import ElasticService
 from core.config import get_integration_config
 

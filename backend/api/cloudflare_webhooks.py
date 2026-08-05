@@ -39,7 +39,7 @@ def cloudy_ingestion_enabled() -> bool:
     Settings UI can flip it without a restart), then falls back to env.
     """
     try:
-        from database.config_service import get_config_service
+        from core.storage.config_service import get_config_service
         cfg = get_config_service().get_system_config("cloudflare.cloudy.enabled")
         if isinstance(cfg, dict):
             if cfg.get("enabled") is True:

@@ -345,5 +345,5 @@ counters so the UI still renders.
 - [daemon/dedup.py](../daemon/dedup.py) — Redis-backed dedup shared with the poller
 - [backend/api/kafka.py](../backend/api/kafka.py) — REST endpoints
 - [clients/web/src/components/settings/KafkaTab.tsx](../clients/web/src/components/settings/KafkaTab.tsx) — UI
-- [docker/docker-compose.yml](../docker/docker-compose.yml) — `kafka` profile
+- [infra/docker/docker-compose.yml](../infra/docker/docker-compose.yml) — `kafka` profile
 - [tests/unit/test_dedup.py](../tests/unit/test_dedup.py), [tests/unit/test_kafka_consumer.py](../tests/unit/test_kafka_consumer.py) — unit tests

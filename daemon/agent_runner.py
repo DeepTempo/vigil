@@ -197,7 +197,7 @@ class AgentRunner:
 
         if self._data_service is None:
             try:
-                from services.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
 
                 self._data_service = DatabaseDataService()
             except Exception as e:
@@ -211,7 +211,7 @@ class AgentRunner:
             try:
                 from sqlalchemy import text
 
-                from database.connection import get_db_manager
+                from core.storage.connection import get_db_manager
 
                 with get_db_manager().session_scope() as session:
                     session.execute(text("SELECT 1"))
@@ -1305,7 +1305,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
     ) -> str:
         """Create an approval request and put the agent into waiting_approval state."""
         try:
-            from services.approval_service import ActionType, get_approval_service
+            from core.response.approval_service import ActionType, get_approval_service
 
             service = get_approval_service()
 
@@ -1389,7 +1389,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
             return None
 
         try:
-            from services.approval_service import ActionStatus, get_approval_service
+            from core.response.approval_service import ActionStatus, get_approval_service
 
             service = get_approval_service()
             action = service.get_action(action_id)
@@ -1532,8 +1532,8 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
         activity``.
         """
         try:
-            from database.connection import get_db_manager
-            from database.models import Investigation
+            from core.storage.connection import get_db_manager
+            from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
                 inv = (
@@ -1565,8 +1565,8 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
         audit logging can never break the agent loop. See sub-issue #193.
         """
         try:
-            from database.connection import get_db_manager
-            from database.models import InvestigationLog
+            from core.storage.connection import get_db_manager
+            from core.storage.models import InvestigationLog
 
             db_manager = get_db_manager()
             with db_manager.session_scope() as session:

@@ -38,7 +38,7 @@ class SecurityDetectionsTools:
     def _get_dynamic_paths(self) -> Dict:
         """Get paths from DetectionRulesService if available."""
         try:
-            from services.detection_rules_service import get_detection_rules_service
+            from core.detections.detection_rules_service import get_detection_rules_service
             service = get_detection_rules_service()
             env_vars = service.get_mcp_env_vars()
             

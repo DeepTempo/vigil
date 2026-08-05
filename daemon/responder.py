@@ -34,14 +34,14 @@ class AutonomousResponder:
     def _init_services(self):
         """Initialize required services."""
         try:
-            from services.autonomous_response_service import get_autonomous_response_service
+            from core.response.autonomous_response_service import get_autonomous_response_service
             self._response_service = get_autonomous_response_service()
             logger.info("Autonomous response service initialized")
         except Exception as e:
             logger.error(f"Failed to initialize response service: {e}")
         
         try:
-            from services.approval_service import get_approval_service
+            from core.response.approval_service import get_approval_service
             self._approval_service = get_approval_service()
             
             # Apply force manual approval setting

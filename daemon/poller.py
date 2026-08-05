@@ -173,7 +173,7 @@ class DataPoller:
                     logger.warning(f"Failed to initialize Elastic Security service: {e}")
 
             # Initialize data service for database access
-            from services.database_data_service import DatabaseDataService
+            from core.storage.database_data_service import DatabaseDataService
             self._data_service = DatabaseDataService()
             
         except Exception as e:
@@ -505,7 +505,7 @@ class DataPoller:
                 # the connector holds its cursor and retries (nothing dropped; feed
                 # resumes on re-enable). Only registered-but-disabled sources are
                 # blocked, so generic 'webhook'/'flow' pushes are unaffected.
-                from database.config_service import get_config_service
+                from core.storage.config_service import get_config_service
                 # Run the sync SQLAlchemy lookup off the event loop so a slow or
                 # locked DB can't freeze the whole daemon on the ingest hot path.
                 disabled = await asyncio.to_thread(
@@ -577,7 +577,7 @@ class DataPoller:
             # No queue, store directly
             if self._data_service:
                 try:
-                    from services.ingestion_service import IngestionService
+                    from core.ingestion.ingestion_service import IngestionService
                     ingestion = IngestionService()
                     ingestion.ingest_finding(finding)
                 except Exception as e:

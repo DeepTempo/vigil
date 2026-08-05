@@ -806,7 +806,7 @@ def test_discover_anthropic_api_key_returns_secret_for_default_row():
     session = _stub_session([default_row])
 
     with patch.object(llm_router, "get_secret", return_value="sk-ant-ui-saved"), patch(
-        "database.connection.get_db_session", return_value=session
+        "core.storage.connection.get_db_session", return_value=session
     ):
         assert llm_router.discover_anthropic_api_key() == "sk-ant-ui-saved"
 
@@ -830,7 +830,7 @@ def test_discover_anthropic_api_key_falls_through_to_active_row():
         return None if "default" in ref else "sk-ant-team-key"
 
     with patch.object(llm_router, "get_secret", side_effect=fake_get_secret), patch(
-        "database.connection.get_db_session", return_value=session
+        "core.storage.connection.get_db_session", return_value=session
     ):
         assert llm_router.discover_anthropic_api_key() == "sk-ant-team-key"
 
@@ -840,16 +840,16 @@ def test_discover_anthropic_api_key_returns_none_when_no_rows():
 
     session = _stub_session([])
     with patch.object(llm_router, "get_secret", return_value=None), patch(
-        "database.connection.get_db_session", return_value=session
+        "core.storage.connection.get_db_session", return_value=session
     ):
         assert llm_router.discover_anthropic_api_key() is None
 
 
 def test_discover_anthropic_api_key_returns_none_when_db_unavailable():
     """DB import error => silent None, so the legacy chain stays usable
-    in environments where database.connection can't import."""
+    in environments where core.storage.connection can't import."""
     # Patch ``get_db_session`` to raise on import. Easiest: make the
-    # entire ``database.connection`` import fail by patching builtins.
+    # entire ``core.storage.connection`` import fail by patching builtins.
     import builtins
 
     from core.llm.router import router as llm_router
@@ -857,7 +857,7 @@ def test_discover_anthropic_api_key_returns_none_when_db_unavailable():
     real_import = builtins.__import__
 
     def boom_import(name, *args, **kwargs):
-        if name == "database.connection":
+        if name == "core.storage.connection":
             raise ImportError("simulated")
         return real_import(name, *args, **kwargs)
 

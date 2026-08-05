@@ -17,7 +17,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from backend.middleware.auth import get_current_active_user
 from backend.services.auth_service import AuthService
-from database.models import User
+from core.storage.models import User
 from services.custom_integration_service import (
     CustomIntegrationService,
     InvalidIntegrationIdError,

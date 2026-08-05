@@ -15,7 +15,7 @@ PLATFORM="${1:-linux/arm64}"
 OUT="clients/desktop/standalone/backend-image.tar.gz"
 
 echo "building ${IMAGE} for ${PLATFORM}"
-docker build --platform "${PLATFORM}" -f docker/Dockerfile.backend -t "${IMAGE}" .
+docker build --platform "${PLATFORM}" -f infra/docker/Dockerfile.backend -t "${IMAGE}" .
 
 echo "saving -> ${OUT}"
 docker save "${IMAGE}" | gzip > "${OUT}"

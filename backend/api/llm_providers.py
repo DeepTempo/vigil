@@ -25,10 +25,10 @@ from secrets_manager import delete_secret, get_secret, set_secret  # noqa: E402
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from backend.middleware.auth import get_current_active_user  # noqa: E402
 from backend.services.auth_service import AuthService  # noqa: E402
-from database.connection import get_db  # noqa: E402
-from database.models import AIModelConfig, LLMProviderConfig, User  # noqa: E402
+from core.storage.connection import get_db  # noqa: E402
+from core.storage.models import AIModelConfig, LLMProviderConfig, User  # noqa: E402
 from core.llm.bifrost.admin import push_provider_key  # noqa: E402
-from services.url_safety import (  # noqa: E402
+from core.platform.url_safety import (  # noqa: E402
     UrlSafetyError,
     validate_provider_url,
 )
@@ -625,7 +625,7 @@ async def discover_models(
 
     Admin-only because it makes an outbound HTTP request whose target
     is influenced by the request body (``base_url``). The URL is run
-    through :func:`services.url_safety.validate_provider_url` inside
+    through :func:`core.platform.url_safety.validate_provider_url` inside
     each discovery helper, but we also require the caller to be an
     authenticated admin so a stolen session is the only path to even
     reach that validation.

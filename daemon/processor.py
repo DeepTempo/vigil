@@ -115,7 +115,7 @@ class FindingProcessor:
     def _init_services(self):
         """Initialize required services."""
         try:
-            from services.database_data_service import DatabaseDataService
+            from core.storage.database_data_service import DatabaseDataService
 
             self._data_service = DatabaseDataService()
             logger.info("Database service initialized")
@@ -159,7 +159,7 @@ class FindingProcessor:
         # Cloudforce One — local threat_indicators lookup. The poller in
         # daemon/threat_feed_poller.py keeps the table populated; this branch
         # only flags the enrichment as available so _enrich_finding() will
-        # call into services.threat_feed_service.lookup_indicators().
+        # call into core.threat_intel.threat_feed_service.lookup_indicators().
         if is_integration_enabled("cloudforce_one"):
             try:
                 self._enrichment_services["cloudforce_one"] = {"enabled": True}
@@ -415,7 +415,7 @@ class FindingProcessor:
         """Return True if persisted (or already present), False if the write
         failed — a failed store must never be counted as ingested."""
         try:
-            from services.ingestion_service import IngestionService
+            from core.ingestion.ingestion_service import IngestionService
 
             ingestion = IngestionService()
             return bool(ingestion.ingest_finding(finding))
@@ -657,7 +657,7 @@ REASONING: [Brief explanation]
         if not self._enrichment_services.get("cloudforce_one", {}).get("enabled"):
             return {}
         try:
-            from services.threat_feed_service import lookup_indicators
+            from core.threat_intel.threat_feed_service import lookup_indicators
         except Exception as e:  # noqa: BLE001
             logger.debug(f"threat_feed_service unavailable: {e}")
             return {}

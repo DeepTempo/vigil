@@ -504,7 +504,7 @@ class MCPService:
         newly added/removed rule sources without manual config editing.
         """
         try:
-            from services.detection_rules_service import get_detection_rules_service
+            from core.detections.detection_rules_service import get_detection_rules_service
             
             detection_service = get_detection_rules_service()
             dynamic_env = detection_service.get_mcp_env_vars()

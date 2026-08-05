@@ -1,5 +1,3 @@
-// frontend/src/redesign/screens/setup/BudgetDialog.tsx
-//
 // Setup step panel — sets the Bifrost virtual key + spend cap. The cost-guardrails
 // step reads ready once default_vk is non-empty.
 import { useEffect, useState } from 'react'

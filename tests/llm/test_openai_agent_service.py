@@ -1,4 +1,4 @@
-"""Unit tests for the OpenAI-format agent loop (services/openai_agent_service.py).
+"""Unit tests for the OpenAI-format agent loop (core/llm/harness/openai.py).
 
 Covers the schema converter, loop-detection signature canonicalization, and the
 streaming tool loop (tool-call, error flag, malformed tool call) with a mocked
@@ -269,9 +269,9 @@ class TestToolGating:
 
         fake_service = SimpleNamespace(create_action=_create_action)
         with patch(
-            "services.approval_service.get_approval_service",
+            "core.response.approval_service.get_approval_service",
             return_value=fake_service,
-        ), patch("services.approval_service.ActionType", side_effect=ValueError):
+        ), patch("core.response.approval_service.ActionType", side_effect=ValueError):
             with pytest.raises(PendingApprovalError) as exc_info:
                 await agent._execute_tool("isolate_host", '{"host": "h1"}')
 
@@ -443,7 +443,7 @@ class TestApprovalGate:
             )
         )
         with patch(
-            "services.approval_service.get_approval_service", return_value=fake_service
+            "core.response.approval_service.get_approval_service", return_value=fake_service
         ), patch("core.llm.harness.openai._APPROVAL_POLL_INTERVAL_S", 0.0):
             decision, _detail, _waited = await agent._await_approval("ACT-1")
         assert decision == "approved"
@@ -454,7 +454,7 @@ class TestApprovalGate:
         agent = _agent()
         fake_service = SimpleNamespace(get_action=MagicMock(return_value=None))
         with patch(
-            "services.approval_service.get_approval_service", return_value=fake_service
+            "core.response.approval_service.get_approval_service", return_value=fake_service
         ):
             decision, _detail, _waited = await agent._await_approval("ACT-1")
         assert decision == "rejected"
@@ -466,7 +466,7 @@ class TestApprovalGate:
             get_action=MagicMock(return_value=_action("pending"))
         )
         with patch(
-            "services.approval_service.get_approval_service", return_value=fake_service
+            "core.response.approval_service.get_approval_service", return_value=fake_service
         ), patch("core.llm.harness.openai._APPROVAL_POLL_INTERVAL_S", 0.0):
             decision, detail, _waited = await agent._await_approval(
                 "ACT-1", timeout=0.0

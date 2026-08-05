@@ -1,5 +1,7 @@
-"""Builtin federation source adapters.
+"""Shared base classes for the builtin federation source adapters.
 
-Each module here registers exactly one adapter against
-:func:`daemon.federation.registry.register_adapter` at import time.
+The vendor adapter modules now live in their integration slices under
+``core/integrations/<vendor>/adapter.py`` — each registers itself against
+:func:`daemon.federation.registry.register_adapter` at import time. Only the
+shared bases (:mod:`._base`, :mod:`._siem_base`) remain here.
 """

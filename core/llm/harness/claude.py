@@ -85,9 +85,9 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Sub-module imports (lazy to avoid circular deps at module load)
-from services.chat.session_manager import SessionManager  # noqa: E402
-from services.chat.context_manager import ContextManager  # noqa: E402
-from services.chat.tool_executor import ToolExecutor  # noqa: E402
+from core.chat.session_manager import SessionManager  # noqa: E402
+from core.chat.context_manager import ContextManager  # noqa: E402
+from core.chat.tool_executor import ToolExecutor  # noqa: E402
 
 
 class ClaudeService:
@@ -350,7 +350,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
 
             # Fallback: pick up keys saved by the LLM Providers UI. Lazy
             # import keeps the legacy/no-DB code path (and the unit tests
-            # that pre-date this fallback) working when database.connection
+            # that pre-date this fallback) working when core.storage.connection
             # isn't importable.
             if not self.api_key:
                 try:
@@ -422,7 +422,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
 
     async def _execute_backend_tool(self, tool_name: str, tool_input: dict):
         """Execute a single backend tool by name. Used by the daemon agent runner."""
-        from services.database_data_service import DatabaseDataService
+        from core.storage.database_data_service import DatabaseDataService
 
         data_service = DatabaseDataService()
 
@@ -677,7 +677,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             "reject_action",
             "get_approval_stats",
         ]:
-            from services.approval_service import ApprovalService
+            from core.response.approval_service import ApprovalService
 
             approval_service = ApprovalService()
             from dataclasses import asdict
@@ -1203,8 +1203,8 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
         so persistence can never break the request path.
         """
         try:
-            from database.connection import get_db_manager
-            from database.models import LLMInteractionLog
+            from core.storage.connection import get_db_manager
+            from core.storage.models import LLMInteractionLog
 
             blocks = self._serialize_response_blocks(response_content or [])
             thinking_text = "\n\n".join(
@@ -1530,7 +1530,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                         "update_case",
                         "add_resolution_step",
                     ]:
-                        from services.database_data_service import DatabaseDataService
+                        from core.storage.database_data_service import DatabaseDataService
 
                         data_service = DatabaseDataService()
 
@@ -1714,7 +1714,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
 
                     # Attack layer tools
                     elif tool_name in ["get_attack_layer", "get_technique_rollup"]:
-                        from services.database_data_service import DatabaseDataService
+                        from core.storage.database_data_service import DatabaseDataService
 
                         data_service = DatabaseDataService()
 
@@ -1784,7 +1784,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                         "reject_action",
                         "get_approval_stats",
                     ]:
-                        from services.approval_service import ApprovalService
+                        from core.response.approval_service import ApprovalService
 
                         approval_service = ApprovalService()
 
@@ -3538,7 +3538,7 @@ Provide only the JSON, no additional text."""
 
         # Fallback: configure security-detections MCP server directly
         try:
-            from services.detection_rules_service import get_detection_rules_service
+            from core.detections.detection_rules_service import get_detection_rules_service
 
             detection_service = get_detection_rules_service()
             env_vars = detection_service.get_mcp_env_vars()

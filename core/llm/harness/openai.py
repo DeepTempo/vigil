@@ -576,7 +576,7 @@ class OpenAIAgentService:
         """Queue a pending approval instead of executing the tool, returning the
         message for the model and the action id to poll (None if not created)."""
         try:
-            from services.approval_service import ActionType, get_approval_service
+            from core.response.approval_service import ActionType, get_approval_service
 
             service = get_approval_service()
             try:
@@ -622,7 +622,7 @@ class OpenAIAgentService:
         """Poll the approval queue until an operator decides, returning
         ``(decision, detail, waited_seconds)``. A vanished action reads as a
         rejection so an uncleared action never executes."""
-        from services.approval_service import ActionStatus, get_approval_service
+        from core.response.approval_service import ActionStatus, get_approval_service
 
         service = get_approval_service()
         started = time.monotonic()
@@ -671,7 +671,7 @@ class OpenAIAgentService:
         if not action_id:
             return
         try:
-            from services.approval_service import get_approval_service
+            from core.response.approval_service import get_approval_service
 
             service = get_approval_service()
             if is_error:
@@ -803,8 +803,8 @@ class OpenAIAgentService:
     ) -> None:
         """Persist an LLMInteractionLog row (non-fatal, fire-and-forget)."""
         try:
-            from database.connection import get_db_session
-            from database.models import LLMInteractionLog
+            from core.storage.connection import get_db_session
+            from core.storage.models import LLMInteractionLog
 
             session = get_db_session()
             try:

@@ -38,7 +38,7 @@ writes to whichever backend is configured via `SECRETS_BACKEND`.
 | Secret | Read site | Risk | Recommended target |
 |---|---|---|---|
 | `SPLUNK_URL` / `SPLUNK_USERNAME` / `SPLUNK_PASSWORD` | [tools/_legacy/splunk.py:35-41](../tools/_legacy/splunk.py) | Plaintext password in process env and `.env`. | `secrets_manager` + Settings-UI Splunk panel. Note: the `_legacy/` prefix suggests this tool is being phased out; may be simpler to finish the replacement than to migrate. |
-| `POSTGRES_PASSWORD` | [database/connection.py:39](../database/connection.py) | Infrastructure credential; typically injected by docker-compose. Medium risk — host-level anyway. | Acceptable to keep in env if production uses a real secrets manager (Vault / AWS Secrets Manager) to populate the env at pod start. |
+| `POSTGRES_PASSWORD` | [core/storage/connection.py:39](../core/storage/connection.py) | Infrastructure credential; typically injected by docker-compose. Medium risk — host-level anyway. | Acceptable to keep in env if production uses a real secrets manager (Vault / AWS Secrets Manager) to populate the env at pod start. |
 
 ### ⚠️ Declared in `env.example` but no active readers found
 
@@ -48,7 +48,7 @@ configured per-provider via the DB (`LLMProviderConfig`,
 `config.json`:
 
 - `OPENAI_API_KEY`, `OLLAMA_URL` — consumed by Bifrost container env
-  (see [docker/bifrost/config.json](../docker/bifrost/config.json)); also
+  (see [infra/docker/bifrost/config.json](../infra/docker/bifrost/config.json)); also
   usable as *seeds* when the UI adds a provider for the first time.
 - `VIRUSTOTAL_API_KEY`, `SHODAN_API_KEY`, `ALIENVAULT_OTX_API_KEY` —
   consumed by MCP tool containers, not read from Python.

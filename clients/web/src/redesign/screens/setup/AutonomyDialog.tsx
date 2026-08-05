@@ -1,5 +1,3 @@
-// frontend/src/redesign/screens/setup/AutonomyDialog.tsx
-//
 // Setup step panel — enables the autonomous orchestrator. The orchestrator POST
 // takes the full config, so we GET it, flip `enabled`, and round-trip to keep the caps.
 import { useEffect, useState } from 'react'

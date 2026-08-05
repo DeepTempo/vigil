@@ -632,7 +632,7 @@ async def startup_event():
     # would occupy threads that then block on the pool up to DB_POOL_TIMEOUT.
     try:
         import anyio.to_thread
-        from database.connection import get_db_manager
+        from core.storage.connection import get_db_manager
 
         _pool_cfg = get_db_manager().config
         _db_ceiling = _pool_cfg.pool_size + _pool_cfg.max_overflow
@@ -720,7 +720,7 @@ async def startup_event():
     # A configured connector with no allowlisted origin will be blocked by the
     # default CSP — warn rather than fail silently. Best-effort.
     try:
-        from services.extension_trust import connector_allowlist_origins
+        from core.auth.extension_trust import connector_allowlist_origins
 
         if not connector_allowlist_origins():
             from services.integration_bridge_service import get_integration_bridge
@@ -746,7 +746,7 @@ async def startup_event():
     # Initialize data storage backend
     logger.info("Initializing data storage...")
     try:
-        from services.database_data_service import DatabaseDataService
+        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
 
         # Defense-in-depth: ensure the SQLAlchemy-managed schema exists before
@@ -759,7 +759,7 @@ async def startup_event():
         data_backend_env = get_settings().data_backend.lower()
         if not is_demo_mode() and data_backend_env == "database":
             try:
-                from database.connection import init_database
+                from core.storage.connection import init_database
 
                 init_database(echo=False, create_tables=True)
                 logger.info("✓ Database schema ensured (create_all)")
@@ -915,7 +915,7 @@ async def metrics():
 async def health_check():
     """Health check endpoint with storage backend info."""
     try:
-        from services.database_data_service import DatabaseDataService
+        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
 
         service = DatabaseDataService()
@@ -992,7 +992,7 @@ if frontend_build_dir.exists() and (frontend_build_dir / "index.html").exists():
             # SSRF guard). A <meta>, not an inline <script>, because CSP is
             # script-src 'self'.
             try:
-                from services.extension_trust import connector_allowlist_origins
+                from core.auth.extension_trust import connector_allowlist_origins
 
                 origins = connector_allowlist_origins()
                 if origins:
