@@ -416,7 +416,7 @@ def _sync_claude_raw(
     # A direct messages.create() call, for multi-turn tool loops.
     import time as _time
 
-    from services.defaults import (
+    from core.llm.defaults import (
         build_thinking_kwargs,
         model_requires_adaptive_thinking,
     )

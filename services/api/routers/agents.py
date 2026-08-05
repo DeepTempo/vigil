@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import logging
 
-from services.defaults import DEFAULT_MODEL
+from core.llm.defaults import DEFAULT_MODEL
 from core.agents.manager import AgentManager, CUSTOM_AGENT_ID_PREFIX
 from core.routing import Auth, RouterMeta
 

@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from core.config import DEFAULT_REDIS_URL, get_settings
 from core.secrets import get_secret
-from services.defaults import DEFAULT_MODEL
+from core.llm.defaults import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 

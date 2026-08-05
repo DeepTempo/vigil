@@ -522,7 +522,7 @@ class LLMRouter:
         extra_headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         from core.llm.providers.clients import create_async_anthropic_client
-        from services.defaults import build_thinking_kwargs
+        from core.llm.defaults import build_thinking_kwargs
 
         api_key: Optional[str] = None
         if provider.api_key_ref:
