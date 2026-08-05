@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from database.connection import get_db_manager
 from database.models import WorkflowRun, WorkflowRunPhase
+from database.schemas import WorkflowRunPhaseSchema, WorkflowRunSchema
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,7 @@ class WorkflowRunService:
                     .offset(offset)
                 )
                 rows = session.execute(stmt).scalars().all()
-                return [r.to_dict(include_result=False) for r in rows]
+                return [WorkflowRunSchema.dump_summary(r) for r in rows]
         except SQLAlchemyError as e:
             logger.warning("Error listing workflow runs: %s", e)
             return []
@@ -156,7 +157,7 @@ class WorkflowRunService:
             db = get_db_manager()
             with db.session_scope() as session:
                 row = session.get(WorkflowRun, run_id)
-                return row.to_dict(include_result=True) if row else None
+                return WorkflowRunSchema.dump(row) if row else None
         except SQLAlchemyError as e:
             logger.warning("Error fetching workflow run %s: %s", run_id, e)
             return None
@@ -247,7 +248,7 @@ class WorkflowRunService:
                     .order_by(WorkflowRunPhase.phase_order)
                 )
                 rows = session.execute(stmt).scalars().all()
-                return [r.to_dict() for r in rows]
+                return WorkflowRunPhaseSchema.dump_many(rows)
         except SQLAlchemyError as e:
             logger.warning("Error listing phases for run %s: %s", run_id, e)
             return []
