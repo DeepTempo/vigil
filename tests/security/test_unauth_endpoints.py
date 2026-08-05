@@ -1,7 +1,7 @@
 """End-to-end check that the unauthenticated endpoints called out in
 the 2026-05 disclosure now return 401 instead of 200.
 
-Runs against the real FastAPI app from ``backend.main`` with
+Runs against the real FastAPI app from ``services.api.main`` with
 ``DEV_MODE=false`` forced (otherwise the auth middleware would short-
 circuit to a mock admin user and the test would silently no-op).
 
@@ -28,8 +28,8 @@ sys.path.insert(0, str(REPO / "backend"))
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-not-for-prod")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from backend import main as backend_main  # noqa: E402
-from backend.middleware import auth as auth_module  # noqa: E402
+from services.api import main as backend_main  # noqa: E402
+from services.api.middleware import auth as auth_module  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -39,7 +39,7 @@ def app():
     """Build a TestClient with auth force-enabled regardless of DEV_MODE.
 
     Patches the module-level ``DEV_MODE`` on the already-imported
-    ``backend.middleware.auth`` so ``get_current_user`` takes the real
+    ``services.api.middleware.auth`` so ``get_current_user`` takes the real
     validation path. Restores the previous value on teardown.
     """
     prev = auth_module.DEV_MODE

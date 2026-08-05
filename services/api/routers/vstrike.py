@@ -25,7 +25,7 @@ from backend.schemas.vstrike import (
     VStrikePushRequest,
     VStrikePushResponse,
 )
-from backend.middleware.auth import get_current_active_user
+from services.api.middleware.auth import get_current_active_user
 from core.storage.database_data_service import DatabaseDataService
 from core.integrations.vstrike.client import VStrikeToolNotImplemented, get_vstrike_service
 from core.routing import Auth, RouterMeta

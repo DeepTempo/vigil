@@ -10,13 +10,16 @@ import os
 import sys
 from pathlib import Path
 
-# Add project root and backend directories to Python path for imports
-project_root = str(Path(__file__).parent.parent)
-backend_dir = str(Path(__file__).parent)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-if backend_dir not in sys.path:
-    sys.path.insert(0, backend_dir)
+# Add the repo root and backend/ to sys.path so `backend.*`, `core.*`,
+# `services.*` and the top-level `monitoring` module resolve whether the app is
+# launched as `services.api.main:app` or imported directly. This file lives at
+# services/api/main.py, so the repo root is three parents up.
+_repo_root = Path(__file__).resolve().parents[2]
+project_root = str(_repo_root)
+backend_dir = str(_repo_root / "backend")
+for _p in (project_root, backend_dir):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,12 +29,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 from backend import __version__
-from backend.middleware.csrf import CSRFMiddleware
-from backend.middleware.rate_limit import limiter
-from backend.middleware.security_headers import SecurityHeadersMiddleware
+from services.api.middleware.csrf import CSRFMiddleware
+from services.api.middleware.rate_limit import limiter
+from services.api.middleware.security_headers import SecurityHeadersMiddleware
 
-from api._discovery import mount_routers
-from backend.middleware.auth import get_current_active_user
+from services.api.discovery import mount_routers
+from services.api.middleware.auth import get_current_active_user
 from core.config import get_settings
 from monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
 
@@ -56,7 +59,7 @@ PUBLIC_API_PATHS: frozenset[str] = frozenset(
         "/api/auth/password-reset/request",
         "/api/auth/password-reset/confirm",
         # First-run account creation — unauthenticated by necessity; only ever
-        # live on an empty instance (see backend/api/auth.py bootstrap routes).
+        # live on an empty instance (see services/api/routers/auth.py bootstrap).
         "/api/auth/bootstrap",
         # Health check — used by load balancers and Docker.
         "/api/health",
@@ -160,7 +163,8 @@ app.add_middleware(SecurityHeadersMiddleware)
 if PROMETHEUS_AVAILABLE:
     app.add_middleware(PrometheusMiddleware)
 
-# Mount every router in backend/api/ (issue #478). Each module declares its
+# Mount every discovered router — colocated in core/<domain>/ or parked in
+# services/api/routers/ (issues #478, #488). Each module declares its
 # own prefix, tags, auth posture and optional feature gate in ROUTER_META, so
 # adding a router needs no edit to this file. See core/routing.py.
 mount_routers(
@@ -280,7 +284,7 @@ async def _connect_external_services():
             logger.info(f"Loaded {total_tools} MCP tools from {len(tools)} servers")
 
             try:
-                cache_dir = Path(__file__).parent.parent / "data"
+                cache_dir = _repo_root / "data"
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 cache_file = cache_dir / "mcp_tools_cache.json"
 
@@ -457,7 +461,7 @@ async def startup_event():
         # (e.g. Docker, systemd, CI). When DATA_BACKEND=database, a failure
         # here is fatal — we do NOT silently fall back to JSON because that
         # leaves the DB in an inconsistent state (some endpoints use
-        # get_db_session() directly, see backend/api/case_metrics.py).
+        # get_db_session() directly, see core/cases/case_metrics_router.py).
         data_backend_env = get_settings().data_backend.lower()
         if not is_demo_mode() and data_backend_env == "database":
             try:
@@ -561,7 +565,7 @@ async def startup_event():
     # agents are visible in one merged list. Lookup misses for "custom-*" IDs
     # also trigger a refresh at request time, so this is a convenience preload.
     try:
-        from backend.api.agents import agent_manager
+        from services.api.routers.agents import agent_manager
 
         loaded = agent_manager.refresh_custom_agents()
         logger.info(f"Loaded {loaded} custom agent(s) from database")
@@ -644,7 +648,7 @@ async def health_check():
 
 
 # Serve React static files in production
-frontend_build_dir = Path(__file__).parent.parent / "clients" / "web" / "build"
+frontend_build_dir = _repo_root / "clients" / "web" / "build"
 static_dir = frontend_build_dir / "static"
 
 # Only mount static files if the build directory exists
@@ -731,5 +735,5 @@ if __name__ == "__main__":
 
     logger.info("Starting Vigil SOC API server...")
     uvicorn.run(
-        "backend.main:app", host="0.0.0.0", port=6987, reload=True, log_level="info"
+        "services.api.main:app", host="0.0.0.0", port=6987, reload=True, log_level="info"
     )

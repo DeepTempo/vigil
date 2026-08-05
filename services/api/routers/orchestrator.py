@@ -129,7 +129,7 @@ def _persist_orchestrator_enabled(enabled: bool) -> None:
     """
     try:
         from core.storage.config_service import get_config_service
-        from backend.api.config import ORCHESTRATOR_DEFAULTS
+        from services.api.routers.config import ORCHESTRATOR_DEFAULTS
 
         svc = get_config_service(user_id='web_ui')
         current = svc.get_system_config('orchestrator.settings')

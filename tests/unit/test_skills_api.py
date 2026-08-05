@@ -118,10 +118,10 @@ def client():
     # Both the router and the importer resolve SkillService from the core
     # module, so a single patch covers both.
     with patch("core.skills.skill_service.SkillService", FakeSkillService):
-        # Import late so the patched class is picked up by backend.api.skills
+        # Import late so the patched class is picked up by services.api.routers.skills
         spec = importlib.util.spec_from_file_location(
             "skills_router_under_test",
-            _BACKEND_DIR / "api" / "skills.py",
+            _REPO_ROOT / "services" / "api" / "routers" / "skills.py",
         )
         mod = importlib.util.module_from_spec(spec)
         sys.modules["skills_router_under_test"] = mod

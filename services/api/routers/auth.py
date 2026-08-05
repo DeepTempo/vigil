@@ -38,8 +38,8 @@ from backend.services.token_blacklist import (
     is_token_revoked,
     revoke_all_for_user,
 )
-from backend.middleware.auth import get_current_active_user
-from backend.middleware.rate_limit import limiter
+from services.api.middleware.auth import get_current_active_user
+from services.api.middleware.rate_limit import limiter
 from core.storage.models import User
 from core.storage.connection import get_db
 from core.routing import Auth, RouterMeta

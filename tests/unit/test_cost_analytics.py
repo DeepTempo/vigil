@@ -1,6 +1,6 @@
 """Unit tests for LLM cost analytics aggregation (GH #84 PR-A).
 
-Covers the pure-function helpers in ``backend.api.analytics`` that back
+Covers the pure-function helpers in ``services.api.routers.analytics`` that back
 ``GET /analytics/cost``. Aggregation SQL against a real session is
 exercised in the integration suite; here we assert the shape of
 ``_cache_hit_rate`` and the endpoint response envelope.
@@ -21,28 +21,28 @@ pytestmark = pytest.mark.unit
 
 class TestCacheHitRate:
     def test_returns_zero_when_no_tokens(self):
-        from backend.api.analytics import _cache_hit_rate
+        from services.api.routers.analytics import _cache_hit_rate
 
         assert _cache_hit_rate(0, 0) == 0.0
 
     def test_returns_zero_when_no_cache_reads(self):
-        from backend.api.analytics import _cache_hit_rate
+        from services.api.routers.analytics import _cache_hit_rate
 
         assert _cache_hit_rate(1000, 0) == 0.0
 
     def test_full_cache_hit(self):
-        from backend.api.analytics import _cache_hit_rate
+        from services.api.routers.analytics import _cache_hit_rate
 
         assert _cache_hit_rate(0, 1000) == 1.0
 
     def test_half_cached(self):
-        from backend.api.analytics import _cache_hit_rate
+        from services.api.routers.analytics import _cache_hit_rate
 
         # 500 new + 500 cached → 50% hit
         assert _cache_hit_rate(500, 500) == 0.5
 
     def test_rounds_to_four_decimals(self):
-        from backend.api.analytics import _cache_hit_rate
+        from services.api.routers.analytics import _cache_hit_rate
 
         # 1/3 cached — ensure deterministic rounding, not full float precision
         rate = _cache_hit_rate(2, 1)
@@ -57,7 +57,7 @@ async def test_get_cost_analytics_response_shape(monkeypatch):
     SQL — we care that ``window``, ``totals``, ``by_agent``, ``by_model``,
     and ``top_investigations`` are all present and JSON-serializable.
     """
-    from backend.api import analytics as mod
+    from services.api.routers import analytics as mod
 
     fake_totals = {
         "calls": 3,

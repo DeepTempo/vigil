@@ -17,7 +17,7 @@ import json
 import logging
 import base64
 
-from backend.middleware.auth import get_current_user
+from services.api.middleware.auth import get_current_user
 from backend.schemas.system_prompt import validate_system_prompt
 from core.storage.models import User
 from services.claude_service import ClaudeService

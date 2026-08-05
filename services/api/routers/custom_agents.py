@@ -34,7 +34,7 @@ service = CustomAgentService()
 def _refresh_manager() -> None:
     """Refresh the global AgentManager so changes are visible to /agents/* routes."""
     try:
-        from backend.api.agents import agent_manager
+        from services.api.routers.agents import agent_manager
 
         agent_manager.refresh_custom_agents()
     except Exception as e:
@@ -242,7 +242,7 @@ async def fork_agent(
     without affecting the source.
     """
     try:
-        from backend.api.agents import agent_manager, _resolve_agent
+        from services.api.routers.agents import agent_manager, _resolve_agent
 
         source = _resolve_agent(source_agent_id)
         if source is None:

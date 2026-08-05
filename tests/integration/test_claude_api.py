@@ -17,8 +17,8 @@ from tests.fixtures.claude_responses import (
 )
 
 
-# Skip if backend.main cannot be imported (e.g., no database available)
-pytest.importorskip("backend.main", reason="Requires backend application to be importable")
+# Skip if services.api.main cannot be imported (e.g., no database available)
+pytest.importorskip("services.api.main", reason="Requires backend application to be importable")
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def test_client(mock_llm_gateway):
     the event loop is torn down -- preventing RuntimeError: Event loop is
     closed.
     """
-    from backend.main import app
+    from services.api.main import app
     with TestClient(app) as client:
         yield client
 
@@ -60,7 +60,7 @@ def test_client(mock_llm_gateway):
 def mock_claude_service(mock_llm_gateway):
     """Mock the ClaudeService to avoid actual API calls."""
     # backend/main.py adds backend_dir to sys.path, so the module is registered
-    # as 'api.claude' (not 'backend.api.claude') at runtime.
+    # as 'api.claude' (not 'services.api.routers.claude') at runtime.
     with patch('api.claude.ClaudeService') as mock_service_class:
 
         mock_service = Mock()

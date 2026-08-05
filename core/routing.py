@@ -1,12 +1,14 @@
 """Declarative mount metadata for API routers.
 
-Every module in ``backend/api/`` exports a ``router`` and a ``ROUTER_META``
-describing how that router should be mounted. ``backend/api/_discovery.py``
-scans the package and mounts them, so adding a router needs no edit to
-``backend/main.py`` (issue #478).
+Every router module exports a ``router`` and a ``ROUTER_META`` describing how
+that router should be mounted. It lives with its domain as
+``core/<domain>/<name>_router.py``, or — until that domain is in ``core/`` —
+parked under ``services/api/routers/``. ``services/api/discovery.py`` scans both
+locations and mounts them, so adding a router needs no edit to
+``services/api/main.py`` (issues #478, #488).
 
-This module is deliberately a leaf: it imports nothing from ``backend.main``
-or from any router module, so the 42 api modules can import ``Auth`` and
+This module is deliberately a leaf: it imports nothing from ``services.api.main``
+or from any router module, so all 42 routers can import ``Auth`` and
 ``RouterMeta`` without an import cycle.
 
 ``ROUTER_META`` is **mandatory**. There is no convention-based fallback,
@@ -64,7 +66,7 @@ class RouterMeta:
         where there is nothing to justify. A field rather than a comment so
         the justification cannot be deleted or omitted silently. To enumerate
         every deviation and its rationale, iterate
-        ``api._discovery.load_router_specs()`` — a bare ``grep reason=``
+        ``services.api.discovery.load_router_specs()`` — a bare ``grep reason=``
         false-matches unrelated kwargs such as ``change_reason=``. The
         enumeration is asserted by
         ``tests/unit/test_router_discovery.py::test_every_non_required_router_has_a_reason``.

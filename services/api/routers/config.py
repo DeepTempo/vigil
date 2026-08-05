@@ -1296,7 +1296,7 @@ async def set_orchestrator_config(config: OrchestratorSettingsConfig):
         # deployments — the daemon polls orchestrator.settings every few
         # seconds.
         try:
-            from backend.api.orchestrator import _get_orchestrator
+            from services.api.routers.orchestrator import _get_orchestrator
 
             orch = _get_orchestrator()
             if orch is not None:

@@ -9,7 +9,7 @@ import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.middleware.auth import get_current_active_user, require_settings_admin
+from services.api.middleware.auth import get_current_active_user, require_settings_admin
 from core.storage.models import User
 from core.routing import Auth, RouterMeta
 

@@ -29,12 +29,13 @@ This file provides guidance for AI assistants (Claude Code and similar tools) wo
 
 ```
 vigil/
-├── backend/              # FastAPI REST API
-│   ├── main.py           # App entry point, router registration
-│   ├── api/              # 38 route modules (findings, cases, claude, auth, etc.)
-│   ├── middleware/       # Auth middleware
-│   └── schemas/          # Pydantic request/response schemas
+├── backend/              # Legacy package, being retired into services/ + core/
+│   ├── schemas/          # Pydantic request/response schemas
+│   ├── services/         # Auth services (auth_service, token_blacklist, …); pending move to core/auth/
+│   ├── monitoring.py     # Sentry + Prometheus helpers
+│   └── secrets_manager.py
 ├── services/             # 70+ business logic service classes
+│   ├── api/              # API composition root: main.py (app entry), discovery.py, middleware/, routers/ (parked routers)
 │   ├── claude_service.py # Central AI orchestration (largest file ~124KB)
 │   ├── mcp_service.py    # MCP server coordination
 │   └── case_*_service.py # Case lifecycle services
@@ -59,7 +60,7 @@ vigil/
 ├── tools/                # MCP tool implementations (15+ integrations)
 ├── mcp-servers/          # Git submodule: MCP server implementations
 ├── deeptempo-core/       # Git submodule: core AI/detection library
-├── core/                 # Config, secrets, rate limiting, agent definitions (agents/); storage/ holds the DB layer (models, connection, service)
+├── core/                 # Shared library: config, secrets, agents/, storage/ (DB layer); API routers colocate at core/<domain>/*_router.py
 ├── data/                 # Schemas, MITRE taxonomy, detection registry
 ├── tests/                # pytest + vitest test suites
 ├── docs/                 # Detailed documentation
@@ -72,7 +73,7 @@ vigil/
 └── env.example           # Template for all 220+ environment variables
 ```
 
-> **sys.path quirk:** `backend/main.py` puts `backend/` on `sys.path`, so modules
+> **sys.path quirk:** `services/api/main.py` puts `backend/` on `sys.path`, so modules
 > there are imported *bare* — `from secrets_manager import get_secret`, not
 > `from backend.secrets_manager import …`. `setup.cfg` (`mypy_path = backend`) and
 > `pyrightconfig.json` (`extraPaths`) mirror this so static analysis resolves them.
@@ -99,7 +100,7 @@ cd infra/docker && docker compose up -d postgres redis
 
 # 2. Backend (from repo root)
 source venv/bin/activate
-uvicorn backend.main:app --host 0.0.0.0 --port 6987 --reload
+uvicorn services.api.main:app --host 0.0.0.0 --port 6987 --reload
 
 # 3. Frontend
 cd clients/web && npm run dev
@@ -271,10 +272,10 @@ centralized cost tracking, and budget enforcement.
 
 ### Service Layer
 
-Business logic lives in `services/`, not in API route handlers. Route handlers in `backend/api/` should delegate to service classes. When adding a feature:
+Business logic lives in `services/`, not in API route handlers. A router lives with its domain as `core/<domain>/<name>_router.py` (or, until that domain is in `core/`, parked in `services/api/routers/`) and delegates to service classes. When adding a feature:
 1. Add logic to an existing service or create `services/your_feature_service.py`
-2. Add the route in `backend/api/your_feature.py`
-3. Register the router in `backend/main.py`
+2. Add the router module (a `router` **and** a `ROUTER_META`) under `core/<domain>/` or `services/api/routers/`
+3. Nothing to register — `services/api/discovery.py` scans both locations and mounts it at startup (issues #478, #488)
 
 ### MCP Tool Access
 
@@ -316,7 +317,7 @@ two filenames that are reserved and must never be reused.
 ### Authentication
 
 - `DEV_MODE=true` (default) bypasses all auth — use for local development
-- Production uses JWT tokens via `backend/api/auth.py` + `backend/middleware/`
+- Production uses JWT tokens via `services/api/routers/auth.py` + `services/api/middleware/`
 - RBAC is implemented in `infra/database/init/06_auth_tables.sql`
 
 ### Daemon / Autonomous Mode
@@ -366,17 +367,19 @@ Key config variables: `DAEMON_AUTO_TRIAGE`, `DAEMON_CONFIDENCE_THRESHOLD`, `ORCH
 
 Follow the existing pattern:
 ```python
-# backend/api/your_feature.py
+# core/<domain>/your_feature_router.py   (or services/api/routers/your_feature.py)
 from sqlalchemy.orm import Session
-from database.connection import get_db
+from core.storage.connection import get_db
+from core.routing import Auth, RouterMeta
 
-router = APIRouter(prefix="/api/your-feature", tags=["your-feature"])
+router = APIRouter()   # prefix/tags live in ROUTER_META, not here
+ROUTER_META = RouterMeta(prefix="/api/your-feature", tags=["your-feature"], auth=Auth.REQUIRED)
 
 @router.get("/")
 async def list_items(db: Session = Depends(get_db)):
     return your_feature_service.list(db)   # sync Session — do not await it
 ```
-Register in `backend/main.py`.
+No registration step — discovery mounts every module that exports a `router` and a `ROUTER_META`.
 
 ---
 
@@ -393,7 +396,7 @@ Register in `backend/main.py`.
 
 1. Add the agent record in `core/agents/builtins.py` (prompt text lives in `core/agents/prompts.py`)
 2. Wire agent invocation in `services/claude_service.py`
-3. Expose via `backend/api/agents.py`
+3. Expose via `services/api/routers/agents.py`
 4. Document in `docs/AGENTS.md`
 
 ### New Workflow
@@ -404,10 +407,10 @@ Register in `backend/main.py`.
 
 ### New API Endpoint
 
-1. Add route handler in `backend/api/` (new file or extend existing)
+1. Add the router module (with `router` + `ROUTER_META`) under `core/<domain>/` or `services/api/routers/`
 2. Add service logic in `services/`
 3. Add Pydantic schema in `backend/schemas/` if needed
-4. Register router in `backend/main.py`
+4. No registration — discovery mounts it automatically
 5. Add corresponding frontend API call in `clients/web/src/services/`
 
 ---
@@ -440,7 +443,9 @@ All CI checks must pass before merging.
 
 | File | Purpose |
 |------|---------|
-| `backend/main.py` | FastAPI app, all router registrations |
+| `services/api/main.py` | FastAPI app entry, middleware wiring, startup/shutdown |
+| `services/api/discovery.py` | Router auto-discovery — scans `core/**/*_router.py` + `services/api/routers/` |
+| `core/routing.py` | `Auth` + `RouterMeta` — the declarative mount metadata every router exports |
 | `services/claude_service.py` | Central AI/agent orchestration (~124KB) |
 | `core/agents/` | Agent records (`builtins.py`), prompt assembly (`prompts.py`), runtime manager (`manager.py`) |
 | `services/mcp_service.py` | MCP protocol coordination |

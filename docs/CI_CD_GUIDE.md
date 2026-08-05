@@ -204,7 +204,7 @@ npm audit --audit-level=moderate
 FROM python:3.10-slim
 COPY . /app
 RUN pip install -r requirements.txt
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0"]
+CMD ["uvicorn", "services.api.main:app", "--host", "0.0.0.0"]
 ```
 
 **Daemon Image**:

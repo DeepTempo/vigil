@@ -24,13 +24,13 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
-# backend/ must be on sys.path too: importing backend.api.findings cascades
+# backend/ must be on sys.path too: importing services.api.routers.findings cascades
 # into backend/api/__init__.py which does bare `from api.findings import ...`.
 sys.path.insert(0, str(REPO / "backend"))
 
 from fastapi import HTTPException  # noqa: E402
 
-from backend.api import findings as findings_api  # noqa: E402
+from services.api.routers import findings as findings_api  # noqa: E402
 from services.findings.enrichment import (  # noqa: E402
     EmptyProviderResponse,
     FindingNotFound,
@@ -183,7 +183,7 @@ async def test_handler_passes_the_path_param_as_the_authoritative_id(monkeypatch
 async def test_no_provider_configured_is_503_with_the_structured_detail(
     stub_data_service, monkeypatch
 ):
-    from backend.api.claude import NO_PROVIDER_DETAIL
+    from services.api.routers.claude import NO_PROVIDER_DETAIL
 
     _stub_enrich(monkeypatch, raises=NoProviderConfigured("nothing resolved"))
 

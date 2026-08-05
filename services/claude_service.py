@@ -3524,7 +3524,7 @@ Provide only the JSON, no additional text."""
 
             # Filter to only enabled servers
             try:
-                from backend.api.mcp import mcp_service as _mcp_svc
+                from services.api.routers.mcp import mcp_service as _mcp_svc
 
                 mcp_servers = [
                     c for c in all_configs if _mcp_svc.is_server_enabled(c["name"])

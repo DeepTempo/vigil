@@ -30,7 +30,7 @@ pytestmark = pytest.mark.unit
 
 
 def _specs():
-    from api._discovery import load_router_specs
+    from services.api.discovery import load_router_specs
 
     return load_router_specs()
 
@@ -52,7 +52,7 @@ def test_every_api_module_declares_router_meta():
 
     Reaching this assertion at all means all of them declared both.
     """
-    from api._discovery import iter_router_modules
+    from services.api.discovery import iter_router_modules
 
     specs = _specs()
     assert len(specs) == len(iter_router_modules())

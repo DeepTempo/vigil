@@ -10,7 +10,7 @@ routes to a non-Anthropic provider instead of 503-ing on Ollama-only
 deployments. These tests pin that behaviour.
 
 The module is loaded via ``importlib`` so the pure helper functions can be
-exercised without importing the whole ``backend.api`` package (which pulls in
+exercised without importing the whole ``services.api.routers`` package (which pulls in
 auth/DB through its ``__init__``).
 """
 
@@ -45,17 +45,17 @@ AN_OLLAMA_MODEL = "llama3.1:8b"
 
 def _load_claude_module():
     """Load backend/api/claude.py as a standalone module, bypassing the
-    backend.api package __init__ (auth/DB). Skip the suite if its imports are
+    services.api.routers package __init__ (auth/DB). Skip the suite if its imports are
     unavailable in this environment."""
     spec = importlib.util.spec_from_file_location(
-        "claude_api_under_test", str(REPO / "backend" / "api" / "claude.py")
+        "claude_api_under_test", str(REPO / "services" / "api" / "routers" / "claude.py")
     )
     mod = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(mod)
     except Exception as exc:  # pragma: no cover - environment dependent
         pytest.skip(
-            f"backend.api.claude not importable here: {exc}",
+            f"services.api.routers.claude not importable here: {exc}",
             allow_module_level=True,
         )
     return mod

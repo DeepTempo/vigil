@@ -381,7 +381,7 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
     except NoProviderConfigured:
         # 503 with the structured payload the chat drawer matches on to render
         # a "Configure a provider" CTA instead of a generic error bubble.
-        from backend.api.claude import NO_PROVIDER_DETAIL
+        from services.api.routers.claude import NO_PROVIDER_DETAIL
 
         raise HTTPException(status_code=503, detail=NO_PROVIDER_DETAIL)
     except ProviderUnavailable as e:

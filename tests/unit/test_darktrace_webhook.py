@@ -25,7 +25,7 @@ for p in (str(_REPO_ROOT), str(_BACKEND_DIR)):
 # eagerly imports many heavy modules not needed for this test).
 _spec = importlib.util.spec_from_file_location(
     "darktrace_webhook_under_test",
-    _BACKEND_DIR / "api" / "darktrace_webhook.py",
+    _REPO_ROOT / "services" / "api" / "routers" / "darktrace_webhook.py",
 )
 _mod = importlib.util.module_from_spec(_spec)
 sys.modules["darktrace_webhook_under_test"] = _mod

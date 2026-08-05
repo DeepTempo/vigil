@@ -16,7 +16,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from backend.middleware.auth import get_current_user
+from services.api.middleware.auth import get_current_user
 from core.storage.models import User
 from core.chat import conversation_service
 from core.routing import Auth, RouterMeta

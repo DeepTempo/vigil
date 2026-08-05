@@ -11,7 +11,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from backend.services.auth_service import AuthService
-from backend.middleware.auth import get_current_user
+from services.api.middleware.auth import get_current_user
 from backend.services.password_validator import PasswordPolicyError, validate_password_strength
 from backend.services.token_blacklist import revoke_all_for_user
 from core.storage.models import User, Role

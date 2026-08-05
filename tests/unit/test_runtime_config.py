@@ -158,7 +158,7 @@ class TestAIOperationsSettingsModel:
     with safe defaults and clamp the retry limit to the documented range."""
 
     def test_defaults_include_local_recovery_toggles(self):
-        from backend.api.config import AI_OPERATIONS_DEFAULTS
+        from services.api.routers.config import AI_OPERATIONS_DEFAULTS
 
         assert AI_OPERATIONS_DEFAULTS["local_ollama_recovery_enabled"] is True
         assert AI_OPERATIONS_DEFAULTS["local_ollama_recovery_retry_limit"] == 1
@@ -167,7 +167,7 @@ class TestAIOperationsSettingsModel:
     def test_retry_limit_rejects_out_of_range(self):
         from pydantic import ValidationError
 
-        from backend.api.config import AIOperationsSettingsConfig
+        from services.api.routers.config import AIOperationsSettingsConfig
 
         with pytest.raises(ValidationError):
             AIOperationsSettingsConfig(local_ollama_recovery_retry_limit=5)

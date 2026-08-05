@@ -17,7 +17,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from backend.api import claude as claude_api  # noqa: E402
+from services.api.routers import claude as claude_api  # noqa: E402
 from services.model_registry import ModelRegistry  # noqa: E402
 
 pytestmark = pytest.mark.unit

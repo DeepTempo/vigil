@@ -32,7 +32,7 @@ class _User:
 async def test_clear_all_cases_denied_without_permission(monkeypatch):
     from fastapi import HTTPException
 
-    from backend.api import cases
+    from services.api.routers import cases
     from backend.services.auth_service import AuthService
 
     monkeypatch.setattr(
@@ -47,7 +47,7 @@ async def test_clear_all_cases_denied_without_permission(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_clear_all_cases_checks_cases_delete(monkeypatch):
-    from backend.api import cases
+    from services.api.routers import cases
     from backend.services.auth_service import AuthService
 
     seen = {}

@@ -9,7 +9,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.middleware.auth import get_current_active_user
+from services.api.middleware.auth import get_current_active_user
 from backend.services.auth_service import AuthService
 from core.storage.models import User
 from core.auth import extension_session_service as ext_session

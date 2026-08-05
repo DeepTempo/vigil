@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from backend.middleware.auth import get_current_active_user
+from services.api.middleware.auth import get_current_active_user
 from backend.services.auth_service import AuthService
 from core.storage.models import User
 from services.mcp_service import MCPService

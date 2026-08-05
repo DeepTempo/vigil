@@ -277,7 +277,7 @@ Use the get_case tool first to retrieve full details, then investigate all assoc
         )
         
         if not claude_service.has_api_key():
-            from backend.api.claude import NO_PROVIDER_DETAIL
+            from services.api.routers.claude import NO_PROVIDER_DETAIL
 
             raise HTTPException(status_code=503, detail=NO_PROVIDER_DETAIL)
         
