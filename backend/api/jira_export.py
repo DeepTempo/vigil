@@ -15,10 +15,17 @@ from backend.services.auth_service import AuthService
 from database.models import User, Case, Finding
 from core.config import get_integration_config
 import requests
+from api._meta import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api",
+    tags=["jira-export"],
+    auth=Auth.REQUIRED,
+)
 
 
 # Request/Response Models
@@ -45,7 +52,7 @@ class JiraExportResponse(BaseModel):
 
 
 @router.post("/cases/{case_id}/export/jira", response_model=JiraExportResponse)
-async def export_case_to_jira(
+def export_case_to_jira(
     case_id: str,
     request: JiraExportRequest,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -211,7 +218,7 @@ async def export_case_to_jira(
 
 
 @router.post("/cases/{case_id}/remediation/jira", response_model=JiraExportResponse)
-async def export_remediation_to_jira(
+def export_remediation_to_jira(
     case_id: str,
     request: JiraRemediationExportRequest,
     current_user: Annotated[User, Depends(get_current_user)],

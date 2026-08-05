@@ -13,10 +13,17 @@ from pydantic import BaseModel, Field
 
 from database.service import DatabaseService
 from database.schemas import AIDecisionLogSchema
+from api._meta import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/ai",
+    tags=["ai-decisions"],
+    auth=Auth.REQUIRED,
+)
 
 
 # ========== Request/Response Models ==========

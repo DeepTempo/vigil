@@ -6,8 +6,15 @@ from pydantic import BaseModel
 
 from database.schemas import CaseSchema, CaseTemplateSchema
 from services.case_workflow_service import CaseWorkflowService
+from api._meta import Auth, RouterMeta
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/cases/templates",
+    tags=["case-templates"],
+    auth=Auth.REQUIRED,
+)
 workflow_service = CaseWorkflowService()
 
 

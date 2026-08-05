@@ -88,15 +88,8 @@ run_remote "
     export IMAGE_NAME=$IMAGE_NAME
 "
 
-# Step 4: Run database migrations
-echo -e "\n${YELLOW}Step 4: Running database migrations...${NC}"
-run_remote "
-    cd $DEPLOY_DIR &&
-    $DOCKER_COMPOSE run --rm backend alembic upgrade head || echo 'Migration completed'
-"
-
-# Step 5: Rolling restart services
-echo -e "\n${YELLOW}Step 5: Performing rolling restart...${NC}"
+# Step 4: Rolling restart services
+echo -e "\n${YELLOW}Step 4: Performing rolling restart...${NC}"
 
 # Restart daemon first (less critical)
 echo "Restarting daemon..."
@@ -118,8 +111,8 @@ run_remote "
 "
 check_health "backend"
 
-# Step 6: Health checks
-echo -e "\n${YELLOW}Step 6: Running health checks...${NC}"
+# Step 5: Health checks
+echo -e "\n${YELLOW}Step 5: Running health checks...${NC}"
 sleep 10  # Wait for services to stabilize
 
 # Check API health
@@ -143,14 +136,14 @@ else
     echo -e "${YELLOW}⚠ Daemon metrics endpoint returned HTTP $daemon_health${NC}"
 fi
 
-# Step 7: Cleanup old images
-echo -e "\n${YELLOW}Step 7: Cleaning up old images...${NC}"
+# Step 6: Cleanup old images
+echo -e "\n${YELLOW}Step 6: Cleaning up old images...${NC}"
 run_remote "
     docker image prune -a -f --filter 'until=168h' || true
 "
 
-# Step 8: Verify deployment
-echo -e "\n${YELLOW}Step 8: Verifying deployment...${NC}"
+# Step 7: Verify deployment
+echo -e "\n${YELLOW}Step 7: Verifying deployment...${NC}"
 run_remote "
     cd $DEPLOY_DIR &&
     echo '--- Running Services ---' &&

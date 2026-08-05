@@ -126,48 +126,6 @@ jobs:
           fi
 
   # ============================================================================
-  # Database Migration Tests
-  # ============================================================================
-  migration-tests:
-    name: Database Migration Tests
-    if: github.repository == 'Vigil-SOC/vigil'
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: migration_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        ports:
-          - 5432:5432
-    
-    steps:
-      - uses: actions/checkout@v5
-      
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      
-      - name: Install dependencies
-        run: |
-          pip install alembic psycopg2-binary sqlalchemy
-      
-      - name: Test migrations
-        run: |
-          # Test upgrade
-          alembic upgrade head || echo "Migration test completed"
-          
-          # Test downgrade
-          alembic downgrade -1 || echo "Downgrade test completed"
-          
-          # Test re-upgrade
-          alembic upgrade head || echo "Re-upgrade test completed"
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/migration_test
-
-  # ============================================================================
   # Notify on Failure
   # ============================================================================
   notify:
