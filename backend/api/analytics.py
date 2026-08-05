@@ -22,10 +22,17 @@ from core.storage.models import Finding, Case, CaseClosureInfo, LLMInteractionLo
 from core.storage.connection import get_db, get_db_session
 from backend.services.ai_insights_service import AIInsightsService
 from core.threat_intel.mitre_lookup import get_time_range, resolve_technique  # noqa: F401
+from api._meta import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api",
+    tags=["analytics"],
+    auth=Auth.REQUIRED,
+)
 ai_insights_service = AIInsightsService()
 
 

@@ -7,8 +7,15 @@ from datetime import datetime
 
 from core.storage.models import SLAPolicy
 from core.storage.connection import get_db_session
+from api._meta import Auth, RouterMeta
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/sla-policies",
+    tags=["sla-policies"],
+    auth=Auth.REQUIRED,
+)
 
 
 class SLAPolicyCreate(BaseModel):

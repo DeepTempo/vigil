@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from api._meta import Auth, RouterMeta
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -29,6 +30,12 @@ from core.skills.skill_importer import (  # noqa: E402
 from core.skills.skill_service import SkillService  # noqa: E402
 
 router = APIRouter()
+
+ROUTER_META = RouterMeta(
+    prefix="/api/skills",
+    tags=["skills"],
+    auth=Auth.REQUIRED,
+)
 logger = logging.getLogger(__name__)
 
 
