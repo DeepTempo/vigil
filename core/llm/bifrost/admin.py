@@ -115,8 +115,8 @@ def sync_all_provider_keys() -> Dict[str, bool]:
     # Deferred imports to keep this module import-cheap for code that only
     # needs ``push_provider_key`` (e.g. llm_providers.py).
     from backend.secrets_manager import get_secret
-    from database.connection import get_db_manager
-    from database.models import LLMProviderConfig
+    from core.storage.connection import get_db_manager
+    from core.storage.models import LLMProviderConfig
 
     results: Dict[str, bool] = {}
     db_manager = get_db_manager()
@@ -273,8 +273,8 @@ async def sync_all_provider_models() -> Dict[str, Any]:
 
 async def _do_sync_all_provider_models() -> Dict[str, Any]:
     # Deferred imports to keep module load cheap.
-    from database.connection import get_db_manager
-    from database.models import LLMProviderConfig
+    from core.storage.connection import get_db_manager
+    from core.storage.models import LLMProviderConfig
     from core.llm.providers import discovery
     from core.llm.providers.registry import (
         _FALLBACK_MODELS_BY_PROVIDER,

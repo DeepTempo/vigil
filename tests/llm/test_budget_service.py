@@ -105,7 +105,7 @@ def test_internal_get_settings_swallows_db_errors():
     config_service call in try/except so callers can't surface a DB
     failure as a hard error."""
     with patch(
-        "database.config_service.get_config_service",
+        "core.storage.config_service.get_config_service",
         side_effect=RuntimeError("DB exploded"),
     ):
         from core.llm.cost.budget import _get_settings

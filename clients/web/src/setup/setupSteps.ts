@@ -1,5 +1,3 @@
-// frontend/src/setup/setupSteps.ts
-//
 // The setup-checklist registry: step data + readiness predicates (no JSX).
 import { INTEGRATIONS } from '../config/integrations'
 import type { LLMProvider, AIConfigResponse, BudgetSettings } from '../services/api'

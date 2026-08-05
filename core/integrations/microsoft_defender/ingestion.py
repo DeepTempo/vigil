@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import uuid
 import requests
 
-from services.siem_ingestion_service import SIEMIngestionService
+from core.ingestion.siem_ingestion_service import SIEMIngestionService
 from core.config import get_integration_config
 
 logger = logging.getLogger(__name__)

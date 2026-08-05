@@ -267,7 +267,7 @@ docker ps | grep postgres
 echo $DATABASE_URL
 
 # Test connectivity
-python -c "from database.connection import get_db; import asyncio; asyncio.run(get_db())"
+python -c "from core.storage.connection import get_db; import asyncio; asyncio.run(get_db())"
 ```
 
 ## Performance

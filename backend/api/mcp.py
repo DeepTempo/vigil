@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from backend.middleware.auth import get_current_active_user
 from backend.services.auth_service import AuthService
-from database.models import User
+from core.storage.models import User
 from services.mcp_service import MCPService
 
 logger = logging.getLogger(__name__)

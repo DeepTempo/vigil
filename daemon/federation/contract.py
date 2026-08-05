@@ -23,7 +23,7 @@ class FetchResult:
     """One adapter fetch's output.
 
     ``findings`` is the list of normalized finding dicts (same shape the rest
-    of the daemon already consumes — see ``services.ingestion_service``).
+    of the daemon already consumes — see ``core.ingestion.ingestion_service``).
     ``cursor`` is the new persisted cursor for the next fetch — the runner
     writes it to ``federation_sources.cursor`` after a successful fetch.
     """

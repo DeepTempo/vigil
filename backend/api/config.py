@@ -16,7 +16,7 @@ from secrets_manager import get_secret, set_secret, delete_secret, get_secrets_m
 
 # Import database config service
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from database.config_service import get_config_service
+from core.storage.config_service import get_config_service
 from services.defaults import DEFAULT_MODEL
 from services.integration_secrets import redact_secrets, secret_fields_for, split_secrets
 from core.config import get_settings, vigil_path
@@ -185,7 +185,7 @@ async def reset_demo_data():
         if not is_demo_mode():
             raise HTTPException(status_code=400, detail="Demo mode is not enabled")
 
-        from services.demo_data_service import get_demo_service
+        from core.platform.demo_data_service import get_demo_service
 
         demo_service = get_demo_service()
         demo_service.reset()
@@ -253,8 +253,8 @@ async def set_claude_config(config: ClaudeConfig):
         # Anthropic default. Best-effort — a DB failure here should NOT
         # block the secret write that already succeeded.
         try:
-            from database.connection import get_db_session
-            from database.models import LLMProviderConfig
+            from core.storage.connection import get_db_session
+            from core.storage.models import LLMProviderConfig
 
             session = get_db_session()
             try:
@@ -419,7 +419,7 @@ async def set_s3_config(config: S3Config):
 
 
 # Maps the form field names exposed in the UI to the secrets-store keys
-# read by ``database.connection._load_platform_db_proxy`` at boot. These
+# read by ``core.storage.connection._load_platform_db_proxy`` at boot. These
 # live in the encrypted secrets store rather than ``SystemConfig`` so
 # they're readable before the metadata DB connection exists.
 _PLATFORM_DB_PROXY_KEYS = {
@@ -549,7 +549,7 @@ def test_s3_connection():
         Connection test result
     """
     try:
-        from services.s3_service import S3Service
+        from core.storage.s3_service import S3Service
 
         # Load S3 config
         config_service = get_config_service()
@@ -1493,7 +1493,7 @@ async def get_mempalace_health():
     """
     import asyncio
 
-    from services.mempalace_paths import (
+    from core.platform.mempalace_paths import (
         get_closed_cases_dir,
         get_palace_path,
     )

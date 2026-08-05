@@ -68,8 +68,8 @@ def test_update_db_record_writes_fields_via_session_scope():
     row.cost_usd = 0.0
 
     db_manager = _patch_session_scope(row)
-    with patch("database.connection.get_db_manager", return_value=db_manager):
-        with patch("database.models.Investigation"):
+    with patch("core.storage.connection.get_db_manager", return_value=db_manager):
+        with patch("core.storage.models.Investigation"):
             runner._update_db_record(
                 "inv-test-1",
                 {"iteration_count": 5, "cost_usd": 0.12},
@@ -86,8 +86,8 @@ def test_update_db_record_parses_iso_string_for_at_fields():
 
     db_manager = _patch_session_scope(row)
     iso = "2026-04-28T12:34:56"
-    with patch("database.connection.get_db_manager", return_value=db_manager):
-        with patch("database.models.Investigation"):
+    with patch("core.storage.connection.get_db_manager", return_value=db_manager):
+        with patch("core.storage.models.Investigation"):
             runner._update_db_record(
                 "inv-test-2",
                 {"last_activity_at": iso},
@@ -115,7 +115,7 @@ def test_update_db_record_logs_error_with_traceback_on_failure(caplog):
 
     db_manager.session_scope = broken_scope
 
-    with patch("database.connection.get_db_manager", return_value=db_manager):
+    with patch("core.storage.connection.get_db_manager", return_value=db_manager):
         with caplog.at_level(logging.ERROR, logger="daemon.agent_runner"):
             runner._update_db_record("inv-test-3", {"cost_usd": 1.0})
 
@@ -129,8 +129,8 @@ def test_update_db_record_warns_when_row_missing():
     runner = _make_runner()
     db_manager = _patch_session_scope(row=None)  # query returns no row
 
-    with patch("database.connection.get_db_manager", return_value=db_manager):
-        with patch("database.models.Investigation"):
+    with patch("core.storage.connection.get_db_manager", return_value=db_manager):
+        with patch("core.storage.models.Investigation"):
             with patch.object(
                 __import__("daemon.agent_runner", fromlist=["logger"]).logger,
                 "warning",

@@ -20,8 +20,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from database.connection import get_db_manager
-from database.models import Skill
+from core.storage.connection import get_db_manager
+from core.storage.models import Skill
 
 logger = logging.getLogger(__name__)
 

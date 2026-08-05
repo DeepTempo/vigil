@@ -105,7 +105,7 @@ problem. Instead:
 So the flow is: **UI → secrets_manager → bifrost_admin → Bifrost** in
 one synchronous chain. No container restart needed to rotate a key.
 
-The seed `docker/bifrost/config.json` still references `env.*` for
+The seed `infra/docker/bifrost/config.json` still references `env.*` for
 first-boot provider/model definitions, but the actual key *values* are
 overwritten at runtime.
 
@@ -130,7 +130,7 @@ sessions can reuse the work. It's shipped as a git submodule at
 different user, etc.). All three consumers — the MCP server
 (`mcp-config.json`), the daemon (`daemon/orchestrator.py`), and the
 web service (`core/llm/harness/claude.py`) — resolve the path through
-`services.mempalace_paths.get_palace_path()`, so the default can't
+`core.platform.mempalace_paths.get_palace_path()`, so the default can't
 drift again.
 
 **Structure:**

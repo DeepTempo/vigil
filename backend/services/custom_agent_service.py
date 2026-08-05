@@ -4,8 +4,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from database.connection import get_db_manager
-from database.models import CustomAgent
+from core.storage.connection import get_db_manager
+from core.storage.models import CustomAgent
 from core.agents.manager import CUSTOM_AGENT_ID_PREFIX
 from core.agents.prompts import render_base_prompt
 

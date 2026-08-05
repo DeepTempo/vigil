@@ -4,7 +4,7 @@ from typing import List, Optional, Dict
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from services.case_workflow_service import CaseWorkflowService
+from core.cases.case_workflow_service import CaseWorkflowService
 
 router = APIRouter()
 workflow_service = CaseWorkflowService()

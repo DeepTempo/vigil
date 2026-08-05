@@ -8,7 +8,7 @@ import json
 
 from core.integrations.splunk.client import SplunkService
 from core.llm.harness.claude import ClaudeService
-from services.database_data_service import DatabaseDataService
+from core.storage.database_data_service import DatabaseDataService
 
 logger = logging.getLogger(__name__)
 

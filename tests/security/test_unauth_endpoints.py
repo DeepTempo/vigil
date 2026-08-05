@@ -217,7 +217,7 @@ def test_authenticated_non_admin_is_rejected(method, path, body, monkeypatch):
     / ``settings.write`` gates the disclosure's fixes added on top of
     router-level auth.
     """
-    from database.models import User
+    from core.storage.models import User
 
     fake_user = User(
         user_id="non-admin",

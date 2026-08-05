@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Optional
 from core.llm.providers.discovery import ollama_ping
 
 if TYPE_CHECKING:
-    from services.service_manager import ActionResult, ServiceSpec, ServiceStatus
+    from core.platform.service_manager import ActionResult, ServiceSpec, ServiceStatus
 
 from core.config import get_settings
 
@@ -108,7 +108,7 @@ def _managed_by_vigil() -> bool:
 
 
 def status(spec: "ServiceSpec") -> "ServiceStatus":
-    from services.service_manager import ServiceStatus
+    from core.platform.service_manager import ServiceStatus
 
     installed = binary_path() is not None
     running = ollama_ping(base_url())
@@ -138,7 +138,7 @@ def status(spec: "ServiceSpec") -> "ServiceStatus":
 
 
 def start(spec: "ServiceSpec", *, timeout: int = 30) -> "ActionResult":
-    from services.service_manager import ActionResult
+    from core.platform.service_manager import ActionResult
 
     url = base_url()
     if ollama_ping(url):
@@ -208,7 +208,7 @@ def _sync_bifrost() -> dict:
     """Push the freshly-reachable Ollama catalog into Bifrost's live config.
 
     Starting Ollama alone accomplishes nothing user-visible: LLM traffic is
-    dispatched through Bifrost, and ``docker/bifrost/config.json`` is only a
+    dispatched through Bifrost, and ``infra/docker/bifrost/config.json`` is only a
     first-boot seed (live config lives in Bifrost's SQLite). Without this the
     button "succeeds" and no Ollama model is selectable.
 
@@ -246,7 +246,7 @@ def main() -> int:
     module keeps one implementation of the probe/pidfile/session semantics.
     """
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    from services.service_manager import SERVICES
+    from core.platform.service_manager import SERVICES
 
     result = start(SERVICES["ollama"])
     print(result.message)

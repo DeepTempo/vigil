@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 
 from backend.middleware.auth import get_current_user
 from backend.services.auth_service import AuthService
-from database.models import User, Case, Finding
-from database.connection import get_db, get_db_session
+from core.storage.models import User, Case, Finding
+from core.storage.connection import get_db, get_db_session
 from core.config import get_integration_config
 import requests
 

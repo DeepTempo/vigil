@@ -1380,7 +1380,7 @@ class TestExecuteBackendTool:
         mock_findings = [{"finding_id": "f1", "severity": "high", "anomaly_score": 0.9,
                           "data_source": "splunk", "timestamp": "2026-01-01T00:00:00Z",
                           "status": "open", "description": "Test finding"}]
-        with patch('services.database_data_service.DatabaseDataService') as mock_ds_cls, \
+        with patch('core.storage.database_data_service.DatabaseDataService') as mock_ds_cls, \
              patch.object(service, '_execute_mcp_tool', new=AsyncMock()) as mock_mcp:
             mock_ds = mock_ds_cls.return_value
             mock_ds.count_findings.return_value = 1

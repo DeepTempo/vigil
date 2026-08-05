@@ -17,8 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.middleware.auth import get_current_user
-from database.models import User
-from services import conversation_service
+from core.storage.models import User
+from core.chat import conversation_service
 
 logger = logging.getLogger(__name__)
 

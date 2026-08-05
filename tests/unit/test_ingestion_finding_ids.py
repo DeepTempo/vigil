@@ -8,7 +8,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.ingestion_service import (  # noqa: E402
+from core.ingestion.ingestion_service import (  # noqa: E402
     ID_HASH_WIDTH,
     IngestionService,
 )

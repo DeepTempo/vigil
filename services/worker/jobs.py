@@ -565,7 +565,7 @@ async def on_startup(ctx: Dict[str, Any]):
     # query the DB. The backend process does this in its FastAPI startup
     # hook; the worker is a separate process and must do it itself.
     try:
-        from database.connection import get_db_manager
+        from core.storage.connection import get_db_manager
 
         db_manager = get_db_manager()
         if db_manager._engine is None:

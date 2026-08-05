@@ -44,8 +44,8 @@ class LLMWorkerManager:
 
     def _sync_enabled_from_db(self):
         try:
-            from database.connection import get_db_manager
-            from database.models import SystemConfig
+            from core.storage.connection import get_db_manager
+            from core.storage.models import SystemConfig
 
             with get_db_manager().session_scope() as session:
                 cfg = (

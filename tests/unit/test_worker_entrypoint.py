@@ -10,10 +10,10 @@ pytestmark = pytest.mark.unit
 # Every deploy path that launches the worker. The -m string is duplicated across
 # them by necessity, so drift here is silent until a container fails to boot.
 WIRING = (
-    "docker/docker-compose.yml",
-    "helm/vigil/templates/llm-worker-deployment.yaml",
-    "helm/vigil/values.yaml",
-    "helm/vigil/README.md",
+    "infra/docker/docker-compose.yml",
+    "infra/helm/vigil/templates/llm-worker-deployment.yaml",
+    "infra/helm/vigil/values.yaml",
+    "infra/helm/vigil/README.md",
     "start.sh",
 )
 

@@ -40,8 +40,8 @@ from backend.services.token_blacklist import (
 )
 from backend.middleware.auth import get_current_active_user
 from backend.middleware.rate_limit import limiter
-from database.models import User
-from database.connection import get_db
+from core.storage.models import User
+from core.storage.connection import get_db
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)

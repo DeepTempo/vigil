@@ -20,8 +20,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from database.connection import get_db, get_db_session
-from database.models import AIModelConfig, LLMProviderConfig  # noqa: E402
+from core.storage.connection import get_db, get_db_session
+from core.storage.models import AIModelConfig, LLMProviderConfig  # noqa: E402
 from core.llm.providers.registry import (  # noqa: E402
     COMPONENTS,
     ModelInfo,

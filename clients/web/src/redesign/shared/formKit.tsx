@@ -1,5 +1,3 @@
-// frontend/src/redesign/shared/formKit.tsx
-//
 // Shared helpers for the inline dialog/step forms (setup steps + settings wizards):
 // error normalization, the save lifecycle, the Cancel+primary footer, the banner.
 import { useState, type ReactNode } from 'react'

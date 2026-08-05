@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import uuid
 
-from services.siem_ingestion_service import SIEMIngestionService
+from core.ingestion.siem_ingestion_service import SIEMIngestionService
 from core.integrations.splunk.client import SplunkService
 from core.config import get_integration_config
 

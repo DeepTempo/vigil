@@ -117,7 +117,7 @@ def test_gateway_block_domain_builds_traffic_filter():
 
 
 def test_parse_stix_indicator_extracts_ipv4():
-    from services.threat_feed_service import parse_stix_indicator
+    from core.threat_intel.threat_feed_service import parse_stix_indicator
 
     obj = {
         "type": "indicator",
@@ -138,7 +138,7 @@ def test_parse_stix_indicator_extracts_ipv4():
 
 
 def test_parse_stix_indicator_handles_or_pattern():
-    from services.threat_feed_service import parse_stix_indicator
+    from core.threat_intel.threat_feed_service import parse_stix_indicator
 
     obj = {
         "type": "indicator",
@@ -150,7 +150,7 @@ def test_parse_stix_indicator_handles_or_pattern():
 
 
 def test_parse_stix_indicator_skips_non_indicator():
-    from services.threat_feed_service import parse_stix_indicator
+    from core.threat_intel.threat_feed_service import parse_stix_indicator
 
     assert parse_stix_indicator({"type": "malware"}, source="x", collection_id=None) == []
 
