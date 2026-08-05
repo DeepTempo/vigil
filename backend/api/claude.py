@@ -23,7 +23,7 @@ from core.storage.models import User
 from services.claude_service import ClaudeService
 from services.defaults import DEFAULT_MODEL
 from services.model_registry import get_registry
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 from core.rate_limit import rate_limit_dependency
 
 router = APIRouter()

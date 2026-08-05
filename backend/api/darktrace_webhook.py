@@ -25,7 +25,7 @@ from typing import Any, Callable, Dict, Optional
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from core.integrations.darktrace.ingestion import DarktraceIngestionService
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 from core.config import get_settings
 from core.secrets import get_secret
 

@@ -13,7 +13,7 @@ from pathlib import Path
 import json
 import logging
 import sys
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from backend.middleware.auth import get_current_active_user

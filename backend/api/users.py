@@ -16,7 +16,7 @@ from backend.services.password_validator import PasswordPolicyError, validate_pa
 from backend.services.token_blacklist import revoke_all_for_user
 from core.storage.models import User, Role
 from core.storage.connection import get_db, get_db_session
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 

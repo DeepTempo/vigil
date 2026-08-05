@@ -11,7 +11,7 @@ from backend.services.auth_service import AuthService
 from core.storage.models import User
 from core.storage.database_data_service import DatabaseDataService
 from core.reporting.report_service import ReportService, REPORTLAB_AVAILABLE
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

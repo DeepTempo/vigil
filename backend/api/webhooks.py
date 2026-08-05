@@ -3,7 +3,7 @@
 from typing import List, Optional, Dict
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

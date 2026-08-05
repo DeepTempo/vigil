@@ -7,7 +7,7 @@ import logging
 
 from core.storage.database_data_service import DatabaseDataService
 from core.threat_intel.mitre_lookup import get_time_range, iter_techniques, resolve_technique
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

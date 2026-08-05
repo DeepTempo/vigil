@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

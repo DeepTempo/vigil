@@ -42,7 +42,7 @@ from backend.middleware.auth import get_current_active_user
 from backend.middleware.rate_limit import limiter
 from core.storage.models import User
 from core.storage.connection import get_db
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)

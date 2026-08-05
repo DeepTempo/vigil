@@ -148,7 +148,7 @@ GATE_ENV_VARS = ("DARKTRACE_ENABLED", "CLOUDY_INGESTION_ENABLED")
 
 
 def test_every_public_webhook_declares_a_gate():
-    from api._meta import Auth
+    from core.routing import Auth
 
     gated = [
         (name, meta) for name, _r, meta in _specs() if meta.auth is Auth.PUBLIC_WEBHOOK
@@ -166,7 +166,7 @@ def test_gated_webhook_receivers_are_off_by_default(monkeypatch):
     describe the shipped default rather than whatever the ambient environment
     happens to be.
     """
-    from api._meta import Auth
+    from core.routing import Auth
     from core.config import get_settings
 
     for var in GATE_ENV_VARS:
@@ -206,7 +206,7 @@ def test_gate_actually_opens_when_flag_set(monkeypatch, module, var):
 
 def test_public_webhook_requires_a_gate():
     """RouterMeta refuses to construct a PUBLIC_WEBHOOK without ``enabled``."""
-    from api._meta import Auth, RouterMeta
+    from core.routing import Auth, RouterMeta
 
     with pytest.raises(ValueError, match="must declare `enabled`"):
         RouterMeta(
@@ -219,7 +219,7 @@ def test_public_webhook_requires_a_gate():
 
 def test_weakening_auth_requires_a_written_reason():
     """A non-REQUIRED posture cannot be adopted silently."""
-    from api._meta import Auth, RouterMeta
+    from core.routing import Auth, RouterMeta
 
     with pytest.raises(ValueError, match="no `reason`"):
         RouterMeta(prefix="/api/x", tags=["x"], auth=Auth.ROUTER_MANAGED)
@@ -231,7 +231,7 @@ def test_weakening_auth_requires_a_written_reason():
 
 def test_required_auth_rejects_a_reason():
     """Keeps ``reason`` meaning "why auth is weaker", not a notes field."""
-    from api._meta import Auth, RouterMeta
+    from core.routing import Auth, RouterMeta
 
     with pytest.raises(ValueError, match="needs no `reason`"):
         RouterMeta(prefix="/api/x", tags=["x"], auth=Auth.REQUIRED, reason="some note")
@@ -239,7 +239,7 @@ def test_required_auth_rejects_a_reason():
 
 def test_every_non_required_router_has_a_reason():
     """The live tree, not just the validator: all 5 deviations are justified."""
-    from api._meta import Auth
+    from core.routing import Auth
 
     deviations = [
         (name, meta) for name, _r, meta in _specs() if meta.auth is not Auth.REQUIRED
@@ -254,7 +254,7 @@ def test_every_non_required_router_has_a_reason():
 
 @pytest.mark.parametrize("bad", ["api/x", "/api/x/"])
 def test_prefix_shape_is_validated(bad):
-    from api._meta import Auth, RouterMeta
+    from core.routing import Auth, RouterMeta
 
     with pytest.raises(ValueError):
         RouterMeta(prefix=bad, tags=["x"], auth=Auth.REQUIRED)

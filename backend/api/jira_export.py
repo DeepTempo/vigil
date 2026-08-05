@@ -16,7 +16,7 @@ from core.storage.models import User, Case, Finding
 from core.storage.connection import get_db, get_db_session
 from core.config import get_integration_config
 import requests
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 

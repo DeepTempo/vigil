@@ -28,7 +28,7 @@ from core.ingestion.ingestion_jobs import (
     summarize_stats,
 )
 from core.storage.database_data_service import DatabaseDataService
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)

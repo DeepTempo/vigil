@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from core.cases.case_metrics_service import CaseMetricsService
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

@@ -15,7 +15,7 @@ from backend.middleware.auth import get_current_active_user
 from backend.services.auth_service import AuthService
 from core.storage.models import User
 from services.mcp_service import MCPService
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -17,7 +17,7 @@ from backend.services.custom_agent_service import (
     CustomAgentService,
 )
 from core.agents.manager import CUSTOM_AGENT_ID_PREFIX
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 

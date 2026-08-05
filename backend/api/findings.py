@@ -17,7 +17,7 @@ from services.source_evidence import (
     normalize_finding_source_evidence,
     project_finding_source_evidence_for_list,
 )
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

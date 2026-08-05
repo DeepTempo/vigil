@@ -7,7 +7,7 @@ from pydantic import BaseModel
 import logging
 
 from core.storage.database_data_service import DatabaseDataService
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

@@ -7,7 +7,7 @@ from datetime import datetime
 
 from core.storage.models import SLAPolicy
 from core.storage.connection import get_db_session
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

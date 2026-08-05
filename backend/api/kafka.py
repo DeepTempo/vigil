@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 from core.config import get_settings
 
 # Prefix and tags live in ROUTER_META, not the APIRouter() constructor — one

@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 
 from core.storage.connection import get_db_manager
 from core.storage.models import LLMInteractionLog
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 

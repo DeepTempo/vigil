@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from backend.middleware.auth import get_current_user
 from core.storage.models import User
 from core.chat import conversation_service
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 

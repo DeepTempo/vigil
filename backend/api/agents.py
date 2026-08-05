@@ -7,7 +7,7 @@ import logging
 
 from services.defaults import DEFAULT_MODEL
 from core.agents.manager import AgentManager, CUSTOM_AGENT_ID_PREFIX
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

@@ -24,7 +24,7 @@ from hashlib import sha256
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 from core.config import get_settings
 from core.secrets import get_secret
 

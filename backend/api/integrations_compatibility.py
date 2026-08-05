@@ -17,7 +17,7 @@ from backend.middleware.auth import get_current_active_user
 from backend.services.auth_service import AuthService
 from core.storage.models import User
 from services.integration_compatibility_service import get_compatibility_service
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

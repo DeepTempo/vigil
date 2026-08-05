@@ -13,7 +13,7 @@ from backend.middleware.auth import get_current_active_user
 from backend.services.auth_service import AuthService
 from core.storage.models import User
 from core.auth import extension_session_service as ext_session
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 

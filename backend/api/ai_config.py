@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.storage.connection import get_db, get_db_session

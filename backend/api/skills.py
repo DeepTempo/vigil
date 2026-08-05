@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 

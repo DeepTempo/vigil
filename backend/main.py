@@ -162,7 +162,7 @@ if PROMETHEUS_AVAILABLE:
 
 # Mount every router in backend/api/ (issue #478). Each module declares its
 # own prefix, tags, auth posture and optional feature gate in ROUTER_META, so
-# adding a router needs no edit to this file. See backend/api/_meta.py.
+# adding a router needs no edit to this file. See core/routing.py.
 mount_routers(
     app,
     context_path=_CONTEXT_PATH,

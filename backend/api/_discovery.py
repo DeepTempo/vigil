@@ -27,12 +27,12 @@ from typing import Sequence
 
 from fastapi import FastAPI
 
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
 
 #: Modules in backend/api/ that are not routers.
-_SKIP = {"_meta", "_discovery"}
+_SKIP = {"_discovery"}
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 
@@ -70,7 +70,7 @@ def load_router_specs() -> list[tuple[str, object, RouterMeta]]:
         if meta is None:
             raise RuntimeError(
                 f"backend/api/{name}.py defines no `ROUTER_META`. Declare one "
-                f"(see backend/api/_meta.py) — prefixes are not inferred from "
+                f"(see core/routing.py) — prefixes are not inferred from "
                 f"filenames, because that would be wrong for half of them."
             )
         if not isinstance(meta, RouterMeta):

@@ -22,7 +22,7 @@ from core.storage.models import User
 from core.platform import service_manager
 from core.platform.autostart_config import get_autostart_services, set_autostart_services
 from core.platform.service_manager import SERVICES, ActionResult, ServiceStatus
-from api._meta import Auth, RouterMeta
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 
