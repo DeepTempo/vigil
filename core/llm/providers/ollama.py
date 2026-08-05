@@ -65,7 +65,7 @@ def container_base_url() -> str:
     reach Ollama at all).
 
     Applied at the two places that shell out to compose — the ``_compose`` env
-    in ``services/service_manager.py`` and ``dc()`` in ``scripts/lib.sh`` — so
+    in ``core/platform/service_manager.py`` and ``dc()`` in ``scripts/lib.sh`` — so
     there is one variable and one rewrite rule, not two configs to keep in sync.
     """
     url = base_url()
