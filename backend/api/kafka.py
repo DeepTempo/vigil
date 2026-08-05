@@ -15,13 +15,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from api._meta import Auth, RouterMeta
+from core.config import get_settings
 
 # Prefix and tags live in ROUTER_META, not the APIRouter() constructor — one
 # home for mount metadata across all 42 routers. This module was the sole
@@ -70,8 +70,9 @@ def _default_config() -> Dict[str, Any]:
 
 
 def _daemon_status_url() -> str:
-    host = os.getenv("DAEMON_HEALTH_HOST", "localhost")
-    port = os.getenv("DAEMON_HEALTH_PORT", "9091")
+    settings = get_settings()
+    host = settings.daemon_health_host
+    port = settings.daemon_health_port
     return f"http://{host}:{port}/status"
 
 

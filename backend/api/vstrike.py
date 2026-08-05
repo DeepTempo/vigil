@@ -13,7 +13,6 @@ is bypassed (matches the rest of the Vigil codebase).
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -30,6 +29,8 @@ from backend.middleware.auth import get_current_active_user
 from services.database_data_service import DatabaseDataService
 from services.vstrike_service import VStrikeToolNotImplemented, get_vstrike_service
 from api._meta import Auth, RouterMeta
+from core.config import get_settings
+from core.secrets import get_secret
 
 
 class VStrikeLoadNetworkRequest(BaseModel):
@@ -92,18 +93,12 @@ data_service = DatabaseDataService()
 
 
 def _is_dev_mode() -> bool:
-    return os.environ.get("DEV_MODE", "").lower() == "true"
+    return get_settings().dev_mode
 
 
 def _expected_inbound_key() -> Optional[str]:
-    """Return the expected inbound bearer key, or None if unset."""
-    key = os.environ.get("VSTRIKE_INBOUND_API_KEY")
-    if key:
-        return key
     try:
-        from backend.secrets_manager import get_secret
-
-        return get_secret("VSTRIKE_INBOUND_API_KEY")
+        return get_secret("VSTRIKE_INBOUND_API_KEY") or None
     except Exception as e:
         logger.debug("Could not read VSTRIKE_INBOUND_API_KEY from secrets: %s", e)
         return None

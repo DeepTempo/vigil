@@ -35,6 +35,18 @@ def _specs():
     return load_router_specs()
 
 
+@pytest.fixture(autouse=True)
+def _clear_settings_cache():
+    """The webhook gates read the ``lru_cache``'d ``Settings``, so a test that
+    mutates the gate env vars must rebuild it — and must not leak that build
+    into the next test."""
+    from core.config import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 def test_every_api_module_declares_router_meta():
     """``load_router_specs`` raises on a module missing ``router``/``ROUTER_META``.
 
@@ -68,50 +80,67 @@ def test_prefixes_are_declared_not_inferred():
 
 
 def _to_pattern(path: str) -> re.Pattern:
-    """Turn ``/api/x/{id}`` into a regex matching any single-segment value."""
-    return re.compile(
-        "^"
-        + re.sub(
-            r"\{[^}]+\}",
-            "[^/]+",
-            re.escape(path).replace(r"\{", "{").replace(r"\}", "}"),
-        )
-        + "$"
-    )
+    """Turn ``/api/x/{id}`` into a regex matching a concrete path.
+
+    A ``{name:path}`` convertor matches across ``/`` (multi-segment); every
+    other ``{...}`` matches a single segment. Modelling ``:path`` as one
+    segment would under-report the literals such a route can swallow.
+    """
+
+    def _seg(m: "re.Match[str]") -> str:
+        return ".+" if m.group(0).endswith(":path}") else "[^/]+"
+
+    escaped = re.escape(path).replace(r"\{", "{").replace(r"\}", "}")
+    return re.compile("^" + re.sub(r"\{[^}]+\}", _seg, escaped) + "$")
 
 
 def test_no_cross_router_path_shadowing():
     """Mount order must stay irrelevant.
 
-    FastAPI resolves overlapping paths first-match-wins, and discovery mounts
-    alphabetically. That is only safe while no router's parameterised path can
-    swallow a literal path belonging to a *different* router. Shadowing inside
-    one router is fine — ``/api/findings/{finding_id}`` vs
-    ``/api/findings/all`` — because intra-router order comes from decorator
-    order in the module and discovery never changes it.
+    FastAPI resolves overlapping routes first-match-wins, and discovery mounts
+    alphabetically. That is only safe while no route in one router can capture a
+    request meant for a *different* router. Shadowing inside one router is fine
+    — ``/api/findings/{finding_id}`` vs ``/api/findings/all`` — because
+    intra-router order comes from decorator order and discovery never changes
+    it.
 
-    If this fails, the two routers named below now depend on mount order, and
-    ROUTER_META needs an explicit ordering field.
+    Two routes only collide when they share an HTTP method: Starlette falls
+    through a path match whose method doesn't match, so method sets must
+    intersect for mount order to matter. If this fails, the named routers now
+    depend on mount order and ROUTER_META needs an explicit ordering field.
     """
-    owner: dict[str, str] = {}
+    routes = []  # (full_path, methods, owner)
     for name, router, meta in _specs():
         for route in router.routes:
-            path = meta.prefix + getattr(route, "path", "")
-            owner.setdefault(path, name)
+            full = meta.prefix + getattr(route, "path", "")
+            methods = frozenset(getattr(route, "methods", None) or ())
+            routes.append((full, methods, name))
 
-    params = [p for p in owner if "{" in p]
-    literals = [p for p in owner if "{" not in p]
-
-    cross = [
-        (p, owner[p], lit, owner[lit])
-        for p in params
-        for lit in literals
-        if owner[p] != owner[lit] and _to_pattern(p).match(lit)
+    # Identical path in two routers, sharing a method: never looks like
+    # "param vs literal", so the comparison below would miss it entirely.
+    exact = [
+        (a_p, a_o, b_o)
+        for i, (a_p, a_m, a_o) in enumerate(routes)
+        for b_p, b_m, b_o in routes[i + 1:]
+        if a_p == b_p and a_o != b_o and (a_m & b_m)
     ]
-    assert (
-        not cross
-    ), "Cross-router path shadowing — mount order now matters:\n" + "\n".join(
-        f"  {p} ({a}) shadows {lit} ({b})" for p, a, lit, b in cross
+
+    # A parameterised path in one router swallowing a literal in another.
+    params = [r for r in routes if "{" in r[0]]
+    literals = [r for r in routes if "{" not in r[0]]
+    swallow = [
+        (p_p, p_o, l_p, l_o)
+        for p_p, p_m, p_o in params
+        for l_p, l_m, l_o in literals
+        if p_o != l_o and (p_m & l_m) and _to_pattern(p_p).match(l_p)
+    ]
+
+    problems = [f"  identical path {p} in {a} and {b}" for p, a, b in exact] + [
+        f"  {pp} ({po}) shadows {lp} ({lo})" for pp, po, lp, lo in swallow
+    ]
+    assert not problems, (
+        "Cross-router path shadowing — mount order now matters:\n"
+        + "\n".join(problems)
     )
 
 
@@ -138,9 +167,11 @@ def test_gated_webhook_receivers_are_off_by_default(monkeypatch):
     happens to be.
     """
     from api._meta import Auth
+    from core.config import get_settings
 
     for var in GATE_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+    get_settings.cache_clear()
 
     for name, _r, meta in _specs():
         if meta.auth is Auth.PUBLIC_WEBHOOK:
@@ -160,12 +191,16 @@ def test_gate_actually_opens_when_flag_set(monkeypatch, module, var):
     Without this, ``enabled=lambda: False`` would satisfy the default-off test
     while silently disabling the integration for everyone.
     """
+    from core.config import get_settings
+
     for v in GATE_ENV_VARS:
         monkeypatch.delenv(v, raising=False)
+    get_settings.cache_clear()
     meta = dict((n, m) for n, _r, m in _specs())[module]
     assert not meta.is_enabled
 
     monkeypatch.setenv(var, "true")
+    get_settings.cache_clear()
     assert meta.is_enabled, f"{module} stays off even with {var}=true"
 
 
