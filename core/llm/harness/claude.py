@@ -3512,21 +3512,22 @@ Provide only the JSON, no additional text."""
 
         try:
             # Try the MCP registry first (Phase 3) - filter to enabled only
+            from services.mcp_client import get_mcp_client
             from services.mcp_registry import get_mcp_registry
             from services.mcp_service import MCPService
 
             registry = get_mcp_registry()
             all_configs = registry.get_agent_sdk_configs()
 
-            # Filter to only enabled servers
-            try:
-                from backend.api.mcp import mcp_service as _mcp_svc
-
-                mcp_servers = [
-                    c for c in all_configs if _mcp_svc.is_server_enabled(c["name"])
-                ]
-            except Exception:
-                mcp_servers = all_configs  # fallback if service not importable
+            # The shared client owns the live enable/disable state. Without it,
+            # build a local MCPService — it reads the same persisted state file,
+            # so a server the operator disabled stays disabled. Never fall back
+            # to all_configs: that would hand disabled servers to the agent.
+            client = get_mcp_client()
+            enablement = (client.mcp_service if client else None) or MCPService()
+            mcp_servers = [
+                c for c in all_configs if enablement.is_server_enabled(c["name"])
+            ]
 
             if mcp_servers:
                 logger.info(
