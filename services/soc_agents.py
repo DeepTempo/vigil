@@ -48,7 +48,7 @@ class AgentIdentity:
     """The two id namespaces an agent participates in besides its own id.
 
     ``decision_id`` names the *action* an agent performs and is what lands in
-    ``ai_decision_log.agent_id`` — deliberately a different vocabulary from
+    ``ai_decision_logs.agent_id`` — deliberately a different vocabulary from
     the :class:`AgentId` that lands in ``created_by``, because decisions are
     grouped by the work they represent rather than by who did it.
     ``component_category`` selects the ``ai_model_configs`` row the agent
@@ -103,7 +103,7 @@ class AgentProfile:
     # One of: 'triage', 'investigation', 'reporting'. Custom agents default
     # to 'investigation' unless the user picks otherwise in the builder.
     component_category: str = DEFAULT_COMPONENT_CATEGORY
-    # GH #476 — action id stamped on this agent's ai_decision_log rows. Custom
+    # GH #476 — action id stamped on this agent's ai_decision_logs rows. Custom
     # agents have no action of their own, so they log under their agent id.
     decision_id: str = ""
 
@@ -742,7 +742,7 @@ class AgentManager:
             return 0
 
     def get_current_agent(self) -> AgentProfile:
-        return self.agents.get(self.current_agent_id, self.agents["investigator"])
+        return self.agents.get(self.current_agent_id, self.agents[DEFAULT_AGENT_ID])
 
     def set_current_agent(self, agent_id: str) -> bool:
         if agent_id in self.agents:
