@@ -16,7 +16,6 @@ from backend.services.auth_cookies import ACCESS_COOKIE_NAME
 from backend.services.auth_service import AuthService
 from backend.services.token_blacklist import is_token_revoked
 from database.models import User
-from database.connection import get_db_session
 
 from core.config import get_settings
 

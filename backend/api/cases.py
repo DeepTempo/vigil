@@ -866,15 +866,19 @@ async def add_task(case_id: str, data: TaskAdd, session: UnitOfWorkSession):
 
 
 @router.get("/{case_id}/tasks")
-async def get_tasks(case_id: str, session: UnitOfWorkSession):
+async def get_tasks(case_id: str):
     """Get all tasks for case."""
     from database.models import CaseTask
+    from services.unit_of_work import unit_of_work
 
     try:
-        tasks = session.query(CaseTask).filter(CaseTask.case_id == case_id).all()
-        return {"tasks": [t.to_dict() for t in tasks]}
-    except Exception as e:
-        # If database is not available, return empty list
+        # Own transaction: a failed query must not poison a request-scoped
+        # session, which would turn this graceful fallback into a 500.
+        with unit_of_work() as session:
+            tasks = session.query(CaseTask).filter(CaseTask.case_id == case_id).all()
+            return {"tasks": [t.to_dict() for t in tasks]}
+    except Exception:
+        # If the database is not available, return an empty list.
         return {"tasks": []}
 
 

@@ -17,7 +17,6 @@ from secrets_manager import get_secret, set_secret, delete_secret, get_secrets_m
 
 # Import database config service
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from backend.dependencies import UnitOfWorkSession
 from database.config_service import get_config_service
 from services.defaults import DEFAULT_MODEL
 from services.integration_secrets import redact_secrets, secret_fields_for, split_secrets
@@ -239,7 +238,7 @@ async def get_claude_config():
 
 
 @router.post("/claude")
-async def set_claude_config(config: ClaudeConfig, session: UnitOfWorkSession):
+async def set_claude_config(config: ClaudeConfig):
     """
     Set Claude API configuration.
 
@@ -257,27 +256,30 @@ async def set_claude_config(config: ClaudeConfig, session: UnitOfWorkSession):
 
         # GH #88: keep the new llm_provider_configs table in sync so the
         # Settings "AI Config" tab and the legacy endpoint agree on the
-        # Anthropic default. Best-effort — a DB failure here should NOT
-        # block the secret write that already succeeded.
+        # Anthropic default. Best-effort — a DB failure here (including the
+        # commit) must NOT block the secret write that already succeeded, so
+        # this runs in its own transaction rather than the request's.
         try:
             from database.models import LLMProviderConfig
+            from services.unit_of_work import unit_of_work
 
-            row = session.get(LLMProviderConfig, "anthropic-default")
-            if row is None:
-                row = LLMProviderConfig(
-                    provider_id="anthropic-default",
-                    provider_type="anthropic",
-                    name="Anthropic (default)",
-                    api_key_ref="CLAUDE_API_KEY",
-                    default_model=DEFAULT_MODEL,
-                    is_active=True,
-                    is_default=True,
-                    config={},
-                )
-                session.add(row)
-            else:
-                row.api_key_ref = "CLAUDE_API_KEY"
-                row.is_active = True
+            with unit_of_work() as session:
+                row = session.get(LLMProviderConfig, "anthropic-default")
+                if row is None:
+                    row = LLMProviderConfig(
+                        provider_id="anthropic-default",
+                        provider_type="anthropic",
+                        name="Anthropic (default)",
+                        api_key_ref="CLAUDE_API_KEY",
+                        default_model=DEFAULT_MODEL,
+                        is_active=True,
+                        is_default=True,
+                        config={},
+                    )
+                    session.add(row)
+                else:
+                    row.api_key_ref = "CLAUDE_API_KEY"
+                    row.is_active = True
         except Exception as sync_err:  # noqa: BLE001
             logger.warning(
                 "Legacy /config/claude could not sync llm_provider_configs: %s",

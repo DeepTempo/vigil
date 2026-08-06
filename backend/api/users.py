@@ -16,7 +16,6 @@ from backend.middleware.auth import get_current_user
 from backend.services.password_validator import PasswordPolicyError, validate_password_strength
 from backend.services.token_blacklist import revoke_all_for_user
 from database.models import User, Role
-from database.connection import get_db_session
 from api._meta import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
