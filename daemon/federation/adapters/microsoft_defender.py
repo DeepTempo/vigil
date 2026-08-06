@@ -14,7 +14,7 @@ def _factory() -> FederationAdapter:
 
     return SIEMIngestionAdapter(
         name="microsoft_defender",
-        integration_id="microsoft_defender",
+        integration_id="microsoft-defender",
         default_interval=60,  # EDR cadence
         service_factory=make_service,
         external_id_prefix="defender",

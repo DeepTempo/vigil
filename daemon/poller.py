@@ -137,7 +137,7 @@ class DataPoller:
                     logger.warning(f"Failed to initialize CrowdStrike service: {e}")
             
             # Initialize Azure Sentinel service if configured
-            if is_integration_enabled('azure_sentinel'):
+            if is_integration_enabled('azure-sentinel'):
                 try:
                     from services.azure_sentinel_ingestion import AzureSentinelIngestion
                     self._azure_sentinel_service = AzureSentinelIngestion()
@@ -146,7 +146,7 @@ class DataPoller:
                     logger.warning(f"Failed to initialize Azure Sentinel service: {e}")
             
             # Initialize AWS Security Hub service if configured
-            if is_integration_enabled('aws_security_hub'):
+            if is_integration_enabled('aws-security-hub'):
                 try:
                     from services.aws_security_hub_ingestion import AWSSecurityHubIngestion
                     self._aws_security_hub_service = AWSSecurityHubIngestion()
@@ -155,7 +155,7 @@ class DataPoller:
                     logger.warning(f"Failed to initialize AWS Security Hub service: {e}")
             
             # Initialize Microsoft Defender service if configured
-            if is_integration_enabled('microsoft_defender'):
+            if is_integration_enabled('microsoft-defender'):
                 try:
                     from services.microsoft_defender_ingestion import MicrosoftDefenderIngestion
                     self._microsoft_defender_service = MicrosoftDefenderIngestion()
