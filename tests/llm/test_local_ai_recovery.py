@@ -24,6 +24,16 @@ def test_local_recovery_requires_dev_mode_and_loopback_gateway(monkeypatch):
     assert recovery.local_bifrost_recovery_enabled() is False
 
 
+def test_unset_bifrost_url_still_counts_as_local(monkeypatch):
+    # The default has to stay loopback or a host-run dev server silently loses
+    # recovery: nothing else sets BIFROST_URL on a bare uvicorn start.
+    monkeypatch.setenv("DEV_MODE", "true")
+    monkeypatch.delenv("BIFROST_URL", raising=False)
+    monkeypatch.setattr(recovery, "get_ai_operations_setting", lambda key, default: True)
+    get_settings.cache_clear()
+    assert recovery.local_bifrost_recovery_enabled() is True
+
+
 def test_retry_limit_is_bounded(monkeypatch):
     monkeypatch.setattr(recovery, "get_ai_operations_setting", lambda key, default: 9)
     assert recovery.local_bifrost_recovery_retry_limit() == 3

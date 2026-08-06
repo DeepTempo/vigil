@@ -3,7 +3,7 @@
 import logging
 from typing import Dict, List, Optional
 
-from core.agents.builtins import BUILTIN_AGENTS, AgentProfile
+from core.agents.builtins import BUILTIN_AGENTS, DEFAULT_AGENT_ID, AgentProfile
 from core.agents.prompts import render_base_prompt
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,9 @@ class SOCAgentLibrary:
             # component_category (default 'investigation') if not set.
             model=(row.get("model") or None),
             component_category=(row.get("component_category") or "investigation"),
+            # GH #476 — built-ins carry their action id; custom agents have no
+            # action of their own, so they log under their agent id.
+            decision_id=(row.get("decision_id") or row["id"]),
             # #482 — task-routing keywords; built-ins carry them, customs don't.
             task_keywords=list(row.get("task_keywords") or []),
         )
@@ -69,7 +72,7 @@ CUSTOM_AGENT_ID_PREFIX = "custom-"
 class AgentManager:
     def __init__(self):
         self.agents = SOCAgentLibrary.get_all_agents()
-        self.current_agent_id = "investigator"
+        self.current_agent_id = DEFAULT_AGENT_ID
         # Load DB-backed custom agents at startup so /agents/agents returns
         # a unified list without waiting for a later CRUD call to trigger
         # refresh. Failures (DB not ready) are logged inside the helper,
@@ -113,7 +116,7 @@ class AgentManager:
             return 0
 
     def get_current_agent(self) -> AgentProfile:
-        return self.agents.get(self.current_agent_id, self.agents["investigator"])
+        return self.agents.get(self.current_agent_id, self.agents[DEFAULT_AGENT_ID])
 
     def set_current_agent(self, agent_id: str) -> bool:
         if agent_id in self.agents:
@@ -130,6 +133,7 @@ class AgentManager:
                 "icon": a.icon,
                 "color": a.color,
                 "specialization": a.specialization,
+                "decision_id": a.decision_id,
             }
             for a in self.agents.values()
         ]
@@ -142,4 +146,4 @@ class AgentManager:
         for profile in self.agents.values():
             if profile.task_keywords and any(kw in t for kw in profile.task_keywords):
                 return profile
-        return self.agents["investigator"]
+        return self.agents[DEFAULT_AGENT_ID]

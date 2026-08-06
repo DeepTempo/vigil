@@ -10,10 +10,39 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from core.agents.builtins import AgentProfile, BUILTIN_AGENTS  # noqa: E402
+from core.agents.builtins import (  # noqa: E402
+    BUILTIN_AGENTS,
+    ORCHESTRATION_DECISION_ID,
+    AgentId,
+    AgentProfile,
+)
 from core.agents.manager import SOCAgentLibrary  # noqa: E402
 
 pytestmark = pytest.mark.unit
+
+
+def test_registry_covers_every_agent_exactly_once():
+    """AgentId and the BUILTIN_AGENTS records are one registry in two pieces
+    (#476) — adding an agent to one but not the other is the drift this
+    issue exists to prevent. Every record must also carry its action id."""
+    ids = {a.value for a in AgentId}
+    assert {r["id"] for r in BUILTIN_AGENTS} == ids
+    assert all(r.get("decision_id") for r in BUILTIN_AGENTS)
+
+
+def test_decision_ids_are_unique_and_distinct_from_orchestration():
+    """Decision ids key the AI-Decisions filter, so a collision would silently
+    merge two agents' decisions into one bucket."""
+    decision_ids = [r["decision_id"] for r in BUILTIN_AGENTS]
+    assert len(set(decision_ids)) == len(decision_ids)
+    assert ORCHESTRATION_DECISION_ID not in decision_ids
+
+
+def test_component_categories_are_valid_model_registry_components():
+    from core.llm.providers.registry import is_valid_component
+
+    for record in BUILTIN_AGENTS:
+        assert is_valid_component(record["component_category"]), record["id"]
 
 
 def test_agent_profile_has_new_fields_with_safe_defaults():

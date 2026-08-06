@@ -238,32 +238,14 @@ export interface ApiDecision {
 }
 
 /**
- * agent_id → display name for the AI Decisions log. Intentionally NOT sourced
- * from GET /agents (#482): the daemon records decision-log ids here
- * (investigation/correlation/reporting/orchestrator) that differ from the
- * canonical ids /agents serves (investigator/correlator/reporter, and no
- * orchestrator), so this can't be rebuilt from /agents without a normalization
- * layer. (ported from pages/AIDecisions.tsx:186-195)
+ * `agent_id` on a decision row is an action id from the backend registry
+ * (core/agents/builtins.py) — `investigation`, `threat_hunt`,
+ * `orchestration`. Those are already words, so the label is derived rather
+ * than mapped; custom agents fall through to the same treatment (#476).
  */
-const AGENT_NAMES: Record<string, string> = {
-  triage: 'Triage',
-  investigation: 'Investigation',
-  threat_hunter: 'Threat Hunter',
-  correlation: 'Correlation',
-  auto_responder: 'Auto-Response',
-  reporting: 'Reporting',
-  mitre_analyst: 'MITRE',
-  forensics: 'Forensics',
-  threat_intel: 'Threat Intel',
-  compliance: 'Compliance',
-  malware_analyst: 'Malware',
-  network_analyst: 'Network',
-  orchestrator: 'Orchestrator',
-}
-
 export function getAgentDisplayName(agentId?: string): string {
   if (!agentId) return DASH
-  return AGENT_NAMES[agentId] || agentId
+  return prettyHandle(agentId)
 }
 
 /**

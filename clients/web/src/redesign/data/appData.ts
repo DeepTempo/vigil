@@ -22,11 +22,12 @@ export interface Workflow {
 // from GET /agents at runtime via useAgentMeta (#482), so built-in colors/labels
 // can't drift from the backend. prettyHandle stays as the offline fallback.
 
-/** "mitre_analyst" → "Mitre Analyst" — fallback for unknown/custom handles. */
+/** "mitre_mapping" → "MITRE Mapping" — labels every agent and action id. */
 export function prettyHandle(handle: string): string {
   return handle
     .replace(/[._-]+/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\bMitre\b/g, 'MITRE')
     .trim()
 }
 

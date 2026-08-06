@@ -882,6 +882,8 @@ export interface AgentSummary {
   icon?: string
   color?: string
   specialization?: string
+  /** Action id this agent's decisions are logged under (#476). */
+  decision_id?: string
 }
 
 // Config API

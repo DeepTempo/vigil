@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.agents.builtins import ORCHESTRATOR_ACTOR
+
 # Tool safety tiers live in services.tool_manager so every agent loop (daemon,
 # interactive OpenAI agent, workflows) shares one policy. Aliased to the
 # historical name so call sites — and the test that patches
@@ -1324,7 +1326,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
                 confidence=0.7,
                 reason=f"Autonomous investigation {inv_id} needs to execute {tool_name}",
                 evidence=[inv_id],
-                created_by="orchestrator",
+                created_by=ORCHESTRATOR_ACTOR,
                 parameters=tool_input,
             )
             action_id = pending.action_id

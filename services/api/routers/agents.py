@@ -6,6 +6,7 @@ from pydantic import BaseModel
 import logging
 
 from core.llm.defaults import DEFAULT_MODEL
+from core.agents.builtins import DEFAULT_AGENT_ID
 from core.agents.manager import AgentManager, CUSTOM_AGENT_ID_PREFIX
 from core.routing import Auth, RouterMeta
 
@@ -40,7 +41,7 @@ def _resolve_agent(agent_id: str):
 class InvestigationRequest(BaseModel):
     """Request to start an investigation with an agent."""
     finding_id: str
-    agent_id: Optional[str] = "investigator"
+    agent_id: Optional[str] = DEFAULT_AGENT_ID
     additional_context: Optional[str] = None
 
 
@@ -196,7 +197,7 @@ class AgentRunRequest(BaseModel):
     finding_id: Optional[str] = None
     case_id: Optional[str] = None
     task: Optional[str] = None
-    agent_id: str = "investigator"
+    agent_id: str = DEFAULT_AGENT_ID
     use_agent_sdk: bool = True
 
 

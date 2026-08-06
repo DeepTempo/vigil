@@ -5,11 +5,46 @@ built-ins and customs build through the same path
 (``core.agents.manager.SOCAgentLibrary.build_profile``). The old split
 structures (``_BUILTIN_COMPONENT_CATEGORY`` and the task-routing keyword
 table) are folded into each record as ``component_category`` and
-``task_keywords``.
+``task_keywords``; the decision-log action id (GH #476) is folded in the
+same way as ``decision_id``.
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import List, Optional
+
+
+class AgentId(str, Enum):
+    """Canonical id of every built-in agent — the *actor* vocabulary.
+
+    Doubles as the ``id`` of the matching :data:`BUILTIN_AGENTS` record and
+    the ``created_by`` value an agent stamps on records it authors. Custom
+    agents are not members; they carry a ``custom-`` prefixed id from the
+    database.
+    """
+
+    TRIAGE = "triage"
+    INVESTIGATOR = "investigator"
+    THREAT_HUNTER = "threat_hunter"
+    CORRELATOR = "correlator"
+    RESPONDER = "responder"
+    REPORTER = "reporter"
+    MITRE_ANALYST = "mitre_analyst"
+    FORENSICS = "forensics"
+    THREAT_INTEL = "threat_intel"
+    COMPLIANCE = "compliance"
+    MALWARE_ANALYST = "malware_analyst"
+    NETWORK_ANALYST = "network_analyst"
+    AUTO_RESPONDER = "auto_responder"
+
+
+# The autonomous loop authors decisions of its own but is not an agent: it has
+# no prompt, no BUILTIN_AGENTS record, and never appears in GET /agents.
+ORCHESTRATOR_ACTOR = "orchestrator"
+ORCHESTRATION_DECISION_ID = "orchestration"
+
+# Fallback whenever a caller names no agent, and the landing agent for a new session.
+DEFAULT_AGENT_ID = AgentId.INVESTIGATOR.value
 
 
 @dataclass
@@ -37,6 +72,12 @@ class AgentProfile:
     # One of: 'triage', 'investigation', 'reporting'. Custom agents default
     # to 'investigation' unless the user picks otherwise in the builder.
     component_category: str = "investigation"
+    # GH #476 — action id stamped on this agent's ai_decision_logs rows.
+    # Deliberately a different vocabulary from the AgentId in ``created_by``:
+    # decisions are grouped by the work they represent, not by who did it.
+    # Custom agents have no action of their own, so they log under their
+    # agent id (build_profile falls back to the row id).
+    decision_id: str = ""
     # #482 — task-routing keywords, folded in from the old get_agent_by_task
     # table. AgentManager.get_agent_by_task matches these against a free-text
     # task. Built-ins carry their keywords; customs default to none (they
@@ -47,6 +88,7 @@ class AgentProfile:
 BUILTIN_AGENTS = [
     {
         "id": "triage",
+        "decision_id": "triage",
         "component_category": "triage",
         "task_keywords": ["triage", "prioritize", "quick"],
         "role": "Triage Agent specializing in rapid alert assessment",
@@ -69,6 +111,7 @@ BUILTIN_AGENTS = [
     },
     {
         "id": "investigator",
+        "decision_id": "investigation",
         "component_category": "investigation",
         "task_keywords": ["investigate", "deep dive", "analyze"],
         "role": "Investigation Agent specializing in thorough security investigations",
@@ -99,6 +142,7 @@ BUILTIN_AGENTS = [
     },
     {
         "id": "threat_hunter",
+        "decision_id": "threat_hunt",
         "component_category": "investigation",
         "task_keywords": ["hunt", "proactive", "search"],
         "role": "Threat Hunter specializing in proactive threat detection",
@@ -123,6 +167,7 @@ BUILTIN_AGENTS = [
     },
     {
         "id": "correlator",
+        "decision_id": "correlation",
         "component_category": "investigation",
         "task_keywords": ["correlate", "relate", "connect", "pattern"],
         "role": "Correlation Agent specializing in cross-signal analysis",
@@ -147,6 +192,7 @@ BUILTIN_AGENTS = [
     },
     {
         "id": "responder",
+        "decision_id": "response",
         "component_category": "investigation",
         "task_keywords": ["respond", "contain", "remediate"],
         "role": "Response Agent specializing in incident response",
@@ -176,6 +222,7 @@ Confidence scoring:
     },
     {
         "id": "reporter",
+        "decision_id": "reporting",
         "component_category": "reporting",
         "task_keywords": ["report", "summary", "document", "board brief", "board report", "risk posture"],
         "role": "Reporting Agent specializing in clear communication",
@@ -227,6 +274,7 @@ Confidence scoring:
     },
     {
         "id": "mitre_analyst",
+        "decision_id": "mitre_mapping",
         "component_category": "investigation",
         "task_keywords": ["mitre", "att&ck", "technique", "tactic"],
         "role": "MITRE ATT&CK Analyst specializing in attack pattern analysis",
@@ -251,6 +299,7 @@ Confidence scoring:
     },
     {
         "id": "forensics",
+        "decision_id": "forensics",
         "component_category": "investigation",
         "task_keywords": ["forensic", "artifact", "evidence"],
         "role": "Forensics Agent specializing in digital forensics",
@@ -275,6 +324,7 @@ Confidence scoring:
     },
     {
         "id": "threat_intel",
+        "decision_id": "threat_intel",
         "component_category": "investigation",
         "task_keywords": ["threat intel", "intelligence", "actor"],
         "role": "Threat Intelligence Agent specializing in intelligence analysis",
@@ -304,6 +354,7 @@ Confidence scoring:
     },
     {
         "id": "compliance",
+        "decision_id": "compliance",
         "component_category": "investigation",
         "task_keywords": ["compliance", "policy", "regulation"],
         "role": "Compliance Agent specializing in regulatory compliance",
@@ -327,6 +378,7 @@ Confidence scoring:
     },
     {
         "id": "malware_analyst",
+        "decision_id": "malware_analysis",
         "component_category": "investigation",
         "task_keywords": ["malware", "virus", "trojan", "ransomware"],
         "role": "Malware Analyst specializing in malware analysis",
@@ -372,6 +424,7 @@ Confidence scoring:
     },
     {
         "id": "network_analyst",
+        "decision_id": "network_analysis",
         "component_category": "investigation",
         "task_keywords": ["network", "traffic", "packet", "flow"],
         "role": "Network Analyst specializing in network security",
@@ -405,6 +458,7 @@ Confidence scoring:
     },
     {
         "id": "auto_responder",
+        "decision_id": "auto_response",
         "component_category": "investigation",
         "task_keywords": [],
         "role": "Autonomous Response Agent specializing in automatic threat response",

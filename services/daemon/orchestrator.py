@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.agents.builtins import ORCHESTRATION_DECISION_ID, ORCHESTRATOR_ACTOR
 from core.config import get_settings
 from services.daemon.agent_runner import AgentRunner
 from services.daemon.config import OrchestratorConfig
@@ -731,7 +732,7 @@ class Orchestrator:
                 confidence=0.8,
                 reason=f"[Auto-investigation {inv_id}] {action.get('reason', '')}",
                 evidence=[inv_id],
-                created_by="orchestrator",
+                created_by=ORCHESTRATOR_ACTOR,
             )
             logger.info(f"Created approval action for {inv_id}: {action_str}")
         except Exception as e:
@@ -955,7 +956,7 @@ class Orchestrator:
 
                 entry = AIDecisionLog(
                     decision_id=f"orch-{uuid.uuid4().hex[:8]}",
-                    agent_id="orchestrator",
+                    agent_id=ORCHESTRATION_DECISION_ID,
                     workflow_id=inv_id,
                     finding_id=finding_id,
                     case_id=case_id,
@@ -964,7 +965,7 @@ class Orchestrator:
                     reasoning=reasoning,
                     recommended_action=action,
                     decision_metadata={
-                        "source": "orchestrator",
+                        "source": ORCHESTRATOR_ACTOR,
                         "investigation_id": inv_id,
                     },
                 )
