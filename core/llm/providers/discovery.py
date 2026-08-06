@@ -252,7 +252,7 @@ async def fetch_openai_models(
     """Fetch the live OpenAI (or OpenAI-compatible) model catalog.
 
     OpenAI's /v1/models returns only ``id``/``created``/``owned_by``; no
-    display name, context, or capability data. The model_registry tier
+    display name, context, or capability data. The providers/registry tier
     heuristic fills in pricing — context/capabilities stay at their
     (0/False) defaults unless an override is registered in the static
     catalog.

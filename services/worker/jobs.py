@@ -1,16 +1,7 @@
-"""ARQ worker that processes LLM requests from the queue.
-
-Run with:
-    python -m arq core.llm.gateway.worker.WorkerSettings
-
-This worker consumes jobs from three priority queues (triage > investigation
-> chat). All Claude API calls go through the global rate-limiter semaphore
-so we never exceed the Anthropic rate limit regardless of how many callers
-are enqueuing concurrently.
-"""
+# The ARQ jobs behind LLMGateway, run by `python -m services.worker`. Every call
+# passes the rate-limiter semaphore, so concurrent callers cannot exceed the cap.
 
 import asyncio
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -38,11 +29,6 @@ def _redis_settings() -> RedisSettings:
     )
 
 
-# ---------------------------------------------------------------------------
-# Worker task functions
-# ---------------------------------------------------------------------------
-
-
 async def llm_call(
     ctx: Dict[str, Any],
     messages: List[Dict],
@@ -59,18 +45,8 @@ async def llm_call(
     investigation_id: Optional[str] = None,
     provider_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Execute a single LLM call through the shared ClaudeService.
-
-    This is the primary worker function.  It:
-      1. Acquires the rate-limit semaphore
-      2. Optionally loads session history from Redis
-      3. Calls the Anthropic API (or Bifrost, if provider routes non-Anthropic)
-      4. Saves updated session history
-      5. Returns the response content
-
-    When ``provider_id`` is None, routing falls back to the existing
-    ClaudeService.chat() path (pre-#88 behavior).
-    """
+    # The primary job: session load, dispatch, session save. provider_id=None
+    # keeps the pre-#88 ClaudeService.chat() path exactly.
     rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
     claude_service = ctx["claude_service"]
     session_store: RedisSessionStore = ctx["session_store"]
@@ -82,7 +58,7 @@ async def llm_call(
         from core.telemetry import extract_traceparent, get_tracer
 
         parent_ctx = extract_traceparent({"traceparent": traceparent})
-        _tracer = get_tracer("vigil.core.llm.gateway.worker")
+        _tracer = get_tracer("vigil.services.worker.jobs")
         worker_span = _tracer.start_span(
             "llm_worker.execute",
             context=parent_ctx,
@@ -183,12 +159,8 @@ async def llm_call_raw(
     agent_id: Optional[str] = None,
     provider_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Execute a raw multi-turn LLM call (used by AgentRunner tool loop).
-
-    Unlike ``llm_call``, this does NOT manage sessions -- the caller
-    provides the full message list including assistant/tool_result turns.
-    Returns the raw Anthropic response as a serialisable dict.
-    """
+    # AgentRunner's tool loop. Manages no session: the caller supplies the whole
+    # message list, assistant and tool_result turns included.
     rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
     claude_service = ctx["claude_service"]
 
@@ -199,7 +171,7 @@ async def llm_call_raw(
         from core.telemetry import extract_traceparent, get_tracer
 
         parent_ctx = extract_traceparent({"traceparent": traceparent})
-        _tracer = get_tracer("vigil.core.llm.gateway.worker")
+        _tracer = get_tracer("vigil.services.worker.jobs")
         worker_span = _tracer.start_span(
             "llm_worker.execute",
             context=parent_ctx,
@@ -277,22 +249,9 @@ async def llm_call_raw(
         }
 
 
-# ---------------------------------------------------------------------------
-# Multi-provider routing (GH #88)
-# ---------------------------------------------------------------------------
-
-
 def _is_default_anthropic_spec(spec) -> bool:
-    """True when ``spec`` is the seeded Anthropic provider row whose key
-    lives under the legacy CLAUDE_API_KEY/ANTHROPIC_API_KEY env vars.
-
-    The shared ClaudeService in ctx resolves its key from exactly those env
-    names, so only this one provider row is safe to route through the
-    shared service. Any other Anthropic row (e.g. a second account added
-    through the Settings UI) carries its own api_key_ref and must dispatch
-    via LLMRouter so ``_dispatch_anthropic`` resolves that per-provider
-    secret.
-    """
+    # Only the seeded row is safe for the shared ClaudeService, which resolves its
+    # key from these env names. Any other row has its own ref and needs the router.
     if spec.provider_type != "anthropic":
         return False
     ref = spec.api_key_ref
@@ -319,16 +278,8 @@ async def _maybe_dispatch_via_router(
     enable_thinking: bool,
     thinking_budget: int,
 ) -> Optional[Dict[str, Any]]:
-    """Return a router result dict, or None if the caller should fall back
-    to the legacy ClaudeService path.
-
-    All traffic routes through Bifrost (GH #84 PR-B). The router is taken
-    when ``provider_id`` is explicitly set and the provider is anything
-    other than the default Anthropic row with thinking enabled — that one
-    case still falls back to ClaudeService so we keep its full tool-use
-    loop, context reduction, and session management (which also routes
-    through Bifrost under the hood via ``core.llm.providers.clients``).
-    """
+    # Returns None when the caller should fall back to ClaudeService. Everything
+    # reaches Bifrost either way; the fallback just keeps ClaudeService's tool loop.
     if provider_id is None:
         return None
 
@@ -380,15 +331,8 @@ async def _maybe_dispatch_via_router(
 
 
 def _adapt_router_result_to_raw(router_result: Dict[str, Any]) -> Dict[str, Any]:
-    """Shape an LLMRouter result to match _serialize_raw_response output.
-
-    AgentRunner expects a dict with ``content`` (list of blocks),
-    ``stop_reason``, ``input_tokens``, ``output_tokens``. ``stop_reason`` must
-    reflect whether the response actually contained tool_use blocks — the
-    agent's tool-use loop only continues when ``stop_reason == "tool_use"``,
-    so hardcoding ``"end_turn"`` would silently drop every tool call from
-    router-dispatched providers.
-    """
+    # stop_reason must reflect real tool_use blocks: AgentRunner's loop only
+    # continues on "tool_use", so a hardcoded "end_turn" drops every tool call.
     blocks: List[Dict[str, Any]] = []
     text = router_result.get("content") or ""
     if text:
@@ -421,9 +365,7 @@ def _adapt_router_result_to_raw(router_result: Dict[str, Any]) -> Dict[str, Any]
     }
 
 
-# ---------------------------------------------------------------------------
-# Sync helpers (run inside asyncio.to_thread)
-# ---------------------------------------------------------------------------
+# The two _sync_* helpers below run inside asyncio.to_thread.
 
 
 def _sync_claude_call(
@@ -441,7 +383,6 @@ def _sync_claude_call(
     agent_id: Optional[str] = None,
     investigation_id: Optional[str] = None,
 ) -> Any:
-    """Call ClaudeService.chat() synchronously."""
     current_message = messages[-1]["content"] if messages else ""
     context = messages[:-1] if len(messages) > 1 else None
 
@@ -472,10 +413,10 @@ def _sync_claude_raw(
     investigation_id: Optional[str] = None,
     agent_id: Optional[str] = None,
 ) -> Any:
-    """Make a direct client.messages.create() call for multi-turn tool loops."""
+    # A direct messages.create() call, for multi-turn tool loops.
     import time as _time
 
-    from services.defaults import (
+    from core.llm.defaults import (
         build_thinking_kwargs,
         model_requires_adaptive_thinking,
     )
@@ -542,13 +483,8 @@ def _sync_claude_raw(
     return response
 
 
-# ---------------------------------------------------------------------------
-# Response helpers
-# ---------------------------------------------------------------------------
-
-
 def _extract_result(response: Any) -> Dict[str, Any]:
-    """Normalise ClaudeService.chat() output to a serialisable dict."""
+    # Normalise ClaudeService.chat() output to a serialisable dict.
     if response is None:
         return {"content": "", "type": "error", "error": "Empty response"}
     if isinstance(response, str):
@@ -561,7 +497,7 @@ def _extract_result(response: Any) -> Dict[str, Any]:
 
 
 def _serialize_raw_response(response: Any) -> Dict[str, Any]:
-    """Convert an Anthropic Message object into a JSON-safe dict."""
+    # Convert an Anthropic Message object into a JSON-safe dict.
     try:
         content_blocks = []
         for block in response.content:
@@ -611,13 +547,7 @@ def _serialize_raw_response(response: Any) -> Dict[str, Any]:
         }
 
 
-# ---------------------------------------------------------------------------
-# Worker startup / shutdown
-# ---------------------------------------------------------------------------
-
-
 async def on_startup(ctx: Dict[str, Any]):
-    """Initialise shared resources when the ARQ worker boots."""
     # Initialize OTEL telemetry (replaces basicConfig with structured JSON logging)
     try:
         from core.telemetry import init_telemetry
@@ -681,19 +611,9 @@ async def on_shutdown(ctx: Dict[str, Any]):
     logger.info("LLM worker shutting down")
 
 
-# ---------------------------------------------------------------------------
-# ARQ WorkerSettings
-# ---------------------------------------------------------------------------
-
-
 class WorkerSettings:
-    """ARQ worker configuration.
-
-    Queues are listed in priority order -- ARQ polls them left-to-right,
-    so ``triage`` jobs are always consumed before ``investigation``, which
-    are consumed before ``chat``.
-    """
-
+    # ARQ polls queues left-to-right, so triage is always consumed before
+    # investigation, and investigation before chat.
     functions = [llm_call, llm_call_raw]
     redis_settings = _redis_settings()
     queue_name = QUEUE_NAME

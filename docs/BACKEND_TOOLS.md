@@ -78,7 +78,7 @@ Manage autonomous response actions:
 When initializing the Claude service, enable Agent SDK and backend tools:
 
 ```python
-from services.claude_service import ClaudeService
+from core.llm.harness.claude import ClaudeService
 
 # Enable Agent SDK with backend tools (recommended for web UI)
 claude = ClaudeService(
@@ -154,7 +154,7 @@ from backend.schemas.tool_schemas import ALL_TOOLS
 
 ### Tool Routing
 
-Tool execution is handled in `services/claude_service.py`:
+Tool execution is handled in `core/llm/harness/claude.py`:
 
 ```python
 async def _process_backend_tool_use(self, content: List) -> List[Dict]:
@@ -267,7 +267,7 @@ docker ps | grep postgres
 echo $DATABASE_URL
 
 # Test connectivity
-python -c "from database.connection import get_db; import asyncio; asyncio.run(get_db())"
+python -c "from core.storage.connection import get_db; import asyncio; asyncio.run(get_db())"
 ```
 
 ## Performance

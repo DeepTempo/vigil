@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from core.config import REPO_ROOT, get_settings
 from core.secrets import get_secret, set_secret
-from services.defaults import DEFAULT_MODEL, build_thinking_kwargs
+from core.llm.defaults import DEFAULT_MODEL, build_thinking_kwargs
 
 # GH #89 — resolve the summarization model via ai_model_configs with a safe
 # fallback to the historical hardcoded default. Defined at module scope so

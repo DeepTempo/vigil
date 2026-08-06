@@ -1,9 +1,5 @@
-"""Unit tests for core.llm.gateway.worker.
-
-Covers ``_adapt_router_result_to_raw`` — its ``stop_reason`` must reflect
-whether the router returned tool_calls, otherwise AgentRunner's tool-use
-loop drops every tool invocation from router-dispatched providers.
-"""
+# _adapt_router_result_to_raw's stop_reason must reflect returned tool_calls, or
+# AgentRunner's loop drops every tool call from router-dispatched providers.
 
 from __future__ import annotations
 
@@ -15,7 +11,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from core.llm.gateway.worker import _adapt_router_result_to_raw
+from services.worker.jobs import _adapt_router_result_to_raw
 
 pytestmark = pytest.mark.unit
 

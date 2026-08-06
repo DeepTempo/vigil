@@ -179,7 +179,7 @@ def wrap_tool_result(
 
     Already-wrapped content is returned unchanged so wrapping is idempotent
     (the router applies it defensively to historical messages, and the
-    construction sites in claude_service.py also wrap fresh results — both
+    construction sites in harness/claude.py also wrap fresh results — both
     paths must be safe).
 
     Injection patterns in the content are logged here (and blocked when

@@ -29,8 +29,8 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-COMPOSE_FILE = REPO_ROOT / "docker" / "docker-compose.yml"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+COMPOSE_FILE = REPO_ROOT / "infra" / "docker" / "docker-compose.yml"
 
 
 @dataclass(frozen=True)
@@ -116,7 +116,7 @@ SERVICES: Dict[str, ServiceSpec] = {
         description="OpenTelemetry collector",
     ),
     # Host-native (Docker on macOS has no Metal passthrough, so a container
-    # would be CPU-only). Never stopped: see services/ollama_process.py.
+    # would be CPU-only). Never stopped: see core/llm/providers/ollama.py.
     "ollama": ServiceSpec(
         "ollama",
         None,

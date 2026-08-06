@@ -17,7 +17,7 @@ turns. Conflating the two is what made `services/` unnavigable.
 | `providers/` | SDK client construction, the model registry, live model discovery, local Ollama supervision | Know about agents or tools |
 | `cost/` | Pricing math, pre-call estimation, virtual-key budget enforcement | Call an LLM |
 | `bifrost/` | The only place that speaks Bifrost's admin and logging REST APIs | — |
-| `gateway/` | ARQ enqueue/worker transport in front of the router | Hold LLM logic of its own |
+| `gateway/` | The ARQ enqueue side in front of the router | Run the jobs it enqueues — that worker is `services/worker/` |
 
 `security.py` (prompt-injection defenses) sits at the top level because both the
 router and every harness need it.

@@ -69,6 +69,9 @@ file belongs here only if it's runtime plumbing with no owning capability.
   depends on no capability domain
 - **LLM** code (`core/llm/`, in flight as #485/#522) is a separate slice, not
   part of these domains
+- The **LLM gateway** (`core/llm/gateway`) enqueues LLM jobs onto the `arq:llm`
+  queue; the **worker** (`services/worker`) is the sole consumer that executes
+  them — the enqueue/execute seam between `core/` and the `services/` deployables
 
 ## Flagged ambiguities
 
@@ -79,7 +82,11 @@ file belongs here only if it's runtime plumbing with no owning capability.
   Until then both stay in `services/`.
 - **`platform` was absorbing LLM config.** `defaults.py` and `runtime_config.py`
   read as "central config" but their content is model/thinking/AI-ops settings.
-  Resolved: they're **LLM-slice** files (#485), not `platform`.
+  Resolved: they're **LLM-slice** files (#485), not `platform`. `defaults.py`
+  (`DEFAULT_MODEL`, `build_thinking_kwargs`) now lives at `core/llm/defaults.py`
+  — moved with the worker slice (#508), which also killed the `core/llm/gateway`
+  → `services.defaults` inversion. `runtime_config.py` is the UI-editable runtime
+  config channel and stays in `services/`.
 - **`s3_service`: ingestion or storage?** Its purpose is sourcing findings, but
   `storage`'s own data-access layer depends on it. Resolved: **storage** (an
   object-store client), so the layering isn't inverted.

@@ -27,8 +27,8 @@ writes to whichever backend is configured via `SECRETS_BACKEND`.
 
 | Secret | Read sites | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` / `CLAUDE_API_KEY` | [services/claude_service.py:256](../services/claude_service.py), [backend/services/ai_insights_service.py:29](../backend/services/ai_insights_service.py), [services/llm_router.py:214](../services/llm_router.py) | Default Anthropic provider. `get_secret()` layers env → dotenv → keyring. |
-| Per-provider LLM keys (OpenAI, Ollama, custom Anthropic) | [services/llm_router.py:209](../services/llm_router.py), [services/llm_worker.py:277](../services/llm_worker.py) | GH #88 design: `LLMProviderConfig.api_key_ref` in DB points at a `secrets_manager` key (e.g. `llm_provider_anthropic-team_api_key`). **Keys themselves never land in the DB.** Settings UI → `backend/api/llm_providers.py` writes via `set_secret()`. |
+| `ANTHROPIC_API_KEY` / `CLAUDE_API_KEY` | [core/llm/harness/claude.py:345](../core/llm/harness/claude.py), [backend/services/ai_insights_service.py:29](../backend/services/ai_insights_service.py), [core/llm/router/router.py:532](../core/llm/router/router.py) | Default Anthropic provider. `get_secret()` layers env → dotenv → keyring. |
+| Per-provider LLM keys (OpenAI, Ollama, custom Anthropic) | [core/llm/router/router.py:529](../core/llm/router/router.py), [services/worker/jobs.py](../services/worker/jobs.py) | GH #88 design: `LLMProviderConfig.api_key_ref` in DB points at a `secrets_manager` key (e.g. `llm_provider_anthropic-team_api_key`). **Keys themselves never land in the DB.** Settings UI → `services/api/routers/llm_providers.py` writes via `set_secret()`. |
 | `GITHUB_TOKEN` | [services/api/main.py:182](../services/api/main.py) | MCP server setup. |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | [services/database_data_service.py:590-591](../services/database_data_service.py) | S3 export path. |
 | S3 per-config credentials | [backend/api/config.py:225-350](../backend/api/config.py) | Saved via `set_secret()` next to the non-secret bucket/region config. |

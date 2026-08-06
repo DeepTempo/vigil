@@ -1,1 +1,1 @@
-# ARQ enqueue/worker transport in front of the router.
+# The ARQ enqueue side in front of the router; services/worker runs the jobs.

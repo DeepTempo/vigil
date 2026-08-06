@@ -18,7 +18,7 @@ from secrets_manager import get_secret, set_secret, delete_secret, get_secrets_m
 # Import database config service
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.storage.config_service import get_config_service
-from services.defaults import DEFAULT_MODEL
+from core.llm.defaults import DEFAULT_MODEL
 from services.integration_secrets import redact_secrets, secret_fields_for, split_secrets
 from core.config import get_settings, vigil_path
 

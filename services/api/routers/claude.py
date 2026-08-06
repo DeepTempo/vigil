@@ -21,7 +21,7 @@ from services.api.middleware.auth import get_current_user
 from backend.schemas.system_prompt import validate_system_prompt
 from core.storage.models import User
 from core.llm.harness.claude import ClaudeService
-from services.defaults import DEFAULT_MODEL
+from core.llm.defaults import DEFAULT_MODEL
 from core.llm.providers.registry import get_registry
 from core.routing import Auth, RouterMeta
 from core.rate_limit import rate_limit_dependency

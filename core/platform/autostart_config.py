@@ -31,7 +31,7 @@ from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 AUTOSTART_FILE = REPO_ROOT / ".vigil-autostart"
 
 DEFAULT: tuple[str, ...] = ("postgres", "redis", "bifrost", "ollama")

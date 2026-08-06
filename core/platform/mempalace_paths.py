@@ -5,7 +5,7 @@ and two of them disagreed:
 
   mcp-config.json             → ~/.vigil/mempalace/palace
   daemon/orchestrator.py      → ~/.mempalace/palace         (diverged)
-  services/claude_service.py  → ad-hoc detection
+  core/llm/harness/claude.py  → ad-hoc detection
 
 The split-brain meant investigation snapshots written by the daemon
 ended up in a different palace than the one the MCP server was

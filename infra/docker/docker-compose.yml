@@ -169,7 +169,11 @@ services:
       context: ../..
       dockerfile: infra/docker/Dockerfile.backend
     container_name: deeptempo-llm-worker
-    command: ["python", "-m", "core.llm.gateway.run_worker"]
+    command: ["python", "-m", "services.worker"]
+    healthcheck:
+      # Shares the backend image, whose HEALTHCHECK curls :6987. A queue worker
+      # serves no HTTP, so inheriting it just reports unhealthy forever.
+      disable: true
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432

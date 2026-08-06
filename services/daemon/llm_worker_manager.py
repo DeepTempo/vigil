@@ -1,14 +1,5 @@
-"""LLM Worker Manager — dynamically starts/stops the ARQ worker subprocess.
-
-The ARQ worker (``core.llm.gateway.run_worker``) processes queued Claude API
-calls.  Because ARQ's ``run_worker()`` blocks, it must live in a separate
-process.  This manager runs as an async task inside the daemon and polls
-the ``orchestrator.settings`` SystemConfig key every few seconds, reading
-the ``enabled`` field.  When the orchestrator is enabled the worker
-subprocess is started; when disabled it is stopped.  If the worker
-crashes while enabled it is automatically restarted on the next poll
-cycle.
-"""
+# Supervises the ARQ worker as a child process of the daemon: polls the
+# orchestrator.settings enabled flag and starts, stops or restarts to match it.
 
 import asyncio
 import logging
@@ -19,25 +10,20 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = str(Path(__file__).parent.parent)
+PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
 
-# How often (seconds) we check the DB flag and worker health.
+# The -m entrypoint, shared with compose, the Helm Deployment and start.sh.
+WORKER_MODULE = "services.worker"
+
 _POLL_INTERVAL = 5
 
 
 class LLMWorkerManager:
-    """Manage the LLM worker as a child subprocess of the daemon."""
-
     def __init__(self):
         self._process: subprocess.Popen | None = None
         self._enabled = False
 
-    # ------------------------------------------------------------------
-    # Public API (called by SOCDaemon)
-    # ------------------------------------------------------------------
-
     async def run(self, shutdown_event: asyncio.Event):
-        """Main loop — poll DB, start/stop worker subprocess."""
         logger.info("LLM Worker Manager started")
 
         while not shutdown_event.is_set():
@@ -48,25 +34,15 @@ class LLMWorkerManager:
             elif not self._enabled and self._is_running():
                 self._stop_worker()
 
-            # Sleep but wake up immediately on shutdown.
-            try:
-                await asyncio.wait_for(
-                    shutdown_event.wait(), timeout=_POLL_INTERVAL
-                )
+            try:  # sleep, but wake immediately on shutdown
+                await asyncio.wait_for(shutdown_event.wait(), timeout=_POLL_INTERVAL)
             except asyncio.TimeoutError:
                 pass
 
-        # Daemon is shutting down — always stop the worker.
         self._stop_worker()
         logger.info("LLM Worker Manager shutdown complete")
 
-    # ------------------------------------------------------------------
-    # DB sync (same pattern as daemon/orchestrator.py)
-    # ------------------------------------------------------------------
-
     def _sync_enabled_from_db(self):
-        """Read the orchestrator enabled state from the single
-        ``orchestrator.settings`` SystemConfig row."""
         try:
             from core.storage.connection import get_db_manager
             from core.storage.models import SystemConfig
@@ -88,10 +64,6 @@ class LLMWorkerManager:
         except Exception:
             pass  # DB not ready yet — keep previous state
 
-    # ------------------------------------------------------------------
-    # Subprocess lifecycle
-    # ------------------------------------------------------------------
-
     def _start_worker(self):
         # Exports the parent env into a child process; not a config read.
         env = {**os.environ, "PYTHONPATH": PROJECT_ROOT}  # noqa: ENV001
@@ -100,7 +72,7 @@ class LLMWorkerManager:
         try:
             log_file = open(log_path, "a")
             self._process = subprocess.Popen(
-                [sys.executable, "-m", "core.llm.gateway.run_worker"],
+                [sys.executable, "-m", WORKER_MODULE],
                 cwd=PROJECT_ROOT,
                 env=env,
                 stdout=log_file,
@@ -108,14 +80,14 @@ class LLMWorkerManager:
             )
             logger.info(
                 "LLM Worker started (PID: %d) — logs: %s",
-                self._process.pid, log_path,
+                self._process.pid,
+                log_path,
             )
         except Exception as exc:
             logger.error("Failed to start LLM Worker: %s", exc)
             self._process = None
 
     def _stop_worker(self):
-        """Terminate the worker subprocess gracefully."""
         if not self._is_running():
             self._process = None
             return
@@ -133,5 +105,4 @@ class LLMWorkerManager:
         self._process = None
 
     def _is_running(self) -> bool:
-        """Check whether the worker subprocess is alive."""
         return self._process is not None and self._process.poll() is None

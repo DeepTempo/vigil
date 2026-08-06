@@ -193,9 +193,8 @@ class TestClaudeServiceInitialization:
             ]
         }
 
-        # The service computes the cache path as:
-        # Path(__file__).parent.parent / "data" / "mcp_tools_cache.json"
-        # where __file__ is services/claude_service.py, so parent.parent is project root.
+        # The service reads REPO_ROOT / "data" / "mcp_tools_cache.json"; __file__
+        # here is tests/llm/test_claude_service.py, so three parents is that root.
         project_root = Path(__file__).parent.parent.parent
         cache_file = project_root / "data" / "mcp_tools_cache.json"
 

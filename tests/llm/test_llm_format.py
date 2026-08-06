@@ -1,4 +1,4 @@
-"""Unit tests for services/llm_format.py — Anthropic <-> OpenAI translation.
+"""Unit tests for core/llm/router/format.py — Anthropic <-> OpenAI translation.
 
 These are the wire-format converters the daemon tool loop and the workflow
 engine rely on to run non-Anthropic providers. Pure functions, no I/O.

@@ -134,7 +134,7 @@ if [ "$DAEMON" -eq 0 ]; then
         --reload-dir backend --reload-dir services --reload-dir database &
     BACKEND_PID=$!
 
-    python3 -m core.llm.gateway.run_worker &
+    python3 -m services.worker &
     WORKER_PID=$!
 
     start_frontend

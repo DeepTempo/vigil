@@ -43,8 +43,9 @@ vigil/
 │   │   ├── poller.py         # Fetches alerts from SIEM/EDR
 │   │   ├── processor.py      # Processes findings through AI pipeline
 │   │   ├── responder.py      # Executes containment actions
-│   │   └── scheduler.py      # Cron-style scheduled tasks
-│   ├── claude_service.py # Central AI orchestration (largest file ~124KB)
+│   │   ├── scheduler.py      # Cron-style scheduled tasks
+│   │   └── llm_worker_manager.py  # Supervises the worker subprocess (dev/daemon mode)
+│   ├── worker/           # ARQ llm-worker — drains the arq:llm queue (python -m services.worker)
 │   ├── mcp_service.py    # MCP server coordination
 │   └── case_*_service.py # Case lifecycle services
 ├── clients/web/             # React + TypeScript + Vite SPA
@@ -62,6 +63,7 @@ vigil/
 ├── mcp-servers/          # Git submodule: MCP server implementations
 ├── deeptempo-core/       # Git submodule: core AI/detection library
 ├── core/                 # Shared library: config, secrets, agents/, storage/ (DB layer); API routers colocate at core/<domain>/*_router.py
+│   └── llm/              # The LLM layer: router/, harness/, providers/, cost/ — see core/llm/README.md
 ├── data/                 # Schemas, MITRE taxonomy, detection registry
 ├── tests/                # pytest + vitest test suites
 ├── docs/                 # Detailed documentation
@@ -396,7 +398,7 @@ No registration step — discovery mounts every module that exports a `router` a
 ### New Agent
 
 1. Add the agent record in `core/agents/builtins.py` (prompt text lives in `core/agents/prompts.py`)
-2. Wire agent invocation in `services/claude_service.py`
+2. Wire agent invocation in `core/llm/harness/claude.py`
 3. Expose via `services/api/routers/agents.py`
 4. Document in `docs/AGENTS.md`
 
@@ -447,7 +449,8 @@ All CI checks must pass before merging.
 | `services/api/main.py` | FastAPI app entry, middleware wiring, startup/shutdown |
 | `services/api/discovery.py` | Router auto-discovery — scans `core/**/*_router.py` + `services/api/routers/` |
 | `core/routing.py` | `Auth` + `RouterMeta` — the declarative mount metadata every router exports |
-| `services/claude_service.py` | Central AI/agent orchestration (~124KB) |
+| `core/llm/harness/claude.py` | Central AI/agent orchestration (~124KB) |
+| `services/worker/jobs.py` | ARQ llm-worker jobs — the `arq:llm` queue consumer (`python -m services.worker`) |
 | `core/agents/` | Agent records (`builtins.py`), prompt assembly (`prompts.py`), runtime manager (`manager.py`) |
 | `services/mcp_service.py` | MCP protocol coordination |
 | `infra/database/init/` | Schema SQL — see Database section for the add/modify checklist |

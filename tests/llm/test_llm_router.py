@@ -608,7 +608,7 @@ async def test_anthropic_dispatch_raises_when_no_key():
 
 
 def test_is_default_anthropic_recognizes_legacy_refs():
-    from core.llm.gateway.worker import _is_default_anthropic_spec
+    from services.worker.jobs import _is_default_anthropic_spec
 
     default_key = ProviderSpec(
         provider_id="anthropic-default",
@@ -657,7 +657,7 @@ async def test_non_default_anthropic_with_thinking_dispatches_via_router(monkeyp
     per-provider api_key_ref is used, NOT the shared ClaudeService
     whose key is CLAUDE_API_KEY.
     """
-    from core.llm.gateway.worker import _maybe_dispatch_via_router
+    from services.worker.jobs import _maybe_dispatch_via_router
 
     per_provider = ProviderSpec(
         provider_id="anthropic-team",
@@ -722,7 +722,7 @@ async def test_default_anthropic_with_thinking_still_falls_back():
     shared ClaudeService (return None), preserving prompt caching and
     the tool-use loop that lives there.
     """
-    from core.llm.gateway.worker import _maybe_dispatch_via_router
+    from services.worker.jobs import _maybe_dispatch_via_router
 
     default_spec = ProviderSpec(
         provider_id="anthropic-default",
