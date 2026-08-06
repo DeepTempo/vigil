@@ -521,7 +521,8 @@ async def test_anthropic_dispatch_does_not_retry():
 
 def _patch_local_dispatch(monkeypatch, *, results, retry_limit=1, recovery_ready=True):
     """Stub LLMRouter + local-Bifrost recovery for the non-Anthropic path."""
-    from services import llm_router, local_ai_recovery
+    from core.llm.providers import recovery as local_ai_recovery
+    from core.llm.router import router as llm_router
 
     calls = []
 

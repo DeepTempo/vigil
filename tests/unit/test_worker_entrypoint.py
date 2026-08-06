@@ -3,7 +3,7 @@ import importlib.util
 import pytest
 
 from core.config import REPO_ROOT
-from services.worker.manager import WORKER_MODULE
+from services.daemon.llm_worker_manager import WORKER_MODULE
 
 pytestmark = pytest.mark.unit
 

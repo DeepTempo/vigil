@@ -260,7 +260,8 @@ class _FakeRegistry:
 
 
 def _patch_resolution(monkeypatch, *, resolved, provider_spec):
-    from services import llm_router, model_registry
+    from core.llm.providers import registry as model_registry
+    from core.llm.router import router as llm_router
 
     registry = _FakeRegistry(resolved)
     monkeypatch.setattr(model_registry, "get_registry", lambda: registry)
@@ -315,7 +316,7 @@ def test_resolve_raises_no_provider_when_anthropic_has_no_api_key(monkeypatch):
         provider_spec=_Spec(),
     )
 
-    from services import claude_service as claude_service_module
+    from core.llm.harness import claude as claude_service_module
 
     class _NoKeyClaudeService:
         def __init__(self, **kwargs):

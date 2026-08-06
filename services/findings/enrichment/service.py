@@ -53,7 +53,7 @@ def _default_data_service() -> Any:
     """
     global _data_service
     if _data_service is None:
-        from services.database_data_service import DatabaseDataService
+        from core.storage.database_data_service import DatabaseDataService
 
         _data_service = DatabaseDataService()
     return _data_service
@@ -70,8 +70,8 @@ def _resolve_provider(component: str) -> Tuple[Any, str, Any]:
         NoProviderConfigured: nothing resolved, or no Anthropic API key.
         ProviderUnavailable: the resolved provider id has no spec row.
     """
-    from services.llm_router import get_provider_spec
-    from services.model_registry import get_registry
+    from core.llm.router.router import get_provider_spec
+    from core.llm.providers.registry import get_registry
 
     resolved_model = get_registry().resolve_model_for_component(component)
     if not resolved_model:
@@ -86,7 +86,7 @@ def _resolve_provider(component: str) -> Tuple[Any, str, Any]:
 
     claude_service = None
     if provider.provider_type == "anthropic":
-        from services.claude_service import ClaudeService
+        from core.llm.harness.claude import ClaudeService
 
         claude_service = ClaudeService(use_backend_tools=True, use_mcp_tools=False)
         if not claude_service.has_api_key():
@@ -128,8 +128,8 @@ async def _dispatch(
         "model": model_id,
         "max_tokens": LOCAL_MAX_TOKENS,
     }
-    from services.llm_router import LLMRouter
-    from services.local_ai_recovery import (
+    from core.llm.router.router import LLMRouter
+    from core.llm.providers.recovery import (
         is_gateway_connection_error,
         local_bifrost_recovery_enabled,
         local_bifrost_recovery_retry_limit,
