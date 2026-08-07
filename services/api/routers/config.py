@@ -19,7 +19,7 @@ from core.secrets import get_secret, set_secret
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.storage.config_service import get_config_service
 from core.llm.defaults import DEFAULT_MODEL
-from services.integration_secrets import redact_secrets, secret_fields_for, split_secrets
+from core.integrations.integration_secrets import redact_secrets, secret_fields_for, split_secrets
 from core.config import get_settings, vigil_path
 
 router = APIRouter()
@@ -786,7 +786,7 @@ async def set_integrations_config(config: IntegrationsConfig):
     """
     Set integrations configuration.
 
-    Secret-typed fields (registered in ``services.integration_secrets``) are
+    Secret-typed fields (registered in ``core.integrations.integration_secrets``) are
     routed to the encrypted secrets store via ``set_secret`` and stripped
     from the dict that lands in the DB / JSON file. Empty strings are
     treated as "keep existing secret" (matches the S3 endpoint convention)
@@ -844,7 +844,7 @@ async def set_integrations_config(config: IntegrationsConfig):
         # connectorUrl just saved, so static mcp-config.json remote-MCP
         # entries resolve without a separately-set env var. Best-effort.
         try:
-            from services.integration_bridge_service import get_integration_bridge
+            from core.integrations.integration_bridge_service import get_integration_bridge
 
             get_integration_bridge().derive_remote_mcp_env()
         except Exception as e:
@@ -867,7 +867,7 @@ async def get_integrations_status():
     try:
         # Import here to avoid circular dependencies
         sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-        from services.integration_bridge_service import get_integration_bridge
+        from core.integrations.integration_bridge_service import get_integration_bridge
 
         bridge = get_integration_bridge()
         statuses = bridge.get_all_integration_statuses()
@@ -892,7 +892,7 @@ async def test_integration(integration_id: str):
     try:
         # Import here to avoid circular dependencies
         sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-        from services.integration_bridge_service import get_integration_bridge
+        from core.integrations.integration_bridge_service import get_integration_bridge
 
         bridge = get_integration_bridge()
         status = bridge.get_integration_status(integration_id)
@@ -1156,7 +1156,7 @@ class AIOperationsSettingsConfig(BaseModel):
     """Runtime cost/perf toggles introduced across GH #84 PR-C/PR-D/PR-F.
 
     Persisted in ``system_config`` at key ``ai_operations.settings``.
-    Consumed via ``services.runtime_config.get_ai_operations_setting``
+    Consumed via ``core.platform.runtime_config.get_ai_operations_setting``
     which layers DB → env var → default. Exposed in the Settings UI
     (AI Config → AI Operations) so operators can flip values live
     without restarting the backend / daemon / llm-worker.
@@ -1210,7 +1210,7 @@ async def set_ai_operations_config(config: AIOperationsSettingsConfig):
         # processes will pick up the new values on their next cache-TTL miss
         # (default 60s) — acceptable since these are rarely-flipped toggles.
         try:
-            from services.runtime_config import clear_cache
+            from core.platform.runtime_config import clear_cache
 
             clear_cache()
         except Exception as exc:  # noqa: BLE001
@@ -1508,7 +1508,7 @@ async def get_mempalace_health():
     connected = False
     error: Optional[str] = None
     try:
-        from services.mcp_client import get_mcp_client
+        from core.integrations.mcp.client import get_mcp_client
 
         mcp_client = get_mcp_client()
         if mcp_client is not None:

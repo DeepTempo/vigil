@@ -18,7 +18,7 @@ import json
 
 import pytest
 
-from services.findings.enrichment import (
+from core.findings.enrichment import (
     EmptyProviderResponse,
     FindingNotFound,
     build_entity_string,
@@ -30,7 +30,7 @@ from services.findings.enrichment import (
     parse_enrichment,
     summarize_finding,
 )
-from services.findings.enrichment import service as enrichment_service
+from core.findings.enrichment import service as enrichment_service
 
 pytestmark = pytest.mark.unit
 

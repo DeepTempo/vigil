@@ -90,7 +90,7 @@ async def get_entity_graph(
             return GraphData(nodes=[], links=[], metadata={"message": "No findings found"})
         
         # Build graph from findings
-        from services.graph_builder_service import GraphBuilderService
+        from core.findings.graph_builder_service import GraphBuilderService
         graph_builder = GraphBuilderService()
         graph_data = graph_builder.build_entity_graph(findings)
         
@@ -133,7 +133,7 @@ async def get_attack_path(case_id: str):
             return GraphData(nodes=[], links=[], metadata={"message": "No findings in case"})
         
         # Build attack path graph
-        from services.graph_builder_service import GraphBuilderService
+        from core.findings.graph_builder_service import GraphBuilderService
         graph_builder = GraphBuilderService()
         graph_data = graph_builder.build_attack_path(findings, case)
         
@@ -174,7 +174,7 @@ async def get_cluster_graph(cluster_id: str):
             raise HTTPException(status_code=404, detail="Cluster not found or has no findings")
         
         # Build cluster graph
-        from services.graph_builder_service import GraphBuilderService
+        from core.findings.graph_builder_service import GraphBuilderService
         graph_builder = GraphBuilderService()
         graph_data = graph_builder.build_cluster_graph(findings, cluster_id)
         
@@ -228,7 +228,7 @@ async def get_technique_graph(
             )
         
         # Build technique graph
-        from services.graph_builder_service import GraphBuilderService
+        from core.findings.graph_builder_service import GraphBuilderService
         graph_builder = GraphBuilderService()
         graph_data = graph_builder.build_technique_graph(findings, technique_id)
         
@@ -261,7 +261,7 @@ async def get_graph_summary(
         findings = data_service.get_findings(limit=limit)
         
         # Build graph and calculate metrics
-        from services.graph_builder_service import GraphBuilderService
+        from core.findings.graph_builder_service import GraphBuilderService
         graph_builder = GraphBuilderService()
         graph_data = graph_builder.build_entity_graph(findings)
         

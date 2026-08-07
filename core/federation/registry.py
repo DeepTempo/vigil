@@ -5,7 +5,7 @@ a uniform fetch interface so the runner in :mod:`daemon.poller` can iterate
 over a registry instead of hardcoding per-source loops.
 
 The adapter contract itself (``FetchResult``, ``FederationAdapter``,
-``register_adapter``) lives in :mod:`daemon.federation.contract` so adapter
+``register_adapter``) lives in :mod:`core.federation.contract` so adapter
 modules can import it without depending on this module — which lazily imports
 every adapter in :func:`_ensure_builtins_loaded` and would otherwise form an
 import cycle. Those names are re-exported here for backward compatibility.
@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from services.daemon.federation.contract import (
+from core.federation.contract import (
     _ADAPTER_FACTORIES,
     FederationAdapter,
     FetchResult,

@@ -67,7 +67,7 @@ class TestEnableTransactional:
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
         with patch(
-            "services.mcp_client.get_mcp_client", return_value=fake_client
+            "core.integrations.mcp.client.get_mcp_client", return_value=fake_client
         ):
             r = client.put(
                 "/api/mcp/servers/deeptempo-findings/enabled",
@@ -96,7 +96,7 @@ class TestEnableTransactional:
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
         with patch(
-            "services.mcp_client.get_mcp_client", return_value=fake_client
+            "core.integrations.mcp.client.get_mcp_client", return_value=fake_client
         ):
             r = client.put(
                 "/api/mcp/servers/virustotal/enabled",
@@ -117,7 +117,7 @@ class TestEnableTransactional:
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
         with patch(
-            "services.mcp_client.get_mcp_client", return_value=fake_client
+            "core.integrations.mcp.client.get_mcp_client", return_value=fake_client
         ):
             r = client.put(
                 "/api/mcp/servers/deeptempo-findings/enabled",

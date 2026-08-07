@@ -14,7 +14,7 @@ import httpx
 
 from core.secrets_manager import get_secret
 from core.storage.config_service import get_config_service
-from services.integration_secrets import secret_fields_for
+from core.integrations.integration_secrets import secret_fields_for
 from core.auth.extension_trust import is_trusted_connector_url
 
 logger = logging.getLogger(__name__)

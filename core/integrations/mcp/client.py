@@ -24,7 +24,7 @@ except ImportError:
             ClientSession = Any
             StdioServerParameters = Any
 
-from services.mcp_service import MCPService
+from core.integrations.mcp.service import MCPService
 
 from core.secrets import get_secret
 
@@ -458,7 +458,7 @@ class MCPClient:
         try:
             from core.telemetry import get_tracer
             from opentelemetry.trace import SpanKind, StatusCode as _SC
-            _mcp_tracer = get_tracer("vigil.services.mcp_client")
+            _mcp_tracer = get_tracer("vigil.core.integrations.mcp.client")
             _mcp_span = _mcp_tracer.start_span(
                 "mcp.call_tool",
                 kind=SpanKind.CLIENT,

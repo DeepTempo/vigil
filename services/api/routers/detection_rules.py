@@ -255,7 +255,7 @@ async def _restart_security_detections_mcp():
     This triggers a re-index of all detection rules in the MCP server.
     """
     try:
-        from services.mcp_client import get_mcp_client
+        from core.integrations.mcp.client import get_mcp_client
         
         mcp_client = get_mcp_client()
         if mcp_client and mcp_client.mcp_service:

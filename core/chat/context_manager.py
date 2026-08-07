@@ -136,7 +136,7 @@ class ContextManager:
     def apply_history_window(
         messages: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        from services.runtime_config import get_ai_operations_setting
+        from core.platform.runtime_config import get_ai_operations_setting
 
         window = get_ai_operations_setting("history_window", 20)
         if window <= 0:
@@ -174,7 +174,7 @@ class ContextManager:
 
     @staticmethod
     def apply_prompt_cache_controls(api_kwargs: Dict[str, Any]) -> None:
-        from services.runtime_config import get_ai_operations_setting
+        from core.platform.runtime_config import get_ai_operations_setting
 
         if not get_ai_operations_setting("prompt_cache_enabled", True):
             return
@@ -210,7 +210,7 @@ class ContextManager:
                 bare = tool_name.split("_", 1)[1]
                 if bare in cls.TOOL_RESPONSE_BUDGETS:
                     return cls.TOOL_RESPONSE_BUDGETS[bare]
-        from services.runtime_config import get_ai_operations_setting
+        from core.platform.runtime_config import get_ai_operations_setting
 
         return get_ai_operations_setting("tool_response_budget_default", 8000)
 
@@ -339,7 +339,7 @@ class ContextManager:
         ``overflow_messages`` are the messages that aged out of the window.
         Callers should fold them into the session summary asynchronously.
         """
-        from services.runtime_config import get_ai_operations_setting
+        from core.platform.runtime_config import get_ai_operations_setting
 
         window = get_ai_operations_setting("history_window", 20)
         max_msgs = window * 2 if window > 0 else len(messages)

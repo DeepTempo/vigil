@@ -9,7 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from core.ingestion.ingestion_service import IngestionService
-from services.source_evidence import (
+from core.findings.source_evidence import (
     SOURCE_EVIDENCE_PREVIEW_LIMIT,
     normalize_source_evidence,
     normalize_finding_source_evidence,

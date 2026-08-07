@@ -229,7 +229,7 @@ class AgentAIGenerator:
         if self._mcp_tool_names_cache is not None:
             return self._mcp_tool_names_cache
         try:
-            from services.mcp_registry import get_mcp_registry
+            from core.integrations.mcp.registry import get_mcp_registry
 
             registry = get_mcp_registry()
             names = list(registry.get_tool_names() or [])

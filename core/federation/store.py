@@ -91,7 +91,7 @@ def upsert_source(source_id: str, defaults: Dict[str, Any]) -> Optional[Dict[str
     """Ensure a row exists; if missing, insert with ``defaults``.
 
     Returns the resulting row as dict. Used by the auto-seed step on daemon
-    boot — see :func:`daemon.federation.seed.seed_federation_sources`.
+    boot — see :func:`core.federation.seed.seed_federation_sources`.
     """
     try:
         from core.storage.connection import get_db_manager

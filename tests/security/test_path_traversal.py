@@ -15,7 +15,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.custom_integration_service import (  # noqa: E402
+from core.integrations.custom_integration_service import (  # noqa: E402
     CustomIntegrationService,
     InvalidIntegrationIdError,
     _validate_integration_id,

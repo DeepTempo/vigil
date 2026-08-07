@@ -9,7 +9,7 @@ import json
 import re
 from typing import Any, Dict, Optional
 
-from services.findings.enrichment.errors import EmptyProviderResponse
+from core.findings.enrichment.errors import EmptyProviderResponse
 
 _FENCED_JSON = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
 _RAW_JSON = re.compile(r"\{.*\}", re.DOTALL)

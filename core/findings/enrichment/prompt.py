@@ -12,7 +12,7 @@ class FindingSummary:
     """The subset of a finding the enrichment prompt renders.
 
     ``severity`` is carried through because the parse-failure fallback in
-    :mod:`services.findings.enrichment.parse` reuses it as ``risk_level``.
+    :mod:`core.findings.enrichment.parse` reuses it as ``risk_level``.
     """
 
     finding_id: str

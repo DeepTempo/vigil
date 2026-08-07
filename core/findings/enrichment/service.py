@@ -18,14 +18,14 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
-from services.findings.enrichment.errors import (
+from core.findings.enrichment.errors import (
     FindingNotFound,
     NoProviderConfigured,
     ProviderUnavailable,
     UnidentifiableFinding,
 )
-from services.findings.enrichment.parse import parse_enrichment
-from services.findings.enrichment.prompt import build_prompt, summarize_finding
+from core.findings.enrichment.parse import parse_enrichment
+from core.findings.enrichment.prompt import build_prompt, summarize_finding
 
 logger = logging.getLogger(__name__)
 

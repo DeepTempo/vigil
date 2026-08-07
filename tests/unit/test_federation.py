@@ -1,4 +1,4 @@
-"""Unit tests for federated monitoring (daemon.federation.*).
+"""Unit tests for federated monitoring (core.federation.*).
 
 These cover the pure-Python pieces of the MVP — adapter contract, registry,
 severity floor, cursor parsing, and the runner's tick logic with a fake
@@ -15,9 +15,9 @@ from unittest import mock
 
 import pytest
 
-from services.daemon.federation import registry as fed_registry
-from services.daemon.federation.adapters._base import fresh_cursor, parse_cursor_since
-from services.daemon.federation.runner import FederationRunner, _severity_passes
+from core.federation import registry as fed_registry
+from core.federation.adapters._base import fresh_cursor, parse_cursor_since
+from core.federation.runner import FederationRunner, _severity_passes
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ class _FakeAdapter:
 
     async def fetch(self, *, since, cursor, max_items):
         self.fetch_calls.append({"since": since, "cursor": cursor, "max_items": max_items})
-        from services.daemon.federation.registry import FetchResult
+        from core.federation.registry import FetchResult
 
         return FetchResult(findings=list(self.next_findings), cursor={"tick": len(self.fetch_calls)})
 
@@ -157,11 +157,11 @@ async def test_runner_do_one_tick_filters_by_severity(monkeypatch):
 
     record_success_calls = []
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.record_success",
+        "core.federation.runner.store.record_success",
         lambda source_id, *, cursor: record_success_calls.append((source_id, cursor)),
     )
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.record_failure",
+        "core.federation.runner.store.record_failure",
         lambda *args, **kwargs: pytest.fail("record_failure should not be called"),
     )
 
@@ -191,10 +191,10 @@ async def test_runner_do_one_tick_dedups(monkeypatch):
     runner._dedup[fake.name] = _FakeDedup()  # type: ignore[assignment]
 
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.record_success", lambda *a, **k: None
+        "core.federation.runner.store.record_success", lambda *a, **k: None
     )
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.record_failure", lambda *a, **k: None
+        "core.federation.runner.store.record_failure", lambda *a, **k: None
     )
 
     await runner._do_one_tick(fake, {"max_items": 100, "cursor": {}, "min_severity": None})
@@ -218,11 +218,11 @@ async def test_runner_do_one_tick_records_failure(monkeypatch):
 
     failures = []
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.record_failure",
+        "core.federation.runner.store.record_failure",
         lambda source_id, error: failures.append((source_id, error)),
     )
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.record_success",
+        "core.federation.runner.store.record_success",
         lambda *a, **k: pytest.fail("record_success should not be called"),
     )
 
@@ -241,10 +241,10 @@ async def test_runner_do_one_tick_records_failure(monkeypatch):
 def test_is_active_for_global_off(monkeypatch):
     runner = FederationRunner(output_queue=None)
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.is_globally_enabled", lambda: False
+        "core.federation.runner.store.is_globally_enabled", lambda: False
     )
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.get_source",
+        "core.federation.runner.store.get_source",
         lambda sid: {"source_id": sid, "enabled": True},
     )
     assert runner.is_active_for("splunk") is False
@@ -253,10 +253,10 @@ def test_is_active_for_global_off(monkeypatch):
 def test_is_active_for_global_on_source_off(monkeypatch):
     runner = FederationRunner(output_queue=None)
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.is_globally_enabled", lambda: True
+        "core.federation.runner.store.is_globally_enabled", lambda: True
     )
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.get_source",
+        "core.federation.runner.store.get_source",
         lambda sid: {"source_id": sid, "enabled": False},
     )
     assert runner.is_active_for("splunk") is False
@@ -265,10 +265,10 @@ def test_is_active_for_global_on_source_off(monkeypatch):
 def test_is_active_for_both_on(monkeypatch):
     runner = FederationRunner(output_queue=None)
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.is_globally_enabled", lambda: True
+        "core.federation.runner.store.is_globally_enabled", lambda: True
     )
     monkeypatch.setattr(
-        "services.daemon.federation.runner.store.get_source",
+        "core.federation.runner.store.get_source",
         lambda sid: {"source_id": sid, "enabled": True},
     )
     assert runner.is_active_for("splunk") is True
@@ -280,7 +280,7 @@ def test_is_active_for_both_on(monkeypatch):
 
 
 def test_seed_only_inserts_configured_adapters(monkeypatch):
-    from services.daemon.federation import seed as fed_seed
+    from core.federation import seed as fed_seed
 
     configured = _FakeAdapter(configured=True)
     configured.name = "configured-src"
@@ -288,13 +288,13 @@ def test_seed_only_inserts_configured_adapters(monkeypatch):
     unconfigured.name = "unconfigured-src"
 
     monkeypatch.setattr(
-        "services.daemon.federation.seed.list_adapters",
+        "core.federation.seed.list_adapters",
         lambda: [configured, unconfigured],
     )
 
     upserts: List[str] = []
     monkeypatch.setattr(
-        "services.daemon.federation.seed.upsert_source",
+        "core.federation.seed.upsert_source",
         lambda source_id, defaults: (upserts.append(source_id) or {"source_id": source_id}),
     )
 

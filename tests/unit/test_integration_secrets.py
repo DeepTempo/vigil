@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from services.integration_secrets import (  # noqa: E402
+from core.integrations.integration_secrets import (  # noqa: E402
     INTEGRATION_SECRET_FIELDS,
     redact_secrets,
     secret_field_names,
@@ -128,7 +128,7 @@ def test_every_audited_integration_is_registered():
     ``clients/web/src/config/integrations.ts`` for ``type: 'password'`` fields
     grouped by their parent integration ``id``. If a new integration with
     password-typed fields is added to the frontend, add it here AND to
-    ``_SECRET_FIELDS`` in services.integration_secrets.
+    ``_SECRET_FIELDS`` in core.integrations.integration_secrets.
     """
     expected = {
         "github",

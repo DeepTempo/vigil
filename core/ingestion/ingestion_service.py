@@ -21,7 +21,7 @@ from typing import List, Dict, Any, Union
 from datetime import datetime
 from io import StringIO
 
-from services.source_evidence import (
+from core.findings.source_evidence import (
     normalize_finding_source_evidence,
     source_evidence_from_loglm_row,
 )

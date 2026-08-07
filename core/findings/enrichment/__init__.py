@@ -5,7 +5,7 @@ to compose your own write. Failures are domain exceptions from ``errors``, never
 ``HTTPException``.
 """
 
-from services.findings.enrichment.errors import (
+from core.findings.enrichment.errors import (
     EmptyProviderResponse,
     EnrichmentError,
     FindingNotFound,
@@ -13,15 +13,15 @@ from services.findings.enrichment.errors import (
     ProviderUnavailable,
     UnidentifiableFinding,
 )
-from services.findings.enrichment.parse import extract_json_block, parse_enrichment
-from services.findings.enrichment.prompt import (
+from core.findings.enrichment.parse import extract_json_block, parse_enrichment
+from core.findings.enrichment.prompt import (
     FindingSummary,
     build_entity_string,
     build_prompt,
     build_techniques_string,
     summarize_finding,
 )
-from services.findings.enrichment.service import enrich
+from core.findings.enrichment.service import enrich
 
 __all__ = [
     "EmptyProviderResponse",

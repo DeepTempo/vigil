@@ -1,14 +1,14 @@
 """Adapter contract + registration primitives for federated monitoring.
 
-Split out from :mod:`daemon.federation.registry` so adapter modules can import
+Split out from :mod:`core.federation.registry` so adapter modules can import
 the contract (``FetchResult``, ``FederationAdapter``, ``register_adapter``)
 without depending on the registry — which in turn lazily imports every adapter
-in :func:`daemon.federation.registry._ensure_builtins_loaded`. Keeping the
-contract here (a module that imports nothing from ``daemon.federation``) breaks
+in :func:`core.federation.registry._ensure_builtins_loaded`. Keeping the
+contract here (a module that imports nothing from ``core.federation``) breaks
 what would otherwise be an adapter <-> registry import cycle.
 
 The registry re-exports these names, so existing
-``from services.daemon.federation.registry import FetchResult`` imports keep working.
+``from core.federation.registry import FetchResult`` imports keep working.
 """
 
 from __future__ import annotations

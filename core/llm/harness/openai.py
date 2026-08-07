@@ -8,7 +8,7 @@ import uuid
 from collections import deque
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
-from services import tool_manager
+from core.integrations.mcp import tool_manager
 from core.llm.router.format import anthropic_tools_to_openai
 from core.llm.router.router import LLMRouter, ProviderSpec
 
@@ -112,7 +112,7 @@ class OpenAIAgentService:
         if not self._include_mcp_tools:
             return []
         try:
-            from services.mcp_client import get_mcp_client
+            from core.integrations.mcp.client import get_mcp_client
 
             client = get_mcp_client()
             if client:
@@ -708,7 +708,7 @@ class OpenAIAgentService:
     ) -> tuple[str, bool]:
         """Execute an MCP tool via the shared MCP client."""
         try:
-            from services.mcp_client import get_mcp_client
+            from core.integrations.mcp.client import get_mcp_client
             from core.llm.security import wrap_tool_result
 
             client = get_mcp_client()

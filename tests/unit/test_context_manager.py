@@ -167,7 +167,7 @@ def test_fold_overflow_bounded_growth():
 
 
 def test_prepare_context_windows_and_preserves_alternation(monkeypatch):
-    import services.runtime_config as rc
+    import core.platform.runtime_config as rc
 
     # Force a tiny window so the long conversation overflows.
     monkeypatch.setattr(
@@ -197,7 +197,7 @@ def test_prepare_context_folds_overflow_into_summary_in_request(monkeypatch):
     code prepended only that empty summary, so the entities in aged-out turns
     vanished. They must now be folded synchronously and prepended.
     """
-    import services.runtime_config as rc
+    import core.platform.runtime_config as rc
 
     # window=2 -> keep the last 4 messages; everything older overflows.
     monkeypatch.setattr(rc, "get_ai_operations_setting", lambda key, default=None: 2)

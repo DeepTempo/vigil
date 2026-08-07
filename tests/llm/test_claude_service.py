@@ -205,7 +205,7 @@ class TestClaudeServiceInitialization:
             cache_file.parent.mkdir(parents=True, exist_ok=True)
             cache_file.write_text(json.dumps(cache_data))
 
-            with patch('services.mcp_client.get_mcp_client', return_value=None):
+            with patch('core.integrations.mcp.client.get_mcp_client', return_value=None):
                 with patch.object(ClaudeService, '_populate_mcp_registry'):
                     service = ClaudeService(use_mcp_tools=True)
 
@@ -244,7 +244,7 @@ class TestClaudeServiceInitialization:
             if cache_file.exists():
                 cache_file.unlink()
 
-            with patch('services.mcp_client.get_mcp_client', return_value=mock_client):
+            with patch('core.integrations.mcp.client.get_mcp_client', return_value=mock_client):
                 with patch.object(ClaudeService, '_populate_mcp_registry'):
                     service = ClaudeService(use_mcp_tools=True)
 
@@ -271,7 +271,7 @@ class TestClaudeServiceInitialization:
             if cache_file.exists():
                 cache_file.unlink()
 
-            with patch('services.mcp_client.get_mcp_client', return_value=None):
+            with patch('core.integrations.mcp.client.get_mcp_client', return_value=None):
                 service = ClaudeService(use_mcp_tools=True)
 
             assert service.mcp_tools == []
@@ -306,7 +306,7 @@ class TestClaudeServiceInitialization:
             cache_file.parent.mkdir(parents=True, exist_ok=True)
             cache_file.write_text("invalid json{")
 
-            with patch('services.mcp_client.get_mcp_client', return_value=mock_client):
+            with patch('core.integrations.mcp.client.get_mcp_client', return_value=mock_client):
                 with patch.object(ClaudeService, '_populate_mcp_registry'):
                     service = ClaudeService(use_mcp_tools=True)
 
@@ -345,7 +345,7 @@ class TestClaudeServiceInitialization:
             cache_file.write_text(json.dumps(cache_data))
 
             with patch('asyncio.new_event_loop') as mock_new_loop, \
-                 patch('services.mcp_client.get_mcp_client') as mock_get_client:
+                 patch('core.integrations.mcp.client.get_mcp_client') as mock_get_client:
                 # Cached tools only surface for servers connected this boot.
                 mock_get_client.return_value.get_connection_status.return_value = {
                     "splunk": True
@@ -1196,7 +1196,7 @@ class TestLoadMcpToolsCache:
             mock_cf.exists.return_value = False
             mock_repo_root.__truediv__.return_value.__truediv__.return_value = mock_cf
 
-            with patch('services.mcp_client.get_mcp_client', return_value=mock_client), \
+            with patch('core.integrations.mcp.client.get_mcp_client', return_value=mock_client), \
                  patch.object(service, '_populate_mcp_registry', lambda d: None):
                 service._load_mcp_tools()
 
@@ -1212,7 +1212,7 @@ class TestLoadMcpToolsCache:
             mock_cf.exists.return_value = False
             mock_repo_root.__truediv__.return_value.__truediv__.return_value = mock_cf
 
-            with patch('services.mcp_client.get_mcp_client', return_value=None):
+            with patch('core.integrations.mcp.client.get_mcp_client', return_value=None):
                 service._load_mcp_tools()
 
         assert service.mcp_tools == []
@@ -1249,7 +1249,7 @@ class TestLoadMcpToolsCache:
                 return real_open(path, *args, **kwargs)
 
             with patch('builtins.open', side_effect=selective_open), \
-                 patch('services.mcp_client.get_mcp_client', return_value=mock_client), \
+                 patch('core.integrations.mcp.client.get_mcp_client', return_value=mock_client), \
                  patch.object(service, '_populate_mcp_registry', lambda d: None):
                 service._load_mcp_tools()
 
@@ -1265,7 +1265,7 @@ class TestLoadMcpToolsCache:
             mock_cf.exists.return_value = False
             mock_repo_root.__truediv__.return_value.__truediv__.return_value = mock_cf
 
-            with patch('services.mcp_client.get_mcp_client', return_value=None), \
+            with patch('core.integrations.mcp.client.get_mcp_client', return_value=None), \
                  patch('asyncio.new_event_loop') as mock_new_loop:
                 service._load_mcp_tools()
                 mock_new_loop.assert_not_called()
@@ -1294,7 +1294,7 @@ class TestLoadMcpToolsCache:
             mock_cf.exists.return_value = False
             mock_repo_root.__truediv__.return_value.__truediv__.return_value = mock_cf
 
-            with patch('services.mcp_client.get_mcp_client', return_value=mock_client), \
+            with patch('core.integrations.mcp.client.get_mcp_client', return_value=mock_client), \
                  patch.object(service, '_populate_mcp_registry', lambda d: None):
                 service._load_mcp_tools()
 
@@ -1336,7 +1336,7 @@ class TestLoadMcpToolsCache:
                 return real_open(path, *args, **kwargs)
 
             with patch('builtins.open', side_effect=selective_open), \
-                 patch('services.mcp_client.get_mcp_client') as mock_get_client, \
+                 patch('core.integrations.mcp.client.get_mcp_client') as mock_get_client, \
                  patch.object(service, '_populate_mcp_registry', lambda d: None):
                 # Cached tools only surface for servers connected this boot.
                 mock_get_client.return_value.get_connection_status.return_value = {

@@ -30,13 +30,13 @@ sys.path.insert(0, str(REPO))
 from fastapi import HTTPException  # noqa: E402
 
 from services.api.routers import findings as findings_api  # noqa: E402
-from services.findings.enrichment import (  # noqa: E402
+from core.findings.enrichment import (  # noqa: E402
     EmptyProviderResponse,
     FindingNotFound,
     NoProviderConfigured,
     ProviderUnavailable,
 )
-from services.findings.enrichment import service as enrichment_service  # noqa: E402
+from core.findings.enrichment import service as enrichment_service  # noqa: E402
 
 pytestmark = pytest.mark.unit
 

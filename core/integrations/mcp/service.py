@@ -356,7 +356,7 @@ class MCPService:
         # Resolve ${<ID>_MCP_URL} placeholders from integration connectorUrls
         # (see derive_remote_mcp_env). Best-effort.
         try:
-            from services.integration_bridge_service import get_integration_bridge
+            from core.integrations.integration_bridge_service import get_integration_bridge
 
             get_integration_bridge().derive_remote_mcp_env()
         except Exception as e:  # pragma: no cover - defensive
@@ -443,7 +443,7 @@ class MCPService:
         
         # Add servers for enabled integrations using the integration bridge
         try:
-            from services.integration_bridge_service import get_integration_bridge
+            from core.integrations.integration_bridge_service import get_integration_bridge
             
             bridge = get_integration_bridge()
             enabled_servers = bridge.get_enabled_servers()
@@ -537,7 +537,7 @@ class MCPService:
     # They were Popen-subprocess monitors that explicitly refused stdio
     # servers (every server in mcp-config.json is stdio), so they never
     # worked for users anyway. Runtime connect/disconnect is now owned by
-    # services.mcp_client.connect_to_server / disconnect_from_server.
+    # core.integrations.mcp.client.connect_to_server / disconnect_from_server.
 
     def stop_server(self, server_name: str) -> bool:
         """Stop a Popen-managed server if one was spawned.

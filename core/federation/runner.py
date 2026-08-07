@@ -27,8 +27,8 @@ from typing import Any, Dict, Optional
 
 from core.config import DEFAULT_REDIS_URL, get_settings
 from services.daemon.dedup import RedisDedupSet
-from services.daemon.federation import registry, store
-from services.daemon.federation.seed import seed_federation_sources
+from core.federation import registry, store
+from core.federation.seed import seed_federation_sources
 
 logger = logging.getLogger(__name__)
 

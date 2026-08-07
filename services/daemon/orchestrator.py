@@ -1001,7 +1001,7 @@ class Orchestrator:
 
             if case_a and case_b and case_a != case_b:
                 try:
-                    from services.mcp_client import get_mcp_client
+                    from core.integrations.mcp.client import get_mcp_client
 
                     client = get_mcp_client()
                     if client:

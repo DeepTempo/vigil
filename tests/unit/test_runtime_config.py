@@ -1,4 +1,4 @@
-"""Unit tests for services.runtime_config (GH #84 PR-F).
+"""Unit tests for core.platform.runtime_config (GH #84 PR-F).
 
 Covers the DB → env → default resolution order and the in-process cache
 behavior used by ClaudeService / AgentRunner consumers.
@@ -21,7 +21,7 @@ pytestmark = pytest.mark.unit
 @pytest.fixture(autouse=True)
 def _reset_cache():
     """Every test starts with a clean runtime-config cache."""
-    from services import runtime_config
+    from core.platform import runtime_config
 
     runtime_config.clear_cache()
     yield
@@ -30,7 +30,7 @@ def _reset_cache():
 
 class TestResolutionOrder:
     def test_db_value_wins_over_env(self, monkeypatch):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "5")
         with patch.object(
@@ -39,21 +39,21 @@ class TestResolutionOrder:
             assert runtime_config.get_ai_operations_setting("history_window", 20) == 42
 
     def test_env_wins_when_db_missing(self, monkeypatch):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "7")
         with patch.object(runtime_config, "_fetch_db_config", return_value={}):
             assert runtime_config.get_ai_operations_setting("history_window", 20) == 7
 
     def test_default_when_nothing_set(self, monkeypatch):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.delenv("CLAUDE_HISTORY_WINDOW", raising=False)
         with patch.object(runtime_config, "_fetch_db_config", return_value={}):
             assert runtime_config.get_ai_operations_setting("history_window", 20) == 20
 
     def test_db_fetch_failure_falls_through_to_env(self, monkeypatch):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "11")
         # _fetch_db_config returning None (our convention for "DB unavailable")
@@ -64,7 +64,7 @@ class TestResolutionOrder:
     def test_unknown_key_skips_env_lookup(self, monkeypatch):
         """Keys not in ENV_FALLBACKS go straight to default — no risk of a
         typo silently reading an unrelated env var."""
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.setenv("NONSENSE_KEY", "99")
         with patch.object(runtime_config, "_fetch_db_config", return_value={}):
@@ -73,7 +73,7 @@ class TestResolutionOrder:
 
 class TestTypeCoercion:
     def test_bool_from_string(self, monkeypatch):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.setenv("ANTHROPIC_PROMPT_CACHE_ENABLED", "false")
         with patch.object(runtime_config, "_fetch_db_config", return_value={}):
@@ -83,7 +83,7 @@ class TestTypeCoercion:
             )
 
     def test_bool_preserved_from_db(self):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         with patch.object(
             runtime_config,
@@ -96,7 +96,7 @@ class TestTypeCoercion:
             )
 
     def test_int_coerced_from_env_string(self, monkeypatch):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.setenv("CLAUDE_THINKING_BUDGET", "4096")
         with patch.object(runtime_config, "_fetch_db_config", return_value={}):
@@ -106,7 +106,7 @@ class TestTypeCoercion:
             )
 
     def test_bad_int_falls_back_to_default(self, monkeypatch):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.setenv("CLAUDE_THINKING_BUDGET", "not-a-number")
         with patch.object(runtime_config, "_fetch_db_config", return_value={}):
@@ -116,7 +116,7 @@ class TestTypeCoercion:
             )
 
     def test_local_recovery_uses_its_own_env_fallback(self, monkeypatch):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.setenv("LOCAL_OLLAMA_RECOVERY_RETRY_LIMIT", "2")
         with patch.object(runtime_config, "_fetch_db_config", return_value={}):
@@ -128,7 +128,7 @@ class TestTypeCoercion:
             )
 
     def test_local_recovery_enabled_bool_env_fallback(self, monkeypatch):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.setenv("LOCAL_OLLAMA_RECOVERY_ENABLED", "false")
         with patch.object(runtime_config, "_fetch_db_config", return_value={}):
@@ -140,7 +140,7 @@ class TestTypeCoercion:
             )
 
     def test_local_recovery_restart_bool_env_fallback(self, monkeypatch):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         monkeypatch.setenv("LOCAL_OLLAMA_RECOVERY_RESTART_GATEWAY", "false")
         with patch.object(runtime_config, "_fetch_db_config", return_value={}):
@@ -176,7 +176,7 @@ class TestAIOperationsSettingsModel:
 
 class TestCacheBehavior:
     def test_cache_avoids_repeated_db_fetch(self):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         fetch_mock = patch.object(
             runtime_config,
@@ -191,7 +191,7 @@ class TestCacheBehavior:
             assert m.call_count == 1
 
     def test_clear_cache_triggers_refetch(self):
-        from services import runtime_config
+        from core.platform import runtime_config
 
         with patch.object(
             runtime_config, "_fetch_db_config", return_value={"history_window": 3}
@@ -208,7 +208,7 @@ class TestConsumerIntegration:
     """
 
     def test_history_window_respects_db(self):
-        from services import runtime_config
+        from core.platform import runtime_config
         from core.llm.harness.claude import ClaudeService
 
         with patch.object(
@@ -220,7 +220,7 @@ class TestConsumerIntegration:
         assert out[-1]["content"] == "m9"
 
     def test_thinking_budget_respects_db(self):
-        from services import runtime_config
+        from core.platform import runtime_config
         from services.daemon.agent_runner import _default_thinking_budget
 
         with patch.object(
@@ -229,7 +229,7 @@ class TestConsumerIntegration:
             assert _default_thinking_budget() == 2048
 
     def test_prompt_cache_kill_switch_from_db(self):
-        from services import runtime_config
+        from core.platform import runtime_config
         from core.llm.harness.claude import ClaudeService
 
         with patch.object(
@@ -243,7 +243,7 @@ class TestConsumerIntegration:
         assert kw["system"] == "big system prompt"
 
     def test_tool_response_budget_from_db(self):
-        from services import runtime_config
+        from core.platform import runtime_config
         from core.llm.harness.claude import ClaudeService
 
         with patch.object(

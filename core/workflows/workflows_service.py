@@ -1088,7 +1088,7 @@ For each phase:
                     if tool not in all_tools:
                         all_tools.append(tool)
         try:
-            from services.mcp_registry import get_mcp_registry
+            from core.integrations.mcp.registry import get_mcp_registry
 
             registry = get_mcp_registry()
             for name in registry.get_tool_names() or []:
@@ -1124,7 +1124,7 @@ For each phase:
                 if t not in tools:
                     tools.append(t)
         try:
-            from services.mcp_registry import get_mcp_registry
+            from core.integrations.mcp.registry import get_mcp_registry
 
             registry = get_mcp_registry()
             for name in registry.get_tool_names() or []:

@@ -237,7 +237,7 @@ async def _connect_external_services():
 
     logger.info("Initializing MCP client with persistent connections...")
     try:
-        from services.mcp_client import get_mcp_client
+        from core.integrations.mcp.client import get_mcp_client
 
         mcp_client = get_mcp_client()
 
@@ -405,7 +405,7 @@ async def startup_event():
         # Rehydrate integration credentials into os.environ so MCP servers gated
         # on ${<ID>_<FIELD>} survive a restart — set_secret only writes os.environ
         # in the saving process, so without this they'd go dormant.
-        from services.integration_secrets import INTEGRATION_SECRET_FIELDS
+        from core.integrations.integration_secrets import INTEGRATION_SECRET_FIELDS
 
         rehydrated = 0
         for field_map in INTEGRATION_SECRET_FIELDS.values():
@@ -425,7 +425,7 @@ async def startup_event():
         from core.auth.extension_trust import connector_allowlist_origins
 
         if not connector_allowlist_origins():
-            from services.integration_bridge_service import get_integration_bridge
+            from core.integrations.integration_bridge_service import get_integration_bridge
 
             cfg = get_integration_bridge().load_integration_config()
             connectors = [
@@ -522,7 +522,7 @@ async def startup_event():
     # Check integration compatibility
     logger.info("Checking integration compatibility...")
     try:
-        from services.integration_compatibility_service import get_compatibility_service
+        from core.integrations.integration_compatibility_service import get_compatibility_service
 
         compat_service = get_compatibility_service()
         system_info = compat_service.get_system_info()
@@ -583,7 +583,7 @@ async def shutdown_event():
 
     logger.info("Shutting down MCP connections...")
     try:
-        from services.mcp_client import get_mcp_client
+        from core.integrations.mcp.client import get_mcp_client
 
         mcp_client = get_mcp_client()
         if mcp_client:

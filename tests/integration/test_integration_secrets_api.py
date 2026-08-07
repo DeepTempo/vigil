@@ -72,7 +72,7 @@ def test_post_routes_secrets_to_set_secret(tmp_path):
     assert result["success"] is True
 
     # Each registered secret field should go through set_secret with the
-    # secrets-store key from services.integration_secrets.
+    # secrets-store key from core.integrations.integration_secrets.
     written = {call.args[0]: call.args[1] for call in set_secret.call_args_list}
     assert written["VSTRIKE_USERNAME"] == "deeptempo_manager"
     assert written["VSTRIKE_PASSWORD"] == "shh-secret"

@@ -52,7 +52,7 @@ def client(palace_dir):
 @pytest.mark.unit
 def test_health_returns_shape_when_no_mcp_client(client, palace_dir, monkeypatch):
     """No MCP client wired in → connected=false, no error, palace facts populated."""
-    import services.mcp_client as mcp_client_mod
+    import core.integrations.mcp.client as mcp_client_mod
 
     monkeypatch.setattr(mcp_client_mod, "get_mcp_client", lambda: None)
 
@@ -72,7 +72,7 @@ def test_health_returns_shape_when_no_mcp_client(client, palace_dir, monkeypatch
 @pytest.mark.unit
 def test_health_counts_closed_cases(client, palace_dir, monkeypatch):
     """JSON files dropped in investigations/closed-cases/ should be counted."""
-    import services.mcp_client as mcp_client_mod
+    import core.integrations.mcp.client as mcp_client_mod
 
     monkeypatch.setattr(mcp_client_mod, "get_mcp_client", lambda: None)
 
@@ -95,7 +95,7 @@ def test_health_handles_missing_palace(client, tmp_path, monkeypatch):
     """If the palace path is unreachable, palace_exists must be False, not raise."""
     missing = tmp_path / "does-not-exist-xyz"
     monkeypatch.setenv("MEMPALACE_PALACE_PATH", str(missing))
-    import services.mcp_client as mcp_client_mod
+    import core.integrations.mcp.client as mcp_client_mod
 
     monkeypatch.setattr(mcp_client_mod, "get_mcp_client", lambda: None)
 
@@ -113,7 +113,7 @@ def test_health_surfaces_mcp_error(client, palace_dir, monkeypatch):
     """When the MCP client reports mempalace as connected with no error,
     the endpoint should reflect that. When disconnected with a last_error
     the error string must propagate so operators see the real failure."""
-    import services.mcp_client as mcp_client_mod
+    import core.integrations.mcp.client as mcp_client_mod
 
     class FakeClient:
         def get_connection_status(self):
@@ -133,7 +133,7 @@ def test_health_surfaces_mcp_error(client, palace_dir, monkeypatch):
 @pytest.mark.unit
 def test_health_connected_path(client, palace_dir, monkeypatch):
     """Happy path — MCP says connected, no error string surfaced."""
-    import services.mcp_client as mcp_client_mod
+    import core.integrations.mcp.client as mcp_client_mod
 
     class FakeClient:
         def get_connection_status(self):

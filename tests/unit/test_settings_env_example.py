@@ -69,7 +69,7 @@ NOT_SETTINGS = {
     "TIMESKETCH_URL",
     "VSTRIKE_BASE_URL",
     "VSTRIKE_VERIFY_SSL",
-    # services.runtime_config ENV_FALLBACKS: DB-first settings whose env var is
+    # core.platform.runtime_config ENV_FALLBACKS: DB-first settings whose env var is
     # only the fallback when the system_config row is absent.
     "ANTHROPIC_PROMPT_CACHE_ENABLED",
     "CLAUDE_HISTORY_WINDOW",

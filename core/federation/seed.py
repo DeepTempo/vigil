@@ -11,8 +11,8 @@ from __future__ import annotations
 import logging
 from typing import List
 
-from services.daemon.federation.registry import list_adapters
-from services.daemon.federation.store import upsert_source
+from core.federation.registry import list_adapters
+from core.federation.store import upsert_source
 
 logger = logging.getLogger(__name__)
 

@@ -16,11 +16,11 @@ from typing import Any, Dict, Optional
 
 from core.agents.builtins import ORCHESTRATOR_ACTOR
 
-# Tool safety tiers live in services.tool_manager so every agent loop (daemon,
+# Tool safety tiers live in core.integrations.mcp.tool_manager so every agent loop (daemon,
 # interactive OpenAI agent, workflows) shares one policy. Aliased to the
 # historical name so call sites — and the test that patches
 # ``daemon.agent_runner._get_tool_tier`` — stay unchanged.
-from services.tool_manager import get_tool_tier as _get_tool_tier
+from core.integrations.mcp.tool_manager import get_tool_tier as _get_tool_tier
 
 
 def _default_thinking_budget() -> int:
@@ -32,7 +32,7 @@ def _default_thinking_budget() -> int:
     instead. Per-agent overrides still apply when the caller has agent
     context (e.g. ClaudeService.chat).
     """
-    from services.runtime_config import get_ai_operations_setting
+    from core.platform.runtime_config import get_ai_operations_setting
 
     return get_ai_operations_setting("thinking_budget", 10000)
 
@@ -846,7 +846,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
             pass
 
         try:
-            from services.mcp_registry import get_mcp_registry
+            from core.integrations.mcp.registry import get_mcp_registry
 
             registry = get_mcp_registry()
             mcp_schemas = registry.get_all_tools()
@@ -1204,13 +1204,13 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
         # Most are benign vendor reads, so log each distinct tool once (INFO)
         # rather than warning on every call — enough to spot a state-changing
         # tool the verb-floor missed and decide whether the daemon should fail
-        # closed by default. See services.tool_manager.get_tool_tier.
+        # closed by default. See core.integrations.mcp.tool_manager.get_tool_tier.
         if tier == "unknown" and tool_name not in _SEEN_UNKNOWN_TIER_TOOLS:
             _SEEN_UNKNOWN_TIER_TOOLS.add(tool_name)
             logger.info(
                 f"Unclassified tool '{tool_name}' executing with no approval "
                 f"gate (tier=unknown, first seen {inv_id}). Classify it in "
-                "services.tool_manager if it changes state; not logged again."
+                "core.integrations.mcp.tool_manager if it changes state; not logged again."
             )
 
         if self._claude_service and hasattr(
@@ -1242,7 +1242,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
                 pass
 
         try:
-            from services.mcp_client import get_mcp_client
+            from core.integrations.mcp.client import get_mcp_client
 
             client = get_mcp_client()
             if client:
@@ -1490,7 +1490,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
             except Exception:
                 pass
         try:
-            from services.mcp_client import get_mcp_client
+            from core.integrations.mcp.client import get_mcp_client
 
             client = get_mcp_client()
             if client:

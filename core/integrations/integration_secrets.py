@@ -46,7 +46,7 @@ from core.integrations.splunk.descriptor import SPLUNK
 from core.integrations.vstrike.descriptor import VSTRIKE
 
 # Default form-field → env-var-suffix translations. Mirrors
-# ``services.integration_bridge_service.IntegrationBridgeService.FIELD_TO_ENV_MAP``
+# ``core.integrations.integration_bridge_service.IntegrationBridgeService.FIELD_TO_ENV_MAP``
 # so credentials saved via the Settings UI land under the same env-var
 # names that the bridge service uses when injecting env vars into MCP
 # server child processes.

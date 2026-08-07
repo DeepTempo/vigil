@@ -286,7 +286,7 @@ Use the get_case tool first to retrieve full details, then investigate all assoc
         # dynamically discovered MCP tools from the registry
         allowed_tools = list(agent.recommended_tools) if agent.recommended_tools else []
         try:
-            from services.mcp_registry import get_mcp_registry
+            from core.integrations.mcp.registry import get_mcp_registry
             registry = get_mcp_registry()
             mcp_tool_names = registry.get_tool_names()
             if mcp_tool_names:

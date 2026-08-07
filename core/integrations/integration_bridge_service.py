@@ -293,7 +293,7 @@ class IntegrationBridgeService:
 
         try:
             from core.storage.db_proxy import ProxyConfig, child_env_for_proxy
-            from services.integration_secrets import secret_fields_for
+            from core.integrations.integration_secrets import secret_fields_for
         except ImportError:  # pragma: no cover - defensive
             return {}
 

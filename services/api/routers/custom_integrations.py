@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from services.api.middleware.auth import get_current_active_user
 from core.auth.auth_service import AuthService
 from core.storage.models import User
-from services.custom_integration_service import (
+from core.integrations.custom_integration_service import (
     CustomIntegrationService,
     InvalidIntegrationIdError,
 )

@@ -16,7 +16,7 @@ import logging
 from services.api.middleware.auth import get_current_active_user
 from core.auth.auth_service import AuthService
 from core.storage.models import User
-from services.integration_compatibility_service import get_compatibility_service
+from core.integrations.integration_compatibility_service import get_compatibility_service
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()
