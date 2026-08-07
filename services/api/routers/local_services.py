@@ -21,7 +21,13 @@ from services.api.middleware.auth import get_current_active_user, require_settin
 from core.storage.models import User
 from core.platform import service_manager
 from core.platform.autostart_config import get_autostart_services, set_autostart_services
+from core.llm.bifrost.admin import sync_after_ollama_start
+from core.platform import ollama_supervisor
 from core.platform.service_manager import SERVICES, ActionResult, ServiceStatus
+
+# Composition root: the API may depend on both tiers, so it wires the LLM
+# catalog refresh into the platform supervisor, which must not import it.
+ollama_supervisor.post_start_sync = sync_after_ollama_start
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()

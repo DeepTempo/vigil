@@ -14,11 +14,12 @@ FORBIDDEN_EDGES = {"router": ("core.llm.harness",)}
 
 # core/llm sits below the deployables, so importing them at module scope inverts
 # the layering. Lazy in-function imports are the sanctioned escape hatch.
-UPWARD_PACKAGES = ("backend", "daemon")
+UPWARD_PACKAGES = ("services",)
 
-# Grandfathered: ClaudeService reads the backend tool schemas at import time
-# behind a try/ImportError. Removing it is #414's job, not the relocation's.
-UPWARD_ALLOWED = {("harness/claude.py", "core.llm.tool_schemas")}
+# Was grandfathered for backend/schemas/tool_schemas.py; r9a moved that file to
+# core/llm/tool_schemas.py, so the import is no longer upward and the
+# exemption is obsolete.
+UPWARD_ALLOWED: set[tuple[str, str]] = set()
 
 SOURCES = sorted(LLM_ROOT.rglob("*.py"))
 ROUTER_SOURCES = [

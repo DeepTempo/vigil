@@ -25,11 +25,12 @@ import shutil
 import subprocess
 import threading
 import time
+import httpx
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
-from core.llm.providers.discovery import ollama_ping
 
+from core.config import get_settings
 from core.platform.service_contract import ActionResult, ServiceSpec, ServiceStatus
 
 from core.config import get_settings
@@ -71,6 +72,33 @@ def container_base_url() -> str:
     for host in ("localhost", "127.0.0.1", "0.0.0.0"):
         url = url.replace(f"//{host}:", "//host.docker.internal:")
     return url
+
+
+def ollama_ping(base_url: Optional[str] = None, timeout: float = 2.0) -> bool:
+    """Cheap liveness probe: is an Ollama serving ``/api/tags`` at ``base_url``?
+
+    Deliberately sync and uncached — it is polled every ~250ms while waiting
+    for a spawned ``ollama serve`` to come up, which rules out
+    :func:`fetch_ollama_models` (async, plus an ``/api/show`` per model).
+    """
+    base = (
+        (base_url or get_settings().ollama_url)
+        .strip()
+        .rstrip("/")
+    )
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+            return client.get(f"{base}/api/tags").status_code == 200
+    except Exception:  # noqa: BLE001 — any failure means "not serving"
+        return False
+
+
+# Filled in by a composition root that may depend on both tiers (the
+# local-services router, or scripts/ollama_supervise.py for the CLI path).
+# Starting Ollama alone accomplishes nothing user-visible — LLM traffic is
+# dispatched through Bifrost — but platform must not import a capability
+# domain to say so, so the sync is injected rather than imported.
+post_start_sync: Callable[[], dict] = lambda: {}
 
 
 def binary_path() -> Optional[str]:
@@ -140,7 +168,7 @@ def start(spec: ServiceSpec, *, timeout: int = 30) -> ActionResult:
     url = base_url()
     if ollama_ping(url):
         return ActionResult(
-            True, "Ollama already running", already_running=True, detail=_sync_bifrost()
+            True, "Ollama already running", already_running=True, detail=post_start_sync()
         )
 
     exe = binary_path()
@@ -159,7 +187,7 @@ def start(spec: ServiceSpec, *, timeout: int = 30) -> ActionResult:
                 True,
                 "Ollama already running",
                 already_running=True,
-                detail=_sync_bifrost(),
+                detail=post_start_sync(),
             )
         try:
             LOGFILE.parent.mkdir(parents=True, exist_ok=True)
@@ -186,7 +214,7 @@ def start(spec: ServiceSpec, *, timeout: int = 30) -> ActionResult:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if ollama_ping(url):
-            return ActionResult(True, "Ollama started", detail=_sync_bifrost())
+            return ActionResult(True, "Ollama started", detail=post_start_sync())
         if proc.poll() is not None:
             return ActionResult(
                 False,
@@ -199,56 +227,3 @@ def start(spec: ServiceSpec, *, timeout: int = 30) -> ActionResult:
         f"Ollama did not become ready within {timeout}s. See {LOGFILE}.",
         code="timeout",
     )
-
-
-def _sync_bifrost() -> dict:
-    """Push the freshly-reachable Ollama catalog into Bifrost's live config.
-
-    Starting Ollama alone accomplishes nothing user-visible: LLM traffic is
-    dispatched through Bifrost, and ``infra/docker/bifrost/config.json`` is only a
-    first-boot seed (live config lives in Bifrost's SQLite). Without this the
-    button "succeeds" and no Ollama model is selectable.
-
-    Mirrors ``backend/api/llm_providers.py::_schedule_catalog_resync`` (cache
-    invalidate + sync), but awaits the sync rather than firing it off, so the
-    caller can report ``bifrost_synced`` truthfully. Callers run in a threadpool
-    thread with no running loop; if a loop *is* running we fall back to
-    scheduling, since ``asyncio.run`` would raise. Best-effort throughout — a
-    Bifrost that is still booting must not fail the start call.
-    """
-    import asyncio
-
-    try:
-        from core.llm.bifrost.admin import sync_all_provider_models
-        from core.llm.providers.registry import invalidate_model_cache
-
-        invalidate_model_cache()
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            asyncio.run(sync_all_provider_models())
-            return {"bifrost_synced": True}
-        loop.create_task(sync_all_provider_models())
-        return {"bifrost_synced": False, "bifrost_sync_scheduled": True}
-    except Exception as e:  # noqa: BLE001
-        logger.info("Bifrost model sync after Ollama start did not complete: %s", e)
-        return {"bifrost_synced": False, "bifrost_sync_error": str(e)}
-
-
-def main() -> int:
-    """CLI entry so ``scripts/lib.sh`` reuses this spawn rather than copying it.
-
-    macOS ships no ``setsid``, and a bare ``nohup ... &`` would leave Ollama in
-    start.sh's process group where Ctrl+C kills it. Shelling back into this
-    module keeps one implementation of the probe/pidfile/session semantics.
-    """
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    from core.platform.service_manager import SERVICES
-
-    result = start(SERVICES["ollama"])
-    print(result.message)
-    return 0 if result.success else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

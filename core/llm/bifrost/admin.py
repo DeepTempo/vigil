@@ -465,3 +465,37 @@ async def _fetch_meta_for_row(row_dict: Dict[str, Any], discovery) -> Optional[l
 
     logger.debug("Bifrost sync: unsupported provider_type %s", provider_type)
     return None
+
+
+def sync_after_ollama_start() -> dict:
+    """Push the freshly-reachable Ollama catalog into Bifrost's live config.
+
+    Starting Ollama alone accomplishes nothing user-visible: LLM traffic is
+    dispatched through Bifrost, and ``infra/docker/bifrost/config.json`` is only
+    a first-boot seed (live config lives in Bifrost's SQLite). Without this the
+    button "succeeds" and no Ollama model is selectable.
+
+    Injected into ``core.platform.ollama_supervisor.post_start_sync`` by a
+    composition root — platform supervises the process, this decides what a
+    running Ollama means for the model catalog. Awaits the sync rather than
+    firing it off so the caller can report ``bifrost_synced`` truthfully.
+    Callers run in a threadpool thread with no running loop; if a loop *is*
+    running we fall back to scheduling, since ``asyncio.run`` would raise.
+    Best-effort throughout — a Bifrost still booting must not fail the start.
+    """
+    import asyncio
+
+    try:
+        from core.llm.providers.registry import invalidate_model_cache
+
+        invalidate_model_cache()
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(sync_all_provider_models())
+            return {"bifrost_synced": True}
+        asyncio.get_running_loop().create_task(sync_all_provider_models())
+        return {"bifrost_synced": False, "bifrost_sync_scheduled": True}
+    except Exception as e:  # noqa: BLE001
+        logger.info("Bifrost model sync after Ollama start did not complete: %s", e)
+        return {"bifrost_synced": False, "bifrost_sync_error": str(e)}

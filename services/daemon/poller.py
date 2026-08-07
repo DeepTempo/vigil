@@ -23,7 +23,7 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
 from services.daemon.config import PollingConfig
-from services.daemon.dedup import RedisDedupSet
+from core.ingestion.dedup import RedisDedupSet
 from core.federation.runner import FederationRunner
 
 logger = logging.getLogger(__name__)

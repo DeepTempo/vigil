@@ -90,7 +90,10 @@ setting, is `platform`; knowing what the setting *means* is the domain's.
 - **Federation** drives **Ingestion** (an adapter wraps an ingestion service);
   Ingestion never depends on Federation
 - Capability domains depend on the **Storage**/**Platform** tier; the tier
-  depends on no capability domain
+  depends on no capability domain. This is no longer prose: `.importlinter`
+  enforces it, plus "core must not import the deployables", on every PR with
+  no exemptions. The rule had stood since R5 and accumulated 20 live
+  counterexamples by R9, which is the argument for a gate over a convention.
 - **LLM** code (`core/llm/`, in flight as #485/#522) is a separate slice, not
   part of these domains
 - The **LLM gateway** (`core/llm/gateway`) enqueues LLM jobs onto the `arq:llm`
