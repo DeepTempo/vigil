@@ -129,12 +129,11 @@ jobs:
           # This step also carries the #415 ratchets (test_no_ambient_state,
           # test_settings_env_example): no continue-on-error here, unlike the lint
           # job, so a new raw env read or env.example drift fails the pipeline.
-          # tests/security/ previously ran only in nightly, so a genuine
-          # auth-bypass sat red and unnoticed: POST /api/integrations/vstrike/findings
-          # answers 200 without a bearer. Gate the other 83 now; the bypass is
-          # deselected so it stays visible here rather than silently unrun.
+          # tests/security/ used to run only in nightly, where its one red
+          # test was mistaken for a real auth bypass; it was the fixture not
+          # forcing DEV_MODE off for routers that read settings live. Fixed,
+          # so all 84 gate here.
           pytest tests/unit/ tests/security/ -m "not external_service" -v \
-            -k "not test_vstrike_inbound_without_bearer_uses_api_key_gate" \
             --cov=services --cov=core --cov-report=xml --cov-report=term
         env:
           TESTING: "true"
