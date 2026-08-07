@@ -40,7 +40,6 @@ class SIEMIngestionService(ABC):
         Returns:
             List of raw alert dictionaries
         """
-        pass
     
     @abstractmethod
     def transform_alert_to_finding(self, alert: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -53,7 +52,6 @@ class SIEMIngestionService(ABC):
         Returns:
             Finding dictionary or None if transformation fails
         """
-        pass
     
     def ingest_alerts(
         self,

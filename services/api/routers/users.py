@@ -5,7 +5,7 @@ Handles user CRUD operations, role assignment, and user administration.
 """
 
 import logging
-from typing import List, Optional
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session

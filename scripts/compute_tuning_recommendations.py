@@ -28,12 +28,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from statistics import median
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List
 
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))

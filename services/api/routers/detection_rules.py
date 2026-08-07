@@ -28,11 +28,6 @@ class AddSourceRequest(BaseModel):
     story_subdirectory: str = ""
 
 
-class RemoveSourceRequest(BaseModel):
-    """Request to remove a detection rule source."""
-    delete_files: bool = False
-
-
 @router.get("/sources")
 async def list_sources():
     """

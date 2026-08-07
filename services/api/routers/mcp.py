@@ -81,12 +81,6 @@ class _ServiceProxy:
 mcp_service = _ServiceProxy()
 
 
-class ServerControl(BaseModel):
-    """Server control request."""
-
-    action: str  # start or stop
-
-
 class ServerEnabledRequest(BaseModel):
     """Request body for enabling/disabling a server."""
 

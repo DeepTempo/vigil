@@ -17,7 +17,7 @@ import hashlib
 import logging
 import tempfile
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Union
 from datetime import datetime
 from io import StringIO
 
@@ -1033,19 +1033,6 @@ class IngestionService:
         )
         return {**self.stats, 'files_processed': files_processed, 'files_skipped': files_skipped}
 
-    def ingest_parquet_from_s3(
-        self,
-        s3_service,
-        prefix: str = "",
-        data_source: str = 'flow'
-    ) -> Dict[str, Any]:
-        """Backward-compatible wrapper: ingest only .parquet files from S3."""
-        parquet_keys = s3_service.get_parquet_keys(prefix=prefix)
-        if not parquet_keys:
-            logger.warning(f"No .parquet files found under S3 prefix '{prefix}'")
-            self.reset_stats()
-            return self.stats
-        return self.ingest_s3_folder(s3_service, prefix=prefix, data_source=data_source)
 
     @staticmethod
     def _s3_key_extension(key: str) -> str:

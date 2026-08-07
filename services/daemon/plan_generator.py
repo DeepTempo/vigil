@@ -5,7 +5,6 @@ files that sub-agents consume and modify during execution.
 """
 
 import logging
-import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 

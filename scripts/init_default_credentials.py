@@ -9,7 +9,6 @@ Can be run multiple times safely (idempotent operation).
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add project root to path

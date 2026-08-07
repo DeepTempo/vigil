@@ -13,7 +13,6 @@ from sqlalchemy import (
     Float,
     DateTime,
     Text,
-    JSON,
     ForeignKey,
     Table,
     Index,
@@ -24,7 +23,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB
 from pgvector.sqlalchemy import Vector
 import uuid
 
@@ -36,7 +35,6 @@ EMBEDDING_DIM = 768
 class Base(DeclarativeBase):
     """Base class for all database models."""
 
-    pass
 
 
 # Association table for case-finding many-to-many relationship

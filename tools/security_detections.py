@@ -4,7 +4,6 @@ Provides access to 7,200+ detection rules across Sigma, Splunk, Elastic, and KQL
 """
 import re
 import yaml
-import json
 import os
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -102,7 +101,7 @@ class SecurityDetectionsTools:
                                 if isinstance(tag, str) and tag.startswith('attack.t'):
                                     technique = tag.replace('attack.', '').upper()
                                     self.detections_by_technique[technique].append(detection)
-                except Exception as e:
+                except Exception:
                     pass  # Skip malformed files
         
         # Load Splunk ESCU rules
@@ -122,7 +121,7 @@ class SecurityDetectionsTools:
                             if isinstance(tags, list):
                                 for tag in tags:
                                     self.detections_by_technique[tag.upper()].append(detection)
-                except Exception as e:
+                except Exception:
                     pass
         
         # Load Elastic rules
@@ -140,7 +139,7 @@ class SecurityDetectionsTools:
                         techniques = re.findall(r'technique_id\s*=\s*"(T\d{4}(?:\.\d{3})?)"', content)
                         for technique in techniques:
                             self.detections_by_technique[technique.upper()].append(detection)
-                except Exception as e:
+                except Exception:
                     pass
         
         # Load KQL rules (.yaml and .md files)

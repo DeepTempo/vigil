@@ -339,7 +339,6 @@ async def switch_backend(backend: str):
             "message": 'Invalid backend. Must be "database" or "json"',
         }
 
-    import os
     from pathlib import Path
 
     try:

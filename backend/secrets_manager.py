@@ -56,22 +56,18 @@ class SecretsBackend(ABC):
     @abstractmethod
     def get(self, key: str) -> Optional[str]:
         """Get a secret value."""
-        pass
 
     @abstractmethod
     def set(self, key: str, value: str) -> bool:
         """Set a secret value."""
-        pass
 
     @abstractmethod
     def delete(self, key: str) -> bool:
         """Delete a secret value."""
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Check if this backend is available."""
-        pass
 
 
 class EnvironmentBackend(SecretsBackend):

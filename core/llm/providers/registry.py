@@ -22,7 +22,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.secrets import get_secret
 
 logger = logging.getLogger(__name__)
 
@@ -641,24 +640,6 @@ async def fetch_provider_models(row) -> List[str]:
 ANTHROPIC_STATIC_MODELS: Tuple[str, ...] = _FALLBACK_MODELS_BY_PROVIDER["anthropic"]
 
 
-async def _resolve_provider_key(row) -> Optional[str]:
-    # The provider's own api_key_ref wins; otherwise fall back to the common
-    # key names so local dev works without an explicit provider row.
-    if row.api_key_ref:
-        try:
-            key = get_secret(row.api_key_ref)
-            if key:
-                return key
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("secret lookup for %s failed: %s", row.api_key_ref, exc)
-
-    if row.provider_type == "anthropic":
-        return get_secret("ANTHROPIC_API_KEY") or get_secret("CLAUDE_API_KEY")
-    if row.provider_type == "openai":
-        return get_secret("OPENAI_API_KEY")
-    return None
-
-
 # ---------------------------------------------------------------------------
 # ModelRegistry
 # ---------------------------------------------------------------------------
@@ -734,28 +715,6 @@ class ModelRegistry:
 
     # ---- assignments -----------------------------------------------------
 
-    def get_component_assignment(self, component: str) -> Optional[ComponentAssignment]:
-        """Load a single `ai_model_configs` row. Returns None on cache miss."""
-        try:
-            from core.storage.connection import get_db_session
-            from core.storage.models import AIModelConfig
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("AIModelConfig lookup skipped: %s", exc)
-            return None
-
-        session = get_db_session()
-        try:
-            row = session.get(AIModelConfig, component)
-            if row is None:
-                return None
-            return ComponentAssignment(
-                component=row.component,
-                provider_id=row.provider_id,
-                model_id=row.model_id,
-                settings=dict(row.settings or {}),
-            )
-        finally:
-            session.close()
 
     def get_all_assignments(self) -> Dict[str, ComponentAssignment]:
         """Return every configured assignment keyed by component."""
@@ -1039,13 +998,3 @@ def invalidate_model_cache(provider_id: Optional[str] = None) -> None:
     clear_live_meta()
 
 
-def find_provider_for_model(model_id: str) -> Optional[str]:
-    """Reverse-lookup: find which provider_id owns a model from the cache.
-
-    Returns the first provider_id whose cached model list contains model_id,
-    or None if not found.
-    """
-    for pid, models in _MODEL_LIST_CACHE.items():
-        if model_id in models:
-            return pid
-    return None

@@ -473,27 +473,6 @@ class DatabaseDataService:
                 return case_data
         return None
     
-    def create_case_from_dict(self, case_data: Dict) -> Optional[Dict]:
-        if self._db_available:
-            try:
-                case = self._db_service.create_case(
-                    case_id=case_data.get('case_id'),
-                    title=case_data.get('title', ''),
-                    finding_ids=case_data.get('finding_ids', []),
-                    description=case_data.get('description', ''),
-                    status=case_data.get('status', 'open'),
-                    priority=case_data.get('priority', 'medium')
-                )
-                return case.to_dict() if case else None
-            except Exception as e:
-                logger.error(f"Error creating case in DB: {e}")
-                return None
-        elif self._use_json_fallback:
-            cases = self._load_cases_json()
-            cases.append(case_data)
-            if self._save_cases_json(cases):
-                return case_data
-        return None
     
     def update_case(self, case_id: str, **updates) -> bool:
         if self._demo_mode and self._demo_service:

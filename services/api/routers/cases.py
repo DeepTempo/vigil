@@ -880,7 +880,7 @@ async def get_tasks(case_id: str):
             return {"tasks": [t.to_dict() for t in tasks]}
         finally:
             session.close()
-    except Exception as e:
+    except Exception:
         # If database is not available, return empty list
         return {"tasks": []}
 

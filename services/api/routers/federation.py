@@ -55,20 +55,6 @@ class FederationSourcePatch(BaseModel):
     min_severity: Optional[str] = None  # validated against _VALID_SEVERITIES
 
 
-class FederationSourceView(BaseModel):
-    source_id: str
-    enabled: bool
-    interval_seconds: int
-    max_items: int
-    min_severity: Optional[str]
-    last_poll_at: Optional[str]
-    last_success_at: Optional[str]
-    last_error: Optional[str]
-    consecutive_errors: int
-    is_configured: bool
-    default_interval_seconds: int
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

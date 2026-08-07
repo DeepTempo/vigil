@@ -7,7 +7,6 @@ Provides CRUD operations, git pull updates, and builds env vars for Security-Det
 
 import json
 import logging
-import os
 import subprocess
 import uuid
 from datetime import datetime

@@ -10,7 +10,6 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   conversationsApi,
   type ConversationSummary,
-  type ConversationDetail,
 } from '../../services/api'
 
 export type Phase = 'loading' | 'ready' | 'error'
@@ -47,41 +46,3 @@ export function useConversations(includeArchived = false) {
   return { items, phase, error, reload }
 }
 
-/** A single conversation with its ordered messages, or null until loaded. */
-export function useConversation(id: string | null) {
-  const [detail, setDetail] = useState<ConversationDetail | null>(null)
-  const [phase, setPhase] = useState<Phase>('loading')
-  const [error, setError] = useState<string | null>(null)
-  const [reloadKey, setReloadKey] = useState(0)
-  const reload = useCallback(() => setReloadKey((k) => k + 1), [])
-
-  useEffect(() => {
-    if (!id) {
-      setDetail(null)
-      setPhase('ready')
-      return
-    }
-    let cancelled = false
-    setPhase('loading')
-    setError(null)
-    conversationsApi
-      .get(id)
-      .then((res) => {
-        if (cancelled) return
-        setDetail(res.data as ConversationDetail)
-        setPhase('ready')
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setError(
-          (e as { message?: string })?.message || 'Failed to load conversation',
-        )
-        setPhase('error')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [id, reloadKey])
-
-  return { detail, phase, error, reload }
-}

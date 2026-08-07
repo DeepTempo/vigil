@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from core.config import vigil_path
 
 from core.integrations.aws_security_hub.descriptor import AWS_SECURITY_HUB

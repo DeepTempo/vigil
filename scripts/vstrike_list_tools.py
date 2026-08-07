@@ -19,7 +19,7 @@ Non-zero → transport / auth / parse failure.
 from __future__ import annotations
 
 import inspect
-import json
+
 import os
 import re
 import sys

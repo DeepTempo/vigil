@@ -133,42 +133,6 @@ def histogram_cost(
     )
 
 
-def histogram_cost_by_provider(
-    *,
-    start_time: Optional[str] = None,
-    end_time: Optional[str] = None,
-    providers: Optional[List[str]] = None,
-) -> Optional[Dict[str, Any]]:
-    """Same shape as :func:`histogram_cost` but bucket payload groups by
-    provider rather than model. Used by the dashboard's provider-mix view.
-    """
-    return _get_json(
-        "/api/logs/histogram/cost-by-provider",
-        params=_filter_params(
-            start_time=start_time, end_time=end_time, providers=providers
-        ),
-    )
-
-
-def histogram_token_usage(
-    *,
-    start_time: Optional[str] = None,
-    end_time: Optional[str] = None,
-    models: Optional[List[str]] = None,
-) -> Optional[Dict[str, Any]]:
-    """Time-bucketed token-usage histogram.
-
-    Useful for separating prompt-cache savings (cache_read tokens are
-    cheaper than fresh input) from raw input growth on the dashboard.
-    """
-    return _get_json(
-        "/api/logs/histogram/token-usage",
-        params=_filter_params(
-            start_time=start_time, end_time=end_time, models=models
-        ),
-    )
-
-
 # ---------------------------------------------------------------------------
 # Aggregates / raw logs
 # ---------------------------------------------------------------------------
