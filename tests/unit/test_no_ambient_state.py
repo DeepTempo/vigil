@@ -11,6 +11,10 @@ PACKAGES = ("services", "core")
 # spawned MCP child processes, whose config protocol *is* env vars.
 ENV_EXEMPT_FILES = {
     "core/secrets_manager.py",
+    # Tool provider for the security-detections MCP server. Its rule-corpus
+    # paths arrive as env from the process that spawns that server, so it sits
+    # on the same boundary as ENV_EXEMPT_GLOBS below.
+    "core/detections/tools.py",
 }
 
 # The other side of that boundary: core/integrations/*/tool.py are standalone

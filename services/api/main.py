@@ -422,7 +422,7 @@ async def startup_event():
     # A configured connector with no allowlisted origin will be blocked by the
     # default CSP — warn rather than fail silently. Best-effort.
     try:
-        from core.auth.extension_trust import connector_allowlist_origins
+        from core.integrations.extension.trust import connector_allowlist_origins
 
         if not connector_allowlist_origins():
             from core.integrations.integration_bridge_service import get_integration_bridge
@@ -694,7 +694,7 @@ if frontend_build_dir.exists() and (frontend_build_dir / "index.html").exists():
             # SSRF guard). A <meta>, not an inline <script>, because CSP is
             # script-src 'self'.
             try:
-                from core.auth.extension_trust import connector_allowlist_origins
+                from core.integrations.extension.trust import connector_allowlist_origins
 
                 origins = connector_allowlist_origins()
                 if origins:

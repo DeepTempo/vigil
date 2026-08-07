@@ -76,7 +76,7 @@ class ToolExecutor:
                     "get_detection_count",
                 ):
                     if security_tools is None:
-                        from tools.security_detections import get_security_detection_tools
+                        from core.detections.tools import get_security_detection_tools
 
                         security_tools = get_security_detection_tools()
                     handler = getattr(security_tools, tool_name)

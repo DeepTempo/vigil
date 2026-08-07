@@ -241,7 +241,7 @@ class WorkflowsService:
             workflows_dir: Directory containing workflow definitions (default: ./workflows)
         """
         if workflows_dir is None:
-            workflows_dir = Path(__file__).resolve().parents[2] / "workflows"
+            workflows_dir = Path(__file__).resolve().parent / "definitions"
 
         self.workflows_dir = Path(workflows_dir)
         self._cache: Dict[str, WorkflowDefinition] = {}

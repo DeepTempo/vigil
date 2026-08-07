@@ -37,7 +37,7 @@ def _resolve_summarization_model() -> str:
 # Import backend tool support
 try:
     from core.llm.tool_schemas import ALL_TOOLS as BACKEND_TOOLS
-    from tools.security_detections import get_security_detection_tools
+    from core.detections.tools import get_security_detection_tools
 
     BACKEND_TOOLS_AVAILABLE = True
 except ImportError as e:

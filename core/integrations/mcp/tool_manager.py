@@ -316,7 +316,7 @@ async def execute_backend_tool(
         return _execute_findings_case_tool(DatabaseDataService(), tool_name, arguments)
 
     if tool_name in _SECURITY_TOOLS:
-        from tools.security_detections import get_security_detection_tools
+        from core.detections.tools import get_security_detection_tools
 
         handler = getattr(get_security_detection_tools(), tool_name, None)
         if handler is None:

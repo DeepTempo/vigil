@@ -65,7 +65,6 @@ COPY --chown=vigil:vigil tools/       ./tools/
 # <cid>:/app/database/init`) and the initdb mount are unaffected.
 COPY --chown=vigil:vigil infra/database/init/ ./database/init/
 COPY --chown=vigil:vigil data/        ./data/
-COPY --chown=vigil:vigil workflows/   ./workflows/
 COPY --chown=vigil:vigil mcp-servers/ ./mcp-servers/
 COPY --chown=vigil:vigil mempalace/   ./mempalace/
 COPY --chown=vigil:vigil VERSION      ./VERSION

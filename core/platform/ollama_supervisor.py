@@ -26,18 +26,17 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from core.llm.providers.discovery import ollama_ping
 
-if TYPE_CHECKING:
-    from core.platform.service_manager import ActionResult, ServiceSpec, ServiceStatus
+from core.platform.service_contract import ActionResult, ServiceSpec, ServiceStatus
 
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 PIDFILE = REPO_ROOT / "logs" / "ollama.pid"
 LOGFILE = REPO_ROOT / "logs" / "ollama.log"
 
@@ -107,8 +106,7 @@ def _managed_by_vigil() -> bool:
     return pid is not None and _pid_is_ollama(pid)
 
 
-def status(spec: "ServiceSpec") -> "ServiceStatus":
-    from core.platform.service_manager import ServiceStatus
+def status(spec: ServiceSpec) -> ServiceStatus:
 
     installed = binary_path() is not None
     running = ollama_ping(base_url())
@@ -137,8 +135,7 @@ def status(spec: "ServiceSpec") -> "ServiceStatus":
     )
 
 
-def start(spec: "ServiceSpec", *, timeout: int = 30) -> "ActionResult":
-    from core.platform.service_manager import ActionResult
+def start(spec: ServiceSpec, *, timeout: int = 30) -> ActionResult:
 
     url = base_url()
     if ollama_ping(url):
