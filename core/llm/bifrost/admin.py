@@ -114,7 +114,7 @@ def sync_all_provider_keys() -> Dict[str, bool]:
     """
     # Deferred imports to keep this module import-cheap for code that only
     # needs ``push_provider_key`` (e.g. llm_providers.py).
-    from backend.secrets_manager import get_secret
+    from core.secrets_manager import get_secret
     from core.storage.connection import get_db_manager
     from core.storage.models import LLMProviderConfig
 
@@ -405,7 +405,7 @@ async def _fetch_meta_for_row(row_dict: Dict[str, Any], discovery) -> Optional[l
     Returns ``None`` when the row isn't usable (e.g. no API key). The
     caller logs and skips.
     """
-    from backend.secrets_manager import get_secret
+    from core.secrets_manager import get_secret
 
     provider_type = row_dict["provider_type"]
     base_url = row_dict.get("base_url")

@@ -10,9 +10,9 @@ from typing import Optional
 from fastapi import HTTPException, Header, Depends, Request, status
 from sqlalchemy.orm import Session
 
-from backend.services.auth_cookies import ACCESS_COOKIE_NAME
-from backend.services.auth_service import AuthService
-from backend.services.token_blacklist import is_token_revoked
+from core.auth.auth_cookies import ACCESS_COOKIE_NAME
+from core.auth.auth_service import AuthService
+from core.auth.token_blacklist import is_token_revoked
 from core.storage.models import User
 from core.storage.connection import get_db
 

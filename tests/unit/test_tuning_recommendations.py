@@ -26,8 +26,6 @@ def _load_script():
     # explicitly so the import doesn't blow up under pytest's altered paths.
     if str(REPO) not in sys.path:
         sys.path.insert(0, str(REPO))
-    if str(REPO / "backend") not in sys.path:
-        sys.path.insert(0, str(REPO / "backend"))
     spec = importlib.util.spec_from_file_location("tuning_rec_under_test", SCRIPT)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

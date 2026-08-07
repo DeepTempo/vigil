@@ -21,7 +21,6 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "backend"))
 
 # Pre-import at collection time so ``sys.modules`` is locked in before
 # anything else runs.
@@ -241,7 +240,7 @@ def test_authenticated_non_admin_is_rejected(method, path, body, monkeypatch):
     )
     # And that AuthService.check_permission returns False (no admin).
     monkeypatch.setattr(
-        "backend.services.auth_service.AuthService.check_permission",
+        "core.auth.auth_service.AuthService.check_permission",
         lambda user_id, permission, session=None: False,
     )
 

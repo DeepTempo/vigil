@@ -607,7 +607,7 @@ class DatabaseDataService:
         try:
             # Load S3 config from database
             from core.storage.config_service import get_config_service
-            from backend.secrets_manager import get_secret
+            from core.secrets_manager import get_secret
             
             config_service = get_config_service()
             s3_config = config_service.get_integration_config('s3')

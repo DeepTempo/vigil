@@ -1,4 +1,4 @@
-"""Vigil SOC Backend API."""
+"""The application version, read from the top-level VERSION file."""
 
 from pathlib import Path
 
@@ -14,7 +14,7 @@ def _read_version() -> str:
     environments, Docker volume-mount accidents, or tooling truncation.
     release-please is the sole writer of VERSION; see RELEASING.md.
     """
-    version_file = Path(__file__).resolve().parent.parent / "VERSION"
+    version_file = Path(__file__).resolve().parents[1] / "VERSION"
     try:
         return version_file.read_text().strip() or "0.0.0+unknown"
     except OSError:

@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parent.parent.parent
 # DEV_MODE so importing the endpoint module (via core.llm.harness.claude) does
 # not trip the production JWT-secret guard.
 os.environ.setdefault("DEV_MODE", "true")
-for _p in (str(REPO), str(REPO / "backend")):
+for _p in (str(REPO),):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

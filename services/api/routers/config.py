@@ -13,7 +13,7 @@ import sys
 from core.routing import Auth, RouterMeta
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from secrets_manager import get_secret, set_secret
+from core.secrets import get_secret, set_secret
 
 # Import database config service
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -1030,10 +1030,10 @@ async def set_general_config(config: GeneralConfig):
 
         # Update the global secrets manager if keyring setting changed
         try:
-            from secrets_manager import get_secrets_manager
+            from core.secrets_manager import get_secrets_manager
 
             # Force reinitialize with new setting
-            import secrets_manager as sm_module
+            from core import secrets_manager as sm_module
 
             sm_module._secrets_manager = None  # Reset global instance
             get_secrets_manager(enable_keyring=config.enable_keyring)
@@ -1579,7 +1579,7 @@ async def secrets_status() -> Dict[str, Any]:
     write backend, what was expected per ``SECRETS_BACKEND`` env, whether
     cryptography imported, and where each backend lives on disk.
     """
-    from backend.secrets_manager import get_secrets_manager
+    from core.secrets_manager import get_secrets_manager
 
     mgr = get_secrets_manager()
     return mgr.get_backend_status()
@@ -1601,7 +1601,7 @@ async def secrets_reinit(
     just edited ``.env`` to switch from dotenv to encrypted but haven't
     bounced the process.
     """
-    from backend.secrets_manager import get_secrets_manager
+    from core.secrets_manager import get_secrets_manager
 
     write_backend = request.write_backend if request else None
     mgr = get_secrets_manager(write_backend=write_backend, force_reload=True)
@@ -1625,7 +1625,7 @@ async def secrets_migrate_to_encrypted(
     subset, or ``{"remove_from_dotenv": false}`` for a dry-copy that
     leaves the source file alone.
     """
-    from backend.secrets_manager import get_secrets_manager
+    from core.secrets_manager import get_secrets_manager
 
     mgr = get_secrets_manager()
     keys = request.keys if request else None

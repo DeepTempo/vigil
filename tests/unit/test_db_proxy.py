@@ -87,7 +87,7 @@ def test_socks5_proxy_uses_socks_scheme():
 
 def test_proxy_password_resolved_from_secrets_manager():
     """When ``password_secret_key`` is provided, the secret value is
-    fetched via ``backend.secrets_manager.get_secret`` rather than
+    fetched via ``core.secrets_manager.get_secret`` rather than
     pulled inline from the config dict."""
     fake_secrets = {"SPLUNK_PROXY_PASSWORD": "from-store"}
     with patch.object(db_proxy, "get_secret", side_effect=fake_secrets.get):

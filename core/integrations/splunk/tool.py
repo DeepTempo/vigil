@@ -2,8 +2,6 @@ import asyncio
 import json
 import logging
 import os
-import sys
-from pathlib import Path
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -15,19 +13,12 @@ try:
 except ImportError:
     pass
 
-# GH #84 PR-F follow-up: prefer secrets_manager over direct env reads so
-# SPLUNK_* credentials can be rotated without editing .env. The MCP server
-# spawns as a subprocess from the repo root, so we need to add backend/ to
-# sys.path to find secrets_manager. If the import fails (e.g. the server is
-# running outside the repo), we fall back to os.environ — the keyring /
-# dotenv lookups just get skipped.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_BACKEND_DIR = _REPO_ROOT / "backend"
-if _BACKEND_DIR.is_dir() and str(_BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_DIR))
-
+# GH #84 PR-F follow-up: prefer the secrets layer over direct env reads so
+# SPLUNK_* credentials can be rotated without editing .env. If the import
+# fails (e.g. the server is running outside the repo), we fall back to
+# os.environ — the keyring / dotenv lookups just get skipped.
 try:
-    from secrets_manager import get_secret as _get_secret  # type: ignore
+    from core.secrets import get_secret as _get_secret
 except Exception:  # noqa: BLE001
     _get_secret = None  # type: ignore
 

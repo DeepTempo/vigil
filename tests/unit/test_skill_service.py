@@ -13,8 +13,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-_BACKEND_DIR = _REPO_ROOT / "backend"
-for p in (str(_REPO_ROOT), str(_BACKEND_DIR)):
+for p in (str(_REPO_ROOT),):
     if p not in sys.path:
         sys.path.insert(0, p)
 

@@ -111,7 +111,7 @@ class TestCredentialGate:
         )
         # Ensure env var + secrets manager both return falsy.
         with patch("os.environ.get", return_value=None), patch(
-            "backend.secrets_manager.get_secret", return_value=None
+            "core.secrets_manager.get_secret", return_value=None
         ):
             assert client._missing_credentials_for(server) == [
                 "VIRUSTOTAL_API_KEY"
@@ -131,7 +131,7 @@ class TestCredentialGate:
             required_env_vars=["VIRUSTOTAL_API_KEY"],
         )
         with patch("os.environ.get", return_value=None), patch(
-            "backend.secrets_manager.get_secret", return_value="sk-ant-xyz"
+            "core.secrets_manager.get_secret", return_value="sk-ant-xyz"
         ):
             assert client._missing_credentials_for(server) == []
 
@@ -257,7 +257,7 @@ class TestRetryDormantIfReady:
         client.last_missing_credentials = {"virustotal": ["VIRUSTOTAL_API_KEY"]}
         # Env and secrets both still empty.
         with patch("os.environ.get", return_value=None), patch(
-            "backend.secrets_manager.get_secret", return_value=None
+            "core.secrets_manager.get_secret", return_value=None
         ):
             result = await client.retry_dormant_if_ready()
         assert result == {}
@@ -282,7 +282,7 @@ class TestRetryDormantIfReady:
         client.connect_to_server = AsyncMock(return_value=True)
         # Secrets manager now returns a key — creds resolve.
         with patch("os.environ.get", return_value=None), patch(
-            "backend.secrets_manager.get_secret", return_value="vt-key-xyz"
+            "core.secrets_manager.get_secret", return_value="vt-key-xyz"
         ):
             result = await client.retry_dormant_if_ready()
         assert result == {"virustotal": True}
@@ -306,7 +306,7 @@ class TestRetryDormantIfReady:
         client.last_missing_credentials = {"virustotal": ["VIRUSTOTAL_API_KEY"]}
         client.connect_to_server = AsyncMock(return_value=False)
         with patch("os.environ.get", return_value=None), patch(
-            "backend.secrets_manager.get_secret", return_value="vt-key-xyz"
+            "core.secrets_manager.get_secret", return_value="vt-key-xyz"
         ):
             # First call: attempts retry.
             r1 = await client.retry_dormant_if_ready()

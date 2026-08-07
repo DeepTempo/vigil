@@ -25,8 +25,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend import secrets_manager  # noqa: E402
-from backend.secrets_manager import (  # noqa: E402
+from core import secrets_manager  # noqa: E402
+from core.secrets_manager import (  # noqa: E402
     DotEnvBackend,
     EncryptedFileBackend,
     SecretsManager,

@@ -18,7 +18,7 @@ UPWARD_PACKAGES = ("backend", "daemon")
 
 # Grandfathered: ClaudeService reads the backend tool schemas at import time
 # behind a try/ImportError. Removing it is #414's job, not the relocation's.
-UPWARD_ALLOWED = {("harness/claude.py", "backend.schemas.tool_schemas")}
+UPWARD_ALLOWED = {("harness/claude.py", "core.llm.tool_schemas")}
 
 SOURCES = sorted(LLM_ROOT.rglob("*.py"))
 ROUTER_SOURCES = [

@@ -4,13 +4,13 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PACKAGES = ("backend", "services", "daemon", "core", "database")
+PACKAGES = ("services", "core")
 
 # Files where reading os.environ is the point, not a violation. The secrets
 # manager implements the environment backend; mcp_service exports config into
 # spawned MCP child processes, whose config protocol *is* env vars.
 ENV_EXEMPT_FILES = {
-    "backend/secrets_manager.py",
+    "core/secrets_manager.py",
 }
 
 # The other side of that boundary: core/integrations/*/tool.py are standalone

@@ -23,7 +23,6 @@ os.environ.setdefault("DEV_MODE", "true")
 
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "backend"))
 
 from services.api.routers.llm_providers import router as llm_providers_router
 from services.api.middleware.auth import get_current_active_user
@@ -133,7 +132,7 @@ def client(session):
 
     # Permission checks read DEV_MODE at call time; force-allow in tests.
     with patch(
-        "backend.services.auth_service.AuthService.check_permission",
+        "core.auth.auth_service.AuthService.check_permission",
         return_value=True,
     ):
         yield TestClient(app)

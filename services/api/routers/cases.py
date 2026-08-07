@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from services.api.middleware.auth import get_current_user
-from backend.services.auth_service import AuthService
+from core.auth.auth_service import AuthService
 from core.storage.models import User
 from core.storage.database_data_service import DatabaseDataService
 from core.reporting.report_service import ReportService, REPORTLAB_AVAILABLE

@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # backend/main.py adds both the repo root and `backend/` to sys.path at
 # runtime so that imports written as `from api.findings import ...` resolve.
 # Mirror that here for standalone pytest runs.
-for _p in (ROOT, ROOT / "backend"):
+for _p in (ROOT,):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
@@ -132,7 +132,7 @@ def _invoke_ingest(fake_service: _FakeDataService, payload: Dict[str, Any]):
     one used by `core.cases.case_automation_service.cluster_findings_by_attack_path`.
     """
     from services.api.routers import vstrike as vstrike_module
-    from backend.schemas.vstrike import VStrikePushRequest
+    from core.integrations.vstrike.schemas import VStrikePushRequest
 
     req = VStrikePushRequest(**payload)
 

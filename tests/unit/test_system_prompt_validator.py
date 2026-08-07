@@ -1,4 +1,4 @@
-"""Unit tests for backend.schemas.system_prompt.validate_system_prompt (issue #87)."""
+"""Unit tests for core.llm.system_prompt.validate_system_prompt (issue #87)."""
 
 from __future__ import annotations
 
@@ -10,9 +10,8 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "backend"))
 
-from backend.schemas.system_prompt import validate_system_prompt  # noqa: E402
+from core.llm.system_prompt import validate_system_prompt  # noqa: E402
 from core.llm.security import MAX_SYSTEM_PROMPT_BYTES  # noqa: E402
 
 pytestmark = pytest.mark.unit

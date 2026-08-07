@@ -1,5 +1,5 @@
 """
-Unit tests for backend/monitoring.py changes.
+Unit tests for core/platform/monitoring.py changes.
 
 Stubs sentry_sdk and prometheus_client so the tests run without
 those packages installed (same pattern as conftest.py for deeptempo_core).
@@ -71,15 +71,16 @@ _sentry_stub = _make_sentry_stub()
 _prometheus_stub = _make_prometheus_stub()
 _make_starlette_stub()
 
-# Now import monitoring with stubs in place
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
+# Now import monitoring with stubs in place. It is a submodule, so a plain
+# ``from core.platform import monitoring`` would hand back the attribute already
+# cached on the parent package by whichever earlier test imported the app —
+# with the real sentry/prometheus bound. Drop it from sys.modules and go
+# through importlib so module-level code re-runs against the stubs above.
 import importlib
-import monitoring as _monitoring_module
 
-# Force a fresh import so module-level code runs with our stubs
-if "monitoring" in sys.modules:
-    del sys.modules["monitoring"]
-import monitoring
+sys.modules.pop("core.platform.monitoring", None)
+monitoring = importlib.import_module("core.platform.monitoring")
+_monitoring_module = monitoring
 
 
 # ---------------------------------------------------------------------------

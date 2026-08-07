@@ -39,7 +39,7 @@ def isolate_secrets(monkeypatch):
     patches the factory's get_secret import to a thin wrapper that only
     looks at os.environ — which the test then controls via monkeypatch.
     """
-    import backend.secrets_manager as sm
+    import core.secrets_manager as sm
 
     def _env_only(key, default=None):
         return os.environ.get(key, default)

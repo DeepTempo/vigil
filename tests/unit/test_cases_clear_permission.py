@@ -16,7 +16,7 @@ import pytest
 os.environ.setdefault("DEV_MODE", "true")
 
 REPO = Path(__file__).resolve().parent.parent.parent
-for p in (str(REPO), str(REPO / "backend")):
+for p in (str(REPO),):
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -33,7 +33,7 @@ async def test_clear_all_cases_denied_without_permission(monkeypatch):
     from fastapi import HTTPException
 
     from services.api.routers import cases
-    from backend.services.auth_service import AuthService
+    from core.auth.auth_service import AuthService
 
     monkeypatch.setattr(
         AuthService, "check_permission", staticmethod(lambda *a, **k: False)
@@ -48,7 +48,7 @@ async def test_clear_all_cases_denied_without_permission(monkeypatch):
 @pytest.mark.asyncio
 async def test_clear_all_cases_checks_cases_delete(monkeypatch):
     from services.api.routers import cases
-    from backend.services.auth_service import AuthService
+    from core.auth.auth_service import AuthService
 
     seen = {}
 

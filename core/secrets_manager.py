@@ -8,7 +8,7 @@ Provides pluggable secrets storage backends with priority fallback:
 4. Keyring (only when explicitly enabled)
 
 Usage:
-    from backend.secrets_manager import get_secret, set_secret
+    from core.secrets_manager import get_secret, set_secret
 
     api_key = get_secret("CLAUDE_API_KEY")
     set_secret("CLAUDE_API_KEY", "sk-ant-...")

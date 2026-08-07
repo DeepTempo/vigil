@@ -20,7 +20,7 @@ os.environ.setdefault("DEV_MODE", "true")
 import jwt
 import pytest
 
-from backend.services.auth_service import (
+from core.auth.auth_service import (
     AuthService,
     JWT_ALGORITHM,
     JWT_SECRET_KEY,

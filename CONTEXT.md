@@ -38,13 +38,32 @@ External threat knowledge — STIX/TAXII feed ingestion and MITRE ATT&CK taxonom
 resolution. MITRE lookup lives here as a reusable taxonomy resolver.
 
 **Ingestion** (`ingestion`):
-Pulling *external* security data into Vigil (SIEM, Kafka, S3-dropped findings).
-Distinct from `storage`: ingestion *uses* storage clients; storage never
-depends on ingestion.
+Normalizing *external* security data into Findings (SIEM, Kafka, S3-dropped
+findings) — *what* a source yields and how it becomes a Finding. Distinct from
+`storage`: ingestion *uses* storage clients; storage never depends on ingestion.
 
-**Workflows**, **Reporting**, **Chat**, **Auth**:
+**Federation** (`federation`):
+The scheduled poll loop that *drives* ingestion sources — the `federation_sources`
+registry, per-adapter loops, cursors, and the global on/off toggle. Ingestion is
+*what* a source yields; Federation is *when and how often* Vigil asks for it.
+A vendor slice carries both: `ingestion.py` subclasses `SIEMIngestionService`,
+and `adapter.py` wraps that service to satisfy the Federation contract.
+_Avoid_: polling, sync, multi-tenancy (it is not Vigil-to-Vigil federation)
+
+**Workflows**, **Reporting**, **Chat**:
 Multi-agent playbooks; PDF/report generation; the agentic chat loop + durable
-conversations; page-extension session tokens and origin trust.
+conversations.
+
+**Auth** (`auth`):
+User identity — who the human is and what they may do: authentication, password
+policy, cookies, and session/token revocation.
+_Avoid_: connector trust (that's **Connector Trust**), permissions
+
+**Connector Trust** (`integrations/extension`):
+Which page-extension connector origins Vigil admits into its own page (CSP
+`script-src`/`connect-src`, the SSRF guard) and the short-lived tokens minted to
+them. A supply-chain trust decision about a third party, not a user login.
+_Avoid_: auth, extension auth
 
 ### Shared-infrastructure tier
 
@@ -57,14 +76,19 @@ the S3 object-store client. A capability domain may depend on `storage`;
 Python package and **no** `core/platform/db/` — all DB code lives here.
 
 **Platform** (`platform`):
-Process/config/runtime plumbing — local service orchestration, autostart config,
-memory-palace paths, demo-data seeding, URL/SSRF safety. Not a junk drawer: a
-file belongs here only if it's runtime plumbing with no owning capability.
+Process/config/runtime plumbing — local service orchestration and process
+supervision, autostart config, runtime-config resolution, memory-palace paths,
+demo-data seeding, URL/SSRF safety. Not a junk drawer: a file belongs here only
+if it's runtime plumbing with no owning capability. The cut against a capability
+domain is **mechanism vs. knowledge**: supervising a process, or resolving a
+setting, is `platform`; knowing what the setting *means* is the domain's.
 
 ## Relationships
 
 - A **Case** groups one or more **Findings**
 - **Ingestion** produces **Findings** and depends on **Storage** (never the reverse)
+- **Federation** drives **Ingestion** (an adapter wraps an ingestion service);
+  Ingestion never depends on Federation
 - Capability domains depend on the **Storage**/**Platform** tier; the tier
   depends on no capability domain
 - **LLM** code (`core/llm/`, in flight as #485/#522) is a separate slice, not
@@ -85,8 +109,24 @@ file belongs here only if it's runtime plumbing with no owning capability.
   Resolved: they're **LLM-slice** files (#485), not `platform`. `defaults.py`
   (`DEFAULT_MODEL`, `build_thinking_kwargs`) now lives at `core/llm/defaults.py`
   — moved with the worker slice (#508), which also killed the `core/llm/gateway`
-  → `services.defaults` inversion. `runtime_config.py` is the UI-editable runtime
-  config channel and stays in `services/`.
+  → `services.defaults` inversion. **Amended (R9):** `runtime_config.py` cannot
+  "stay in `services/`" — `services/` now means deployables only (`api`, `daemon`,
+  `worker`). Re-resolved by the mechanism-vs-knowledge cut: it is a DB > env >
+  default resolver with a TTL cache — a *mechanism* — so it lands at
+  `core/platform/runtime_config.py`, not `core/llm/`. Its keys are LLM-ops; the
+  resolver is not. This also removes the last `core.chat`/`core.llm` →
+  `services.*` inversions.
+- **`platform` ↔ `llm` was a cycle, not a violation (R9).** `core/platform/
+  service_manager.py` and `core/llm/providers/ollama.py` imported each other
+  across the tier boundary — 7 edges, every one a function-local import deferred
+  purely to dodge the cycle. Resolved: `ollama.py` is misfiled. Its docstring
+  calls it a "Host-native Ollama supervisor"; it implements `service_manager`'s
+  own `ServiceSpec`/`ServiceStatus`/`ActionResult` protocol, and `service_manager`
+  is its *only* consumer — nothing in `core/llm/` imports it. It moves to
+  `core/platform/ollama_supervisor.py`, deleting the cycle and letting the
+  remaining imports return to module top-level. Supervising the Ollama process is
+  platform's "local service orchestration"; the payload being LLM traffic doesn't
+  make the supervision LLM knowledge.
 - **`s3_service`: ingestion or storage?** Its purpose is sourcing findings, but
   `storage`'s own data-access layer depends on it. Resolved: **storage** (an
   object-store client), so the layering isn't inverted.

@@ -141,7 +141,7 @@ def sample_admin_role(test_db_session) -> Role:
 @pytest.fixture
 def sample_user(test_db_session, sample_role) -> User:
     """Create a sample user for testing."""
-    from backend.services.auth_service import AuthService
+    from core.auth.auth_service import AuthService
     
     user = User(
         id="user-123",
@@ -161,7 +161,7 @@ def sample_user(test_db_session, sample_role) -> User:
 @pytest.fixture
 def sample_admin_user(test_db_session, sample_admin_role) -> User:
     """Create a sample admin user for testing."""
-    from backend.services.auth_service import AuthService
+    from core.auth.auth_service import AuthService
     
     user = User(
         id="admin-123",
@@ -181,7 +181,7 @@ def sample_admin_user(test_db_session, sample_admin_role) -> User:
 @pytest.fixture
 def auth_token(sample_user) -> str:
     """Generate a valid JWT token for testing."""
-    from backend.services.auth_service import AuthService
+    from core.auth.auth_service import AuthService
     
     token = AuthService.create_access_token(
         data={"sub": sample_user.id, "role": sample_user.role_id}
@@ -192,7 +192,7 @@ def auth_token(sample_user) -> str:
 @pytest.fixture
 def admin_auth_token(sample_admin_user) -> str:
     """Generate a valid admin JWT token for testing."""
-    from backend.services.auth_service import AuthService
+    from core.auth.auth_service import AuthService
     
     token = AuthService.create_access_token(
         data={"sub": sample_admin_user.id, "role": sample_admin_user.role_id}

@@ -22,7 +22,6 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "backend"))
 
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-not-for-prod")
 

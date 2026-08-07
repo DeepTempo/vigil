@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from backend.schemas.system_prompt import validate_system_prompt
-from backend.services.custom_agent_service import (
+from core.llm.system_prompt import validate_system_prompt
+from core.agents.custom_agent_service import (
     CustomAgentAlreadyExists,
     CustomAgentNotFound,
     CustomAgentService,

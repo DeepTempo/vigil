@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 import asyncio
 from sqlalchemy.orm import Session
 
-from backend.secrets_manager import get_secret
+from core.secrets_manager import get_secret
 from core.llm.defaults import DEFAULT_MODEL
 from core.llm.providers.clients import create_anthropic_client
 

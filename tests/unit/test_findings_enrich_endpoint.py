@@ -26,7 +26,6 @@ REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 # backend/ must be on sys.path too: importing services.api.routers.findings cascades
 # into backend/api/__init__.py which does bare `from api.findings import ...`.
-sys.path.insert(0, str(REPO / "backend"))
 
 from fastapi import HTTPException  # noqa: E402
 

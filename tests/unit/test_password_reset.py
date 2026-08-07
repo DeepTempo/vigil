@@ -1,5 +1,5 @@
 """
-Unit tests for backend.services.password_reset.
+Unit tests for core.auth.password_reset.
 
 Redis-backed single-use enforcement is mocked so tests run without a live
 cache. The signature + expiry logic is pure itsdangerous and runs as-is.
@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.services import password_reset
+from core.auth import password_reset
 
 
 @pytest.fixture(autouse=True)

@@ -1,12 +1,12 @@
 """
-Unit tests for backend.services.password_validator (zxcvbn-backed).
+Unit tests for core.auth.password_validator (zxcvbn-backed).
 
 Covers length, blocklist, entropy scoring, and user_inputs penalization.
 """
 
 import pytest
 
-from backend.services.password_validator import (
+from core.auth.password_validator import (
     PasswordPolicyError,
     validate_password_strength,
 )

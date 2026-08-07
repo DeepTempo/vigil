@@ -7,7 +7,7 @@ Vigil's persistence story for integration credentials is split:
   mirrored to ``~/.vigil/integrations_config.json`` for back-compat.
 - **Secret credentials** (API keys, passwords, bearer tokens) go into the
   encrypted secrets store at ``~/.vigil/secrets.enc`` via
-  ``backend.secrets_manager.set_secret`` / ``get_secret``.
+  ``core.secrets_manager.set_secret`` / ``get_secret``.
 
 This module exposes the mapping from frontend form-field name → environment
 variable name (which is also the secrets-store key) for each integration's

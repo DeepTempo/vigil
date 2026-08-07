@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 def load_backend_tools() -> List[Dict[str, Any]]:
     """Return the static backend tool schemas (empty list if unavailable)."""
     try:
-        from backend.schemas.tool_schemas import ALL_TOOLS
+        from core.llm.tool_schemas import ALL_TOOLS
 
         return list(ALL_TOOLS)
     except ImportError:

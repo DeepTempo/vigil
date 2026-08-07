@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Public constants — also imported by backend.schemas.system_prompt
+# Public constants — also imported by core.llm.system_prompt
 # ---------------------------------------------------------------------------
 
 MAX_SYSTEM_PROMPT_BYTES: int = 8192

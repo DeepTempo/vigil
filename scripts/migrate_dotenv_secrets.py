@@ -56,7 +56,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    from backend.secrets_manager import get_secrets_manager
+    from core.secrets_manager import get_secrets_manager
 
     mgr = get_secrets_manager()
     report = mgr.migrate_dotenv_secrets_to_encrypted(

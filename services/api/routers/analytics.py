@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from core.storage.models import Finding, Case, CaseClosureInfo, LLMInteractionLog
 from core.storage.connection import get_db, get_db_session
-from backend.services.ai_insights_service import AIInsightsService
+from core.reporting.ai_insights_service import AIInsightsService
 from core.threat_intel.mitre_lookup import get_time_range, resolve_technique  # noqa: F401
 from core.routing import Auth, RouterMeta
 

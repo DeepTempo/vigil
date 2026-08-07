@@ -444,7 +444,7 @@ def _get_s3_service():
     test so it works with IAM policies that only grant list/get permissions.
     """
     from core.storage.config_service import get_config_service
-    from backend.secrets_manager import get_secret
+    from core.secrets_manager import get_secret
     from core.storage.s3_service import S3Service
 
     config_service = get_config_service()

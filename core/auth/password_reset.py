@@ -46,7 +46,7 @@ def _ttl_seconds() -> int:
 
 def _get_serializer() -> URLSafeTimedSerializer:
     # Import lazily so tests can stub JWT_SECRET_KEY via env before auth_service loads.
-    from backend.services.auth_service import JWT_SECRET_KEY
+    from core.auth.auth_service import JWT_SECRET_KEY
     return URLSafeTimedSerializer(JWT_SECRET_KEY, salt=RESET_TOKEN_PURPOSE)
 
 

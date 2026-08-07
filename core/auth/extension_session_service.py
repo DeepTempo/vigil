@@ -12,7 +12,7 @@ from typing import Any, Dict
 
 import httpx
 
-from backend.secrets_manager import get_secret
+from core.secrets_manager import get_secret
 from core.storage.config_service import get_config_service
 from services.integration_secrets import secret_fields_for
 from core.auth.extension_trust import is_trusted_connector_url
