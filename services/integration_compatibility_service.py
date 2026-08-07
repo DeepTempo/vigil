@@ -6,8 +6,6 @@ import logging
 import subprocess
 import importlib.metadata
 from typing import Dict, List, Optional, Tuple
-from pathlib import Path
-import json
 
 logger = logging.getLogger(__name__)
 

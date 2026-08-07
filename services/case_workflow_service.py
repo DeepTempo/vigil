@@ -6,13 +6,12 @@ and task automation.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 
 from database.models import (
-    Case, CaseTemplate, CaseTask, SLAPolicy, CaseSLA
+    Case, CaseTemplate, CaseTask
 )
 from database.connection import get_db_session
 
@@ -24,7 +23,6 @@ class CaseWorkflowService:
     
     def __init__(self):
         """Initialize the workflow service."""
-        pass
     
     def create_template(
         self,
@@ -278,146 +276,7 @@ class CaseWorkflowService:
             if should_close_session:
                 session.close()
     
-    def apply_playbook(
-        self,
-        case_id: str,
-        playbook_steps: List[Dict],
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Apply a playbook to a case.
-        
-        Args:
-            case_id: Case ID
-            playbook_steps: List of playbook step dictionaries
-            session: Database session (optional)
-        
-        Returns:
-            True if successful
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            case = session.query(Case).filter(Case.case_id == case_id).first()
-            if not case:
-                logger.error(f"Case {case_id} not found")
-                return False
-            
-            # Add playbook steps to timeline
-            for step in playbook_steps:
-                case.timeline.append({
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'event': f"Playbook step: {step.get('name', 'Unknown')}"
-                })
-            
-            # Mark timeline as updated to trigger ORM update
-            session.merge(case)
-            session.commit()
-            
-            logger.info(f"Applied playbook to case {case_id}")
-            return True
-        
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error applying playbook to case {case_id}: {e}")
-            return False
-        finally:
-            if should_close_session:
-                session.close()
     
-    def auto_assign_case(
-        self,
-        case_id: str,
-        assignment_strategy: str = 'round_robin',
-        available_analysts: Optional[List[str]] = None,
-        session: Optional[Session] = None
-    ) -> Optional[str]:
-        """
-        Auto-assign a case to an analyst.
-        
-        Args:
-            case_id: Case ID
-            assignment_strategy: Strategy to use (round_robin, least_workload, skills_based)
-            available_analysts: List of available analyst IDs
-            session: Database session (optional)
-        
-        Returns:
-            Assigned analyst ID or None
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            case = session.query(Case).filter(Case.case_id == case_id).first()
-            if not case:
-                logger.error(f"Case {case_id} not found")
-                return None
-            
-            if not available_analysts:
-                logger.warning("No analysts available for assignment")
-                return None
-            
-            assigned_analyst = None
-            
-            if assignment_strategy == 'round_robin':
-                # Simple round-robin: assign to analyst with fewest active cases
-                workloads = {}
-                for analyst in available_analysts:
-                    active_cases = session.query(Case).filter(
-                        and_(
-                            Case.assignee == analyst,
-                            Case.status.in_(['open', 'in-progress', 'investigating'])
-                        )
-                    ).count()
-                    workloads[analyst] = active_cases
-                
-                assigned_analyst = min(workloads, key=workloads.get)
-            
-            elif assignment_strategy == 'least_workload':
-                # Assign to analyst with least workload (similar to round_robin)
-                workloads = {}
-                for analyst in available_analysts:
-                    active_cases = session.query(Case).filter(
-                        and_(
-                            Case.assignee == analyst,
-                            Case.status.in_(['open', 'in-progress', 'investigating'])
-                        )
-                    ).count()
-                    workloads[analyst] = active_cases
-                
-                assigned_analyst = min(workloads, key=workloads.get)
-            
-            elif assignment_strategy == 'random':
-                import random
-                assigned_analyst = random.choice(available_analysts)
-            
-            else:
-                # Default to first analyst
-                assigned_analyst = available_analysts[0]
-            
-            if assigned_analyst:
-                case.assignee = assigned_analyst
-                case.timeline.append({
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'event': f'Auto-assigned to {assigned_analyst}'
-                })
-                session.commit()
-                
-                logger.info(f"Auto-assigned case {case_id} to {assigned_analyst}")
-                return assigned_analyst
-            
-            return None
-        
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error auto-assigning case {case_id}: {e}")
-            return None
-        finally:
-            if should_close_session:
-                session.close()
     
     def escalate_case(
         self,

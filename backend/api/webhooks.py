@@ -1,7 +1,7 @@
 """Webhooks API - Configure and manage case event webhooks."""
 
-from typing import List, Optional, Dict
-from fastapi import APIRouter, HTTPException
+from typing import List, Optional
+from fastapi import APIRouter
 from pydantic import BaseModel
 from api._meta import Auth, RouterMeta
 

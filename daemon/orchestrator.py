@@ -15,7 +15,6 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.config import get_settings
@@ -614,10 +613,7 @@ class Orchestrator:
 
     async def _review_investigation(self, inv_id: str):
         """Review a completed investigation's results."""
-        review_md = self.workdir.read_file(inv_id, "review.md")
         state = self.workdir.read_state(inv_id)
-        plan = self.workdir.read_file(inv_id, "plan.md")
-        context = self.workdir.read_file(inv_id, "context.md")
 
         completed_steps = state.get("completed_steps", [])
         total_steps = state.get("total_steps", 0)

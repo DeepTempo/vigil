@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, text
+from sqlalchemy import and_, or_
 
 from database.models import Case, CaseComment, CaseEvidence, CaseIOC
 from database.connection import get_db_session
@@ -21,7 +21,6 @@ class CaseSearchService:
     
     def __init__(self):
         """Initialize the search service."""
-        pass
     
     def search_cases(
         self,

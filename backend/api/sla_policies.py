@@ -408,7 +408,6 @@ async def get_policy_usage(policy_id: str):
             raise HTTPException(status_code=404, detail="SLA policy not found")
         
         from database.models import CaseSLA, Case
-        from sqlalchemy import func
         
         # Total cases using this policy
         total_cases = session.query(CaseSLA).filter(

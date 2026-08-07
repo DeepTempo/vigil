@@ -417,24 +417,6 @@ export const slaPoliciesApi = {
   }) => api.get(`/sla-policies/${policyId}/cases`, { params }),
 }
 
-// Case Templates API
-export const caseTemplatesApi = {
-  getAll: () => api.get('/case-templates/'),
-  getById: (id: string) => api.get(`/case-templates/${id}`),
-  create: (data: {
-    name: string
-    description?: string
-    default_title: string
-    default_description?: string
-    default_priority?: string
-    default_status?: string
-    default_tags?: string[]
-    default_assignee?: string
-    workflow_id?: string
-  }) => api.post('/case-templates/', data),
-  createFromTemplate: (templateId: string, variables: Record<string, any>) =>
-    api.post(`/case-templates/${templateId}/create-case`, { variables }),
-}
 
 // Case Metrics API
 export const caseMetricsApi = {
@@ -460,19 +442,6 @@ export const caseSearchApi = {
   }) => api.post('/case-search/', data),
 }
 
-// Webhooks API
-export const webhooksApi = {
-  getAll: () => api.get('/webhooks/'),
-  create: (data: {
-    name: string
-    url: string
-    events: string[]
-    secret?: string
-    is_active?: boolean
-  }) => api.post('/webhooks/', data),
-  delete: (id: string) => api.delete(`/webhooks/${id}`),
-  test: (id: string) => api.post(`/webhooks/${id}/test`),
-}
 
 // MCP Servers API
 export const mcpApi = {
@@ -499,169 +468,6 @@ export const mcpApi = {
     api.put(`/mcp/servers/${name}/enabled`, { enabled }),
 }
 
-// VStrike (CloudCurrent) integration API
-// Routes are mounted at /api/integrations/vstrike; axios baseURL is /api.
-export const vstrikeApi = {
-  health: () => api.get('/integrations/vstrike/health'),
-
-  // 503 with detail.missing=['username','password'] when UI creds unset.
-  iframeToken: () =>
-    api.post<{ token: string; iframe_url: string }>(
-      '/integrations/vstrike/ui/iframe-token',
-    ),
-
-  listNetworks: () =>
-    api.get<{ networks: Array<Record<string, any>> }>(
-      '/integrations/vstrike/ui/networks',
-    ),
-
-  loadNetwork: (network_id: string) =>
-    api.post<{ ok: boolean; result: any }>(
-      '/integrations/vstrike/ui/load-network',
-      { network_id },
-    ),
-
-  // Kill-chain replay — instructs VStrike to walk a sequence of nodes in the
-  // active iframe session. 501 when VStrike's MCP server hasn't shipped the
-  // `ui-killchain-replay` tool yet; the caller surfaces that as a snackbar.
-  killchainReplay: (
-    network_id: string,
-    steps: Array<{
-      node_id: string
-      timestamp: string
-      technique?: string
-      label?: string
-      dwell_ms?: number
-    }>,
-    opts?: { loop?: boolean; autoPlay?: boolean },
-  ) =>
-    api.post<{ ok: boolean; result: any }>(
-      '/integrations/vstrike/ui/killchain-replay',
-      {
-        network_id,
-        steps,
-        loop: opts?.loop ?? false,
-        auto_play: opts?.autoPlay ?? true,
-      },
-    ),
-
-  // -------------------------------------------------------------------------
-  // Data-plane proxies (node search, drift, storylines, legends)
-  // -------------------------------------------------------------------------
-
-  nodeSearch: (query: string, network_id?: string, limit?: number) =>
-    api.post<{ query: string; results: Array<Record<string, any>> }>(
-      '/integrations/vstrike/nodes/search',
-      { query, network_id, limit },
-    ),
-
-  nodeDrift: (node_id: string, network_id?: string) =>
-    api.post<{ node_id: string; drift: Array<Record<string, any>> }>(
-      '/integrations/vstrike/nodes/drift',
-      { node_id, network_id },
-    ),
-
-  listStorylines: (network_id?: string) =>
-    api.get<{ network_id?: string; storylines: Array<Record<string, any>> }>(
-      '/integrations/vstrike/storylines',
-      { params: { network_id } },
-    ),
-
-  storylineEvents: (storyline_id: string, network_id?: string) =>
-    api.post<{ storyline_id: string; events: Array<Record<string, any>> }>(
-      '/integrations/vstrike/storylines/events',
-      { storyline_id, network_id },
-    ),
-
-  listLegendRuns: (network_id?: string) =>
-    api.get<{ network_id?: string; legend_runs: Array<Record<string, any>> }>(
-      '/integrations/vstrike/legend-runs',
-      { params: { network_id } },
-    ),
-
-  legendRunResults: (legend_run_id: string, network_id?: string) =>
-    api.post<{ legend_run_id: string; results: Record<string, any> }>(
-      '/integrations/vstrike/legend-runs/results',
-      { legend_run_id, network_id },
-    ),
-
-  // -------------------------------------------------------------------------
-  // UI control plane (camera, storyline, VCR playback)
-  // -------------------------------------------------------------------------
-
-  uiCameraNode: (node_ids: string[], network_id?: string) =>
-    api.post<{ ok: boolean; result: any }>(
-      '/integrations/vstrike/ui/camera-node',
-      { node_ids, network_id },
-    ),
-
-  uiCameraPosition: (
-    position: Record<string, number>,
-    rotation?: Record<string, number>,
-    network_id?: string,
-  ) =>
-    api.post<{ ok: boolean; result: any }>(
-      '/integrations/vstrike/ui/camera-position',
-      { position, rotation, network_id },
-    ),
-
-  uiStorylineApply: (storyline_id: string, network_id?: string) =>
-    api.post<{ ok: boolean; result: any }>(
-      '/integrations/vstrike/ui/storyline-apply',
-      { storyline_id, network_id },
-    ),
-
-  uiStorylineMode: (mode: string, network_id?: string) =>
-    api.post<{ ok: boolean; result: any }>(
-      '/integrations/vstrike/ui/storyline-mode',
-      { mode, network_id },
-    ),
-
-  uiStorylineForward: (network_id?: string) =>
-    api.post<{ ok: boolean; result: any }>(
-      '/integrations/vstrike/ui/storyline-forward',
-      { network_id },
-    ),
-
-  uiStorylineBackward: (network_id?: string) =>
-    api.post<{ ok: boolean; result: any }>(
-      '/integrations/vstrike/ui/storyline-backward',
-      { network_id },
-    ),
-
-  // -------------------------------------------------------------------------
-  // Net-new VStrike tools (network-graph-get, ui-legend-apply,
-  // ui-rightpanel-focus). The `extra` bag lets callers forward additional
-  // fields verbatim, matching the defensive shape on the backend.
-  // -------------------------------------------------------------------------
-
-  networkGraph: (network_id?: string, extra?: Record<string, any>) =>
-    api.post<{
-      network_id?: string
-      graph: {
-        label?: string
-        nodes: Array<Record<string, any>>
-        edges: Array<Record<string, any>>
-        bbox?: any
-      }
-    }>('/integrations/vstrike/network-graph', { network_id, ...(extra ?? {}) }),
-
-  uiLegendApply: (
-    legend_run_id: string,
-    network_id?: string,
-    extra?: Record<string, any>,
-  ) =>
-    api.post<{ ok: boolean; result: any }>(
-      '/integrations/vstrike/ui/legend-apply',
-      { legend_run_id, network_id, ...(extra ?? {}) },
-    ),
-
-  uiRightpanelFocus: (extra?: Record<string, any>) =>
-    api.post<{ ok: boolean; result: any }>(
-      '/integrations/vstrike/ui/rightpanel-focus',
-      { ...(extra ?? {}) },
-    ),
-}
 
 // Claude API
 export const claudeApi = {
@@ -863,15 +669,6 @@ export interface CustomAgentPayload {
   max_tokens?: number
   enable_thinking?: boolean
   model?: string | null
-}
-
-export interface CustomAgent extends CustomAgentPayload {
-  id: string
-  created_by?: string | null
-  created_at?: string
-  updated_at?: string
-  effective_prompt?: string
-  forked_from?: string | null
 }
 
 // Shape returned by /agents/agents (both built-ins and customs).
@@ -1345,24 +1142,6 @@ export const timelineApi = {
     api.get(`/timeline/finding/${finding_id}/context`, { params: { time_window_minutes: 60 } }),
 }
 
-// Graph API
-export const graphApi = {
-  getEntityGraph: (params: {
-    finding_ids?: string
-    case_id?: string
-    cluster_id?: string
-    limit?: number
-  }) => api.get('/graph/entities', { params }),
-  
-  getAttackPath: (case_id: string) => api.get(`/graph/attack-path/${case_id}`),
-  
-  getClusterGraph: (cluster_id: string) => api.get(`/graph/cluster/${cluster_id}`),
-  
-  getTechniqueGraph: (technique_id: string, limit: number = 100) =>
-    api.get(`/graph/technique/${technique_id}`, { params: { limit } }),
-  
-  getSummary: (limit: number = 100) => api.get('/graph/summary', { params: { limit } }),
-}
 
 // Detection Rules API (manages detection rule sources for MCP)
 export const detectionRulesApi = {
@@ -1443,21 +1222,6 @@ export interface WorkflowPhase {
   parallel_group?: string | null
 }
 
-export interface CustomWorkflow {
-  workflow_id: string
-  name: string
-  description: string
-  use_case?: string
-  trigger_examples: string[]
-  phases: WorkflowPhase[]
-  graph_layout?: Record<string, any>
-  is_active: boolean
-  created_by?: string | null
-  version: number
-  created_at?: string
-  updated_at?: string
-}
-
 // Workflows API (file-based + database-backed custom workflows)
 export const workflowApi = {
   // Unified list (merges file + custom)
@@ -1507,25 +1271,6 @@ export const workflowApi = {
     api.post('/workflows/generate', { description }, { timeout: LLM_TIMEOUT }),
 }
 
-// Skills API (workflow skill management and execution)
-export const skillsApi = {
-  // List all available skills
-  listSkills: () => api.get('/workflows'),
-
-  // Get full details for a specific skill (including markdown body)
-  getSkill: (skillId: string) => api.get(`/workflows/${skillId}`),
-
-  // Execute a skill workflow
-  executeSkill: (skillId: string, params: {
-    finding_id?: string
-    case_id?: string
-    context?: string
-    hypothesis?: string
-  }) => api.post(`/workflows/${skillId}/execute`, params, { timeout: LLM_TIMEOUT }),
-
-  // Force reload skills from disk
-  reloadSkills: () => api.post('/workflows/reload'),
-}
 
 // Orchestrator API (autonomous investigation management)
 export const orchestratorApi = {

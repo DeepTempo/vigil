@@ -5,12 +5,11 @@ Handles case comments, @mentions, watchers, and activity feeds.
 """
 
 import logging
-from datetime import datetime
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
-from database.models import CaseComment, CaseWatcher, Case
+from database.models import CaseComment, CaseWatcher
 from database.connection import get_db_session
 from services.case_notification_service import CaseNotificationService
 
@@ -227,44 +226,6 @@ class CaseCollaborationService:
             if should_close_session:
                 session.close()
     
-    def get_comment_thread(
-        self,
-        comment_id: int,
-        session: Optional[Session] = None
-    ) -> List[CaseComment]:
-        """
-        Get a comment and all its replies.
-        
-        Args:
-            comment_id: Parent comment ID
-            session: Database session (optional)
-        
-        Returns:
-            List of CaseComment objects in thread
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            # Get parent comment
-            parent = session.query(CaseComment).filter(
-                CaseComment.comment_id == comment_id
-            ).first()
-            
-            if not parent:
-                return []
-            
-            # Get all replies
-            replies = session.query(CaseComment).filter(
-                CaseComment.parent_comment_id == comment_id
-            ).order_by(CaseComment.created_at.asc()).all()
-            
-            return [parent] + replies
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def add_watcher(
         self,
@@ -396,33 +357,4 @@ class CaseCollaborationService:
             if should_close_session:
                 session.close()
     
-    def get_user_watched_cases(
-        self,
-        user_id: str,
-        session: Optional[Session] = None
-    ) -> List[str]:
-        """
-        Get all cases a user is watching.
-        
-        Args:
-            user_id: User ID
-            session: Database session (optional)
-        
-        Returns:
-            List of case IDs
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            watchers = session.query(CaseWatcher).filter(
-                CaseWatcher.user_id == user_id
-            ).all()
-            
-            return [watcher.case_id for watcher in watchers]
-        
-        finally:
-            if should_close_session:
-                session.close()
 

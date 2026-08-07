@@ -7,7 +7,6 @@ import logging
 
 from services.defaults import DEFAULT_MODEL
 from services.soc_agents import (
-    SOCAgentLibrary,
     AgentManager,
     CUSTOM_AGENT_ID_PREFIX,
     DEFAULT_AGENT_ID,

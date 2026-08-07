@@ -6,10 +6,9 @@ Handles file storage, chain of custody, and evidence tracking.
 
 import logging
 import hashlib
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, BinaryIO
+from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from database.models import CaseEvidence
@@ -54,44 +53,6 @@ class CaseEvidenceService:
             'sha256': sha256_hash.hexdigest()
         }
     
-    def store_evidence_file(
-        self,
-        case_id: str,
-        file_data: BinaryIO,
-        filename: str
-    ) -> Optional[str]:
-        """
-        Store an evidence file.
-        
-        Args:
-            case_id: Case ID
-            file_data: File data stream
-            filename: Original filename
-        
-        Returns:
-            Stored file path or None
-        """
-        try:
-            # Create case-specific directory
-            case_dir = self.storage_path / case_id
-            case_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Generate unique filename with timestamp
-            timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-            safe_filename = "".join(c for c in filename if c.isalnum() or c in (' ', '.', '_', '-'))
-            stored_filename = f"{timestamp}_{safe_filename}"
-            file_path = case_dir / stored_filename
-            
-            # Write file
-            with open(file_path, 'wb') as f:
-                f.write(file_data.read())
-            
-            logger.info(f"Stored evidence file: {file_path}")
-            return str(file_path.relative_to(self.storage_path))
-        
-        except Exception as e:
-            logger.error(f"Error storing evidence file: {e}")
-            return None
     
     def add_evidence(
         self,
@@ -274,98 +235,5 @@ class CaseEvidenceService:
             if should_close_session:
                 session.close()
     
-    def update_evidence_analysis(
-        self,
-        evidence_id: int,
-        analysis_results: Dict,
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Update evidence with analysis results.
-        
-        Args:
-            evidence_id: Evidence ID
-            analysis_results: Analysis results dictionary
-            session: Database session (optional)
-        
-        Returns:
-            True if successful
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            evidence = session.query(CaseEvidence).filter(
-                CaseEvidence.evidence_id == evidence_id
-            ).first()
-            
-            if not evidence:
-                return False
-            
-            evidence.analysis_results = analysis_results
-            session.commit()
-            
-            return True
-        
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error updating evidence analysis: {e}")
-            return False
-        finally:
-            if should_close_session:
-                session.close()
     
-    def verify_evidence_integrity(
-        self,
-        evidence_id: int,
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Verify evidence file integrity by checking hashes.
-        
-        Args:
-            evidence_id: Evidence ID
-            session: Database session (optional)
-        
-        Returns:
-            True if integrity verified
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            evidence = session.query(CaseEvidence).filter(
-                CaseEvidence.evidence_id == evidence_id
-            ).first()
-            
-            if not evidence or not evidence.file_path:
-                return False
-            
-            full_path = self.storage_path / evidence.file_path
-            if not full_path.exists():
-                logger.error(f"Evidence file not found: {full_path}")
-                return False
-            
-            # Calculate current hashes
-            current_hashes = self.calculate_file_hashes(full_path)
-            
-            # Verify against stored hashes
-            if evidence.file_hash_sha256:
-                if current_hashes['sha256'] != evidence.file_hash_sha256:
-                    logger.error(f"SHA256 hash mismatch for evidence {evidence_id}")
-                    return False
-            
-            if evidence.file_hash_md5:
-                if current_hashes['md5'] != evidence.file_hash_md5:
-                    logger.error(f"MD5 hash mismatch for evidence {evidence_id}")
-                    return False
-            
-            logger.info(f"Evidence {evidence_id} integrity verified")
-            return True
-        
-        finally:
-            if should_close_session:
-                session.close()
 

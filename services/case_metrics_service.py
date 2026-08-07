@@ -6,9 +6,9 @@ Handles MTTD, MTTR, MTTA, SLA compliance, and analyst performance metrics.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
+from sqlalchemy import and_
 
 from database.models import Case, CaseMetrics, CaseSLA, CaseTask
 from database.connection import get_db_session
@@ -21,7 +21,6 @@ class CaseMetricsService:
     
     def __init__(self):
         """Initialize the metrics service."""
-        pass
     
     def calculate_case_metrics(
         self,
@@ -58,7 +57,6 @@ class CaseMetricsService:
             
             # Calculate time-based metrics
             case_created = case.created_at
-            current_time = datetime.utcnow()
             
             # Time to respond (first activity/comment)
             if case.activities and len(case.activities) > 0:
@@ -324,64 +322,6 @@ class CaseMetricsService:
             if should_close_session:
                 session.close()
     
-    def get_mttr_by_priority(
-        self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        session: Optional[Session] = None
-    ) -> Dict[str, float]:
-        """
-        Get Mean Time To Resolution by priority.
-        
-        Args:
-            start_date: Start date filter
-            end_date: End date filter
-            session: Database session (optional)
-        
-        Returns:
-            Dictionary mapping priority to MTTR in seconds
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            query = session.query(Case).filter(
-                Case.status.in_(['resolved', 'closed'])
-            )
-            
-            if start_date:
-                query = query.filter(Case.created_at >= start_date)
-            if end_date:
-                query = query.filter(Case.created_at <= end_date)
-            
-            cases = query.all()
-            
-            # Group by priority
-            priority_times = {}
-            for case in cases:
-                priority = case.priority
-                if priority not in priority_times:
-                    priority_times[priority] = []
-                
-                metrics = session.query(CaseMetrics).filter(
-                    CaseMetrics.case_id == case.case_id
-                ).first()
-                
-                if metrics and metrics.time_to_resolve:
-                    priority_times[priority].append(metrics.time_to_resolve)
-            
-            # Calculate MTTR for each priority
-            mttr_by_priority = {}
-            for priority, times in priority_times.items():
-                if times:
-                    mttr_by_priority[priority] = sum(times) / len(times)
-            
-            return mttr_by_priority
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def get_case_velocity(
         self,

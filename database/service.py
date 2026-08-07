@@ -8,15 +8,11 @@ import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy import select, func, or_, and_
-from sqlalchemy.orm import Session
 
 from database.models import (
     Case,
     Finding,
-    SketchMapping,
-    AttackLayer,
     AIDecisionLog,
-    case_findings,
     EMBEDDING_DIM,
 )
 from database.connection import get_db_manager
@@ -660,73 +656,7 @@ class DatabaseService:
     
     # ========== Statistics ==========
     
-    def get_case_statistics(self) -> Dict[str, Any]:
-        """
-        Get case statistics.
-        
-        Returns:
-            Dictionary with statistics
-        """
-        try:
-            with self.db_manager.session_scope() as session:
-                total = session.query(func.count(Case.case_id)).scalar()
-                
-                # Count by status
-                status_counts = {}
-                for status, count in session.query(
-                    Case.status, func.count(Case.case_id)
-                ).group_by(Case.status).all():
-                    status_counts[status] = count
-                
-                # Count by priority
-                priority_counts = {}
-                for priority, count in session.query(
-                    Case.priority, func.count(Case.case_id)
-                ).group_by(Case.priority).all():
-                    priority_counts[priority] = count
-                
-                return {
-                    'total': total,
-                    'by_status': status_counts,
-                    'by_priority': priority_counts
-                }
-        except Exception as e:
-            logger.error(f"Error getting case statistics: {e}")
-            return {'total': 0, 'by_status': {}, 'by_priority': {}}
     
-    def get_finding_statistics(self) -> Dict[str, Any]:
-        """
-        Get finding statistics.
-        
-        Returns:
-            Dictionary with statistics
-        """
-        try:
-            with self.db_manager.session_scope() as session:
-                total = session.query(func.count(Finding.finding_id)).scalar()
-                
-                # Count by severity
-                severity_counts = {}
-                for severity, count in session.query(
-                    Finding.severity, func.count(Finding.finding_id)
-                ).group_by(Finding.severity).all():
-                    severity_counts[severity or 'unknown'] = count
-                
-                # Count by data source
-                data_source_counts = {}
-                for data_source, count in session.query(
-                    Finding.data_source, func.count(Finding.finding_id)
-                ).group_by(Finding.data_source).all():
-                    data_source_counts[data_source] = count
-                
-                return {
-                    'total': total,
-                    'by_severity': severity_counts,
-                    'by_data_source': data_source_counts
-                }
-        except Exception as e:
-            logger.error(f"Error getting finding statistics: {e}")
-            return {'total': 0, 'by_severity': {}, 'by_data_source': {}}
     
     # ========== AI Decision Log Operations ==========
     

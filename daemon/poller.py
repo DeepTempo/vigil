@@ -19,7 +19,7 @@ import asyncio
 import hmac
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
 from daemon.config import PollingConfig
@@ -445,7 +445,6 @@ class DataPoller:
         behaviors = detection.get('behaviors', [])
         mitre_predictions = {}
         for behavior in behaviors:
-            tactic = behavior.get('tactic')
             technique = behavior.get('technique')
             if technique:
                 mitre_predictions[technique] = 0.9  # High confidence from EDR

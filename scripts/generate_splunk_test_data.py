@@ -6,7 +6,6 @@ This script generates realistic security events and sends them to Splunk
 via the HTTP Event Collector (HEC) or outputs them as JSON for manual import.
 """
 
-import os
 import sys
 import json
 import random

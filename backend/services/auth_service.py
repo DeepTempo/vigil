@@ -72,10 +72,6 @@ class AccountLockedError(Exception):
         super().__init__(f"Account locked until {locked_until.isoformat()}")
 
 
-class PasswordReuseError(Exception):
-    """Raised when a user attempts to reuse a recent password."""
-
-
 def password_matches_any(plaintext: str, hashes) -> bool:
     """Return True if `plaintext` matches any bcrypt hash in the iterable."""
     if not hashes:

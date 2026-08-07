@@ -4,117 +4,13 @@
    Colors are passed through as `var(--*)` strings so charts
    recolor live when the accent tweak changes.
    ============================================================ */
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 export interface DonutSeg {
   v: number // fraction 0..1
   color: string
   /** optional key used to link hover state with a legend row */
   label?: string
-}
-
-/* clean donut — crisp segments, uniform gaps, soft track behind.
-   Colours are set via `style` (not the `stroke` attribute) because CSS
-   var() is only resolved in CSS property values, not presentation
-   attributes — as an attribute the arcs render as `none` (invisible).
-
-   Segments draw with rounded caps and grow in on mount (staggered
-   stroke-dashoffset transition). When `active` matches a segment's
-   `label` that arc lifts (scale + soft glow) and the rest dim slightly —
-   the parent screen owns `active` so a calm legend can drive it too.
-   Hover/animation are pure CSS so we keep the redesign library-free. */
-export function Donut({
-  segs,
-  size = 200,
-  stroke = 16,
-  active = null,
-  onActiveChange,
-}: {
-  segs: DonutSeg[]
-  size?: number
-  stroke?: number
-  active?: string | null
-  onActiveChange?: (label: string | null) => void
-}) {
-  const r = (size - stroke) / 2
-  const cx = size / 2
-  const c = 2 * Math.PI * r
-  const gapPx = 4
-  // drop empty segments so a 0-count severity doesn't leave a stray sliver
-  const visible = segs.filter((s) => s.v > 0.0001)
-  const multi = visible.length > 1
-  const hoverable = !!onActiveChange
-
-  // grow-in reveal: arcs start fully hidden (offset === circumference,
-  // mirroring the shadcn approach where the off-gap is the full
-  // circumference) then transition to their cumulative position once
-  // mounted, staggered per segment.
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setMounted(true))
-    return () => cancelAnimationFrame(id)
-  }, [])
-
-  let off = 0
-  const arcs = visible.map((s, i) => {
-    const segLen = s.v * c
-    const draw = multi ? Math.max(segLen - gapPx, 1) : segLen
-    const posOffset = -off
-    const isActive = active != null && s.label != null && s.label === active
-    const dimmed = active != null && !isActive
-    const arc = (
-      <circle
-        key={s.label ?? i}
-        cx={cx}
-        cy={cx}
-        r={r}
-        fill="none"
-        strokeWidth={stroke}
-        strokeLinecap={multi ? 'round' : 'butt'}
-        // off-gap is the full circumference so `offset = c` parks the arc
-        // entirely off the path (hidden) until mount, then it slides to pos
-        strokeDasharray={`${draw} ${c}`}
-        strokeDashoffset={mounted ? posOffset : c}
-        onMouseEnter={hoverable ? () => onActiveChange?.(s.label ?? null) : undefined}
-        style={{
-          stroke: s.color,
-          cursor: hoverable ? 'pointer' : 'default',
-          // scale/glow about the donut centre — fill-box keeps the origin
-          // on the geometry rather than the (0,0) SVG corner
-          transformBox: 'fill-box',
-          transformOrigin: 'center',
-          transform: isActive ? 'scale(1.04)' : 'scale(1)',
-          filter: isActive ? `drop-shadow(0 0 5px ${s.color})` : 'none',
-          opacity: dimmed ? 0.5 : 1,
-          transition:
-            `stroke-dashoffset .8s cubic-bezier(.4,0,.2,1) ${(i * 0.07).toFixed(2)}s,` +
-            ' transform .2s ease-out, filter .2s ease-out, opacity .2s ease-out',
-        }}
-      />
-    )
-    off += segLen
-    return arc
-  })
-  return (
-    <svg
-      width="100%"
-      viewBox={`0 0 ${size} ${size}`}
-      // `size` now only sets the viewBox coordinate space (geometry/stroke
-      // math); the rendered donut fills its container width and stays a
-      // perfect circle via aspect-ratio, so it grows to use the available
-      // card space instead of sitting small. preflight is off in the
-      // redesign, so pin display/aspect explicitly.
-      style={{ display: 'block', width: '100%', height: 'auto', aspectRatio: '1 / 1' }}
-      onMouseLeave={hoverable ? () => onActiveChange?.(null) : undefined}
-    >
-      {/* -90° rotation lives on the wrapper <g> (not the arcs) so per-arc
-          CSS transforms stay free for the hover scale */}
-      <g transform={`rotate(-90 ${cx} ${cx})`}>
-        <circle cx={cx} cy={cx} r={r} fill="none" strokeWidth={stroke} style={{ stroke: 'var(--bg-3)' }} />
-        {arcs}
-      </g>
-    </svg>
-  )
 }
 
 /* solid pie — filled wedges (no center hole). Thin panel-colored strokes
@@ -149,21 +45,6 @@ export function Pie({ segs, size = 200 }: { segs: DonutSeg[]; size?: number }) {
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={svgStyle}>
       {arcs}
-    </svg>
-  )
-}
-
-/* sparkline path + soft area */
-export function Spark({ pts, color, w = 78, h = 30 }: { pts: number[]; color: string; w?: number; h?: number }) {
-  const max = Math.max(...pts)
-  const min = Math.min(...pts)
-  const span = max - min || 1
-  const xy = pts.map((p, i) => [(i / (pts.length - 1)) * (w - 2) + 1, h - 2 - ((p - min) / span) * (h - 6)])
-  const d = xy.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-      <path d={`${d} L${w - 1},${h} L1,${h} Z`} fill={color} opacity={0.12} />
-      <path d={d} fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -450,17 +331,3 @@ export function Hbars({ items }: { items: HbarItem[] }) {
   )
 }
 
-/* attack heatmap (deterministic) */
-const HEAT_LV = [0, 1, 3, 2, 0, 1, 4, 2, 1, 0, 2, 3, 1, 0, 4, 2, 1, 3, 0, 1, 0, 2, 1, 4, 2, 0, 1, 2, 3, 0, 1, 0, 3, 1, 2, 4, 0, 1, 2, 1]
-export function Heatmap() {
-  return (
-    <div className="heat">
-      {HEAT_LV.map((lv, i) => {
-        if (lv === 0) return <div className="cell" key={i} />
-        const color = lv >= 4 ? 'var(--crit)' : lv >= 3 ? 'var(--high)' : 'var(--accent)'
-        const op = 0.3 + lv * 0.17
-        return <div className="cell" key={i} style={{ background: color, opacity: op, borderColor: 'transparent' }} />
-      })}
-    </div>
-  )
-}

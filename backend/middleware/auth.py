@@ -6,8 +6,7 @@ Supports DEV_MODE for bypassing authentication during development.
 """
 
 import logging
-from typing import Optional, Callable
-from functools import wraps
+from typing import Optional
 from fastapi import HTTPException, Header, Depends, Request, status
 from sqlalchemy.orm import Session
 
@@ -15,7 +14,7 @@ from backend.services.auth_cookies import ACCESS_COOKIE_NAME
 from backend.services.auth_service import AuthService
 from backend.services.token_blacklist import is_token_revoked
 from database.models import User
-from database.connection import get_db, get_db_session
+from database.connection import get_db
 
 from core.config import get_settings
 
@@ -189,190 +188,11 @@ async def get_current_active_user(
 def require_settings_admin(current_user: User) -> None:
     """Raise 403 unless the user may change system settings.
 
-    A plain call, not a decorator: the callers are sync route handlers, which
-    ``require_permission`` below cannot wrap (it awaits the endpoint).
+    A plain call, not a decorator: the callers are sync route handlers, so a
+    decorator that awaits the endpoint would not work for them.
     """
     if not AuthService.check_permission(current_user.user_id, "settings.write"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permission denied: settings.write required",
         )
-
-
-def require_permission(permission: str):
-    """
-    Decorator to require a specific permission for an endpoint.
-
-    Usage:
-        @router.get("/cases")
-        @require_permission("cases.read")
-        async def get_cases(current_user: User = Depends(get_current_user)):
-            ...
-
-    Args:
-        permission: Permission string (e.g., "cases.write")
-
-    Returns:
-        Decorated function
-    """
-
-    def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(
-            *args, current_user: User = Depends(get_current_user), **kwargs
-        ):
-            # Check if user has permission
-            has_permission = AuthService.check_permission(
-                current_user.user_id, permission
-            )
-
-            if not has_permission:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Permission denied: {permission} required",
-                )
-
-            return await func(*args, current_user=current_user, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def require_any_permission(*permissions: str):
-    """
-    Decorator to require any of the specified permissions.
-
-    Args:
-        permissions: Permission strings
-
-    Returns:
-        Decorated function
-    """
-
-    def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(
-            *args, current_user: User = Depends(get_current_user), **kwargs
-        ):
-            # Check if user has any of the permissions
-            user_permissions = AuthService.get_user_permissions(current_user.user_id)
-
-            has_any = any(user_permissions.get(perm, False) for perm in permissions)
-
-            if not has_any:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Permission denied: One of {permissions} required",
-                )
-
-            return await func(*args, current_user=current_user, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def require_all_permissions(*permissions: str):
-    """
-    Decorator to require all of the specified permissions.
-
-    Args:
-        permissions: Permission strings
-
-    Returns:
-        Decorated function
-    """
-
-    def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(
-            *args, current_user: User = Depends(get_current_user), **kwargs
-        ):
-            # Check if user has all permissions
-            user_permissions = AuthService.get_user_permissions(current_user.user_id)
-
-            has_all = all(user_permissions.get(perm, False) for perm in permissions)
-
-            if not has_all:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Permission denied: All of {permissions} required",
-                )
-
-            return await func(*args, current_user=current_user, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def require_role(role_name: str):
-    """
-    Decorator to require a specific role.
-
-    Args:
-        role_name: Role name (e.g., "Admin")
-
-    Returns:
-        Decorated function
-    """
-
-    def decorator(func: Callable):
-        @wraps(func)
-        async def wrapper(
-            *args,
-            current_user: User = Depends(get_current_user),
-            session: Session = Depends(get_db),
-            **kwargs,
-        ):
-            from database.models import Role
-
-            # Get user's role
-            role = (
-                session.query(Role).filter(Role.role_id == current_user.role_id).first()
-            )
-
-            if not role or role.name != role_name:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Role '{role_name}' required",
-                )
-
-            return await func(
-                *args, current_user=current_user, session=session, **kwargs
-            )
-
-        return wrapper
-
-    return decorator
-
-
-# Optional authentication (doesn't raise error if no token)
-async def get_optional_user(
-    request: Request,
-    authorization: Optional[str] = Header(None),
-    session: Session = Depends(get_db),
-) -> Optional[User]:
-    """
-    Dependency to optionally get the current user.
-
-    Returns None if no valid token is provided (either via cookie or
-    Authorization header).
-
-    Args:
-        request: FastAPI request (used to read the access_token cookie).
-        authorization: Authorization header (Bearer token fallback).
-        session: Database session
-
-    Returns:
-        User object or None
-    """
-    has_cookie = ACCESS_COOKIE_NAME in request.cookies
-    if not has_cookie and not authorization:
-        return None
-
-    try:
-        return await get_current_user(request, authorization, session)
-    except HTTPException:
-        return None

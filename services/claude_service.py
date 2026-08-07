@@ -1,10 +1,8 @@
 """Claude API service for Anthropic integration with Agent SDK support."""
 
 import asyncio
-import base64
 import json
 import logging
-import platform
 import sys
 import threading
 import uuid
@@ -12,32 +10,10 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
-from secrets_manager import get_secret, set_secret
+from secrets_manager import get_secret
 
 from core.config import get_settings
 from services.defaults import DEFAULT_MODEL, build_thinking_kwargs
-
-# GH #89 — resolve the summarization model via ai_model_configs with a safe
-# fallback to the historical hardcoded default. Defined at module scope so
-# the registry import stays lazy and tests can monkeypatch it trivially.
-_SUMMARIZATION_DEFAULT = DEFAULT_MODEL
-
-
-def _resolve_summarization_model() -> str:
-    try:
-        from services.model_registry import get_registry
-
-        resolved = get_registry().resolve_model_for_component("summarization")
-        if resolved is not None:
-            return resolved[1]
-    except (
-        Exception
-    ) as exc:  # noqa: BLE001 — never let model resolution break summarization
-        logging.getLogger(__name__).debug(
-            "summarization model resolution failed, using default: %s", exc
-        )
-    return _SUMMARIZATION_DEFAULT
-
 
 # Import backend tool support
 try:
@@ -69,7 +45,7 @@ except ImportError:
 # OTEL instrumentation (lazy to avoid hard dependency)
 try:
     from core.telemetry import get_tracer, get_meter, create_genai_metrics
-    from opentelemetry.trace import SpanKind, StatusCode as _SpanStatusCode
+    from opentelemetry.trace import SpanKind
 
     _cs_tracer = get_tracer("vigil.services.claude")
     _cs_meter = get_meter("vigil.services.claude")
@@ -705,7 +681,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             mcp_result = await self._execute_mcp_tool(tool_name, tool_input)
             logger.info(f"✅ Executed MCP tool: {tool_name}")
             return {"result": mcp_result}
-        except Exception as e:
+        except Exception:
             logger.warning(f"Unknown tool: {tool_name}")
             return {"error": f"Unknown tool: {tool_name}"}
 
@@ -882,46 +858,6 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
         except Exception as e:
             logger.debug(f"Could not populate MCP registry: {e}")
 
-    def set_api_key(self, api_key: str, save: bool = True) -> bool:
-        """
-        Set the API key.
-
-        Args:
-            api_key: The Anthropic API key.
-            save: Whether to save the key securely.
-
-        Returns:
-            True if successful, False otherwise.
-        """
-        if not api_key or not api_key.strip():
-            return False
-
-        self.api_key = api_key.strip()
-
-        if not ANTHROPIC_AVAILABLE:
-            logger.warning(
-                "Anthropic package not available. Install with: pip install anthropic"
-            )
-            return False
-
-        try:
-            # Set longer timeout for operations that may take more than 10 minutes
-            # Default is 600 seconds (10 min), we set to 1800 seconds (30 min)
-            self.client = create_anthropic_client(self.api_key, timeout=1800.0)
-            self.async_client = create_async_anthropic_client(
-                self.api_key, timeout=1800.0
-            )
-
-            if save:
-                # Save using secrets manager
-                set_secret("CLAUDE_API_KEY", self.api_key)
-
-            self._context_mgr.update_clients(self.client, self.async_client)
-            return True
-
-        except Exception as e:
-            logger.error(f"Error setting API key: {e}")
-            return False
 
     def has_api_key(self) -> bool:
         """Return True if this ClaudeService can call the Anthropic SDK.
@@ -1346,16 +1282,6 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             max_context_tokens=max_context_tokens,
         )
 
-    def _split_messages_for_summary(
-        self, messages: List[Dict], available_tokens: int
-    ) -> tuple:
-        return ContextManager.split_messages_for_summary(messages, available_tokens)
-
-    def _format_messages_for_summary(self, messages: List[Dict]) -> str:
-        return ContextManager.format_messages_for_summary(messages)
-
-    def _build_summary_prompt(self, conversation_text: str) -> str:
-        return ContextManager.build_summary_prompt(conversation_text)
 
     def _prepare_context_sync(
         self,
@@ -2604,70 +2530,6 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
         # Simple text message
         return message
 
-    def encode_image_base64(self, image_path: Union[str, Path]) -> str:
-        """
-        Encode an image file to base64.
-
-        Args:
-            image_path: Path to image file.
-
-        Returns:
-            Base64-encoded image string.
-        """
-        image_path = Path(image_path)
-        if not image_path.exists():
-            raise FileNotFoundError(f"Image file not found: {image_path}")
-
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
-
-    def create_image_block(
-        self,
-        image_source: Union[str, Path, bytes],
-        source_type: str = "auto",
-        media_type: str = "image/jpeg",
-    ) -> Dict:
-        """
-        Create an image content block for Claude API.
-
-        Args:
-            image_source: Image source (URL string, file path, or base64 bytes).
-            source_type: "url", "base64", or "auto" (auto-detect from source).
-            media_type: Media type (image/jpeg, image/png, image/gif, image/webp).
-
-        Returns:
-            Image content block dictionary.
-        """
-        if source_type == "auto":
-            if isinstance(image_source, str):
-                if image_source.startswith(("http://", "https://")):
-                    source_type = "url"
-                else:
-                    source_type = "base64"
-            elif isinstance(image_source, (Path, bytes)):
-                source_type = "base64"
-
-        if source_type == "url":
-            return {
-                "type": "image",
-                "source": {"type": "url", "url": str(image_source)},
-            }
-        elif source_type == "base64":
-            if isinstance(image_source, (str, Path)):
-                data = self.encode_image_base64(image_source)
-            elif isinstance(image_source, bytes):
-                data = base64.b64encode(image_source).decode("utf-8")
-            else:
-                raise ValueError(f"Invalid image source type: {type(image_source)}")
-
-            return {
-                "type": "image",
-                "source": {"type": "base64", "media_type": media_type, "data": data},
-            }
-        else:
-            raise ValueError(
-                f"Invalid source_type: {source_type}. Use 'url' or 'base64'."
-            )
 
     async def chat_stream(
         self,
@@ -3111,70 +2973,6 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             message, system_prompt=system_prompt, model=DEFAULT_MODEL
         )
 
-    def correlate_findings(self, findings: List[Dict]) -> str:
-        """
-        Correlate multiple findings using Claude.
-
-        Args:
-            findings: List of finding dictionaries.
-
-        Returns:
-            Correlation analysis text.
-        """
-        system_prompt = (
-            "You are a security analyst correlating multiple security findings. "
-            "Identify patterns, relationships, and potential attack campaigns. "
-            "Provide insights on how findings relate to each other."
-        )
-
-        clean_findings = [
-            {k: v for k, v in f.items() if v is not None and k != "embedding"}
-            for f in findings
-        ]
-        findings_text = json.dumps(clean_findings, indent=2, default=str)
-
-        message = f"Correlate these security findings:\n\n{findings_text}\n\nProvide correlation analysis."
-
-        return self.chat(
-            message, system_prompt=system_prompt, model=DEFAULT_MODEL
-        )
-
-    def generate_case_summary(self, case: Dict, findings: List[Dict]) -> str:
-        """
-        Generate a case summary using Claude.
-
-        Args:
-            case: Case dictionary.
-            findings: List of related findings.
-
-        Returns:
-            Case summary text.
-        """
-        system_prompt = (
-            "You are a security analyst creating case summaries. "
-            "Provide clear, concise summaries of investigation cases including "
-            "key findings, threat assessment, and recommended next steps."
-        )
-
-        case_text = json.dumps(
-            {k: v for k, v in case.items() if v is not None}, indent=2, default=str
-        )
-        clean_findings = [
-            {k: v for k, v in f.items() if v is not None and k != "embedding"}
-            for f in findings
-        ]
-        findings_text = json.dumps(clean_findings, indent=2, default=str)
-
-        message = (
-            f"Generate a summary for this investigation case:\n\n"
-            f"Case:\n{case_text}\n\n"
-            f"Related Findings:\n{findings_text}\n\n"
-            f"Provide a comprehensive case summary."
-        )
-
-        return self.chat(
-            message, system_prompt=system_prompt, model=DEFAULT_MODEL
-        )
 
     async def generate_event_analysis(
         self,
@@ -3221,7 +3019,6 @@ Focus on practical insights that help with investigation and response."""
         event_time = event_data.get("start", "")
         event_type = event_data.get("type", "unknown")
         event_severity = event_data.get("severity", "unknown")
-        event_metadata = event_data.get("metadata", {})
 
         # Build context about entities (handles both singular and plural field formats)
         entities_summary = ""
@@ -3517,7 +3314,6 @@ Provide only the JSON, no additional text."""
         try:
             # Try the MCP registry first (Phase 3) - filter to enabled only
             from services.mcp_registry import get_mcp_registry
-            from services.mcp_service import MCPService
 
             registry = get_mcp_registry()
             all_configs = registry.get_agent_sdk_configs()

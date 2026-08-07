@@ -12,7 +12,7 @@ import logging
 import argparse
 import json
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
 import urllib3
 
@@ -133,7 +133,6 @@ class PostgresToSplunkExporter:
             Dictionary formatted for Splunk HEC
         """
         # Get the finding as dict
-        finding_dict = finding.to_dict()
         
         # Create event for Splunk
         event = {
@@ -189,7 +188,6 @@ class PostgresToSplunkExporter:
             Dictionary formatted for Splunk HEC
         """
         # Get the case as dict
-        case_dict = case.to_dict(include_findings=False)
         
         # Create event for Splunk
         event = {

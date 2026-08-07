@@ -741,9 +741,6 @@ class AgentManager:
             logger.warning(f"Unable to refresh custom agents from DB: {e}")
             return 0
 
-    def get_current_agent(self) -> AgentProfile:
-        return self.agents.get(self.current_agent_id, self.agents[DEFAULT_AGENT_ID])
-
     def set_current_agent(self, agent_id: str) -> bool:
         if agent_id in self.agents:
             self.current_agent_id = agent_id

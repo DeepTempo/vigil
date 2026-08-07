@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_
 
 from database.models import CaseIOC
 from database.connection import get_db_session
@@ -22,7 +22,6 @@ class CaseIOCService:
     
     def __init__(self):
         """Initialize the IOC service."""
-        pass
     
     def add_ioc(
         self,
@@ -145,94 +144,7 @@ class CaseIOCService:
         
         return count
     
-    def enrich_ioc(
-        self,
-        ioc_id: int,
-        enrichment_data: Dict,
-        reputation_score: Optional[float] = None,
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Enrich an IOC with threat intelligence data.
-        
-        Args:
-            ioc_id: IOC ID
-            enrichment_data: Enrichment data dictionary
-            reputation_score: Reputation score
-            session: Database session (optional)
-        
-        Returns:
-            True if successful
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            ioc = session.query(CaseIOC).filter(
-                CaseIOC.ioc_id == ioc_id
-            ).first()
-            
-            if not ioc:
-                return False
-            
-            ioc.enrichment_data = enrichment_data
-            if reputation_score is not None:
-                ioc.reputation_score = reputation_score
-            
-            session.commit()
-            
-            logger.info(f"Enriched IOC {ioc_id}")
-            return True
-        
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error enriching IOC: {e}")
-            return False
-        finally:
-            if should_close_session:
-                session.close()
     
-    def mark_ioc_false_positive(
-        self,
-        ioc_id: int,
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Mark an IOC as false positive.
-        
-        Args:
-            ioc_id: IOC ID
-            session: Database session (optional)
-        
-        Returns:
-            True if successful
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            ioc = session.query(CaseIOC).filter(
-                CaseIOC.ioc_id == ioc_id
-            ).first()
-            
-            if not ioc:
-                return False
-            
-            ioc.is_false_positive = True
-            ioc.is_active = False
-            session.commit()
-            
-            return True
-        
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error marking IOC as false positive: {e}")
-            return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def get_case_iocs(
         self,

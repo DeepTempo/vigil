@@ -20,7 +20,6 @@ are the only exception and must still call ``Anthropic()`` directly.
 
 from __future__ import annotations
 
-from typing import Optional
 
 from core.config import get_settings
 

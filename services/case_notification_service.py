@@ -6,7 +6,6 @@ Handles notifications for case events via UI, email, Slack, Teams, and PagerDuty
 
 import logging
 import re
-from datetime import datetime
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
@@ -21,7 +20,6 @@ class CaseNotificationService:
     
     def __init__(self):
         """Initialize the notification service."""
-        pass
     
     def create_notification(
         self,
@@ -86,53 +84,6 @@ class CaseNotificationService:
             if should_close_session:
                 session.close()
     
-    def notify_case_assignment(
-        self,
-        case_id: str,
-        assignee: str,
-        assigned_by: Optional[str] = None,
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Notify user about case assignment.
-        
-        Args:
-            case_id: Case ID
-            assignee: User assigned to case
-            assigned_by: User who made the assignment
-            session: Database session (optional)
-        
-        Returns:
-            True if successful
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            case = session.query(Case).filter(Case.case_id == case_id).first()
-            if not case:
-                return False
-            
-            assigned_msg = f"by {assigned_by}" if assigned_by else "automatically"
-            
-            self.create_notification(
-                user_id=assignee,
-                notification_type='case_assigned',
-                title='Case Assigned',
-                message=f'You have been assigned to case "{case.title}" {assigned_msg}',
-                case_id=case_id,
-                delivery_channel='ui',
-                priority='normal',
-                metadata={'assigned_by': assigned_by},
-                session=session
-            )
-            
-            return True
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def notify_comment_mention(
         self,
@@ -329,163 +280,7 @@ class CaseNotificationService:
         mentions = re.findall(pattern, text)
         return list(set(mentions))  # Remove duplicates
     
-    def mark_notification_read(
-        self,
-        notification_id: int,
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Mark a notification as read.
-        
-        Args:
-            notification_id: Notification ID
-            session: Database session (optional)
-        
-        Returns:
-            True if successful
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            notification = session.query(CaseNotification).filter(
-                CaseNotification.notification_id == notification_id
-            ).first()
-            
-            if not notification:
-                return False
-            
-            notification.is_read = True
-            notification.read_at = datetime.utcnow()
-            session.commit()
-            
-            return True
-        
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error marking notification read: {e}")
-            return False
-        finally:
-            if should_close_session:
-                session.close()
     
-    def mark_notification_sent(
-        self,
-        notification_id: int,
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Mark a notification as sent.
-        
-        Args:
-            notification_id: Notification ID
-            session: Database session (optional)
-        
-        Returns:
-            True if successful
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            notification = session.query(CaseNotification).filter(
-                CaseNotification.notification_id == notification_id
-            ).first()
-            
-            if not notification:
-                return False
-            
-            notification.is_sent = True
-            notification.sent_at = datetime.utcnow()
-            session.commit()
-            
-            return True
-        
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error marking notification sent: {e}")
-            return False
-        finally:
-            if should_close_session:
-                session.close()
     
-    def get_user_notifications(
-        self,
-        user_id: str,
-        unread_only: bool = False,
-        limit: int = 50,
-        session: Optional[Session] = None
-    ) -> List[CaseNotification]:
-        """
-        Get notifications for a user.
-        
-        Args:
-            user_id: User ID
-            unread_only: Only return unread notifications
-            limit: Maximum number of notifications to return
-            session: Database session (optional)
-        
-        Returns:
-            List of CaseNotification objects
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            query = session.query(CaseNotification).filter(
-                CaseNotification.user_id == user_id
-            )
-            
-            if unread_only:
-                query = query.filter(CaseNotification.is_read == False)
-            
-            return query.order_by(
-                CaseNotification.created_at.desc()
-            ).limit(limit).all()
-        
-        finally:
-            if should_close_session:
-                session.close()
     
-    def get_unsent_notifications(
-        self,
-        delivery_channel: Optional[str] = None,
-        limit: int = 100,
-        session: Optional[Session] = None
-    ) -> List[CaseNotification]:
-        """
-        Get notifications that haven't been sent yet.
-        
-        Args:
-            delivery_channel: Filter by delivery channel
-            limit: Maximum number to return
-            session: Database session (optional)
-        
-        Returns:
-            List of CaseNotification objects
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            query = session.query(CaseNotification).filter(
-                CaseNotification.is_sent == False
-            )
-            
-            if delivery_channel:
-                query = query.filter(
-                    CaseNotification.delivery_channel == delivery_channel
-                )
-            
-            return query.order_by(
-                CaseNotification.created_at.asc()
-            ).limit(limit).all()
-        
-        finally:
-            if should_close_session:
-                session.close()
 

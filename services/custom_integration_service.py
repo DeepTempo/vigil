@@ -1,6 +1,5 @@
 """Service for generating custom integrations using Claude AI."""
 
-import asyncio
 import json
 import logging
 import os

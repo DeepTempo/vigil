@@ -9,9 +9,9 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_
 
-from database.models import Case, CaseSLA, SLAPolicy, CaseNotification
+from database.models import Case, CaseSLA, SLAPolicy
 from database.connection import get_db_session
 
 logger = logging.getLogger(__name__)
@@ -103,53 +103,6 @@ class BusinessHoursCalculator:
         
         return current
     
-    def calculate_business_hours_between(
-        self,
-        start_time: datetime,
-        end_time: datetime
-    ) -> float:
-        """
-        Calculate business hours between two datetimes.
-        
-        Args:
-            start_time: Start datetime
-            end_time: End datetime
-        
-        Returns:
-            Number of business hours elapsed
-        """
-        if end_time <= start_time:
-            return 0.0
-        
-        total_hours = 0.0
-        current = start_time
-        
-        # Move to next business hour if starting outside business hours
-        if not self.is_business_hours(current):
-            current = self._next_business_hour(current)
-        
-        while current < end_time:
-            # Calculate hours until end of business day or end_time
-            hours_left_today = self.business_end_hour - current.hour
-            end_of_day = current.replace(
-                hour=self.business_end_hour,
-                minute=0,
-                second=0,
-                microsecond=0
-            )
-            
-            if end_time <= end_of_day:
-                # End time is within this business day
-                delta = end_time - current
-                total_hours += delta.total_seconds() / 3600.0
-                break
-            else:
-                # Add remaining hours of this business day
-                total_hours += hours_left_today
-                # Move to next business day
-                current = self._next_business_hour(end_of_day)
-        
-        return total_hours
 
 
 class CaseSLAService:
@@ -524,52 +477,6 @@ class CaseSLAService:
             if should_close_session:
                 session.close()
     
-    def mark_response_complete(
-        self,
-        case_id: str,
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Mark that initial response has been completed.
-        
-        Args:
-            case_id: Case ID
-            session: Database session (optional)
-        
-        Returns:
-            True if successful
-        """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            case_sla = session.query(CaseSLA).filter(
-                CaseSLA.case_id == case_id
-            ).first()
-            
-            if not case_sla:
-                return False
-            
-            current_time = datetime.utcnow()
-            case_sla.response_completed_at = current_time
-            case_sla.response_sla_met = current_time <= case_sla.response_due
-            
-            session.commit()
-            
-            logger.info(
-                f"Response marked complete for case {case_id}, "
-                f"SLA met: {case_sla.response_sla_met}"
-            )
-            return True
-        
-        except Exception as e:
-            session.rollback()
-            logger.error(f"Error marking response complete for case {case_id}: {e}")
-            return False
-        finally:
-            if should_close_session:
-                session.close()
     
     def mark_resolution_complete(
         self,
