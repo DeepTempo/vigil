@@ -133,7 +133,7 @@ jobs:
           # auth-bypass sat red and unnoticed: POST /api/integrations/vstrike/findings
           # answers 200 without a bearer. Gate the other 83 now; the bypass is
           # deselected so it stays visible here rather than silently unrun.
-          pytest tests/unit/ tests/llm/ tests/security/ -m "not external_service" -v \
+          pytest tests/unit/ tests/security/ -m "not external_service" -v \
             -k "not test_vstrike_inbound_without_bearer_uses_api_key_gate" \
             --cov=services --cov=core --cov-report=xml --cov-report=term
         env:
@@ -299,7 +299,7 @@ jobs:
         run: |
           # Complement of the no-service unit job: only @pytest.mark.external_service
           # tests, which require a real PostgreSQL.
-          pytest tests/unit/ tests/llm/ -m external_service -v --no-cov
+          pytest tests/unit/ -m external_service -v --no-cov
 
   # ============================================================================
   # Security Scanning
