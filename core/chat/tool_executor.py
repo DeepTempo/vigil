@@ -76,7 +76,7 @@ class ToolExecutor:
                     "get_detection_count",
                 ):
                     if security_tools is None:
-                        from tools.security_detections import get_security_detection_tools
+                        from core.detections.tools import get_security_detection_tools
 
                         security_tools = get_security_detection_tools()
                     handler = getattr(security_tools, tool_name)
@@ -197,7 +197,7 @@ class ToolExecutor:
             else:
                 server_name = None
                 actual_tool_name = tool_name
-                from services.mcp_client import get_mcp_client
+                from core.integrations.mcp.client import get_mcp_client
 
                 mcp_client = get_mcp_client()
                 if mcp_client:
@@ -211,7 +211,7 @@ class ToolExecutor:
                 continue
 
             try:
-                from services.mcp_client import get_mcp_client
+                from core.integrations.mcp.client import get_mcp_client
 
                 mcp_client = get_mcp_client()
                 if mcp_client:

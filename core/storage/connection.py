@@ -86,13 +86,13 @@ def _load_platform_db_proxy() -> "ProxyConfig":
     """Read platform-DB proxy settings from the encrypted secrets store.
 
     Imports are local because core.storage.db_proxy imports
-    ``backend.secrets_manager`` which itself isn't part of database/'s
+    ``core.secrets_manager`` which itself isn't part of database/'s
     boot dependency. Returns a disabled ProxyConfig when nothing is
     configured.
     """
     try:
         from core.storage.db_proxy import ProxyConfig
-        from backend.secrets_manager import get_secret
+        from core.secrets_manager import get_secret
     except ImportError:
         # If the secrets manager isn't importable yet skip proxy support gracefully.
         from core.storage.db_proxy import ProxyConfig
@@ -201,7 +201,7 @@ def _load_connection_string_secret() -> Optional[str]:
     ``database/`` must not hard-depend on the secrets manager at import time.
     """
     try:
-        from backend.secrets_manager import get_secrets_manager
+        from core.secrets_manager import get_secrets_manager
     except ImportError:
         return None
     try:
@@ -348,7 +348,7 @@ def db_config_generation() -> float:
     has no mtime tracking, so propagation is unavailable there.
     """
     try:
-        from backend.secrets_manager import get_secrets_manager
+        from core.secrets_manager import get_secrets_manager
 
         backend = get_secrets_manager().encrypted_backend
         if not backend.is_available():

@@ -1,6 +1,6 @@
 """Federation API — control + observe federated monitoring sources.
 
-Wraps :mod:`daemon.federation.store` and :func:`daemon.federation.runner.request_poll_now`
+Wraps :mod:`core.federation.store` and :func:`core.federation.runner.request_poll_now`
 so the Settings → Federation UI can read state and toggle sources without
 restarting the daemon. The daemon's ``FederationRunner`` re-reads DB rows on
 every tick, so PATCHes here propagate within a few seconds.
@@ -14,9 +14,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from services.daemon.federation import registry as fed_registry
-from services.daemon.federation import store as fed_store
-from services.daemon.federation.runner import request_poll_now
+from core.federation import registry as fed_registry
+from core.federation import store as fed_store
+from core.federation.runner import request_poll_now
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()

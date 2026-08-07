@@ -5,7 +5,7 @@ Two modes coexist here:
 * **Legacy per-source loops** (``_poll_<source>_loop``) — driven by env-var
   intervals in :class:`daemon.config.PollingConfig`. These predate federation
   and remain the path used when the global federation toggle is off.
-* **Federation runner** (:class:`daemon.federation.runner.FederationRunner`) —
+* **Federation runner** (:class:`core.federation.runner.FederationRunner`) —
   spawned alongside the legacy loops. When ``federation.settings.enabled`` is
   true and a source has a ``federation_sources`` row enabled, the legacy loop
   for that source defers (skips that tick) so federation owns the pull.
@@ -23,8 +23,8 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
 from services.daemon.config import PollingConfig
-from services.daemon.dedup import RedisDedupSet
-from services.daemon.federation.runner import FederationRunner
+from core.ingestion.dedup import RedisDedupSet
+from core.federation.runner import FederationRunner
 
 logger = logging.getLogger(__name__)
 

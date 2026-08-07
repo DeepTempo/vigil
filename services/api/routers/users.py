@@ -10,10 +10,10 @@ from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
-from backend.services.auth_service import AuthService
+from core.auth.auth_service import AuthService
 from services.api.middleware.auth import get_current_user
-from backend.services.password_validator import PasswordPolicyError, validate_password_strength
-from backend.services.token_blacklist import revoke_all_for_user
+from core.auth.password_validator import PasswordPolicyError, validate_password_strength
+from core.auth.token_blacklist import revoke_all_for_user
 from core.storage.models import User, Role
 from core.storage.connection import get_db, get_db_session
 from core.routing import Auth, RouterMeta
@@ -468,7 +468,7 @@ async def change_user_role(
         # permissions take effect on their next request, not whenever their
         # cached token happens to expire.
         try:
-            from backend.services.token_blacklist import revoke_all_for_user
+            from core.auth.token_blacklist import revoke_all_for_user
             await revoke_all_for_user(user.user_id)
         except Exception as exc:
             logger.error(

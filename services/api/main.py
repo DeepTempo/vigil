@@ -10,16 +10,13 @@ import os
 import sys
 from pathlib import Path
 
-# Add the repo root and backend/ to sys.path so `backend.*`, `core.*`,
-# `services.*` and the top-level `monitoring` module resolve whether the app is
-# launched as `services.api.main:app` or imported directly. This file lives at
-# services/api/main.py, so the repo root is three parents up.
+# Add the repo root to sys.path so `core.*` and `services.*` resolve whether
+# the app is launched as `services.api.main:app` or imported directly. This
+# file lives at services/api/main.py, so the repo root is three parents up.
 _repo_root = Path(__file__).resolve().parents[2]
 project_root = str(_repo_root)
-backend_dir = str(_repo_root / "backend")
-for _p in (project_root, backend_dir):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
-from backend import __version__
+from core.version import __version__
 from services.api.middleware.csrf import CSRFMiddleware
 from services.api.middleware.rate_limit import limiter
 from services.api.middleware.security_headers import SecurityHeadersMiddleware
@@ -35,7 +32,7 @@ from services.api.middleware.security_headers import SecurityHeadersMiddleware
 from services.api.discovery import mount_routers
 from services.api.middleware.auth import get_current_active_user
 from core.config import get_settings
-from monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
+from core.platform.monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
 
 # Single source of truth for the "require an authenticated active user"
 # dependency. Applied to every non-public /api/* router below so that any
@@ -68,7 +65,7 @@ PUBLIC_API_PATHS: frozenset[str] = frozenset(
 )
 
 if PROMETHEUS_AVAILABLE:
-    from monitoring import PrometheusMiddleware
+    from core.platform.monitoring import PrometheusMiddleware
 
 # Initialize telemetry before creating the FastAPI app so instrumentation
 # is registered before the first request handler is defined.
@@ -240,7 +237,7 @@ async def _connect_external_services():
 
     logger.info("Initializing MCP client with persistent connections...")
     try:
-        from services.mcp_client import get_mcp_client
+        from core.integrations.mcp.client import get_mcp_client
 
         mcp_client = get_mcp_client()
 
@@ -354,7 +351,7 @@ async def startup_event():
 
     # Initialize Sentry error tracking (was never called before — bug fix)
     try:
-        from backend.monitoring import init_sentry
+        from core.platform.monitoring import init_sentry
 
         init_sentry()
     except Exception as e:
@@ -367,7 +364,7 @@ async def startup_event():
     # whole process would fall through to the dotenv backend silently.
     # Logging here gives us an explicit signal whenever that happens.
     try:
-        from backend.secrets_manager import get_secrets_manager
+        from core.secrets_manager import get_secrets_manager
 
         _mgr = get_secrets_manager()
         _status = _mgr.get_backend_status()
@@ -392,7 +389,7 @@ async def startup_event():
 
     # Load secrets into environment for MCP servers
     try:
-        from backend.secrets_manager import get_secret
+        from core.secrets_manager import get_secret
 
         # Load PostgreSQL connection string for database backend
         postgres_conn = get_secret("POSTGRESQL_CONNECTION_STRING")
@@ -408,7 +405,7 @@ async def startup_event():
         # Rehydrate integration credentials into os.environ so MCP servers gated
         # on ${<ID>_<FIELD>} survive a restart — set_secret only writes os.environ
         # in the saving process, so without this they'd go dormant.
-        from services.integration_secrets import INTEGRATION_SECRET_FIELDS
+        from core.integrations.integration_secrets import INTEGRATION_SECRET_FIELDS
 
         rehydrated = 0
         for field_map in INTEGRATION_SECRET_FIELDS.values():
@@ -425,10 +422,10 @@ async def startup_event():
     # A configured connector with no allowlisted origin will be blocked by the
     # default CSP — warn rather than fail silently. Best-effort.
     try:
-        from core.auth.extension_trust import connector_allowlist_origins
+        from core.integrations.extension.trust import connector_allowlist_origins
 
         if not connector_allowlist_origins():
-            from services.integration_bridge_service import get_integration_bridge
+            from core.integrations.integration_bridge_service import get_integration_bridge
 
             cfg = get_integration_bridge().load_integration_config()
             connectors = [
@@ -525,7 +522,7 @@ async def startup_event():
     # Check integration compatibility
     logger.info("Checking integration compatibility...")
     try:
-        from services.integration_compatibility_service import get_compatibility_service
+        from core.integrations.integration_compatibility_service import get_compatibility_service
 
         compat_service = get_compatibility_service()
         system_info = compat_service.get_system_info()
@@ -586,7 +583,7 @@ async def shutdown_event():
 
     logger.info("Shutting down MCP connections...")
     try:
-        from services.mcp_client import get_mcp_client
+        from core.integrations.mcp.client import get_mcp_client
 
         mcp_client = get_mcp_client()
         if mcp_client:
@@ -697,7 +694,7 @@ if frontend_build_dir.exists() and (frontend_build_dir / "index.html").exists():
             # SSRF guard). A <meta>, not an inline <script>, because CSP is
             # script-src 'self'.
             try:
-                from core.auth.extension_trust import connector_allowlist_origins
+                from core.integrations.extension.trust import connector_allowlist_origins
 
                 origins = connector_allowlist_origins()
                 if origins:

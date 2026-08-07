@@ -36,7 +36,6 @@ from typing import Dict, Iterable, List
 
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
-sys.path.insert(0, str(_REPO / "backend"))
 
 
 def _p95(values: List[int]) -> int:

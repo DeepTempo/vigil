@@ -12,9 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from services.api.middleware.auth import get_current_active_user
-from backend.services.auth_service import AuthService
+from core.auth.auth_service import AuthService
 from core.storage.models import User
-from services.mcp_service import MCPService
+from core.integrations.mcp.service import MCPService
 from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ def _service() -> MCPService:
     still work.
     """
     try:
-        from services.mcp_client import get_mcp_client
+        from core.integrations.mcp.client import get_mcp_client
 
         client = get_mcp_client()
         if client is not None:
@@ -165,7 +165,7 @@ async def set_server_enabled(
     missing_credentials: Optional[List[str]] = None
 
     try:
-        from services.mcp_client import get_mcp_client
+        from core.integrations.mcp.client import get_mcp_client
 
         mcp_client = get_mcp_client()
     except Exception:
@@ -228,7 +228,7 @@ async def get_connections_status():
     Returns:
         Connection status for each server
     """
-    from services.mcp_client import get_mcp_client
+    from core.integrations.mcp.client import get_mcp_client
 
     mcp_client = get_mcp_client()
     if not mcp_client:
@@ -317,7 +317,7 @@ async def get_server_logs(server_name: str, lines: int = 100):
     # actually tells the user why a server isn't reachable. The log file
     # itself only exists for servers started via the monitor path.
     try:
-        from services.mcp_client import get_mcp_client
+        from core.integrations.mcp.client import get_mcp_client
 
         last_err = get_mcp_client().get_last_error(server_name)
         if last_err:

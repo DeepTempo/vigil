@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from core.config import get_integration_config, is_integration_enabled
-from services.daemon.federation.adapters._base import fresh_cursor, parse_cursor_since
-from services.daemon.federation.contract import (
+from core.federation.adapters._base import fresh_cursor, parse_cursor_since
+from core.federation.contract import (
     FederationAdapter,
     FetchResult,
     register_adapter,

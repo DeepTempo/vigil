@@ -25,7 +25,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, Mapping, Optional, Tuple
 
-from backend.secrets_manager import get_secret
+from core.secrets_manager import get_secret
 
 logger = logging.getLogger(__name__)
 

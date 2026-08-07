@@ -508,7 +508,7 @@ async def get_event_visualization(
         related_events.sort(key=lambda e: e.start)
         
         # Build entity graph for this event and related events
-        from services.graph_builder_service import GraphBuilderService
+        from core.findings.graph_builder_service import GraphBuilderService
         graph_builder = GraphBuilderService()
         
         findings_for_graph = []

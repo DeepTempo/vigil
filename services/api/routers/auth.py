@@ -12,28 +12,28 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from backend.services.auth_cookies import (
+from core.auth.auth_cookies import (
     ACCESS_COOKIE_NAME,
     REFRESH_COOKIE_NAME,
     clear_auth_cookies,
     set_auth_cookies,
 )
-from backend.services.auth_service import (
+from core.auth.auth_service import (
     AccountLockedError,
     AuthService,
     PASSWORD_HISTORY_LIMIT,
     password_matches_any,
 )
-from backend.services.email_service import send_email
-from backend.services.password_reset import (
+from core.platform.email_service import send_email
+from core.auth.password_reset import (
     generate_reset_token,
     verify_reset_token,
 )
-from backend.services.password_validator import (
+from core.auth.password_validator import (
     PasswordPolicyError,
     validate_password_strength,
 )
-from backend.services.token_blacklist import (
+from core.auth.token_blacklist import (
     blacklist_jti,
     is_token_revoked,
     revoke_all_for_user,

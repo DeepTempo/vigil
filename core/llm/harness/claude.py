@@ -36,8 +36,8 @@ def _resolve_summarization_model() -> str:
 
 # Import backend tool support
 try:
-    from backend.schemas.tool_schemas import ALL_TOOLS as BACKEND_TOOLS
-    from tools.security_detections import get_security_detection_tools
+    from core.llm.tool_schemas import ALL_TOOLS as BACKEND_TOOLS
+    from core.detections.tools import get_security_detection_tools
 
     BACKEND_TOOLS_AVAILABLE = True
 except ImportError as e:
@@ -727,7 +727,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     tools_dict = {}
 
             # If cache file didn't yield tools, fall back to in-memory cache
-            from services.mcp_client import get_mcp_client
+            from core.integrations.mcp.client import get_mcp_client
 
             mcp_client = get_mcp_client()
             if not tools_dict:
@@ -834,8 +834,8 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
     def _populate_mcp_registry(self, tools_dict: Dict):
         """Populate the MCP registry with discovered tools for dynamic tool discovery."""
         try:
-            from services.mcp_client import get_mcp_client
-            from services.mcp_registry import get_mcp_registry
+            from core.integrations.mcp.client import get_mcp_client
+            from core.integrations.mcp.registry import get_mcp_registry
 
             registry = get_mcp_registry()
             mcp_client = get_mcp_client()
@@ -1854,7 +1854,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                     # Try to find tool in any server by checking tool cache
                     server_name = None
                     actual_tool_name = tool_name
-                    from services.mcp_client import get_mcp_client
+                    from core.integrations.mcp.client import get_mcp_client
 
                     mcp_client = get_mcp_client()
                     if mcp_client:
@@ -1866,7 +1866,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
 
                 if server_name:
                     try:
-                        from services.mcp_client import get_mcp_client
+                        from core.integrations.mcp.client import get_mcp_client
 
                         mcp_client = get_mcp_client()
                         if mcp_client:
@@ -3331,9 +3331,9 @@ Provide only the JSON, no additional text."""
 
         try:
             # Try the MCP registry first (Phase 3) - filter to enabled only
-            from services.mcp_client import get_mcp_client
-            from services.mcp_registry import get_mcp_registry
-            from services.mcp_service import MCPService
+            from core.integrations.mcp.client import get_mcp_client
+            from core.integrations.mcp.registry import get_mcp_registry
+            from core.integrations.mcp.service import MCPService
 
             registry = get_mcp_registry()
             all_configs = registry.get_agent_sdk_configs()
@@ -3391,7 +3391,7 @@ Provide only the JSON, no additional text."""
         server_name, actual_tool_name = parts
 
         try:
-            from services.mcp_client import get_mcp_client
+            from core.integrations.mcp.client import get_mcp_client
 
             mcp_client = get_mcp_client()
             if mcp_client:

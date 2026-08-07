@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from backend.schemas.system_prompt import validate_system_prompt
-from backend.services.custom_agent_service import (
+from core.llm.system_prompt import validate_system_prompt
+from core.agents.custom_agent_service import (
     CustomAgentAlreadyExists,
     CustomAgentNotFound,
     CustomAgentService,
@@ -135,7 +135,7 @@ async def list_available_tools() -> Dict[str, Any]:
     """
     tools: List[str] = []
     try:
-        from services.mcp_registry import get_mcp_registry
+        from core.integrations.mcp.registry import get_mcp_registry
 
         registry = get_mcp_registry()
         names = registry.get_tool_names() or []
@@ -195,7 +195,7 @@ async def generate_custom_agent(payload: GenerateAgentRequest) -> Dict[str, Any]
     to iteratively refine a prior draft.
     """
     try:
-        from services.agent_ai_generator import get_agent_ai_generator
+        from core.agents.agent_ai_generator import get_agent_ai_generator
 
         result = await get_agent_ai_generator().generate(
             description=payload.description,

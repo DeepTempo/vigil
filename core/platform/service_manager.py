@@ -23,32 +23,22 @@ import logging
 import os
 import shutil
 import subprocess
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+
+from core.platform.ollama_supervisor import container_base_url
+from core.platform import ollama_supervisor as ollama_process
+from core.platform.service_contract import (  # re-exported for existing callers
+    ActionResult,
+    ServiceSpec,
+    ServiceStatus,
+    UnknownServiceError,
+)
 
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = REPO_ROOT / "infra" / "docker" / "docker-compose.yml"
-
-
-@dataclass(frozen=True)
-class ServiceSpec:
-    """A managed service. ``container is None`` means host-native."""
-
-    name: str
-    container: Optional[str]
-    compose_service: Optional[str]
-    profile: Optional[str] = None
-    startable: bool = True
-    stoppable: bool = True
-    # The app can't boot without these (schema init hard-fails if postgres is
-    # down), so they always autostart and can't be removed from the list — see
-    # REQUIRED_SERVICES and services/autostart_config.py. Note this is distinct
-    # from stoppable=False: ollama is non-stoppable but optional.
-    required: bool = False
-    description: str = ""
 
 
 # postgres/redis/bifrost are stoppable=False on purpose: a UI stop button on
@@ -133,35 +123,6 @@ REQUIRED_SERVICES: tuple[str, ...] = tuple(
 )
 
 
-@dataclass
-class ServiceStatus:
-    name: str
-    kind: str
-    running: bool
-    status: str
-    installed: bool = True
-    ready: bool = False
-    managed_by_vigil: bool = False
-    startable: bool = True
-    stoppable: bool = True
-    required: bool = False
-    description: str = ""
-    detail: Optional[str] = None
-
-
-@dataclass
-class ActionResult:
-    success: bool
-    message: str = ""
-    already_running: bool = False
-    code: Optional[str] = None
-    detail: Dict[str, object] = field(default_factory=dict)
-
-
-class UnknownServiceError(KeyError):
-    """Raised when a name isn't in the SERVICES allowlist."""
-
-
 def _spec(name: str) -> ServiceSpec:
     try:
         return SERVICES[name]
@@ -201,7 +162,6 @@ def docker_available() -> tuple[bool, str]:
 def _compose(
     args: List[str], profile: Optional[str], timeout: int
 ) -> subprocess.CompletedProcess:
-    from core.llm.providers.ollama import container_base_url
 
     env = os.environ.copy()  # noqa: ENV001 - child process env
     if profile:
@@ -294,7 +254,6 @@ def status(
     instead of spawning a fresh pair of subprocesses per service."""
     spec = _spec(name)
     if spec.container is None:
-        from core.llm.providers import ollama as ollama_process
 
         return ollama_process.status(spec)
 
@@ -336,7 +295,6 @@ def start(name: str, *, wait: bool = False, timeout: int = 120) -> ActionResult:
             False, f"{name} cannot be started by Vigil", code="not_startable"
         )
     if spec.container is None:
-        from core.llm.providers import ollama as ollama_process
 
         return ollama_process.start(spec, timeout=min(timeout, 60))
 

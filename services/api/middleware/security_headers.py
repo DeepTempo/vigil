@@ -112,7 +112,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Admit allowlisted connector origins so the browser may import their
         # bundle + call their BFF. Read once at startup (restart to change).
         try:
-            from core.auth.extension_trust import connector_allowlist_origins
+            from core.integrations.extension.trust import connector_allowlist_origins
 
             connector_origins = connector_allowlist_origins()
         except Exception:  # pragma: no cover - defensive; never block startup

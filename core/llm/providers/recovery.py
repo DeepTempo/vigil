@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 import httpx
 
 from core.config import get_settings
-from services.runtime_config import get_ai_operations_setting
+from core.platform.runtime_config import get_ai_operations_setting
 
 logger = logging.getLogger(__name__)
 

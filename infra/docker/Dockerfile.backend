@@ -76,7 +76,6 @@ COPY --from=python-deps /install/deps /usr/local
 
 # Application source — copy each top-level package separately so
 # modifying one doesn't bust the cache for all the others.
-COPY --chown=vigil:vigil backend/     ./backend/
 COPY --chown=vigil:vigil core/        ./core/
 COPY --chown=vigil:vigil services/    ./services/
 COPY --chown=vigil:vigil tools/       ./tools/
@@ -85,7 +84,6 @@ COPY --chown=vigil:vigil tools/       ./tools/
 # <cid>:/app/database/init`) and the initdb mount are unaffected.
 COPY --chown=vigil:vigil infra/database/init/ ./database/init/
 COPY --chown=vigil:vigil data/        ./data/
-COPY --chown=vigil:vigil workflows/   ./workflows/
 COPY --chown=vigil:vigil mcp-servers/ ./mcp-servers/
 COPY --chown=vigil:vigil mempalace/   ./mempalace/
 COPY --chown=vigil:vigil VERSION      ./VERSION
@@ -99,7 +97,7 @@ RUN mkdir -p /app/data/investigations /app/data/mempalace \
     && chown -R vigil:vigil /app/data
 
 # Bake version into the image so `backend.__version__` resolves at import time
-# (backend/__init__.py reads VERSION from disk)
+# (core/version.py reads VERSION from disk)
 RUN echo "${VIGIL_VERSION}" > /app/VERSION
 
 USER vigil

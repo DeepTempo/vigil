@@ -65,7 +65,7 @@ def _memory_palace_section() -> str:
     that don't work, which is the status quo we already tolerate.
     """
     try:
-        from services.mcp_client import get_mcp_client
+        from core.integrations.mcp.client import get_mcp_client
 
         client = get_mcp_client()
         if client is None:

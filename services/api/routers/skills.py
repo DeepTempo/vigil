@@ -14,7 +14,7 @@ from core.routing import Auth, RouterMeta
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from backend.schemas.skill import (  # noqa: E402
+from core.skills.schemas import (  # noqa: E402
     SkillCreate,
     SkillGenerateRequest,
     SkillGenerateResponse,

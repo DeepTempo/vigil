@@ -7,13 +7,13 @@ import logging
 
 from core.storage.database_data_service import DatabaseDataService
 from core.config import vigil_path
-from services.findings.enrichment import (
+from core.findings.enrichment import (
     FindingNotFound,
     NoProviderConfigured,
     ProviderUnavailable,
     enrich,
 )
-from services.source_evidence import (
+from core.findings.source_evidence import (
     normalize_finding_source_evidence,
     project_finding_source_evidence_for_list,
 )

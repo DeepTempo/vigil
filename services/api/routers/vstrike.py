@@ -19,7 +19,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
-from backend.schemas.vstrike import (
+from core.integrations.vstrike.schemas import (
     VStrikeFindingResult,
     VStrikeHealthResponse,
     VStrikePushRequest,

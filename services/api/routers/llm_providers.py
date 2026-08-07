@@ -21,11 +21,11 @@ from sqlalchemy.orm import Session
 from core.routing import Auth, RouterMeta
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from secrets_manager import delete_secret, get_secret, set_secret  # noqa: E402
+from core.secrets import delete_secret, get_secret, set_secret  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from services.api.middleware.auth import get_current_active_user  # noqa: E402
-from backend.services.auth_service import AuthService  # noqa: E402
+from core.auth.auth_service import AuthService  # noqa: E402
 from core.storage.connection import get_db  # noqa: E402
 from core.storage.models import AIModelConfig, LLMProviderConfig, User  # noqa: E402
 from core.llm.bifrost.admin import push_provider_key  # noqa: E402

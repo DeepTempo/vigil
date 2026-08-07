@@ -1,5 +1,7 @@
 import logging
 from dataclasses import dataclass, field
+
+from core.ingestion.kafka_config import KafkaConfig  # re-exported for DaemonConfig
 from typing import List, Optional
 
 from core.config import DEFAULT_REDIS_URL, get_settings
@@ -100,25 +102,6 @@ class OrchestratorConfig:
     # Anthropic provider" and preserves pre-multi-provider behavior.
     plan_provider_id: Optional[str] = None
     review_provider_id: Optional[str] = None
-
-
-@dataclass
-class KafkaConfig:
-    # JSON-only deserialization, single consumer group. Non-secret fields are
-    # overridable via SystemConfig["kafka.settings"]; credentials via get_secret.
-    enabled: bool = False
-    bootstrap_servers: str = "localhost:9092"
-    consumer_group: str = "vigil-soc"
-    topics: List[str] = field(default_factory=list)
-    auto_offset_reset: str = "latest"  # "latest" | "earliest"
-    max_poll_records: int = 500
-    session_timeout_ms: int = 30_000
-    # Security (env-only for secrets)
-    security_protocol: str = "PLAINTEXT"  # PLAINTEXT | SASL_SSL | SSL
-    sasl_mechanism: Optional[str] = None  # PLAIN | SCRAM-SHA-256 | SCRAM-SHA-512
-    sasl_username: Optional[str] = None
-    sasl_password: Optional[str] = None
-    ssl_ca_location: Optional[str] = None
 
 
 @dataclass
