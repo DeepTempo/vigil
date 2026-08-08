@@ -22,7 +22,7 @@ class AWSSecurityHubIngestion(SIEMIngestionService):
         """Initialize AWS Security Hub ingestion."""
         super().__init__()
         self.siem_name = "AWS Security Hub"
-        self.config = get_integration_config('aws_security_hub')
+        self.config = get_integration_config('aws-security-hub')
     
     async def fetch_alerts(
         self,

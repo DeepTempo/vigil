@@ -79,7 +79,7 @@ Mapping → redesign `Decision`:
 | view field | source |
 |------------|--------|
 | `id` | `decision_id` |
-| `agent` | `agent_id` via a `getAgentDisplayName` map (port from `AIDecisions.tsx:186-195`) |
+| `agent` | `agent_id` — an action id from the backend agent registry, labelled by `getAgentDisplayName` (#476) |
 | `type` | `decision_type` |
 | `inv` | `workflow_id` ‖ `decision_metadata.investigation_id` ‖ `finding_id` ‖ `case_id` ‖ `—` |
 | `conf` | `round(confidence_score * 100)` |

@@ -6,7 +6,6 @@ This script ensures that all default roles are created in the database.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add project root to path

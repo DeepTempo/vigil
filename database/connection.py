@@ -12,7 +12,7 @@ from dataclasses import astuple, dataclass, field
 from typing import Any, Dict, Optional, Generator, TYPE_CHECKING
 from urllib.parse import parse_qsl, quote, unquote, urlsplit
 from contextlib import contextmanager
-from sqlalchemy import create_engine, inspect, pool, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.engine import Engine
 
@@ -22,44 +22,6 @@ if TYPE_CHECKING:
 from database.models import Base
 
 # Import all models to register them with Base.metadata before create_all()
-from database.models import (
-    Finding,
-    Case,
-    SketchMapping,
-    AttackLayer,
-    AIDecisionLog,
-    SystemConfig,
-    UserPreference,
-    IntegrationConfig,
-    ConfigAuditLog,
-    SLAPolicy,
-    CaseSLA,
-    CaseComment,
-    CaseWatcher,
-    CaseEvidence,
-    CaseIOC,
-    CaseTask,
-    CaseTemplate,
-    CaseRelationship,
-    CaseMetrics,
-    CaseAttachment,
-    CaseClosureInfo,
-    CaseEscalation,
-    CaseAuditLog,
-    User,
-    Role,
-    Investigation,
-    InvestigationLog,
-    LLMInteractionLog,
-    SharedIOC,
-    CaseNotification,
-    CustomAgent,
-    CustomWorkflow,
-    Skill,
-    LLMProviderConfig,
-    Conversation,
-    ChatMessage,
-)
 
 from core.config import get_settings
 from core.secrets import get_secret
@@ -637,18 +599,6 @@ class DatabaseManager:
             logger.info("Database tables created successfully")
         except Exception as e:
             logger.error(f"Failed to create database tables: {e}")
-            raise
-
-    def drop_tables(self):
-        """Drop all database tables. USE WITH CAUTION!"""
-        if self._engine is None:
-            raise RuntimeError("Database not initialized. Call initialize() first.")
-
-        try:
-            Base.metadata.drop_all(self._engine)
-            logger.warning("All database tables dropped")
-        except Exception as e:
-            logger.error(f"Failed to drop database tables: {e}")
             raise
 
     def get_session(self) -> Session:

@@ -13,7 +13,7 @@ import sys
 from api._meta import Auth, RouterMeta
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from secrets_manager import get_secret, set_secret, delete_secret, get_secrets_manager
+from secrets_manager import get_secret, set_secret
 
 # Import database config service
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))

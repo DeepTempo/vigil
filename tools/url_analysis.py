@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import requests
 from urllib.parse import urlparse
 from mcp.server.models import InitializationOptions
 import mcp.types as types

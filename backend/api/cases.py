@@ -1080,7 +1080,7 @@ async def merge_cases(case_id: str, data: MergeRequest):
 
     from database.connection import get_db_manager
     from database.models import (
-        Case, case_findings, CaseRelationship,
+        Case, CaseRelationship,
     )
 
     with get_db_manager().session_scope() as session:

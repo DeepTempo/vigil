@@ -14,7 +14,7 @@ def _factory() -> FederationAdapter:
 
     return SIEMIngestionAdapter(
         name="aws_security_hub",
-        integration_id="aws_security_hub",
+        integration_id="aws-security-hub",
         default_interval=900,  # cloud cadence — Security Hub aggregates slowly
         service_factory=make_service,
         external_id_prefix="aws-securityhub",

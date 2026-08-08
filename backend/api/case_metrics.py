@@ -2,7 +2,6 @@
 
 from typing import Optional
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from datetime import datetime
 
 from backend.dependencies import UnitOfWorkSession
@@ -261,7 +260,6 @@ async def get_mttd(
         MTTD metrics by priority
     """
     from database.models import Case, CaseMetrics
-    from sqlalchemy import and_
     
     query = session.query(Case)
 

@@ -8,7 +8,6 @@ Usage:
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -16,21 +15,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS_DIR = REPO_ROOT / "workflows"
 
-AVAILABLE_AGENTS = [
-    "triage",
-    "investigator",
-    "threat_hunter",
-    "correlator",
-    "responder",
-    "reporter",
-    "mitre_analyst",
-    "forensics",
-    "threat_intel",
-    "compliance",
-    "malware_analyst",
-    "network_analyst",
-    "auto_responder",
-]
+sys.path.insert(0, str(REPO_ROOT))
+from services.soc_agents import AgentId  # noqa: E402
+
+AVAILABLE_AGENTS = [a.value for a in AgentId]
 
 COMMON_TOOLS = [
     "get_finding",

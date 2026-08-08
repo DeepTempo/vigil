@@ -1,7 +1,6 @@
 """Graph Builder Service - Extracts entity relationships from findings."""
 
 from typing import List, Dict, Any, Set, Tuple
-from collections import defaultdict
 import logging
 
 logger = logging.getLogger(__name__)

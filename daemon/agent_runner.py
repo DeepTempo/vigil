@@ -12,8 +12,9 @@ import logging
 import re
 import time
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
+
+from services.soc_agents import ORCHESTRATOR_ACTOR
 
 # Tool safety tiers live in services.tool_manager so every agent loop (daemon,
 # interactive OpenAI agent, workflows) shares one policy. Aliased to the
@@ -1380,7 +1381,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
                 confidence=0.7,
                 reason=f"Autonomous investigation {inv_id} needs to execute {tool_name}",
                 evidence=[inv_id],
-                created_by="orchestrator",
+                created_by=ORCHESTRATOR_ACTOR,
                 parameters=tool_input,
             )
             action_id = pending.action_id

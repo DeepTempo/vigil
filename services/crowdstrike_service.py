@@ -130,43 +130,7 @@ class CrowdStrikeService:
             logger.error(f"Error getting detections: {e}")
             return None
     
-    def get_host_details(self, host_ids: List[str]) -> Optional[List[Dict[str, Any]]]:
-        """Get details for specific hosts."""
-        try:
-            if not self._ensure_authenticated():
-                return None
-            
-            response = self.session.post(
-                f"{self.base_url}/devices/entities/devices/v2",
-                json={"ids": host_ids},
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return response.json().get("resources", [])
-            return None
-        except Exception as e:
-            logger.error(f"Error getting host details: {e}")
-            return None
     
-    def contain_host(self, host_id: str) -> Dict[str, Any]:
-        """Contain/isolate a host."""
-        try:
-            if not self._ensure_authenticated():
-                return {"success": False, "error": "Authentication failed"}
-            
-            response = self.session.post(
-                f"{self.base_url}/devices/entities/devices-actions/v2",
-                params={"action_name": "contain"},
-                json={"ids": [host_id]},
-                timeout=30
-            )
-            
-            if response.status_code == 202:
-                return {"success": True, "host_id": host_id, "action": "contained"}
-            return {"success": False, "error": f"API error: {response.status_code}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
     
     def lift_containment(self, host_id: str) -> Dict[str, Any]:
         """Remove containment from a host."""

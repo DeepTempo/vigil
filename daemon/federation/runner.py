@@ -23,7 +23,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from core.config import DEFAULT_REDIS_URL, get_settings
 from daemon.dedup import RedisDedupSet
@@ -116,7 +116,6 @@ class FederationRunner:
     ) -> None:
         source_id = adapter.name
         logger.info("Federation adapter %s loop started", source_id)
-        last_check = 0.0
         # Smallest sane sleep when waiting for global+per-source enable.
         idle_seconds = 5.0
 
