@@ -14,8 +14,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-# Mirror backend/main.py's sys.path setup so intra-package imports resolve
-# without pulling in the entire backend/api/__init__.py chain.
+# Mirror services/api/main.py's sys.path setup so `core.*` / `services.*`
+# resolve for a standalone pytest run.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 for p in (str(_REPO_ROOT),):
     if p not in sys.path:

@@ -140,10 +140,10 @@ response = claude.chat(
 
 ### Tool Definitions
 
-Tool schemas are defined in `backend/schemas/tool_schemas.py`:
+Tool schemas are defined in `core/llm/tool_schemas.py`:
 
 ```python
-from backend.schemas.tool_schemas import ALL_TOOLS
+from core.llm.tool_schemas import ALL_TOOLS
 
 # Contains 23 tools total:
 # - 5 security detection tools

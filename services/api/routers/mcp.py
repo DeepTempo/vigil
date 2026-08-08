@@ -1,7 +1,7 @@
 """MCP Server management API endpoints.
 
 Auth model: router-level ``get_current_active_user`` (applied in
-``backend/main.py``) guards every endpoint. State-changing endpoints
+``services/api/main.py``) guards every endpoint. State-changing endpoints
 additionally require ``integrations.write`` permission since enabling
 an MCP server can spawn subprocesses and surface tools to agents.
 """
@@ -287,7 +287,7 @@ async def get_server_status(server_name: str):
 # NOTE: the former POST /servers/{name}/start + /stop endpoints were
 # removed when PUT /enabled became transactional. Every server in
 # mcp-config.json is stdio-based, which the old `start_server` path
-# explicitly refused (services/mcp_service.py), so those endpoints never
+# explicitly refused (core/integrations/mcp/service.py), so those endpoints never
 # worked for users. The enable toggle is now the single lever.
 
 

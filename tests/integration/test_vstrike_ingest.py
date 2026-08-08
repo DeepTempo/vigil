@@ -18,9 +18,8 @@ from unittest.mock import patch
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-# backend/main.py adds both the repo root and `backend/` to sys.path at
-# runtime so that imports written as `from api.findings import ...` resolve.
-# Mirror that here for standalone pytest runs.
+# services/api/main.py adds the repo root to sys.path at runtime so `core.*`
+# and `services.*` resolve. Mirror that here for standalone pytest runs.
 for _p in (ROOT,):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))

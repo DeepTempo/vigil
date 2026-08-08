@@ -328,7 +328,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
         Step 3 was the missing piece behind the "Claude API not configured"
         chat-drawer error reported when users configured Anthropic only
         through Settings → AI / LLM Providers: that path writes the key to
-        ``llm_provider_<id>_api_key`` (see ``backend/api/llm_providers.py``)
+        ``llm_provider_<id>_api_key`` (see ``services/api/routers/llm_providers.py``)
         — not to the legacy names this method used to check.
         """
         try:
@@ -887,7 +887,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
         when ``self.client`` is None on an Ollama/OpenAI-only deployment.
 
         Non-Anthropic routing is handled separately by the chat endpoints
-        in ``backend/api/claude.py``, which resolve the active provider via
+        in ``services/api/routers/claude.py``, which resolve the active provider via
         ``get_default_provider_spec()`` and dispatch through ``LLMRouter``
         without ever touching ClaudeService.
         """

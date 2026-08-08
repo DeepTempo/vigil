@@ -1,9 +1,9 @@
 """Shared validator for user-supplied ``system_prompt`` fields (issue #87).
 
 Used by:
-* ``backend/api/claude.py`` — ``ChatRequest.system_prompt``,
+* ``services/api/routers/claude.py`` — ``ChatRequest.system_prompt``,
   ``AgentTaskRequest.system_prompt``
-* ``backend/api/custom_agents.py`` — ``CustomAgentCreate.system_prompt_override``,
+* ``services/api/routers/custom_agents.py`` — ``CustomAgentCreate.system_prompt_override``,
   ``CustomAgentUpdate.system_prompt_override``
 
 Behaviour is **validate + audit, allow** in v1: shape checks reject

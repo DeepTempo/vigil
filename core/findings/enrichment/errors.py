@@ -1,7 +1,7 @@
 """Domain exceptions for finding enrichment.
 
 Raised instead of ``HTTPException`` so the flow is callable from the daemon and
-from ingestion, neither of which speaks HTTP. ``backend/api/findings.py`` maps
+from ingestion, neither of which speaks HTTP. ``services/api/routers/findings.py`` maps
 these to status codes.
 """
 

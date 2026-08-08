@@ -327,7 +327,7 @@ echo $POSTGRESQL_CONNECTION_STRING
 
 ### Adding New Tools
 
-1. **Define tool schema** in `backend/schemas/tool_schemas.py`:
+1. **Define tool schema** in `core/llm/tool_schemas.py`:
 
 ```python
 {

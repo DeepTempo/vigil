@@ -29,8 +29,8 @@ See "Chart version vs appVersion" below for why both chart fields are
 bumped together.
 
 The Python backend reads `VERSION` directly at import time (see
-`backend/__init__.py`), so the FastAPI app version, the
-`backend.__version__` attribute, and the `/health` endpoint's `version`
+`core/version.py`), so the FastAPI app version, the
+`core.version.__version__` attribute, and the `/health` endpoint's `version`
 field all stay in sync with `VERSION` automatically. No release-please
 configuration is needed for the backend.
 

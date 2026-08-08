@@ -1,7 +1,7 @@
 """Which services ``./start.sh`` brings up without being asked.
 
 Stored as a plain text file at the repo root — one service name per line, ``#``
-comments ignored. Resolution order mirrors ``services/runtime_config.py``'s
+comments ignored. Resolution order mirrors ``core/platform/runtime_config.py``'s
 DB -> env -> default layering: **file -> AUTOSTART_SERVICES -> DEFAULT**, with
 the file as the UI-writable live source of truth and the env var as the
 operator pin for CI/hardened deploys.

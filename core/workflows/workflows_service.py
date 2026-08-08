@@ -238,7 +238,8 @@ class WorkflowsService:
         Initialize workflows service.
 
         Args:
-            workflows_dir: Directory containing workflow definitions (default: ./workflows)
+            workflows_dir: Directory containing workflow definitions
+                (default: the bundled ``core/workflows/definitions/``)
         """
         if workflows_dir is None:
             workflows_dir = Path(__file__).resolve().parent / "definitions"

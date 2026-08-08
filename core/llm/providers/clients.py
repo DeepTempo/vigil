@@ -14,7 +14,7 @@ keeps the gateway-routing decision in one place and makes it trivial to
 audit (grep for ``Anthropic(``).
 
 Key-validation endpoints that deliberately hit the upstream provider to
-verify a user-supplied credential (e.g. ``backend/api/llm_providers.py``)
+verify a user-supplied credential (e.g. ``services/api/routers/llm_providers.py``)
 are the only exception and must still call ``Anthropic()`` directly.
 """
 

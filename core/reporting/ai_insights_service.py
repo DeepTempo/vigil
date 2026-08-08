@@ -44,7 +44,7 @@ class AIInsightsService:
         # In-memory cache of insights keyed by time_range.
         # Each entry: {"insights": List[Dict], "generated_at": datetime, "generating": bool}
         # A module-level singleton of this service is instantiated in
-        # backend/api/analytics.py, so this dict is shared across requests
+        # services/api/routers/analytics.py, so this dict is shared across requests
         # within the single backend process.
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._cache_lock = asyncio.Lock()

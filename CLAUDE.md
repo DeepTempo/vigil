@@ -29,12 +29,7 @@ This file provides guidance for AI assistants (Claude Code and similar tools) wo
 
 ```
 vigil/
-├── backend/              # Legacy package, being retired into services/ + core/
-│   ├── schemas/          # Pydantic request/response schemas
-│   ├── services/         # Auth services (auth_service, token_blacklist, …); pending move to core/auth/
-│   ├── monitoring.py     # Sentry + Prometheus helpers
-│   └── secrets_manager.py
-├── services/             # 70+ business logic service classes + runtimes
+├── services/             # Deployables only — exactly api, daemon, worker
 │   ├── api/              # API composition root: main.py (app entry), discovery.py, middleware/, routers/ (parked routers)
 │   ├── daemon/           # Autonomous 24/7 SOC background process
 │   │   ├── main.py       # Daemon entry point (python services/daemon/main.py)
@@ -45,25 +40,19 @@ vigil/
 │   │   ├── responder.py      # Executes containment actions
 │   │   ├── scheduler.py      # Cron-style scheduled tasks
 │   │   └── llm_worker_manager.py  # Supervises the worker subprocess (dev/daemon mode)
-│   ├── worker/           # ARQ llm-worker — drains the arq:llm queue (python -m services.worker)
-│   ├── mcp_service.py    # MCP server coordination
-│   └── case_*_service.py # Case lifecycle services
+│   └── worker/           # ARQ llm-worker — drains the arq:llm queue (python -m services.worker)
 ├── clients/web/             # React + TypeScript + Vite SPA
 │   └── src/
 │       ├── redesign/     # The SOC console — screens/, shell/, shared/
 │       ├── components/   # Cross-console components (auth, setup)
 │       ├── services/     # Axios API client services
 │       └── contexts/     # React Context (auth, theme)
-├── workflows/            # Workflow definitions as WORKFLOW.md files
-│   ├── incident-response/WORKFLOW.md
-│   ├── full-investigation/WORKFLOW.md
-│   ├── threat-hunt/WORKFLOW.md
-│   └── forensic-analysis/WORKFLOW.md
 ├── tools/                # MCP tool implementations (15+ integrations)
 ├── mcp-servers/          # Git submodule: MCP server implementations
 ├── deeptempo-core/       # Git submodule: core AI/detection library
-├── core/                 # Shared library: config, secrets, agents/, storage/ (DB layer); API routers colocate at core/<domain>/*_router.py
-│   └── llm/              # The LLM layer: router/, harness/, providers/, cost/ — see core/llm/README.md
+├── core/                 # Shared library: capability domains + a storage/platform tier; API routers colocate at core/<domain>/*_router.py
+│   ├── llm/              # The LLM layer: router/, harness/, providers/, cost/ — see core/llm/README.md
+│   └── workflows/definitions/  # Workflow definitions as WORKFLOW.md files (incident-response, full-investigation, threat-hunt, forensic-analysis, cloud-incident)
 ├── data/                 # Schemas, MITRE taxonomy, detection registry
 ├── tests/                # pytest + vitest test suites
 ├── docs/                 # Detailed documentation
@@ -76,12 +65,17 @@ vigil/
 └── env.example           # Template for all 220+ environment variables
 ```
 
-> **sys.path quirk:** `services/api/main.py` puts `backend/` on `sys.path`, so modules
-> there are imported *bare* — `from secrets_manager import get_secret`, not
-> `from backend.secrets_manager import …`. `setup.cfg` (`mypy_path = backend`) and
-> `pyrightconfig.json` (`extraPaths`) mirror this so static analysis resolves them.
-> Note the resulting name collisions: `backend/services/` and `backend/tools/` are
-> **not** the top-level `services/` and `tools/` packages.
+> **Layering:** `core/` is a library and must never import `services/`, and the
+> shared-infrastructure tier (`core/storage`, `core/platform`) must never import a
+> capability domain. `.importlinter` enforces both on every PR — the `lint-imports`
+> step is the one gating check in an otherwise advisory lint job. Run it locally
+> with `lint-imports`.
+>
+> The only sanctioned `sys.path` entry is the repo root, added by
+> `services/api/main.py` and `services/daemon/main.py` so `core.*` and `services.*`
+> resolve however the process was launched. Never add `services/` itself: that
+> makes `daemon`/`api`/`worker` importable as bare top-level names, giving the same
+> file two module identities, and import-linter cannot see those edges.
 
 ---
 
@@ -162,16 +156,16 @@ Default dev login: **admin / admin123** (when `DEV_MODE=false`)
 ### Reading configuration
 
 Config flows through exactly three channels. Do not add `os.getenv` calls —
-`tests/unit/test_no_ambient_state.py` fails CI on them.
+`tests/unit/_ratchets/test_no_ambient_state.py` fails CI on them.
 
 | Need | Use | Owner |
 |------|-----|-------|
 | Non-secret setting | `core.config.get_settings().field` | env / `.env` |
 | Credential | `core.secrets.get_secret("NAME")` | `~/.vigil/secrets.enc`, then env |
-| UI-editable at runtime | `services.runtime_config` / `database.config_service` | `system_config` table |
+| UI-editable at runtime | `core.platform.runtime_config` / `core.storage.config_service` | `system_config` table |
 
 `core/config.py` is the single definition site: every setting is a typed field
-with its default, and `tests/unit/test_settings_env_example.py` fails if a field
+with its default, and `tests/unit/_ratchets/test_settings_env_example.py` fails if a field
 is missing from `env.example` or vice versa. `get_settings()` is `lru_cache`d, so
 a test that changes env mid-test must call `get_settings.cache_clear()`.
 
@@ -412,7 +406,7 @@ No registration step — discovery mounts every module that exports a `router` a
 
 1. Add the router module (with `router` + `ROUTER_META`) under `core/<domain>/` or `services/api/routers/`
 2. Add service logic in `services/`
-3. Add Pydantic schema in `backend/schemas/` if needed
+3. Add Pydantic schema alongside the domain (e.g. `core/skills/schemas.py`) if needed
 4. No registration — discovery mounts it automatically
 5. Add corresponding frontend API call in `clients/web/src/services/`
 

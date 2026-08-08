@@ -13,15 +13,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-# Mirror backend/main.py's sys.path setup so intra-package imports like
-# `from api.foo import ...` in backend/api/__init__.py resolve.
+# Mirror services/api/main.py's sys.path setup so `core.*` / `services.*`
+# resolve for a standalone pytest run.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 for p in (str(_REPO_ROOT),):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-# Load the receiver module directly (bypassing backend/api/__init__.py which
-# eagerly imports many heavy modules not needed for this test).
+# Load the receiver module directly, so the test doesn't drag in the heavy
+# modules a full router import would.
 _spec = importlib.util.spec_from_file_location(
     "darktrace_webhook_under_test",
     _REPO_ROOT / "core" / "integrations" / "darktrace" / "darktrace_webhook_router.py",

@@ -191,7 +191,7 @@ def _load_connection_string_secret() -> Optional[str]:
     """Read POSTGRESQL_CONNECTION_STRING from the **encrypted store only**.
 
     Deliberately not ``get_secret()``: that falls back to the environment, and
-    ``backend/main.py`` stuffs a hardcoded default connection string into
+    ``services/api/main.py`` stuffs a hardcoded default connection string into
     ``os.environ`` for the MCP servers whenever the secret is unset. Reading
     through the fallback chain would let that default outrank an operator's
     POSTGRES_* variables — silently pinning them to localhost. The encrypted

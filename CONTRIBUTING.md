@@ -113,14 +113,14 @@ Contributions are welcome across all areas:
 
 ```
 vigil/
-├── workflows/       # Multi-agent workflow definitions (WORKFLOW.md files)
+├── core/            # Shared library: capability domains + storage/platform tier
+│   └── workflows/definitions/   # Multi-agent workflow definitions (WORKFLOW.md files)
+├── services/        # Deployables only: api (FastAPI + Agent SDK), daemon
+│                    #   (headless autonomous SOC), worker (ARQ llm-worker)
+├── clients/web/     # React web client
 ├── contrib/         # Community development tools (not runtime)
 ├── mcp-servers/     # MCP server implementations
-├── backend/         # FastAPI backend + Agent SDK
-├── clients/web/     # React web client
-├── services/        # Business logic
-├── daemon/          # Headless autonomous SOC
-├── database/        # PostgreSQL models
+├── infra/           # Docker Compose, Helm chart, DB init SQL
 ├── data/            # Schemas, registry, taxonomy
 ├── docs/            # Documentation
 └── tests/           # Test suite
@@ -128,9 +128,12 @@ vigil/
 
 ### Style
 
-- Python: follow existing patterns in `backend/`. Use type hints.
+- Python: follow existing patterns in `core/`. Use type hints. `core/` must not
+  import `services/`, and `core/storage` + `core/platform` must not import a
+  capability domain — `.importlinter` gates both; run `lint-imports` locally.
 - TypeScript/React: follow existing patterns in `clients/web/`.
-- Workflows: follow the format of existing `workflows/*/WORKFLOW.md` files.
+- Workflows: follow the format of existing
+  `core/workflows/definitions/*/WORKFLOW.md` files.
 - MCP servers: follow the patterns in `mcp-servers/`.
 
 ### Testing

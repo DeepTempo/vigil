@@ -2,7 +2,7 @@
 
 Everything Vigil does with a language model lives here. The layering below is
 the point of the package: it is what tells you where a new file goes, and it is
-enforced by `tests/llm/test_boundary.py`.
+enforced by `tests/unit/llm/test_boundary.py` and the `.importlinter` contracts.
 
 ## The harness boundary
 

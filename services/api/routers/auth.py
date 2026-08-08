@@ -777,7 +777,7 @@ async def disable_mfa(
 
 
 # Public self-registration was removed intentionally. All user creation
-# goes through the admin-gated POST /api/users/ endpoint (backend/api/users.py)
+# goes through the admin-gated POST /api/users/ endpoint (services/api/routers/users.py)
 # which validates the requested role against the caller's privileges.
 
 

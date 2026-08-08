@@ -78,7 +78,7 @@ pytest tests/unit/
 pytest tests/integration/
 
 # Run with coverage
-pytest --cov=backend --cov=services --cov=daemon --cov-report=html
+pytest --cov=services --cov=core --cov-report=html
 
 # Run specific test file
 pytest tests/unit/test_auth.py

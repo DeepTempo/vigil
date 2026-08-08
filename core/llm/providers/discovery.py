@@ -505,7 +505,7 @@ async def fetch_ollama_models(
     ``validate_provider_url``; ``allow_loopback=True`` only opts a
     loopback/private/link-local host past the range block (the
     cloud-metadata IP stays blocked). The route handler in
-    ``backend/api/llm_providers.py`` decides whether to pass it based on
+    ``services/api/routers/llm_providers.py`` decides whether to pass it based on
     the authenticated caller's permissions.
     """
     raw_base = base_url or "http://localhost:11434"

@@ -152,7 +152,7 @@ Vigil uses **GitHub Actions** for CI/CD with three main workflows:
 
 **Backend**:
 ```bash
-pytest tests/unit/ -v --cov=backend --cov=services --cov=daemon
+pytest tests/unit/ tests/security/ -v --cov=services --cov=core
 ```
 
 **Frontend**:
@@ -184,7 +184,7 @@ pytest tests/integration/ -v --cov
 
 **Python (Bandit)**:
 ```bash
-bandit -r backend/ services/ daemon/ -f json -o bandit-report.json
+bandit -r services/ core/ -f json -o bandit-report.json
 ```
 
 **NPM**:

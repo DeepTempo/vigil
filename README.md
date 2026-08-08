@@ -348,17 +348,16 @@ cd clients/desktop && npm run dist
 
 ```
 vigil/
-├── workflows/         # WORKFLOW.md definitions (4 built-in)
+├── core/              # Shared library: capability domains (findings, cases,
+│                      #   llm, integrations, …) over a storage/platform tier
+│   └── workflows/definitions/   # WORKFLOW.md definitions (5 built-in)
+├── services/          # Deployables only: api (FastAPI), daemon (headless
+│                      #   autonomous SOC), worker (ARQ llm-worker)
+├── clients/web/       # React + Tailwind frontend
 ├── contrib/           # Community tools: auto-contributor, benchmarking
 ├── mcp-servers/       # MCP server implementations (30+)
-├── backend/           # FastAPI backend API + Agent SDK tools
-├── clients/web/          # React + Tailwind frontend
-├── services/          # Business logic (workflows service, etc.)
-├── daemon/            # Headless autonomous SOC service
 ├── tools/             # Additional tool implementations
-├── database/          # PostgreSQL models and migrations
-├── core/              # Config, rate limiting, exceptions
-├── docker/            # Docker Compose setup
+├── infra/             # Docker Compose, Helm chart, DB init SQL
 ├── docs/              # Documentation
 └── data/schemas/      # JSON validation schemas
 ```

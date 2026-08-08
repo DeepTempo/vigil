@@ -7,13 +7,13 @@ restart that picks up the eager-cryptography fix.
 Usage:
 
     # Move every key, removing each from the dotenv file as it's migrated:
-    python -m backend.tools.migrate_secrets
+    python scripts/migrate_dotenv_secrets.py
 
     # Dry-run (don't touch the dotenv source):
-    python -m backend.tools.migrate_secrets --dry-run
+    python scripts/migrate_dotenv_secrets.py --dry-run
 
     # Restrict to specific keys:
-    python -m backend.tools.migrate_secrets --keys VSTRIKE_USERNAME VSTRIKE_PASSWORD
+    python scripts/migrate_dotenv_secrets.py --keys VSTRIKE_USERNAME VSTRIKE_PASSWORD
 
 Encrypted store is authoritative on conflicts. If a key exists in both
 the dotenv file and ``secrets.enc`` with different values, the migrator

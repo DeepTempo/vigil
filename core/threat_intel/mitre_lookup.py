@@ -1,8 +1,8 @@
 """Shared MITRE ATT&CK technique → name/tactic resolution.
 
 Single source of truth used by:
-- backend/api/attack.py — /attack/techniques/rollup
-- backend/api/analytics.py — get_mitre_technique_distribution
+- services/api/routers/analytics.py — get_mitre_technique_distribution
+- the ATT&CK agent tools (get_technique_rollup, create_attack_layer)
 
 Findings in this codebase carry MITRE data in two shapes:
 - Demo path: `predicted_techniques: list[{technique_id, confidence, technique_name}]`
@@ -17,9 +17,9 @@ from typing import Iterable, Optional
 def get_time_range(time_range: str) -> tuple[datetime, datetime]:
     """Get start and end datetime for the given time range.
 
-    Lives here (not in services.api.routers.analytics) so that `services/` and
-    `backend/api/` modules can both depend on it without forming a cycle
-    through `backend/api/__init__.py`.
+    Lives here (not in services.api.routers.analytics) so that `core/` domains
+    and the API routers can both depend on it without either importing the
+    other.
     """
     end_time = datetime.utcnow()
 

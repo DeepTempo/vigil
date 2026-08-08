@@ -73,7 +73,7 @@ async def get_orchestrator_status():
             stats = orch.stats
 
         # Enabled is persisted inside the single `orchestrator.settings` key.
-        # See services/config_service and backend/api/config.py.
+        # See core/storage/config_service and services/api/routers/config.py.
         enabled = False
         try:
             from core.storage.config_service import get_config_service
@@ -121,7 +121,7 @@ def _persist_orchestrator_enabled(enabled: bool) -> None:
 
     Read-modify-write so the rest of the settings struct is preserved. If no
     settings row exists yet (first toggle on a fresh DB), seed it from the
-    defaults defined in backend/api/config.py.
+    defaults defined in services/api/routers/config.py.
     """
     try:
         from core.storage.config_service import get_config_service

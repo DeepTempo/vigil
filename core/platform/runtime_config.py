@@ -37,7 +37,7 @@ _CACHE_TTL_SECONDS = 60
 
 # Each setting maps (Settings-UI field name) -> (fallback env var name).
 # Keep this table in sync with ``AIOperationsSettingsConfig`` in
-# ``backend/api/config.py`` and with the env-var docs in ``env.example``.
+# ``services/api/routers/config.py`` and with the env-var docs in ``env.example``.
 ENV_FALLBACKS = {
     "prompt_cache_enabled": "ANTHROPIC_PROMPT_CACHE_ENABLED",
     "history_window": "CLAUDE_HISTORY_WINDOW",

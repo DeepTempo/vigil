@@ -38,7 +38,7 @@ def darktrace_enabled() -> bool:
     """Master flag for the Darktrace webhook receiver.
 
     Off unless explicitly enabled. Lives here rather than inline in
-    ``backend/main.py`` so the gate travels with the receiver it guards and
+    ``services/api/main.py`` so the gate travels with the receiver it guards and
     can be unit-tested directly (issue #478). Reads the typed ``Settings``
     field rather than the raw env var so there is a single source of truth
     for the flag, matching ``cloudflare_webhooks.cloudy_ingestion_enabled``.
