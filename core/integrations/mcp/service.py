@@ -217,10 +217,12 @@ class MCPService:
         Initialize the MCP service.
         
         Args:
-            project_root: Optional project root path. Defaults to parent of services directory.
+            project_root: Optional project root path. Defaults to the repo root,
+                which is where ``mcp-config.json`` and ``venv/`` live.
         """
         if project_root is None:
-            project_root = Path(__file__).parent.parent
+            # core/integrations/mcp/service.py -> repo root is four levels up.
+            project_root = Path(__file__).resolve().parents[3]
         
         self.project_root = Path(project_root)
         self.venv_path = self.project_root / "venv"

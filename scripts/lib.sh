@@ -86,7 +86,7 @@ service_container() {
 # process group, where Ctrl+C would kill it. Never fatal - Ollama is optional.
 ensure_ollama() {
     PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
-        python3 scripts/ollama_supervise.py || \
+        python3 "$REPO_ROOT/scripts/ollama_supervise.py" || \
         echo "Warning: Ollama not started; see logs/ollama.log" >&2
     return 0
 }
