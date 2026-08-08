@@ -340,7 +340,9 @@ export interface DecisionResult {
 export interface DecisionRecord extends DecisionResult {
   decision_id: string;
   iteration: number;
-  digest_presented: Digest;
+  // The digest itself is the snapshot and belongs to replay alone; these ids are
+  // the only part of it the fold's consumers read, so they stay on the record.
+  presented_evidence_ids: string[];
   // Events on the ledger when the digest was built, so replay folds exactly
   // log[0..digest_seq). The decision is journaled after its own dispatches are,
   // which is why its seq is not that boundary. Absent on pre-replay ledgers.

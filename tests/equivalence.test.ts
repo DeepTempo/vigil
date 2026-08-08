@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { fold, type LedgerEvent } from "../ai/ledger.js";
+import { fold, parseLog, type LedgerEvent } from "../ai/ledger.js";
 import { replay } from "../ai/replay.js";
 
 const RUNS = join(import.meta.dirname, "..", "runs");
@@ -30,11 +30,10 @@ export function runFiles(): string[] {
     .sort();
 }
 
+// Through the ledger's own reader, so the legacy hoist is under test rather than
+// bypassed: these files are all in the pre-split shape.
 export function readEvents(name: string): LedgerEvent[] {
-  return readFileSync(join(RUNS, name), "utf8")
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as LedgerEvent);
+  return parseLog(readFileSync(join(RUNS, name), "utf8"));
 }
 
 // Hashed rather than inlined: the projections run to megabytes, and a hash that

@@ -250,6 +250,12 @@ function validateFocus(decision: Decision, projection: Projection): void {
 }
 
 // The violation goes back to the Hunt Lead as a digest note, which is where the
+// What the lead was shown, kept on the decision record so resurfacing can ask
+// what it has already seen without loading a single digest snapshot.
+function presentedEvidenceIds(digest: Digest): string[] {
+  return digest.recent_evidence.map((record) => record.evidence_id);
+}
+
 // digest already carries controller-side observations, so the re-ask needs no
 // change to the DecisionProvider port.
 function withRejection(digest: Digest, reason: string): Digest {
@@ -490,6 +496,7 @@ export class HuntController {
   ): void {
     this.ledger.append({
       kind: "decision",
+      digest_presented: presented,
       decision: {
         ...attribution,
         decision: {
@@ -500,7 +507,7 @@ export class HuntController {
         },
         decision_id: newId("dec"),
         iteration: presented.iteration,
-        digest_presented: presented,
+        presented_evidence_ids: presentedEvidenceIds(presented),
         digest_seq: digestSeq,
         cost_usd: spent,
         rejected_attempts: [...rejected],
@@ -1528,11 +1535,12 @@ export class HuntController {
     const decisionId = newId("dec");
     this.ledger.append({
       kind: "decision",
+      digest_presented: digest,
       decision: {
         ...result,
         decision_id: decisionId,
         iteration,
-        digest_presented: digest,
+        presented_evidence_ids: presentedEvidenceIds(digest),
         digest_seq: digestSeq,
         created_at: new Date().toISOString(),
       },
