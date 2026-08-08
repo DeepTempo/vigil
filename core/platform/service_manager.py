@@ -3,7 +3,7 @@
 Covers docker-compose services and the host-native Ollama process behind one
 API. The ``SERVICES`` registry is the allowlist: a name that isn't a key here
 can never reach a subprocess, which is what keeps the ``{name}`` path param on
-``backend/api/local_services.py`` safe.
+``services/api/routers/local_services.py`` safe.
 
 Compose invariants worth preserving:
 
@@ -24,7 +24,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from core.platform.ollama_supervisor import container_base_url
 from core.platform import ollama_supervisor as ollama_process
@@ -106,7 +106,7 @@ SERVICES: Dict[str, ServiceSpec] = {
         description="OpenTelemetry collector",
     ),
     # Host-native (Docker on macOS has no Metal passthrough, so a container
-    # would be CPU-only). Never stopped: see core/llm/providers/ollama.py.
+    # would be CPU-only). Never stopped: see core/platform/ollama_supervisor.py.
     "ollama": ServiceSpec(
         "ollama",
         None,
@@ -162,7 +162,6 @@ def docker_available() -> tuple[bool, str]:
 def _compose(
     args: List[str], profile: Optional[str], timeout: int
 ) -> subprocess.CompletedProcess:
-
     env = os.environ.copy()  # noqa: ENV001 - child process env
     if profile:
         env["COMPOSE_PROFILES"] = profile
@@ -254,7 +253,6 @@ def status(
     instead of spawning a fresh pair of subprocesses per service."""
     spec = _spec(name)
     if spec.container is None:
-
         return ollama_process.status(spec)
 
     ok, detail = docker if docker is not None else docker_available()
@@ -288,15 +286,25 @@ def status(
     )
 
 
-def start(name: str, *, wait: bool = False, timeout: int = 120) -> ActionResult:
+def start(
+    name: str,
+    *,
+    wait: bool = False,
+    timeout: int = 120,
+    post_start_sync: Optional[Callable[[], dict]] = None,
+) -> ActionResult:
+    """``post_start_sync`` is forwarded to the host-native supervisor and
+    ignored for compose services. Only Ollama has one: a started Ollama is
+    useless until the Bifrost model catalog is refreshed, and that refresh is
+    LLM knowledge this tier must not import — so the caller supplies it."""
     spec = _spec(name)
     if not spec.startable:
         return ActionResult(
             False, f"{name} cannot be started by Vigil", code="not_startable"
         )
     if spec.container is None:
-
-        return ollama_process.start(spec, timeout=min(timeout, 60))
+        kwargs = {} if post_start_sync is None else {"post_start_sync": post_start_sync}
+        return ollama_process.start(spec, timeout=min(timeout, 60), **kwargs)
 
     ok, detail = docker_available()
     if not ok:

@@ -23,8 +23,9 @@ from core.platform.service_manager import SERVICES  # noqa: E402
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    ollama_supervisor.post_start_sync = sync_after_ollama_start
-    result = ollama_supervisor.start(SERVICES["ollama"])
+    result = ollama_supervisor.start(
+        SERVICES["ollama"], post_start_sync=sync_after_ollama_start
+    )
     print(result.message)
     return 0 if result.success else 1
 

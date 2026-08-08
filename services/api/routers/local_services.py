@@ -1,6 +1,6 @@
 """Local Services API — start/stop/status for Docker services and Ollama.
 
-All orchestration lives in ``services/service_manager.py``; this module is the
+All orchestration lives in ``core/platform/service_manager.py``; this module is the
 HTTP surface over it. Two structural rules:
 
 - Handlers are **sync** ``def``. They call blocking subprocesses, so an
@@ -22,12 +22,7 @@ from core.storage.models import User
 from core.platform import service_manager
 from core.platform.autostart_config import get_autostart_services, set_autostart_services
 from core.llm.bifrost.admin import sync_after_ollama_start
-from core.platform import ollama_supervisor
 from core.platform.service_manager import SERVICES, ActionResult, ServiceStatus
-
-# Composition root: the API may depend on both tiers, so it wires the LLM
-# catalog refresh into the platform supervisor, which must not import it.
-ollama_supervisor.post_start_sync = sync_after_ollama_start
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()
@@ -211,7 +206,11 @@ def service_start(
 ):
     require_settings_admin(current_user)
     _resolve(name)
-    r = service_manager.start(name, wait=wait)
+    # Composition root: the API may depend on both tiers, so it hands the LLM
+    # catalog refresh to the platform supervisor, which must not import it.
+    r = service_manager.start(
+        name, wait=wait, post_start_sync=sync_after_ollama_start
+    )
     if not r.success:
         code = 409 if r.code in ("not_startable", "not_installed") else 500
         raise HTTPException(status_code=code, detail=r.message)

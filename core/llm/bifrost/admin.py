@@ -475,12 +475,13 @@ def sync_after_ollama_start() -> dict:
     a first-boot seed (live config lives in Bifrost's SQLite). Without this the
     button "succeeds" and no Ollama model is selectable.
 
-    Injected into ``core.platform.ollama_supervisor.post_start_sync`` by a
-    composition root — platform supervises the process, this decides what a
-    running Ollama means for the model catalog. Awaits the sync rather than
-    firing it off so the caller can report ``bifrost_synced`` truthfully.
-    Callers run in a threadpool thread with no running loop; if a loop *is*
-    running we fall back to scheduling, since ``asyncio.run`` would raise.
+    Passed as the ``post_start_sync`` argument to
+    ``core.platform.ollama_supervisor.start`` by a composition root — platform
+    supervises the process, this decides what a running Ollama means for the
+    model catalog. Awaits the sync rather than firing it off so the caller can
+    report ``bifrost_synced`` truthfully. Callers run in a threadpool thread
+    with no running loop; if a loop *is* running we fall back to scheduling,
+    since ``asyncio.run`` would raise.
     Best-effort throughout — a Bifrost still booting must not fail the start.
     """
     import asyncio

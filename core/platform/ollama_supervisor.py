@@ -6,8 +6,8 @@ passthrough, so a containerized Ollama would be CPU-only.
 Three constraints shape every function here:
 
 - **Liveness is always an HTTP probe, never a held handle.** uvicorn ``--reload``
-  respawns the server process on any edit under ``backend/``/``services/``/
-  ``database/``, destroying in-memory state. A ``Popen`` handle as source of
+  respawns the server process on any edit under ``core/`` or ``services/``,
+  destroying in-memory state. A ``Popen`` handle as source of
   truth would report Ollama down seconds after starting it, because someone
   saved a file. Probing also makes spawn idempotent across reloads.
 - **The running Ollama is often not ours** — ``brew services`` (launchd) and
@@ -25,15 +25,13 @@ import shutil
 import subprocess
 import threading
 import time
-import httpx
 from pathlib import Path
 from typing import Callable, Optional
 
+import httpx
 
 from core.config import get_settings
 from core.platform.service_contract import ActionResult, ServiceSpec, ServiceStatus
-
-from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +63,7 @@ def container_base_url() -> str:
     reach Ollama at all).
 
     Applied at the two places that shell out to compose — the ``_compose`` env
-    in ``services/service_manager.py`` and ``dc()`` in ``scripts/lib.sh`` — so
+    in ``core/platform/service_manager.py`` and ``dc()`` in ``scripts/lib.sh`` — so
     there is one variable and one rewrite rule, not two configs to keep in sync.
     """
     url = base_url()
@@ -93,12 +91,17 @@ def ollama_ping(base_url: Optional[str] = None, timeout: float = 2.0) -> bool:
         return False
 
 
-# Filled in by a composition root that may depend on both tiers (the
-# local-services router, or scripts/ollama_supervise.py for the CLI path).
-# Starting Ollama alone accomplishes nothing user-visible — LLM traffic is
-# dispatched through Bifrost — but platform must not import a capability
-# domain to say so, so the sync is injected rather than imported.
-post_start_sync: Callable[[], dict] = lambda: {}
+def _no_post_start_sync() -> dict:
+    """Default :func:`start` hook: do nothing.
+
+    Starting Ollama alone accomplishes nothing user-visible — LLM traffic is
+    dispatched through Bifrost, so the model catalog has to be refreshed
+    before anything is selectable. Platform must not import a capability
+    domain to say that, so a composition root that may depend on both tiers
+    passes the refresh in: ``services/api/routers/local_services.py`` for the
+    API path, ``scripts/ollama_supervise.py`` for the CLI one.
+    """
+    return {}
 
 
 def binary_path() -> Optional[str]:
@@ -135,7 +138,6 @@ def _managed_by_vigil() -> bool:
 
 
 def status(spec: ServiceSpec) -> ServiceStatus:
-
     installed = binary_path() is not None
     running = ollama_ping(base_url())
     if running:
@@ -163,12 +165,19 @@ def status(spec: ServiceSpec) -> ServiceStatus:
     )
 
 
-def start(spec: ServiceSpec, *, timeout: int = 30) -> ActionResult:
-
+def start(
+    spec: ServiceSpec,
+    *,
+    timeout: int = 30,
+    post_start_sync: Callable[[], dict] = _no_post_start_sync,
+) -> ActionResult:
     url = base_url()
     if ollama_ping(url):
         return ActionResult(
-            True, "Ollama already running", already_running=True, detail=post_start_sync()
+            True,
+            "Ollama already running",
+            already_running=True,
+            detail=post_start_sync(),
         )
 
     exe = binary_path()
