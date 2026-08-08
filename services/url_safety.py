@@ -3,7 +3,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 from dataclasses import dataclass
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, Tuple
 from urllib.parse import urlparse, urlunparse
 
 # Hosts we trust unconditionally — official public LLM provider APIs.
@@ -186,19 +186,3 @@ def validate_provider_url(
         scheme=parsed.scheme,
         is_allowlisted_host=is_allowlisted,
     )
-
-
-def safe_provider_base_url(
-    url: Optional[str],
-    default: str,
-    *,
-    allow_custom: bool = True,
-) -> SafeUrl:
-    """Convenience: validate ``url`` if given, otherwise the ``default``.
-
-    The default is assumed to be a trusted provider URL (it lives in
-    code, not request input) but we still pipe it through the same
-    validator so the returned object has a consistent shape.
-    """
-    target = url.strip() if (url and url.strip()) else default
-    return validate_provider_url(target, allow_custom=allow_custom)

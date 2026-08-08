@@ -10,7 +10,6 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from pathlib import Path
-import json
 import logging
 import sys
 from api._meta import Auth, RouterMeta
@@ -64,20 +63,6 @@ class SaveIntegrationRequest(BaseModel):
     integration_id: str
     metadata: dict
     server_code: str
-
-
-class CustomIntegrationResponse(BaseModel):
-    """Response containing generated integration details."""
-
-    success: bool
-    needs_clarification: Optional[bool] = False
-    integration_id: Optional[str] = None
-    integration_name: Optional[str] = None
-    metadata: Optional[dict] = None
-    server_code: Optional[str] = None
-    message: Optional[str] = None
-    conversation_history: Optional[list] = None
-    error: Optional[str] = None
 
 
 @router.post("/generate")

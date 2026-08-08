@@ -237,26 +237,15 @@ export interface ApiDecision {
   has_feedback?: boolean
 }
 
-/** agent_id → display name (ported from pages/AIDecisions.tsx:186-195) */
-const AGENT_NAMES: Record<string, string> = {
-  triage: 'Triage',
-  investigation: 'Investigation',
-  threat_hunter: 'Threat Hunter',
-  correlation: 'Correlation',
-  auto_responder: 'Auto-Response',
-  reporting: 'Reporting',
-  mitre_analyst: 'MITRE',
-  forensics: 'Forensics',
-  threat_intel: 'Threat Intel',
-  compliance: 'Compliance',
-  malware_analyst: 'Malware',
-  network_analyst: 'Network',
-  orchestrator: 'Orchestrator',
-}
-
+/**
+ * `agent_id` on a decision row is an action id from the backend registry
+ * (services/soc_agents.py:AGENT_IDENTITY) — `investigation`, `threat_hunt`,
+ * `orchestration`. Those are already words, so the label is derived rather
+ * than mapped; custom agents fall through to the same treatment (#476).
+ */
 export function getAgentDisplayName(agentId?: string): string {
   if (!agentId) return DASH
-  return AGENT_NAMES[agentId] || agentId
+  return prettyHandle(agentId)
 }
 
 /**

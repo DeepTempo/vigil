@@ -70,14 +70,6 @@ class SharedIntelligence:
         for d in ctx.get("domains") or []:
             self._register(investigation_id, "domain", d)
 
-    def register_iocs(self, investigation_id: str, iocs: List[Dict[str, str]]):
-        """Register IOCs discovered during an investigation."""
-        for ioc in iocs:
-            ioc_type = ioc.get("type", "unknown")
-            value = ioc.get("value", "")
-            if value:
-                self._register(investigation_id, ioc_type, value)
-
     def check_overlap(
         self, finding: Dict[str, Any], exclude_id: Optional[str] = None
     ) -> List[str]:

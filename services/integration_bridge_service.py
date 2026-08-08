@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from core.config import vigil_path
 
 logger = logging.getLogger(__name__)

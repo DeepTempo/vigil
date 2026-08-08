@@ -6,7 +6,7 @@
    shapes. See DECISIONS_WIRING.md §4.
    ============================================================ */
 import { useCallback, useEffect, useState } from 'react'
-import { aiDecisionsApi, approvalsApi } from '../../../services/api'
+import { agentsApi, aiDecisionsApi, approvalsApi, type AgentSummary } from '../../../services/api'
 import { mapApiDecision, type ApiDecision } from '../../data/mappers'
 import type { Decision } from '../../data/appData'
 
@@ -16,6 +16,40 @@ export type Phase = 'loading' | 'ready' | 'error'
 function errMsg(e: unknown, fallback: string): string {
   const r = e as { response?: { data?: { detail?: string } }; message?: string }
   return r?.response?.data?.detail || r?.message || fallback
+}
+
+/**
+ * The daemon's own decisions carry this id. It is not an agent, so it never
+ * comes back from GET /agents — see services/soc_agents.py:ORCHESTRATION_DECISION_ID.
+ */
+const ORCHESTRATION_DECISION_ID = 'orchestration'
+
+/**
+ * Agent filter options for the decisions table, keyed by the action ids the
+ * backend stamps on decision rows (#476). Derived from the agent registry so
+ * a new agent shows up in the filter without a frontend edit; falls back to
+ * the daemon-only id if /agents is unreachable.
+ */
+export function useDecisionAgentIds(): string[] {
+  const [ids, setIds] = useState<string[]>([ORCHESTRATION_DECISION_ID])
+
+  useEffect(() => {
+    let cancelled = false
+    agentsApi
+      .listAgents()
+      .then((res) => {
+        if (cancelled) return
+        const agents = (res.data?.agents || []) as AgentSummary[]
+        const decisionIds = agents.map((a) => a.decision_id || a.id)
+        setIds([...new Set([...decisionIds, ORCHESTRATION_DECISION_ID])])
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return ids
 }
 
 export type DecisionStatus = 'all' | 'pending' | 'completed'

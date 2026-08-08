@@ -10,7 +10,7 @@ This service analyzes SOC metrics and patterns to generate:
 
 import json
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime, timezone
 import asyncio
 from sqlalchemy.orm import Session
@@ -354,119 +354,5 @@ Provide ONLY the JSON array, no other text."""
             "timestamp": timestamp,
         }]
     
-    async def analyze_anomalies(
-        self,
-        db: Session,
-        entity_type: str,
-        entity_id: str,
-        context: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Analyze a specific entity for anomalies using Claude.
-        
-        Args:
-            db: Database session
-            entity_type: Type of entity (finding, case, event)
-            entity_id: ID of the entity
-            context: Additional context for analysis
-            
-        Returns:
-            Anomaly analysis result or None if no anomalies detected
-        """
-        try:
-            prompt = f"""Analyze this {entity_type} for anomalies:
-
-Entity ID: {entity_id}
-Context: {json.dumps(context, indent=2)}
-
-Determine if this represents an anomaly compared to typical patterns. Consider:
-- Unusual timing or frequency
-- Atypical severity or impact
-- Rare entity combinations
-- Deviation from baseline behavior
-
-Respond with JSON:
-{{
-  "is_anomaly": true/false,
-  "confidence": 0.0-1.0,
-  "reason": "Brief explanation",
-  "severity": "low|medium|high|critical"
-}}"""
-
-            from services.llm_gateway import get_llm_gateway
-            gateway = await get_llm_gateway()
-            raw = await gateway.submit_insights(
-                prompt=prompt,
-                model=self.model,
-                max_tokens=500,
-                temperature=0.2,
-            )
-            response_text = raw.get("content", "") if isinstance(raw, dict) else str(raw)
-            
-            # Parse JSON response
-            start = response_text.find('{')
-            end = response_text.rfind('}') + 1
-            
-            if start != -1 and end > 0:
-                result = json.loads(response_text[start:end])
-                return result if result.get('is_anomaly') else None
-            
-            return None
-        
-        except Exception as e:
-            logger.error(f"Error analyzing anomaly: {str(e)}")
-            return None
     
-    async def forecast_trends(
-        self,
-        time_series: List[Dict[str, Any]],
-        metric: str,
-        periods_ahead: int = 7
-    ) -> List[Dict[str, Any]]:
-        """
-        Forecast future trends using Claude's analytical capabilities.
-        
-        Args:
-            time_series: Historical time series data
-            metric: Metric to forecast
-            periods_ahead: Number of periods to forecast
-            
-        Returns:
-            List of forecasted values with confidence intervals
-        """
-        try:
-            prompt = f"""Based on this historical {metric} data, provide a simple forecast for the next {periods_ahead} periods:
-
-Historical Data:
-{json.dumps(time_series, indent=2)}
-
-Respond with JSON array of forecasts:
-[
-  {{"period": 1, "value": <number>, "confidence": 0.0-1.0}},
-  ...
-]"""
-
-            from services.llm_gateway import get_llm_gateway
-            gateway = await get_llm_gateway()
-            raw = await gateway.submit_insights(
-                prompt=prompt,
-                model=self.model,
-                max_tokens=1000,
-                temperature=0.3,
-            )
-            response_text = raw.get("content", "") if isinstance(raw, dict) else str(raw)
-            
-            # Parse JSON response
-            start = response_text.find('[')
-            end = response_text.rfind(']') + 1
-            
-            if start != -1 and end > 0:
-                forecast = json.loads(response_text[start:end])
-                return forecast
-            
-            return []
-        
-        except Exception as e:
-            logger.error(f"Error forecasting trends: {str(e)}")
-            return []
 

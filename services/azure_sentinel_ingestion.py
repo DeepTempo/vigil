@@ -22,7 +22,7 @@ class AzureSentinelIngestion(SIEMIngestionService):
         """Initialize Azure Sentinel ingestion."""
         super().__init__()
         self.siem_name = "Azure Sentinel"
-        self.config = get_integration_config('azure_sentinel')
+        self.config = get_integration_config('azure-sentinel')
     
     async def fetch_alerts(
         self,

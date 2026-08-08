@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 try:
-    from opentelemetry.sdk.trace import SpanProcessor, ReadableSpan
+    from opentelemetry.sdk.trace import SpanProcessor
     from opentelemetry.trace import StatusCode
 
     class SentrySpanProcessor(SpanProcessor):
@@ -166,16 +166,6 @@ def capture_exception(error: Exception, context: Optional[dict] = None) -> None:
         sentry_sdk.set_context("custom", context)
 
     sentry_sdk.capture_exception(error)
-
-
-def set_user_context(user_id: str, username: str, email: Optional[str] = None) -> None:
-    """Set user context for error tracking."""
-
-    sentry_sdk.set_user({
-        "id": user_id,
-        "username": username,
-        "email": email,
-    })
 
 
 def add_breadcrumb(message: str, category: str = "default", level: str = "info", data: Optional[dict] = None) -> None:

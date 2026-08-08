@@ -17,7 +17,7 @@ def result(data):
 
 
 def get_token():
-    config = get_integration_config('microsoft_defender')
+    config = get_integration_config('microsoft-defender')
     tenant = config.get('tenant_id')
     client_id = config.get('client_id')
     client_secret = config.get('client_secret')

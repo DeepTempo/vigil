@@ -3211,18 +3211,3 @@ export function getAllIntegrations(): IntegrationMetadata[] {
   return allIntegrations
 }
 
-/**
- * Get custom integrations only
- */
-export function getCustomIntegrations(): IntegrationMetadata[] {
-  return customIntegrations
-}
-
-export function getIntegrationById(id: string): IntegrationMetadata | undefined {
-  return allIntegrations.find((integration) => integration.id === id)
-}
-
-export function getIntegrationsByCategory(category: string): IntegrationMetadata[] {
-  return allIntegrations.filter((integration) => integration.category === category)
-}
-

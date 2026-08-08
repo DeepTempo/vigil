@@ -14,7 +14,7 @@ def _factory() -> FederationAdapter:
 
     return SIEMIngestionAdapter(
         name="azure_sentinel",
-        integration_id="azure_sentinel",
+        integration_id="azure-sentinel",
         default_interval=300,  # cloud SIEM cadence
         service_factory=make_service,
         external_id_prefix="azure-sentinel",

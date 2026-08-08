@@ -310,6 +310,7 @@ dbInit:
     - 15_federation.sql
     - 16_llm_budgets.sql
     - 17_loglm_setup.sql
+    - 18_agent_decision_ids.sql
   resources:
     requests:
       cpu: 50m

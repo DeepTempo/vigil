@@ -471,10 +471,6 @@ class ApprovalService:
             logger.error("DB error marking action %s failed: %s", action_id, e)
             return None
 
-    def get_pending_count(self) -> int:
-        """Get count of pending actions requiring approval."""
-        return len(self.list_pending_approvals())
-
     def get_stats(self) -> Dict:
         """Get statistics about actions."""
         actions = self.list_actions()

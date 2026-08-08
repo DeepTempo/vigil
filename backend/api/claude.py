@@ -485,7 +485,6 @@ async def chat(request: ChatRequest):
             )
 
         current_message = messages[-1]["content"]
-        context = messages[:-1] if len(messages) > 1 else None
 
         # Non-Anthropic path: dispatch directly through LLMRouter (bypass ARQ).
         # The router path has no tools, so send the no-tools guardrail prompt
@@ -1221,7 +1220,6 @@ async def summarize_conversation(request: SummarizeRequest):
     Used when conversations approach the context window limit.
     Returns a single summary message that preserves key context.
     """
-    import asyncio
 
     claude_service = ClaudeService(use_backend_tools=False, enable_thinking=False)
 

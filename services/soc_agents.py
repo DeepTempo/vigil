@@ -1,8 +1,81 @@
 import logging
 from dataclasses import dataclass
+from enum import Enum
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+class AgentId(str, Enum):
+    """Canonical id of every built-in agent — the *actor* vocabulary.
+
+    Doubles as the key of :data:`AGENT_CONFIGS` and the ``created_by`` value
+    an agent stamps on records it authors. Custom agents are not members;
+    they carry a ``custom-`` prefixed id from the database.
+    """
+
+    TRIAGE = "triage"
+    INVESTIGATOR = "investigator"
+    THREAT_HUNTER = "threat_hunter"
+    CORRELATOR = "correlator"
+    RESPONDER = "responder"
+    REPORTER = "reporter"
+    MITRE_ANALYST = "mitre_analyst"
+    FORENSICS = "forensics"
+    THREAT_INTEL = "threat_intel"
+    COMPLIANCE = "compliance"
+    MALWARE_ANALYST = "malware_analyst"
+    NETWORK_ANALYST = "network_analyst"
+    AUTO_RESPONDER = "auto_responder"
+
+    @property
+    def decision_id(self) -> str:
+        return AGENT_IDENTITY[self].decision_id
+
+    @property
+    def component_category(self) -> str:
+        return AGENT_IDENTITY[self].component_category
+
+
+# The autonomous loop authors decisions of its own but is not an agent: it has
+# no prompt, no AGENT_CONFIGS entry, and never appears in GET /agents.
+ORCHESTRATOR_ACTOR = "orchestrator"
+ORCHESTRATION_DECISION_ID = "orchestration"
+
+
+@dataclass(frozen=True)
+class AgentIdentity:
+    """The two id namespaces an agent participates in besides its own id.
+
+    ``decision_id`` names the *action* an agent performs and is what lands in
+    ``ai_decision_logs.agent_id`` — deliberately a different vocabulary from
+    the :class:`AgentId` that lands in ``created_by``, because decisions are
+    grouped by the work they represent rather than by who did it.
+    ``component_category`` selects the ``ai_model_configs`` row the agent
+    inherits its model from (GH #89).
+    """
+
+    decision_id: str
+    component_category: str
+
+
+AGENT_IDENTITY: Dict[AgentId, AgentIdentity] = {
+    AgentId.TRIAGE: AgentIdentity("triage", "triage"),
+    AgentId.INVESTIGATOR: AgentIdentity("investigation", "investigation"),
+    AgentId.THREAT_HUNTER: AgentIdentity("threat_hunt", "investigation"),
+    AgentId.CORRELATOR: AgentIdentity("correlation", "investigation"),
+    AgentId.RESPONDER: AgentIdentity("response", "investigation"),
+    AgentId.REPORTER: AgentIdentity("reporting", "reporting"),
+    AgentId.MITRE_ANALYST: AgentIdentity("mitre_mapping", "investigation"),
+    AgentId.FORENSICS: AgentIdentity("forensics", "investigation"),
+    AgentId.THREAT_INTEL: AgentIdentity("threat_intel", "investigation"),
+    AgentId.COMPLIANCE: AgentIdentity("compliance", "investigation"),
+    AgentId.MALWARE_ANALYST: AgentIdentity("malware_analysis", "investigation"),
+    AgentId.NETWORK_ANALYST: AgentIdentity("network_analysis", "investigation"),
+    AgentId.AUTO_RESPONDER: AgentIdentity("auto_response", "investigation"),
+}
+
+DEFAULT_COMPONENT_CATEGORY = "investigation"
 
 
 @dataclass
@@ -29,7 +102,10 @@ class AgentProfile:
     # GH #89 — which ai_model_configs row to consult when `model` is None.
     # One of: 'triage', 'investigation', 'reporting'. Custom agents default
     # to 'investigation' unless the user picks otherwise in the builder.
-    component_category: str = "investigation"
+    component_category: str = DEFAULT_COMPONENT_CATEGORY
+    # GH #476 — action id stamped on this agent's ai_decision_logs rows. Custom
+    # agents have no action of their own, so they log under their agent id.
+    decision_id: str = ""
 
 
 # Memory-palace section is separate from BASE_PROMPT so we can omit it
@@ -151,26 +227,6 @@ Use MCP tools (server_tool format):
 </principles>
 
 {methodology}"""
-
-
-# GH #89 — maps each built-in agent id to the ai_model_configs component it
-# inherits its model from. Kept outside AGENT_CONFIGS so the per-agent dicts
-# stay focused on prompt content.
-_BUILTIN_COMPONENT_CATEGORY: Dict[str, str] = {
-    "triage": "triage",
-    "investigator": "investigation",
-    "threat_hunter": "investigation",
-    "correlator": "investigation",
-    "responder": "investigation",
-    "reporter": "reporting",
-    "mitre_analyst": "investigation",
-    "forensics": "investigation",
-    "threat_intel": "investigation",
-    "compliance": "investigation",
-    "malware_analyst": "investigation",
-    "network_analyst": "investigation",
-    "auto_responder": "investigation",
-}
 
 
 AGENT_CONFIGS = {
@@ -560,6 +616,7 @@ class SOCAgentLibrary:
 
     @staticmethod
     def _build_agent(agent_id: str, cfg: dict) -> AgentProfile:
+        identity = AGENT_IDENTITY[AgentId(agent_id)]
         prompt = render_base_prompt(
             role=cfg["role"],
             extra_principles=cfg.get("extra_principles", ""),
@@ -581,9 +638,8 @@ class SOCAgentLibrary:
             # from ai_model_configs[component_category] with chat_default as
             # the ultimate fallback.
             model=None,
-            component_category=_BUILTIN_COMPONENT_CATEGORY.get(
-                agent_id, "investigation"
-            ),
+            component_category=identity.component_category,
+            decision_id=identity.decision_id,
         )
 
     @staticmethod
@@ -621,7 +677,10 @@ class SOCAgentLibrary:
             # GH #89 — custom agents can pin a model; falling back to the
             # component_category (default 'investigation') if not set.
             model=(row.get("model") or None),
-            component_category=(row.get("component_category") or "investigation"),
+            component_category=(
+                row.get("component_category") or DEFAULT_COMPONENT_CATEGORY
+            ),
+            decision_id=row["id"],
         )
 
     @staticmethod
@@ -632,11 +691,14 @@ class SOCAgentLibrary:
 
 CUSTOM_AGENT_ID_PREFIX = "custom-"
 
+# Fallback whenever a caller names no agent, and the landing agent for a new session.
+DEFAULT_AGENT_ID = AgentId.INVESTIGATOR.value
+
 
 class AgentManager:
     def __init__(self):
         self.agents = SOCAgentLibrary.get_all_agents()
-        self.current_agent_id = "investigator"
+        self.current_agent_id = DEFAULT_AGENT_ID
         # Load DB-backed custom agents at startup so /agents/agents returns
         # a unified list without waiting for a later CRUD call to trigger
         # refresh. Failures (DB not ready) are logged inside the helper,
@@ -682,9 +744,6 @@ class AgentManager:
             logger.warning(f"Unable to refresh custom agents from DB: {e}")
             return 0
 
-    def get_current_agent(self) -> AgentProfile:
-        return self.agents.get(self.current_agent_id, self.agents["investigator"])
-
     def set_current_agent(self, agent_id: str) -> bool:
         if agent_id in self.agents:
             self.current_agent_id = agent_id
@@ -700,6 +759,7 @@ class AgentManager:
                 "icon": a.icon,
                 "color": a.color,
                 "specialization": a.specialization,
+                "decision_id": a.decision_id,
             }
             for a in self.agents.values()
         ]
@@ -707,11 +767,11 @@ class AgentManager:
     def get_agent_by_task(self, task: str) -> Optional[AgentProfile]:
         t = task.lower()
         mapping = [
-            (["triage", "prioritize", "quick"], "triage"),
-            (["investigate", "deep dive", "analyze"], "investigator"),
-            (["hunt", "proactive", "search"], "threat_hunter"),
-            (["correlate", "relate", "connect", "pattern"], "correlator"),
-            (["respond", "contain", "remediate"], "responder"),
+            (["triage", "prioritize", "quick"], AgentId.TRIAGE),
+            (["investigate", "deep dive", "analyze"], AgentId.INVESTIGATOR),
+            (["hunt", "proactive", "search"], AgentId.THREAT_HUNTER),
+            (["correlate", "relate", "connect", "pattern"], AgentId.CORRELATOR),
+            (["respond", "contain", "remediate"], AgentId.RESPONDER),
             (
                 [
                     "report",
@@ -721,16 +781,16 @@ class AgentManager:
                     "board report",
                     "risk posture",
                 ],
-                "reporter",
+                AgentId.REPORTER,
             ),
-            (["mitre", "att&ck", "technique", "tactic"], "mitre_analyst"),
-            (["forensic", "artifact", "evidence"], "forensics"),
-            (["threat intel", "intelligence", "actor"], "threat_intel"),
-            (["compliance", "policy", "regulation"], "compliance"),
-            (["malware", "virus", "trojan", "ransomware"], "malware_analyst"),
-            (["network", "traffic", "packet", "flow"], "network_analyst"),
+            (["mitre", "att&ck", "technique", "tactic"], AgentId.MITRE_ANALYST),
+            (["forensic", "artifact", "evidence"], AgentId.FORENSICS),
+            (["threat intel", "intelligence", "actor"], AgentId.THREAT_INTEL),
+            (["compliance", "policy", "regulation"], AgentId.COMPLIANCE),
+            (["malware", "virus", "trojan", "ransomware"], AgentId.MALWARE_ANALYST),
+            (["network", "traffic", "packet", "flow"], AgentId.NETWORK_ANALYST),
         ]
         for keywords, agent_id in mapping:
             if any(kw in t for kw in keywords):
-                return self.agents[agent_id]
-        return self.agents["investigator"]
+                return self.agents[agent_id.value]
+        return self.agents[DEFAULT_AGENT_ID]

@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_
 
 from database.models import CaseIOC
 from services.unit_of_work import unit_of_work
@@ -22,7 +22,6 @@ class CaseIOCService:
     
     def __init__(self):
         """Initialize the IOC service."""
-        pass
     
     def add_ioc(
         self,
@@ -136,77 +135,6 @@ class CaseIOCService:
         
         return count
     
-    def enrich_ioc(
-        self,
-        ioc_id: int,
-        enrichment_data: Dict,
-        reputation_score: Optional[float] = None,
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Enrich an IOC with threat intelligence data.
-        
-        Args:
-            ioc_id: IOC ID
-            enrichment_data: Enrichment data dictionary
-            reputation_score: Reputation score
-            session: Database session (optional)
-        
-        Returns:
-            True if successful
-        """
-        try:
-            with unit_of_work(session) as session:
-                ioc = session.query(CaseIOC).filter(
-                    CaseIOC.ioc_id == ioc_id
-                ).first()
-
-                if not ioc:
-                    return False
-
-                ioc.enrichment_data = enrichment_data
-                if reputation_score is not None:
-                    ioc.reputation_score = reputation_score
-
-                logger.info(f"Enriched IOC {ioc_id}")
-                return True
-
-        except Exception as e:
-            logger.error(f"Error enriching IOC: {e}")
-            return False
-    
-    def mark_ioc_false_positive(
-        self,
-        ioc_id: int,
-        session: Optional[Session] = None
-    ) -> bool:
-        """
-        Mark an IOC as false positive.
-        
-        Args:
-            ioc_id: IOC ID
-            session: Database session (optional)
-        
-        Returns:
-            True if successful
-        """
-        try:
-            with unit_of_work(session) as session:
-                ioc = session.query(CaseIOC).filter(
-                    CaseIOC.ioc_id == ioc_id
-                ).first()
-
-                if not ioc:
-                    return False
-
-                ioc.is_false_positive = True
-                ioc.is_active = False
-
-                return True
-
-        except Exception as e:
-            logger.error(f"Error marking IOC as false positive: {e}")
-            return False
     
     def get_case_iocs(
         self,

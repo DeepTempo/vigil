@@ -1,11 +1,8 @@
 """MCP client service for connecting to MCP servers and using their tools with persistent connections."""
 
 import asyncio
-import json
 import logging
-from typing import Optional, Dict, List, Any, Tuple, TYPE_CHECKING
-from pathlib import Path
-import platform
+from typing import Optional, Dict, List, Any, TYPE_CHECKING
 import threading
 
 try:
@@ -578,21 +575,6 @@ class MCPClient:
                 return False
         return True
     
-    async def reconnect_to_server(self, server_name: str) -> bool:
-        """
-        Reconnect to a specific MCP server.
-        
-        Args:
-            server_name: Name of the server to reconnect to
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        # Disconnect if already connected
-        await self.disconnect_from_server(server_name)
-        
-        # Reconnect
-        return await self.connect_to_server(server_name, persistent=True)
     
     def get_connection_status(self) -> Dict[str, bool]:
         """

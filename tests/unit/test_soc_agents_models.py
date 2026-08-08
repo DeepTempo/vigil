@@ -11,12 +11,39 @@ REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from services.soc_agents import (  # noqa: E402
+    AGENT_CONFIGS,
+    AGENT_IDENTITY,
+    AgentId,
     AgentProfile,
+    ORCHESTRATION_DECISION_ID,
     SOCAgentLibrary,
-    _BUILTIN_COMPONENT_CATEGORY,
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_registry_covers_every_agent_exactly_once():
+    """AgentId, AGENT_CONFIGS and AGENT_IDENTITY are one registry in three
+    pieces (#476) — adding an agent to one but not the others is the drift
+    this issue exists to prevent."""
+    ids = {a.value for a in AgentId}
+    assert set(AGENT_CONFIGS) == ids
+    assert {a.value for a in AGENT_IDENTITY} == ids
+
+
+def test_decision_ids_are_unique_and_distinct_from_orchestration():
+    """Decision ids key the AI-Decisions filter, so a collision would silently
+    merge two agents' decisions into one bucket."""
+    decision_ids = [a.decision_id for a in AgentId]
+    assert len(set(decision_ids)) == len(decision_ids)
+    assert ORCHESTRATION_DECISION_ID not in decision_ids
+
+
+def test_component_categories_are_valid_model_registry_components():
+    from services.model_registry import is_valid_component
+
+    for agent in AgentId:
+        assert is_valid_component(agent.component_category), agent.value
 
 
 def test_agent_profile_has_new_fields_with_safe_defaults():
@@ -42,9 +69,7 @@ def test_builtin_categories_cover_all_built_ins():
             "investigation",
             "reporting",
         }, f"{agent_id} has an invalid category: {agent.component_category}"
-        assert agent.component_category == _BUILTIN_COMPONENT_CATEGORY.get(
-            agent_id, "investigation"
-        )
+        assert agent.component_category == AgentId(agent_id).component_category
 
 
 def test_triage_agent_is_categorized_as_triage():

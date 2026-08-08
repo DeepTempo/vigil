@@ -45,17 +45,6 @@ class MCPRegistry:
             self._tools_cache[name] = tools
         logger.info(f"Registered MCP server: {name} ({len(tools or [])} tools)")
 
-    def unregister_server(self, name: str):
-        """Remove a server from the registry."""
-        self._servers.pop(name, None)
-        self._tools_cache.pop(name, None)
-        logger.info(f"Unregistered MCP server: {name}")
-
-    def update_tools(self, name: str, tools: List[Dict]):
-        """Update the tools cache for a server."""
-        self._tools_cache[name] = tools
-        if name in self._servers:
-            self._servers[name]["active"] = True
 
     def get_active_servers(self) -> List[str]:
         """Get names of all active servers."""
@@ -91,9 +80,6 @@ class MCPRegistry:
         
         return all_tools
 
-    def get_tools_for_server(self, server_name: str) -> List[Dict]:
-        """Get tools for a specific server."""
-        return self._tools_cache.get(server_name, [])
 
     def get_tool_names(self) -> List[str]:
         """Get all tool names (server-prefixed) from active servers."""
@@ -120,64 +106,6 @@ class MCPRegistry:
                 })
         return configs
 
-    async def refresh_from_mcp_client(self):
-        """
-        Refresh registry from the live MCP client connections.
-        
-        Queries each connected MCP server for its available tools and
-        updates the registry accordingly.
-        """
-        try:
-            from services.mcp_client import get_mcp_client
-            from services.mcp_service import MCPService
-            
-            mcp_client = get_mcp_client()
-            if not mcp_client:
-                logger.warning("MCP client not available for registry refresh")
-                return
-            
-            # Get tools from all connected servers
-            tools_dict = await mcp_client.list_tools()
-            
-            for server_name, server_tools in tools_dict.items():
-                # Convert tool objects to dicts if needed
-                tools = []
-                for tool in server_tools:
-                    if isinstance(tool, dict):
-                        tools.append(tool)
-                    else:
-                        # Convert from MCP tool object
-                        input_schema = getattr(tool, "inputSchema", {})
-                        if hasattr(input_schema, "model_dump"):
-                            input_schema = input_schema.model_dump()
-                        elif not isinstance(input_schema, dict):
-                            input_schema = dict(input_schema) if input_schema else {}
-                        
-                        tools.append({
-                            "name": getattr(tool, "name", "unknown"),
-                            "description": getattr(tool, "description", ""),
-                            "inputSchema": input_schema,
-                        })
-                
-                # Get server config from MCPService
-                config = {}
-                mcp_service = mcp_client.mcp_service
-                if mcp_service and server_name in mcp_service.servers:
-                    server = mcp_service.servers[server_name]
-                    config = {
-                        "command": server.command,
-                        "args": server.args,
-                        "env": server.env,
-                    }
-                
-                self.register_server(server_name, config, tools)
-            
-            self._last_refresh = datetime.now()
-            logger.info(f"Registry refreshed: {len(self._servers)} servers, "
-                       f"{sum(len(t) for t in self._tools_cache.values())} total tools")
-            
-        except Exception as e:
-            logger.error(f"Error refreshing MCP registry: {e}")
 
     def get_summary(self) -> Dict[str, Any]:
         """Get a summary of the registry state."""

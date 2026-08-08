@@ -50,8 +50,6 @@ class WorkdirManager:
     def exists(self, investigation_id: str) -> bool:
         return (self.base_dir / investigation_id).is_dir()
     
-    def get_path(self, investigation_id: str) -> Path:
-        return self.base_dir / investigation_id
     
     def read_file(self, investigation_id: str, filename: str) -> str:
         filepath = self._safe_path(investigation_id, filename)
@@ -98,18 +96,7 @@ class WorkdirManager:
     def write_state(self, investigation_id: str, state: Dict[str, Any]):
         self.write_file(investigation_id, "state.json", json.dumps(state, indent=2, default=str))
     
-    def read_json(self, investigation_id: str, filename: str) -> Any:
-        raw = self.read_file(investigation_id, filename)
-        if not raw.strip():
-            return [] if filename.endswith(".json") else {}
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            logger.warning(f"Corrupt {filename} for {investigation_id}")
-            return []
     
-    def write_json(self, investigation_id: str, filename: str, data: Any):
-        self.write_file(investigation_id, filename, json.dumps(data, indent=2, default=str))
     
     def append_log(self, investigation_id: str, event: Dict[str, Any]):
         event.setdefault("ts", datetime.utcnow().isoformat())

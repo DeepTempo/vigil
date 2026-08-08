@@ -259,48 +259,6 @@ class ContextManager:
         )
         return total_tokens > available_tokens, total_tokens, available_tokens
 
-    @staticmethod
-    def split_messages_for_summary(
-        messages: List[Dict], available_tokens: int
-    ) -> Tuple[List, List]:
-        if not messages:
-            return [], []
-        recent_budget = int(available_tokens * 0.6)
-        keep: List = []
-        used = 0
-        for msg in reversed(messages):
-            msg_tokens = ContextManager.estimate_tokens(msg.get("content", ""))
-            if used + msg_tokens > recent_budget and len(keep) >= 2:
-                break
-            keep.insert(0, msg)
-            used += msg_tokens
-        keep_start_idx = len(messages) - len(keep)
-        return messages[:keep_start_idx], keep
-
-    @staticmethod
-    def format_messages_for_summary(messages: List[Dict]) -> str:
-        parts = []
-        for msg in messages:
-            role = msg.get("role", "unknown").upper()
-            text = _flatten_content_to_text(msg.get("content", ""))
-            if text.strip():
-                parts.append(f"{role}: {text}")
-        return "\n\n".join(parts)
-
-    @staticmethod
-    def build_summary_prompt(conversation_text: str) -> str:
-        max_chars = 400000
-        if len(conversation_text) > max_chars:
-            conversation_text = (
-                conversation_text[:max_chars] + "\n\n[... earlier messages truncated ...]"
-            )
-        return (
-            "Summarize the following conversation between a user and an AI security assistant.\n"
-            "Preserve ALL finding IDs, case IDs, IOCs, investigation decisions, and entity references.\n\n"
-            f"CONVERSATION ({len(conversation_text)} chars):\n"
-            f"{conversation_text}\n\n"
-            "Provide a structured summary preserving all critical context."
-        )
 
     # ------------------------------------------------------------------
     # Rolling summary compression (no LLM call, provider-agnostic)
@@ -441,16 +399,3 @@ class ContextManager:
         )
         return prepared, len(overflow)
 
-    async def prepare_context_async(
-        self,
-        messages: List[Dict],
-        system_prompt: Optional[str] = None,
-        model: str = DEFAULT_MODEL,
-        max_context_tokens: int = 180000,
-        backend_tools: Optional[List] = None,
-        mcp_tools: Optional[List] = None,
-    ) -> Tuple[List[Dict], int]:
-        prepared, overflow = self.prepare_context(
-            messages, "", system_prompt, backend_tools, mcp_tools, max_context_tokens
-        )
-        return prepared, len(overflow)

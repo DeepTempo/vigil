@@ -23,7 +23,7 @@ class MicrosoftDefenderIngestion(SIEMIngestionService):
         """Initialize Microsoft Defender ingestion."""
         super().__init__()
         self.siem_name = "Microsoft Defender"
-        self.config = get_integration_config('microsoft_defender')
+        self.config = get_integration_config('microsoft-defender')
         self.access_token = None
     
     def _get_access_token(self) -> Optional[str]:
