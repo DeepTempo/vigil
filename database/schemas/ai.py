@@ -157,8 +157,14 @@ class ChatMessageSchema(ORMSchema):
     created_at: OptDateTime = None
 
 
-class ConversationSchema(ORMSchema):
-    """Conversation."""
+class ConversationSummarySchema(ORMSchema):
+    """A conversation without its messages, for the history list.
+
+    ``messages`` is left undeclared rather than excluded at dump time.
+    Pydantic populates every declared field while validating, so an excluded
+    relationship would still be lazy-loaded — a query per row — before being
+    dropped from the output.
+    """
 
     id: Optional[str] = None
     user_id: Optional[str] = None
@@ -170,9 +176,9 @@ class ConversationSchema(ORMSchema):
     created_at: OptDateTime = None
     updated_at: OptDateTime = None
     last_message_at: OptDateTime = None
-    messages: list[ChatMessageSchema] = Field(default_factory=list)
 
-    @classmethod
-    def dump_summary(cls, obj: Any, **kwargs: Any) -> dict:
-        """Serialize without the inlined message list."""
-        return cls.dump(obj, exclude={"messages"}, **kwargs)
+
+class ConversationSchema(ConversationSummarySchema):
+    """A conversation with its messages inlined, for the detail endpoint."""
+
+    messages: list[ChatMessageSchema] = Field(default_factory=list)

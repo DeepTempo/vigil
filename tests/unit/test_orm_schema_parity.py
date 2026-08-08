@@ -21,6 +21,7 @@ from database.schemas.ai import (
     AIModelConfigSchema,
     ChatMessageSchema,
     ConversationSchema,
+    ConversationSummarySchema,
     LLMInteractionLogSchema,
     LLMProviderConfigSchema,
 )
@@ -182,11 +183,11 @@ SCHEMA_REGISTRY: dict[str, dict] = {
         models.Conversation,
         {
             "populated.to_dict.default": ConversationSchema.dump,
-            "populated.to_summary_dict.default": ConversationSchema.dump_summary,
+            "populated.to_summary_dict.default": ConversationSummarySchema.dump,
             "empty.to_dict.default": ConversationSchema.dump,
-            "empty.to_summary_dict.default": ConversationSchema.dump_summary,
+            "empty.to_summary_dict.default": ConversationSummarySchema.dump,
             "related.to_dict.default": ConversationSchema.dump,
-            "related.to_summary_dict.default": ConversationSchema.dump_summary,
+            "related.to_summary_dict.default": ConversationSummarySchema.dump,
         },
     ),
     # Configuration and threat intel.

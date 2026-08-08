@@ -9,6 +9,7 @@ from database.schemas.ai import (
     AIModelConfigSchema,
     ChatMessageSchema,
     ConversationSchema,
+    ConversationSummarySchema,
     LLMInteractionLogSchema,
     LLMProviderConfigSchema,
 )
@@ -87,6 +88,7 @@ __all__ = [
     "ChatMessageSchema",
     "ConfigAuditLogSchema",
     "ConversationSchema",
+    "ConversationSummarySchema",
     "CustomAgentSchema",
     "CustomWorkflowSchema",
     "FederationSourceSchema",
