@@ -17,7 +17,9 @@ beforeEach(() => {
   runId = randomUUID();
 });
 
-function startJob(id: string): RunJob {
+type StartJob = Extract<RunJob, { reason: "start" }>;
+
+function startJob(id: string): StartJob {
   return {
     schema_version: 1,
     run_id: id,
@@ -27,6 +29,20 @@ function startJob(id: string): RunJob {
     enqueued_by: "test",
     reason: "start",
     request: { arch: "arch/threathunt.yaml", playbook: "demo.yaml", config: "vigil.config.yaml", prompt: "go" },
+  };
+}
+
+// Built rather than spread from a start job: a resume carries no request, and a
+// fixture that smuggled one in would not be testing the contract.
+function resumeJob(id: string): RunJob {
+  return {
+    schema_version: 1,
+    run_id: id,
+    run_kind: "hunt",
+    tenant_id: null,
+    enqueued_at: new Date().toISOString(),
+    enqueued_by: "watchdog",
+    reason: "resume",
   };
 }
 
@@ -69,7 +85,7 @@ describe("the walking skeleton run", () => {
       },
     ]);
 
-    await advance(ledger, { ...startJob(runId), reason: "resume" } as RunJob);
+    await advance(ledger, resumeJob(runId));
 
     const events = await ledger.read(runId);
     expect(events.map((event) => event.kind)).toEqual(["run", "terminal"]);
@@ -77,13 +93,12 @@ describe("the walking skeleton run", () => {
 
   it("is idempotent when the run already reached terminal", async () => {
     await advance(ledger, startJob(runId));
-    await advance(ledger, { ...startJob(runId), reason: "resume" } as RunJob);
+    await advance(ledger, resumeJob(runId));
 
     expect(await ledger.read(runId)).toHaveLength(2);
   });
 
   it("refuses to resume a run that has no ledger", async () => {
-    const resume = { ...startJob(runId), reason: "resume" } as RunJob;
-    await expect(advance(ledger, resume)).rejects.toThrow(/has no ledger/);
+    await expect(advance(ledger, resumeJob(runId))).rejects.toThrow(/has no ledger/);
   });
 });
