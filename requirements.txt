@@ -89,9 +89,8 @@ respx>=0.21.0  # httpx mocking — required by tests/unit/test_elastic_service.p
 arq>=0.27.0
 redis>=5.0.0
 
-# Agent-layer queue. ARQ is Python-only, so runs bound for the TypeScript worker
-# go through BullMQ instead. Pinned in step with services/agent/package.json's bullmq: the two
-# share a key layout and Lua scripts, so their major versions move together.
+# Agent-layer queue, on one wire format with the agent package's npm bullmq.
+# Capped below 2.16, which needs redis>=6 while arq needs redis<6.
 bullmq==2.15.0
 
 # Kafka ingestion (optional; only used when KAFKA_ENABLED=true)
