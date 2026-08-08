@@ -14,6 +14,7 @@ from typing import Dict, Optional
 from unittest.mock import patch
 
 import pytest
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -26,8 +27,8 @@ sys.path.insert(0, str(REPO))
 
 from services.api.routers.llm_providers import router as llm_providers_router
 from services.api.middleware.auth import get_current_active_user
-from core.storage.connection import get_db
 from core.storage.models import LLMProviderConfig, User
+from core.routing import request_unit_of_work
 
 
 pytestmark = pytest.mark.unit
@@ -63,7 +64,7 @@ class _FakeSession:
     def __init__(self):
         self._store: Dict[str, LLMProviderConfig] = {}
         self._added = []
-        self.commits = 0
+        self.flushes = 0
 
     @property
     def no_autoflush(self):
@@ -74,6 +75,9 @@ class _FakeSession:
         return nullcontext()
 
     def flush(self):
+        # Endpoints no longer commit — the request's unit of work owns that —
+        # so flush is the only write barrier they ask the session for.
+        self.flushes += 1
         return None
 
     def query(self, _model):
@@ -88,9 +92,6 @@ class _FakeSession:
 
     def delete(self, row):
         self._store.pop(row.provider_id, None)
-
-    def commit(self):
-        self.commits += 1
 
     def refresh(self, _row):
         return None
@@ -125,7 +126,7 @@ def client(session):
     def _get_session():
         return session
 
-    app.dependency_overrides[get_db] = _get_session
+    app.dependency_overrides[request_unit_of_work] = _get_session
     # Bypass cookie/JWT auth for unit tests — the security-coverage tests
     # in tests/security/ exercise the real path.
     app.dependency_overrides[get_current_active_user] = _fake_admin_user

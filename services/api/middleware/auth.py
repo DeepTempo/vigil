@@ -5,6 +5,7 @@ Provides middleware for FastAPI to validate JWT tokens and check permissions.
 Supports DEV_MODE for bypassing authentication during development.
 """
 
+from core.routing import UnitOfWorkSession
 import logging
 from typing import Optional
 from fastapi import HTTPException, Header, Depends, Request, status
@@ -14,7 +15,6 @@ from core.auth.auth_cookies import ACCESS_COOKIE_NAME
 from core.auth.auth_service import AuthService
 from core.auth.token_blacklist import is_token_revoked
 from core.storage.models import User
-from core.storage.connection import get_db
 
 from core.config import get_settings
 
@@ -73,7 +73,8 @@ def _get_dev_user(session: Session) -> User:
 async def get_current_user(
     request: Request,
     authorization: Optional[str] = Header(None),
-    session: Session = Depends(get_db),
+    *,
+    session: UnitOfWorkSession,
 ) -> User:
     """
     Resolve the authenticated user from either the access_token HttpOnly

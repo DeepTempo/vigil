@@ -13,16 +13,15 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from core.storage.models import Finding, Case, CaseClosureInfo, LLMInteractionLog
-from core.storage.connection import get_db, get_db_session
 from core.reporting.ai_insights_service import AIInsightsService
 from core.threat_intel.mitre_lookup import get_time_range, resolve_technique  # noqa: F401
-from core.routing import Auth, RouterMeta
+from core.routing import Auth, RouterMeta, UnitOfWorkSession
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,8 @@ ai_insights_service = AIInsightsService()
 @router.get("/analytics")
 async def get_analytics(
     time_range: str = Query("7d", pattern="^(24h|7d|30d|all)$"),
-    db: Session = Depends(get_db),
+    *,
+    db: UnitOfWorkSession,
 ) -> Dict[str, Any]:
     """
     Get comprehensive analytics data for the specified time range.
@@ -127,7 +127,8 @@ async def _collect_insights_inputs(
 @router.get("/analytics/insights")
 async def get_analytics_insights(
     time_range: str = Query("7d", pattern="^(24h|7d|30d|all)$"),
-    db: Session = Depends(get_db),
+    *,
+    db: UnitOfWorkSession,
 ) -> Dict[str, Any]:
     """Return cached AI insights for the given time_range.
 
@@ -163,7 +164,8 @@ async def get_analytics_insights(
 @router.post("/analytics/insights/refresh")
 async def refresh_analytics_insights(
     time_range: str = Query("7d", pattern="^(24h|7d|30d|all)$"),
-    db: Session = Depends(get_db),
+    *,
+    db: UnitOfWorkSession,
 ) -> Dict[str, Any]:
     """Force a background regeneration of insights for the given time_range.
 
@@ -745,7 +747,8 @@ async def get_mitre_technique_distribution(
 @router.get("/analytics/cost")
 async def get_cost_analytics(
     time_range: str = Query("7d", pattern="^(24h|7d|30d|all)$"),
-    db: Session = Depends(get_db),
+    *,
+    db: UnitOfWorkSession,
 ) -> Dict[str, Any]:
     """Return LLM cost + token breakdown for the given window.
 

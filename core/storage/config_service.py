@@ -11,6 +11,7 @@ from contextlib import contextmanager
 
 from core.storage.connection import get_db_manager
 from core.storage.models import SystemConfig, IntegrationConfig, ConfigAuditLog
+from core.storage.schemas import IntegrationConfigSchema
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -166,7 +167,7 @@ class ConfigService:
                 ).first()
                 
                 if integration:
-                    return integration.to_dict()
+                    return IntegrationConfigSchema.dump(integration)
                 
                 return None
                 
@@ -271,7 +272,7 @@ class ConfigService:
                     query = query.filter_by(enabled=True)
                 
                 integrations = query.all()
-                return [integration.to_dict() for integration in integrations]
+                return IntegrationConfigSchema.dump_many(integrations)
                 
         except Exception as e:
             logger.error(f"Error listing integrations: {e}")

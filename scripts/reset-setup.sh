@@ -92,7 +92,7 @@ except Exception:
 try:
     from sqlalchemy import text
 
-    from database.connection import get_db_manager
+    from core.storage.connection import get_db_manager
 
     m = get_db_manager()
     if m._engine is None:

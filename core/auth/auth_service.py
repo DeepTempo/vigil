@@ -20,9 +20,7 @@ from sqlalchemy.orm import Session
 from core.storage.models import User, Role
 from core.config import get_settings
 from core.secrets import get_secret
-from core.storage.connection import get_db_session
-from core.config import get_settings
-from core.secrets import get_secret
+from core.storage.unit_of_work import unit_of_work
 
 logger = logging.getLogger(__name__)
 
@@ -212,106 +210,107 @@ class AuthService:
     def authenticate_user(
         username_or_email: str, password: str, session: Optional[Session] = None
     ) -> Optional[User]:
-        should_close_session = session is None
-        session = session or get_db_session()
-
+        # The unit of work must see any failure, so it sits inside the try —
+        # the handlers below swallow the exception and would otherwise let a
+        # failed attempt commit.
         try:
-            # Try to find user by username or email
-            user = (
-                session.query(User)
-                .filter(
-                    (User.username == username_or_email)
-                    | (User.email == username_or_email)
-                )
-                .first()
-            )
-
-            if not user:
-                logger.warning("Login attempt for unknown identifier")
-                return None
-
-            if not user.is_active:
-                logger.warning("Login attempt for inactive account: %s", user.username)
-                return None
-
-            # Reject while locked. Lockout is authoritative even over a correct
-            # password — otherwise an attacker who eventually guesses right
-            # would bypass the wait.
-            now = datetime.utcnow()
-            if user.locked_until and user.locked_until > now:
-                logger.warning(
-                    "Login rejected, account locked: %s until %s",
-                    user.username,
-                    user.locked_until.isoformat(),
-                )
-                raise AccountLockedError(user.locked_until)
-
-            # Verify password
-            if not AuthService.verify_password(password, user.password_hash):
-                user.failed_login_count = (user.failed_login_count or 0) + 1
-                if user.failed_login_count >= LOCKOUT_THRESHOLD:
-                    user.locked_until = now + timedelta(
-                        minutes=LOCKOUT_DURATION_MINUTES
+            with unit_of_work(session) as session:
+                # Try to find user by username or email
+                user = (
+                    session.query(User)
+                    .filter(
+                        (User.username == username_or_email)
+                        | (User.email == username_or_email)
                     )
+                    .first()
+                )
+
+                if not user:
+                    logger.warning("Login attempt for unknown identifier")
+                    return None
+
+                if not user.is_active:
                     logger.warning(
-                        "Account locked after %d failed attempts: %s",
-                        user.failed_login_count,
-                        user.username,
+                        "Login attempt for inactive account: %s", user.username
                     )
-                session.commit()
-                logger.warning("Invalid password for user: %s", user.username)
-                return None
+                    return None
 
-            # Success — reset lockout state and update session tracking
-            user.failed_login_count = 0
-            user.locked_until = None
-            user.last_login = now
-            user.login_count += 1
-            session.commit()
+                # Reject while locked. Lockout is authoritative even over a
+                # correct password — otherwise an attacker who eventually
+                # guesses right would bypass the wait.
+                now = datetime.utcnow()
+                if user.locked_until and user.locked_until > now:
+                    logger.warning(
+                        "Login rejected, account locked: %s until %s",
+                        user.username,
+                        user.locked_until.isoformat(),
+                    )
+                    raise AccountLockedError(user.locked_until)
 
-            logger.info(f"User authenticated successfully: {username_or_email}")
-            return user
+                # Verify password
+                if not AuthService.verify_password(password, user.password_hash):
+                    AuthService._record_failed_attempt(user.user_id, now)
+                    logger.warning("Invalid password for user: %s", user.username)
+                    return None
+
+                # Success — reset lockout state and update session tracking
+                user.failed_login_count = 0
+                user.locked_until = None
+                user.last_login = now
+                user.login_count += 1
+
+                logger.info(f"User authenticated successfully: {username_or_email}")
+                return user
 
         except AccountLockedError:
             raise
         except Exception as e:
             logger.error(f"Authentication error: {e}")
-            session.rollback()
             return None
 
-        finally:
-            if should_close_session:
-                session.close()
+    @staticmethod
+    def _record_failed_attempt(user_id: str, now: datetime) -> None:
+        """Persist one failed login attempt in its own transaction.
+
+        Deliberately does not join the caller's transaction: the login endpoint
+        answers a failed attempt with 401, which rolls that transaction back. If
+        this bookkeeping went with it the counter would never survive, the
+        threshold would never trip, and the lockout would silently do nothing.
+        """
+        with unit_of_work() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if not user:
+                return
+            user.failed_login_count = (user.failed_login_count or 0) + 1
+            if user.failed_login_count >= LOCKOUT_THRESHOLD:
+                user.locked_until = now + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+                logger.warning(
+                    "Account locked after %d failed attempts: %s",
+                    user.failed_login_count,
+                    user.username,
+                )
 
     @staticmethod
     def setup_mfa(user_id: str, session: Optional[Session] = None) -> Optional[str]:
-        should_close_session = session is None
-        session = session or get_db_session()
-
         try:
-            user = session.query(User).filter(User.user_id == user_id).first()
-            if not user:
-                return None
+            with unit_of_work(session) as session:
+                user = session.query(User).filter(User.user_id == user_id).first()
+                if not user:
+                    return None
 
-            secret = pyotp.random_base32()
-            user.mfa_secret = AuthService._encrypt_mfa_secret(secret)
-            user.mfa_enabled = False
-            # Clear any stale codes from a prior setup attempt; fresh codes
-            # are issued at enable time.
-            user.mfa_recovery_codes = []
-            session.commit()
+                secret = pyotp.random_base32()
+                user.mfa_secret = AuthService._encrypt_mfa_secret(secret)
+                user.mfa_enabled = False
+                # Clear any stale codes from a prior setup attempt; fresh codes
+                # are issued at enable time.
+                user.mfa_recovery_codes = []
 
-            logger.info(f"MFA setup initiated for user: {user.username}")
-            return secret
+                logger.info(f"MFA setup initiated for user: {user.username}")
+                return secret
 
         except Exception as e:
             logger.error(f"MFA setup error: {e}")
-            session.rollback()
             return None
-
-        finally:
-            if should_close_session:
-                session.close()
 
     @staticmethod
     def enable_mfa(
@@ -327,36 +326,28 @@ class AuthService:
             - [] if the code is valid but MFA was already enabled (no reissue)
             - None if there is no pending secret or the code is invalid
         """
-        should_close_session = session is None
-        session = session or get_db_session()
-
         try:
-            user = session.query(User).filter(User.user_id == user_id).first()
-            if not user or not user.mfa_secret:
-                return None
+            with unit_of_work(session) as session:
+                user = session.query(User).filter(User.user_id == user_id).first()
+                if not user or not user.mfa_secret:
+                    return None
 
-            if not AuthService._verify_totp(user.mfa_secret, code):
-                return None
+                if not AuthService._verify_totp(user.mfa_secret, code):
+                    return None
 
-            if user.mfa_enabled:
-                # Already enabled — codes were issued at enable time, don't
-                # silently reissue. Use the regenerate endpoint to rotate.
-                return []
+                if user.mfa_enabled:
+                    # Already enabled — codes were issued at enable time, don't
+                    # silently reissue. Use the regenerate endpoint to rotate.
+                    return []
 
-            user.mfa_enabled = True
-            codes, user.mfa_recovery_codes = AuthService._generate_recovery_codes()
-            session.commit()
-            logger.info(f"MFA enabled for user: {user.username}")
-            return codes
+                user.mfa_enabled = True
+                codes, user.mfa_recovery_codes = AuthService._generate_recovery_codes()
+                logger.info(f"MFA enabled for user: {user.username}")
+                return codes
 
         except Exception as e:
             logger.error(f"MFA enable error: {e}")
-            session.rollback()
             return None
-
-        finally:
-            if should_close_session:
-                session.close()
 
     @staticmethod
     def get_mfa_recovery_codes(
@@ -367,26 +358,18 @@ class AuthService:
         Returns plaintext codes. Caller must display them once; they cannot
         be retrieved again.
         """
-        should_close_session = session is None
-        session = session or get_db_session()
-
         try:
-            user = session.query(User).filter(User.user_id == user_id).first()
-            if not user or not user.mfa_secret:
-                return None
+            with unit_of_work(session) as session:
+                user = session.query(User).filter(User.user_id == user_id).first()
+                if not user or not user.mfa_secret:
+                    return None
 
-            codes, user.mfa_recovery_codes = AuthService._generate_recovery_codes()
-            session.commit()
-            return codes
+                codes, user.mfa_recovery_codes = AuthService._generate_recovery_codes()
+                return codes
 
         except Exception as e:
             logger.error(f"Recovery code generation error: {e}")
-            session.rollback()
             return None
-
-        finally:
-            if should_close_session:
-                session.close()
 
     @staticmethod
     def verify_mfa_code(
@@ -397,45 +380,38 @@ class AuthService:
         Enabling MFA is handled by enable_mfa(); this method assumes MFA is
         already enabled and only validates the supplied code.
         """
-        should_close_session = session is None
-        session = session or get_db_session()
-
         try:
-            user = session.query(User).filter(User.user_id == user_id).first()
-            if not user or not user.mfa_secret:
+            with unit_of_work(session) as session:
+                user = session.query(User).filter(User.user_id == user_id).first()
+                if not user or not user.mfa_secret:
+                    return False
+
+                # Try TOTP first
+                if AuthService._verify_totp(user.mfa_secret, code):
+                    return True
+
+                # Try recovery codes (one-time use)
+                recovery_codes = list(user.mfa_recovery_codes or [])
+                code_bytes = code.strip().upper().encode()
+                for i, hashed in enumerate(recovery_codes):
+                    try:
+                        if bcrypt.checkpw(code_bytes, hashed.encode()):
+                            recovery_codes.pop(i)
+                            user.mfa_recovery_codes = recovery_codes
+                            logger.info(
+                                "Recovery code used for user: %s (%d remaining)",
+                                user.username,
+                                len(recovery_codes),
+                            )
+                            return True
+                    except Exception:
+                        continue
+
                 return False
-
-            # Try TOTP first
-            if AuthService._verify_totp(user.mfa_secret, code):
-                return True
-
-            # Try recovery codes (one-time use)
-            recovery_codes = list(user.mfa_recovery_codes or [])
-            code_bytes = code.strip().upper().encode()
-            for i, hashed in enumerate(recovery_codes):
-                try:
-                    if bcrypt.checkpw(code_bytes, hashed.encode()):
-                        recovery_codes.pop(i)
-                        user.mfa_recovery_codes = recovery_codes
-                        session.commit()
-                        logger.info(
-                            "Recovery code used for user: %s (%d remaining)",
-                            user.username,
-                            len(recovery_codes),
-                        )
-                        return True
-                except Exception:
-                    continue
-
-            return False
 
         except Exception as e:
             logger.error(f"MFA verification error: {e}")
             return False
-
-        finally:
-            if should_close_session:
-                session.close()
 
     @staticmethod
     def _generate_recovery_codes() -> tuple[list[str], list[str]]:
@@ -484,10 +460,7 @@ class AuthService:
         Returns:
             QR code URI or None
         """
-        should_close_session = session is None
-        session = session or get_db_session()
-
-        try:
+        with unit_of_work(session) as session:
             user = session.query(User).filter(User.user_id == user_id).first()
             if not user or not user.mfa_secret:
                 return None
@@ -496,10 +469,6 @@ class AuthService:
             totp = pyotp.TOTP(decrypted_secret)
             uri = totp.provisioning_uri(name=user.email, issuer_name="Vigil SOC")
             return uri
-
-        finally:
-            if should_close_session:
-                session.close()
 
     @staticmethod
     def check_permission(
@@ -520,10 +489,7 @@ class AuthService:
         if _is_dev_mode():
             return True
 
-        should_close_session = session is None
-        session = session or get_db_session()
-
-        try:
+        with unit_of_work(session) as session:
             user = session.query(User).filter(User.user_id == user_id).first()
             if not user or not user.is_active:
                 return False
@@ -534,10 +500,6 @@ class AuthService:
 
             # Check permission in role's permissions JSONB
             return role.permissions.get(permission, False)
-
-        finally:
-            if should_close_session:
-                session.close()
 
     @staticmethod
     def get_user_permissions(
@@ -574,10 +536,7 @@ class AuthService:
                 "ai_decisions.approve": True,
             }
 
-        should_close_session = session is None
-        session = session or get_db_session()
-
-        try:
+        with unit_of_work(session) as session:
             user = session.query(User).filter(User.user_id == user_id).first()
             if not user:
                 return {}
@@ -587,10 +546,6 @@ class AuthService:
                 return {}
 
             return role.permissions
-
-        finally:
-            if should_close_session:
-                session.close()
 
     @staticmethod
     def create_user(
@@ -615,49 +570,44 @@ class AuthService:
         Returns:
             Created User object or None
         """
-        should_close_session = session is None
-        session = session or get_db_session()
-
         try:
-            import uuid
+            with unit_of_work(session) as session:
+                import uuid
 
-            # Check if username or email already exists
-            existing = (
-                session.query(User)
-                .filter((User.username == username) | (User.email == email))
-                .first()
-            )
+                # Check if username or email already exists
+                existing = (
+                    session.query(User)
+                    .filter((User.username == username) | (User.email == email))
+                    .first()
+                )
 
-            if existing:
-                logger.warning(f"User already exists: {username} or {email}")
-                return None
+                if existing:
+                    logger.warning(f"User already exists: {username} or {email}")
+                    return None
 
-            # Create user
-            user = User(
-                user_id=f"user-{uuid.uuid4().hex[:12]}",
-                username=username,
-                email=email,
-                password_hash=AuthService.hash_password(password),
-                full_name=full_name,
-                role_id=role_id,
-                is_active=True,
-                is_verified=False,
-                mfa_enabled=False,
-                login_count=0,
-            )
+                # Create user
+                user = User(
+                    user_id=f"user-{uuid.uuid4().hex[:12]}",
+                    username=username,
+                    email=email,
+                    password_hash=AuthService.hash_password(password),
+                    full_name=full_name,
+                    role_id=role_id,
+                    is_active=True,
+                    is_verified=False,
+                    mfa_enabled=False,
+                    login_count=0,
+                )
 
-            session.add(user)
-            session.commit()
-            session.refresh(user)
+                session.add(user)
+                # Flush so the read-back sees server defaults; the unit of work
+                # commits.
+                session.flush()
+                session.refresh(user)
 
-            logger.info(f"User created: {username}")
-            return user
+                logger.info(f"User created: {username}")
+                return user
 
         except Exception as e:
             logger.error(f"User creation error: {e}")
-            session.rollback()
             return None
-
-        finally:
-            if should_close_session:
-                session.close()

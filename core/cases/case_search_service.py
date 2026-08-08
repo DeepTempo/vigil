@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from core.storage.models import Case, CaseComment, CaseEvidence, CaseIOC
-from core.storage.connection import get_db_session
+from core.storage.schemas import CaseSchema
+from core.storage.case_repository import CaseRepository
+from core.storage.unit_of_work import unit_of_work
 
 logger = logging.getLogger(__name__)
 
@@ -61,87 +63,30 @@ class CaseSearchService:
         Returns:
             Dictionary with results and metadata
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
-            query = session.query(Case)
-            
-            # Full-text search on title and description
-            if query_text:
-                search_pattern = f"%{query_text}%"
-                query = query.filter(
-                    or_(
-                        Case.title.ilike(search_pattern),
-                        Case.description.ilike(search_pattern)
-                    )
-                )
-            
-            # Status filter
-            if status:
-                query = query.filter(Case.status.in_(status))
-            
-            # Priority filter
-            if priority:
-                query = query.filter(Case.priority.in_(priority))
-            
-            # Assignee filter
-            if assignee:
-                query = query.filter(Case.assignee.in_(assignee))
-            
-            # Tags filter (PostgreSQL array contains)
-            if tags:
-                for tag in tags:
-                    query = query.filter(Case.tags.contains([tag]))
-            
-            # MITRE techniques filter
-            if mitre_techniques:
-                for technique in mitre_techniques:
-                    query = query.filter(Case.mitre_techniques.contains([technique]))
-            
-            # Date filters
-            if created_after:
-                query = query.filter(Case.created_at >= created_after)
-            if created_before:
-                query = query.filter(Case.created_at <= created_before)
-            if updated_after:
-                query = query.filter(Case.updated_at >= updated_after)
-            if updated_before:
-                query = query.filter(Case.updated_at <= updated_before)
-            
-            # SLA breach filter
-            if has_sla_breach is not None:
-                from core.storage.models import CaseSLA
-                if has_sla_breach:
-                    query = query.join(CaseSLA).filter(CaseSLA.breached == True)
-                else:
-                    query = query.outerjoin(CaseSLA).filter(
-                        or_(
-                            CaseSLA.breached == False,
-                            CaseSLA.case_id == None
-                        )
-                    )
-            
-            # Get total count before pagination
-            total_count = query.count()
-            
-            # Apply pagination
-            results = query.order_by(
-                Case.updated_at.desc()
-            ).limit(limit).offset(offset).all()
-            
+        with unit_of_work(session) as session:
+            cases, total_count = CaseRepository(session).search(
+                query_text=query_text,
+                status=status,
+                priority=priority,
+                assignee=assignee,
+                tags=tags,
+                mitre_techniques=mitre_techniques,
+                created_after=created_after,
+                created_before=created_before,
+                updated_after=updated_after,
+                updated_before=updated_before,
+                has_sla_breach=has_sla_breach,
+                limit=limit,
+                offset=offset,
+            )
+
             return {
-                'results': [case.to_dict() for case in results],
+                'results': CaseSchema.dump_many(cases),
                 'total': total_count,
                 'limit': limit,
                 'offset': offset,
-                'has_more': (offset + len(results)) < total_count
+                'has_more': (offset + len(cases)) < total_count
             }
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def search_full_text(
         self,
@@ -164,18 +109,14 @@ class CaseSearchService:
         Returns:
             Dictionary with search results
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             search_pattern = f"%{query_text}%"
             results = {
                 'cases': [],
                 'comments': [],
                 'evidence': []
             }
-            
+
             # Search cases
             cases = session.query(Case).filter(
                 or_(
@@ -183,7 +124,7 @@ class CaseSearchService:
                     Case.description.ilike(search_pattern)
                 )
             ).limit(limit).all()
-            
+
             results['cases'] = [
                 {
                     'case_id': case.case_id,
@@ -193,13 +134,13 @@ class CaseSearchService:
                 }
                 for case in cases
             ]
-            
+
             # Search comments
             if search_comments:
                 comments = session.query(CaseComment).filter(
                     CaseComment.content.ilike(search_pattern)
                 ).limit(limit).all()
-                
+
                 results['comments'] = [
                     {
                         'case_id': comment.case_id,
@@ -210,7 +151,7 @@ class CaseSearchService:
                     }
                     for comment in comments
                 ]
-            
+
             # Search evidence
             if search_evidence:
                 evidence_items = session.query(CaseEvidence).filter(
@@ -219,7 +160,7 @@ class CaseSearchService:
                         CaseEvidence.description.ilike(search_pattern)
                     )
                 ).limit(limit).all()
-                
+
                 results['evidence'] = [
                     {
                         'case_id': evidence.case_id,
@@ -230,12 +171,8 @@ class CaseSearchService:
                     }
                     for evidence in evidence_items
                 ]
-            
+
             return results
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def search_by_ioc(
         self,
@@ -254,34 +191,26 @@ class CaseSearchService:
         Returns:
             List of cases containing the IOC
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             query = session.query(CaseIOC).filter(
                 CaseIOC.value.ilike(f"%{ioc_value}%")
             )
-            
+
             if ioc_type:
                 query = query.filter(CaseIOC.ioc_type == ioc_type)
-            
+
             iocs = query.all()
-            
+
             # Get unique case IDs
             case_ids = list(set(ioc.case_id for ioc in iocs))
-            
+
             # Get cases
             cases = session.query(Case).filter(
                 Case.case_id.in_(case_ids)
             ).all()
-            
-            return [case.to_dict() for case in cases]
-        
-        finally:
-            if should_close_session:
-                session.close()
-    
+
+            return CaseSchema.dump_many(cases)
+
     def get_related_cases(
         self,
         case_id: str,
@@ -305,22 +234,18 @@ class CaseSearchService:
         Returns:
             List of related cases with similarity scores
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             case = session.query(Case).filter(Case.case_id == case_id).first()
             if not case:
                 return []
-            
+
             related_cases = {}
-            
+
             # Find cases with shared IOCs
             case_iocs = session.query(CaseIOC).filter(
                 CaseIOC.case_id == case_id
             ).all()
-            
+
             ioc_values = [ioc.value for ioc in case_iocs]
             if ioc_values:
                 shared_ioc_cases = session.query(CaseIOC).filter(
@@ -329,13 +254,13 @@ class CaseSearchService:
                         CaseIOC.case_id != case_id
                     )
                 ).all()
-                
+
                 for ioc in shared_ioc_cases:
                     if ioc.case_id not in related_cases:
                         related_cases[ioc.case_id] = {'score': 0, 'reasons': []}
                     related_cases[ioc.case_id]['score'] += 10
                     related_cases[ioc.case_id]['reasons'].append('shared_ioc')
-            
+
             # Find cases with same MITRE techniques
             if case.mitre_techniques:
                 similar_technique_cases = session.query(Case).filter(
@@ -344,25 +269,25 @@ class CaseSearchService:
                         Case.mitre_techniques.overlap(case.mitre_techniques)
                     )
                 ).all()
-                
+
                 for similar_case in similar_technique_cases:
                     if similar_case.case_id not in related_cases:
                         related_cases[similar_case.case_id] = {'score': 0, 'reasons': []}
-                    
+
                     # Calculate overlap score
                     overlap = len(
                         set(case.mitre_techniques) & set(similar_case.mitre_techniques)
                     )
                     related_cases[similar_case.case_id]['score'] += overlap * 5
                     related_cases[similar_case.case_id]['reasons'].append('shared_mitre_techniques')
-            
+
             # Sort by score and get top results
             sorted_cases = sorted(
                 related_cases.items(),
                 key=lambda x: x[1]['score'],
                 reverse=True
             )[:max_results]
-            
+
             # Get full case data
             result = []
             for case_id_rel, meta in sorted_cases:
@@ -370,14 +295,10 @@ class CaseSearchService:
                     Case.case_id == case_id_rel
                 ).first()
                 if rel_case:
-                    case_dict = rel_case.to_dict()
+                    case_dict = CaseSchema.dump(rel_case)
                     case_dict['similarity_score'] = meta['score']
                     case_dict['similarity_reasons'] = meta['reasons']
                     result.append(case_dict)
-            
+
             return result
-        
-        finally:
-            if should_close_session:
-                session.close()
 

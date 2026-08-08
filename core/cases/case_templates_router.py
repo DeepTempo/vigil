@@ -4,6 +4,7 @@ from typing import List, Optional, Dict
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from core.storage.schemas import CaseSchema, CaseTemplateSchema
 from core.cases.case_workflow_service import CaseWorkflowService
 from core.routing import Auth, RouterMeta
 
@@ -67,7 +68,7 @@ async def list_templates(template_type: Optional[str] = None, active_only: bool 
         List of templates
     """
     templates = workflow_service.list_templates(template_type, active_only)
-    return {"templates": [t.to_dict() for t in templates]}
+    return {"templates": CaseTemplateSchema.dump_many(templates)}
 
 
 @router.get("/{template_id}")
@@ -84,7 +85,7 @@ async def get_template(template_id: str):
     template = workflow_service.get_template(template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    return template.to_dict()
+    return CaseTemplateSchema.dump(template)
 
 
 @router.post("/")
@@ -114,7 +115,7 @@ async def create_template(data: TemplateCreate):
     if not template:
         raise HTTPException(status_code=500, detail="Failed to create template")
     
-    return template.to_dict()
+    return CaseTemplateSchema.dump(template)
 
 
 @router.put("/{template_id}")
@@ -181,5 +182,5 @@ async def create_case_from_template(template_id: str, data: CaseFromTemplate):
     if not case:
         raise HTTPException(status_code=500, detail="Failed to create case from template")
     
-    return case.to_dict()
+    return CaseSchema.dump(case)
 

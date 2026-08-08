@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from core.storage.service import DatabaseService
+from core.storage.schemas import AIDecisionLogSchema
 from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
@@ -119,7 +120,7 @@ async def create_ai_decision(request: CreateAIDecisionRequest):
         if not decision:
             raise HTTPException(status_code=500, detail="Failed to create AI decision log")
         
-        return AIDecisionResponse(**decision.to_dict())
+        return AIDecisionResponse(**AIDecisionLogSchema.dump(decision))
         
     except Exception as e:
         logger.error(f"Error creating AI decision: {e}")
@@ -152,7 +153,7 @@ async def submit_feedback(decision_id: str, request: SubmitFeedbackRequest):
         if not decision:
             raise HTTPException(status_code=404, detail=f"AI decision not found: {decision_id}")
         
-        return AIDecisionResponse(**decision.to_dict())
+        return AIDecisionResponse(**AIDecisionLogSchema.dump(decision))
         
     except HTTPException:
         raise
@@ -203,7 +204,7 @@ async def get_pending_feedback_decisions(
         # Sort by confidence score (lowest first)
         decisions_sorted = sorted(decisions, key=lambda d: d.confidence_score)
 
-        return [AIDecisionResponse(**d.to_dict()) for d in decisions_sorted]
+        return [AIDecisionResponse(**AIDecisionLogSchema.dump(d)) for d in decisions_sorted]
 
     except Exception as e:
         logger.error(f"Error getting pending feedback decisions: {e}")
@@ -240,7 +241,7 @@ async def list_ai_decisions(
         if workflow_id:
             decisions = [d for d in decisions if d.workflow_id == workflow_id]
 
-        return [AIDecisionResponse(**d.to_dict()) for d in decisions]
+        return [AIDecisionResponse(**AIDecisionLogSchema.dump(d)) for d in decisions]
 
     except Exception as e:
         logger.error(f"Error listing AI decisions: {e}")
@@ -257,7 +258,7 @@ async def get_ai_decision(decision_id: str):
         if not decision:
             raise HTTPException(status_code=404, detail=f"AI decision not found: {decision_id}")
 
-        return AIDecisionResponse(**decision.to_dict())
+        return AIDecisionResponse(**AIDecisionLogSchema.dump(decision))
 
     except HTTPException:
         raise

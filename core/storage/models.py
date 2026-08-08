@@ -142,36 +142,6 @@ class Finding(Base):
         ),
     )
 
-    def to_dict(self, include_embedding: bool = True) -> dict:
-        """Convert finding to dictionary. ``include_embedding=False`` omits the
-        768-float vector — used by list/summary responses that never consume it,
-        so they don't ship megabytes of vectors the UI ignores."""
-        d = {
-            "finding_id": self.finding_id,
-            "description": self.description,
-            "mitre_predictions": self.mitre_predictions,
-            "anomaly_score": self.anomaly_score,
-            "entity_context": self.entity_context,
-            "evidence_links": self.evidence_links,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "data_source": self.data_source,
-            "external_id": self.external_id,
-            "cluster_id": self.cluster_id,
-            "severity": self.severity,
-            "status": self.status,
-            "ai_enrichment": self.ai_enrichment,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-        if include_embedding:
-            # pgvector returns a numpy array; coerce to a plain list for JSON
-            # (tolerates a plain list too, for non-pgvector paths).
-            emb = self.embedding
-            if emb is not None and hasattr(emb, "tolist"):
-                emb = emb.tolist()
-            d["embedding"] = emb
-        return d
-
 
 class Case(Base):
     """Case model - represents an investigation case grouping related findings."""
@@ -246,32 +216,6 @@ class Case(Base):
         Index("idx_case_updated_at", "updated_at"),
     )
 
-    def to_dict(self, include_findings: bool = False) -> dict:
-        """Convert case to dictionary."""
-        result = {
-            "case_id": self.case_id,
-            "title": self.title,
-            "description": self.description,
-            "status": self.status,
-            "priority": self.priority,
-            "assignee": self.assignee,
-            "tags": self.tags or [],
-            "notes": self.notes or [],
-            "timeline": self.timeline or [],
-            "activities": self.activities or [],
-            "resolution_steps": self.resolution_steps or [],
-            "mitre_techniques": self.mitre_techniques or [],
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
-        if include_findings:
-            result["findings"] = [f.to_dict() for f in self.findings]
-        else:
-            result["finding_ids"] = [f.finding_id for f in self.findings]
-
-        return result
-
 
 class SketchMapping(Base):
     """Timesketch mapping model - links cases/findings to Timesketch sketches."""
@@ -305,18 +249,6 @@ class SketchMapping(Base):
         Index("idx_sketch_finding_id", "finding_id"),
         Index("idx_sketch_id", "sketch_id"),
     )
-
-    def to_dict(self) -> dict:
-        """Convert sketch mapping to dictionary."""
-        return {
-            "id": self.id,
-            "case_id": self.case_id,
-            "finding_id": self.finding_id,
-            "sketch_id": self.sketch_id,
-            "sketch_name": self.sketch_name,
-            "sketch_url": self.sketch_url,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
 
 
 class AttackLayer(Base):
@@ -354,18 +286,6 @@ class AttackLayer(Base):
         Index("idx_attack_layer_case_id", "case_id"),
         Index("idx_attack_layer_created_at", "created_at"),
     )
-
-    def to_dict(self) -> dict:
-        """Convert attack layer to dictionary."""
-        return {
-            "id": self.id,
-            "name": self.name,
-            "description": self.description,
-            "layer_data": self.layer_data,
-            "case_id": self.case_id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
 
 
 class AIDecisionLog(Base):
@@ -435,34 +355,6 @@ class AIDecisionLog(Base):
         Index("idx_ai_decision_actual_outcome", "actual_outcome"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert AI decision log to dictionary."""
-        return {
-            "id": self.id,
-            "decision_id": self.decision_id,
-            "agent_id": self.agent_id,
-            "workflow_id": self.workflow_id,
-            "finding_id": self.finding_id,
-            "case_id": self.case_id,
-            "decision_type": self.decision_type,
-            "confidence_score": self.confidence_score,
-            "reasoning": self.reasoning,
-            "recommended_action": self.recommended_action,
-            "decision_metadata": self.decision_metadata,
-            "human_reviewer": self.human_reviewer,
-            "human_decision": self.human_decision,
-            "feedback_comment": self.feedback_comment,
-            "accuracy_grade": self.accuracy_grade,
-            "reasoning_grade": self.reasoning_grade,
-            "action_appropriateness": self.action_appropriateness,
-            "actual_outcome": self.actual_outcome,
-            "time_saved_minutes": self.time_saved_minutes,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "feedback_timestamp": (
-                self.feedback_timestamp.isoformat() if self.feedback_timestamp else None
-            ),
-        }
-
 
 class SystemConfig(Base):
     """
@@ -507,18 +399,6 @@ class SystemConfig(Base):
         Index("idx_system_config_updated_at", "updated_at"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert system config to dictionary."""
-        return {
-            "key": self.key,
-            "value": self.value,
-            "description": self.description,
-            "config_type": self.config_type,
-            "updated_by": self.updated_by,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class UserPreference(Base):
     """
@@ -553,18 +433,6 @@ class UserPreference(Base):
 
     # Last login tracking
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-
-    def to_dict(self) -> dict:
-        """Convert user preference to dictionary."""
-        return {
-            "user_id": self.user_id,
-            "preferences": self.preferences,
-            "display_name": self.display_name,
-            "email": self.email,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "last_login": self.last_login.isoformat() if self.last_login else None,
-        }
 
 
 class IntegrationConfig(Base):
@@ -617,25 +485,6 @@ class IntegrationConfig(Base):
         Index("idx_integration_type", "integration_type"),
         Index("idx_integration_updated_at", "updated_at"),
     )
-
-    def to_dict(self) -> dict:
-        """Convert integration config to dictionary."""
-        return {
-            "integration_id": self.integration_id,
-            "enabled": self.enabled,
-            "config": self.config,
-            "integration_name": self.integration_name,
-            "integration_type": self.integration_type,
-            "description": self.description,
-            "last_test_at": (
-                self.last_test_at.isoformat() if self.last_test_at else None
-            ),
-            "last_test_success": self.last_test_success,
-            "last_error": self.last_error,
-            "updated_by": self.updated_by,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
 
 
 class FederationSource(Base):
@@ -698,26 +547,6 @@ class FederationSource(Base):
 
     __table_args__ = (Index("idx_federation_sources_enabled", "enabled"),)
 
-    def to_dict(self) -> dict:
-        return {
-            "source_id": self.source_id,
-            "enabled": self.enabled,
-            "interval_seconds": self.interval_seconds,
-            "max_items": self.max_items,
-            "min_severity": self.min_severity,
-            "cursor": self.cursor,
-            "last_poll_at": (
-                self.last_poll_at.isoformat() if self.last_poll_at else None
-            ),
-            "last_success_at": (
-                self.last_success_at.isoformat() if self.last_success_at else None
-            ),
-            "last_error": self.last_error,
-            "consecutive_errors": self.consecutive_errors,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class ConfigAuditLog(Base):
     """
@@ -758,20 +587,6 @@ class ConfigAuditLog(Base):
         Index("idx_audit_changed_by", "changed_by"),
         Index("idx_audit_timestamp", "timestamp"),
     )
-
-    def to_dict(self) -> dict:
-        """Convert audit log entry to dictionary."""
-        return {
-            "id": self.id,
-            "config_type": self.config_type,
-            "config_key": self.config_key,
-            "action": self.action,
-            "old_value": self.old_value,
-            "new_value": self.new_value,
-            "changed_by": self.changed_by,
-            "change_reason": self.change_reason,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-        }
 
 
 # =============================================================================
@@ -837,24 +652,6 @@ class SLAPolicy(Base):
         Index("idx_sla_policy_active", "is_active"),
         Index("idx_sla_policy_default", "is_default"),
     )
-
-    def to_dict(self) -> dict:
-        """Convert SLA policy to dictionary."""
-        return {
-            "policy_id": self.policy_id,
-            "name": self.name,
-            "description": self.description,
-            "priority_level": self.priority_level,
-            "response_time_hours": self.response_time_hours,
-            "resolution_time_hours": self.resolution_time_hours,
-            "business_hours_only": self.business_hours_only,
-            "escalation_rules": self.escalation_rules,
-            "notification_thresholds": self.notification_thresholds,
-            "is_active": self.is_active,
-            "is_default": self.is_default,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
 
 
 class CaseSLA(Base):
@@ -927,41 +724,6 @@ class CaseSLA(Base):
         Index("idx_case_sla_breached", "breached"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert case SLA to dictionary."""
-        return {
-            "sla_id": self.sla_id,
-            "case_id": self.case_id,
-            "sla_policy_id": self.sla_policy_id,
-            "response_due": (
-                self.response_due.isoformat() if self.response_due else None
-            ),
-            "resolution_due": (
-                self.resolution_due.isoformat() if self.resolution_due else None
-            ),
-            "response_completed_at": (
-                self.response_completed_at.isoformat()
-                if self.response_completed_at
-                else None
-            ),
-            "response_sla_met": self.response_sla_met,
-            "resolution_completed_at": (
-                self.resolution_completed_at.isoformat()
-                if self.resolution_completed_at
-                else None
-            ),
-            "resolution_sla_met": self.resolution_sla_met,
-            "breached": self.breached,
-            "breach_time": self.breach_time.isoformat() if self.breach_time else None,
-            "breach_reason": self.breach_reason,
-            "is_paused": self.is_paused,
-            "paused_at": self.paused_at.isoformat() if self.paused_at else None,
-            "resumed_at": self.resumed_at.isoformat() if self.resumed_at else None,
-            "total_pause_duration": self.total_pause_duration,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class CaseComment(Base):
     """
@@ -1023,22 +785,6 @@ class CaseComment(Base):
         Index("idx_case_comment_created_at", "created_at"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert comment to dictionary."""
-        return {
-            "comment_id": self.comment_id,
-            "case_id": self.case_id,
-            "parent_comment_id": self.parent_comment_id,
-            "author": self.author,
-            "content": self.content,
-            "mentions": self.mentions or [],
-            "attachment_ids": self.attachment_ids or [],
-            "is_edited": self.is_edited,
-            "is_deleted": self.is_deleted,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class CaseWatcher(Base):
     """
@@ -1070,15 +816,6 @@ class CaseWatcher(Base):
         Index("idx_case_watcher_case_id", "case_id"),
         Index("idx_case_watcher_user_id", "user_id"),
     )
-
-    def to_dict(self) -> dict:
-        """Convert watcher to dictionary."""
-        return {
-            "case_id": self.case_id,
-            "user_id": self.user_id,
-            "notification_preferences": self.notification_preferences,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
 
 
 class CaseEvidence(Base):
@@ -1148,30 +885,6 @@ class CaseEvidence(Base):
         Index("idx_case_evidence_collected_by", "collected_by"),
         Index("idx_case_evidence_collected_at", "collected_at"),
     )
-
-    def to_dict(self) -> dict:
-        """Convert evidence to dictionary."""
-        return {
-            "evidence_id": self.evidence_id,
-            "case_id": self.case_id,
-            "evidence_type": self.evidence_type,
-            "name": self.name,
-            "description": self.description,
-            "file_path": self.file_path,
-            "file_size": self.file_size,
-            "file_hash_md5": self.file_hash_md5,
-            "file_hash_sha256": self.file_hash_sha256,
-            "source": self.source,
-            "collected_by": self.collected_by,
-            "collected_at": (
-                self.collected_at.isoformat() if self.collected_at else None
-            ),
-            "chain_of_custody": self.chain_of_custody or [],
-            "analysis_results": self.analysis_results,
-            "tags": self.tags or [],
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
 
 
 class CaseIOC(Base):
@@ -1243,28 +956,6 @@ class CaseIOC(Base):
         Index("idx_case_ioc_is_active", "is_active"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert IOC to dictionary."""
-        return {
-            "ioc_id": self.ioc_id,
-            "case_id": self.case_id,
-            "ioc_type": self.ioc_type,
-            "value": self.value,
-            "threat_level": self.threat_level,
-            "confidence": self.confidence,
-            "source": self.source,
-            "first_seen": self.first_seen.isoformat() if self.first_seen else None,
-            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
-            "enrichment_data": self.enrichment_data,
-            "reputation_score": self.reputation_score,
-            "tags": self.tags or [],
-            "context": self.context,
-            "is_active": self.is_active,
-            "is_false_positive": self.is_false_positive,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class CaseTask(Base):
     """
@@ -1329,29 +1020,6 @@ class CaseTask(Base):
         Index("idx_case_task_status", "status"),
         Index("idx_case_task_due_date", "due_date"),
     )
-
-    def to_dict(self) -> dict:
-        """Convert task to dictionary."""
-        return {
-            "task_id": self.task_id,
-            "case_id": self.case_id,
-            "parent_task_id": self.parent_task_id,
-            "title": self.title,
-            "description": self.description,
-            "assignee": self.assignee,
-            "status": self.status,
-            "priority": self.priority,
-            "due_date": self.due_date.isoformat() if self.due_date else None,
-            "completed_at": (
-                self.completed_at.isoformat() if self.completed_at else None
-            ),
-            "estimated_hours": self.estimated_hours,
-            "actual_hours": self.actual_hours,
-            "checklist_items": self.checklist_items or [],
-            "task_order": self.task_order,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
 
 
 class CaseTemplate(Base):
@@ -1421,26 +1089,6 @@ class CaseTemplate(Base):
         Index("idx_case_template_usage_count", "usage_count"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert template to dictionary."""
-        return {
-            "template_id": self.template_id,
-            "name": self.name,
-            "description": self.description,
-            "template_type": self.template_type,
-            "default_priority": self.default_priority,
-            "default_status": self.default_status,
-            "default_sla_policy_id": self.default_sla_policy_id,
-            "task_templates": self.task_templates or [],
-            "playbook_steps": self.playbook_steps or [],
-            "applicable_mitre_techniques": self.applicable_mitre_techniques or [],
-            "tags": self.tags or [],
-            "is_active": self.is_active,
-            "usage_count": self.usage_count,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class CaseRelationship(Base):
     """
@@ -1484,18 +1132,6 @@ class CaseRelationship(Base):
         Index("idx_case_relationship_related_case_id", "related_case_id"),
         Index("idx_case_relationship_type", "relationship_type"),
     )
-
-    def to_dict(self) -> dict:
-        """Convert relationship to dictionary."""
-        return {
-            "relationship_id": self.relationship_id,
-            "case_id": self.case_id,
-            "related_case_id": self.related_case_id,
-            "relationship_type": self.relationship_type,
-            "created_by": self.created_by,
-            "notes": self.notes,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
 
 
 class CaseMetrics(Base):
@@ -1547,27 +1183,6 @@ class CaseMetrics(Base):
         server_default="now()",
     )
 
-    def to_dict(self) -> dict:
-        """Convert metrics to dictionary."""
-        return {
-            "case_id": self.case_id,
-            "time_to_detect": self.time_to_detect,
-            "time_to_respond": self.time_to_respond,
-            "time_to_contain": self.time_to_contain,
-            "time_to_resolve": self.time_to_resolve,
-            "total_work_hours": self.total_work_hours,
-            "analyst_handoffs_count": self.analyst_handoffs_count,
-            "sla_met": self.sla_met,
-            "response_sla_met": self.response_sla_met,
-            "resolution_sla_met": self.resolution_sla_met,
-            "comment_count": self.comment_count,
-            "evidence_count": self.evidence_count,
-            "ioc_count": self.ioc_count,
-            "task_count": self.task_count,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class CaseAttachment(Base):
     """
@@ -1618,24 +1233,6 @@ class CaseAttachment(Base):
         Index("idx_case_attachment_created_at", "created_at"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert attachment to dictionary."""
-        return {
-            "attachment_id": self.attachment_id,
-            "case_id": self.case_id,
-            "filename": self.filename,
-            "file_path": self.file_path,
-            "file_type": self.file_type,
-            "file_size": self.file_size,
-            "mime_type": self.mime_type,
-            "uploaded_by": self.uploaded_by,
-            "description": self.description,
-            "tags": self.tags or [],
-            "virus_scan_result": self.virus_scan_result,
-            "scan_details": self.scan_details,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
-
 
 class CaseClosureInfo(Base):
     """
@@ -1681,23 +1278,6 @@ class CaseClosureInfo(Base):
     closed_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
     )
-
-    def to_dict(self) -> dict:
-        """Convert closure info to dictionary."""
-        return {
-            "case_id": self.case_id,
-            "closure_category": self.closure_category,
-            "root_cause": self.root_cause,
-            "contributing_factors": self.contributing_factors or [],
-            "lessons_learned": self.lessons_learned,
-            "recommendations": self.recommendations,
-            "recurrence_prevention": self.recurrence_prevention,
-            "false_positive_reason": self.false_positive_reason,
-            "executive_summary": self.executive_summary,
-            "closed_by": self.closed_by,
-            "closure_notes": self.closure_notes,
-            "closed_at": self.closed_at.isoformat() if self.closed_at else None,
-        }
 
 
 class CaseEscalation(Base):
@@ -1750,26 +1330,6 @@ class CaseEscalation(Base):
         Index("idx_case_escalation_escalated_at", "escalated_at"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert escalation to dictionary."""
-        return {
-            "escalation_id": self.escalation_id,
-            "case_id": self.case_id,
-            "escalated_from": self.escalated_from,
-            "escalated_to": self.escalated_to,
-            "reason": self.reason,
-            "urgency_level": self.urgency_level,
-            "status": self.status,
-            "escalated_at": (
-                self.escalated_at.isoformat() if self.escalated_at else None
-            ),
-            "acknowledged_at": (
-                self.acknowledged_at.isoformat() if self.acknowledged_at else None
-            ),
-            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
-            "resolution_notes": self.resolution_notes,
-        }
-
 
 class CaseAuditLog(Base):
     """
@@ -1818,23 +1378,6 @@ class CaseAuditLog(Base):
         Index("idx_case_audit_timestamp", "timestamp"),
         Index("idx_case_audit_action", "action"),
     )
-
-    def to_dict(self) -> dict:
-        """Convert audit log to dictionary."""
-        return {
-            "audit_id": self.audit_id,
-            "entity_type": self.entity_type,
-            "entity_id": self.entity_id,
-            "action": self.action,
-            "field_name": self.field_name,
-            "old_value": self.old_value,
-            "new_value": self.new_value,
-            "change_summary": self.change_summary,
-            "changed_by": self.changed_by,
-            "user_agent": self.user_agent,
-            "ip_address": self.ip_address,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-        }
 
 
 class User(Base):
@@ -1910,23 +1453,6 @@ class User(Base):
         Index("idx_user_is_active", "is_active"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert user to dictionary (excluding password)."""
-        return {
-            "user_id": self.user_id,
-            "username": self.username,
-            "email": self.email,
-            "full_name": self.full_name,
-            "role_id": self.role_id,
-            "is_active": self.is_active,
-            "is_verified": self.is_verified,
-            "mfa_enabled": self.mfa_enabled,
-            "last_login": self.last_login.isoformat() if self.last_login else None,
-            "login_count": self.login_count,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class Role(Base):
     """
@@ -1964,18 +1490,6 @@ class Role(Base):
 
     # Indexes
     __table_args__ = (Index("idx_role_name", "name"),)
-
-    def to_dict(self) -> dict:
-        """Convert role to dictionary."""
-        return {
-            "role_id": self.role_id,
-            "name": self.name,
-            "description": self.description,
-            "permissions": self.permissions,
-            "is_system_role": self.is_system_role,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
 
 
 # =============================================================================
@@ -2041,41 +1555,6 @@ class Investigation(Base):
         Index("idx_investigation_workflow_id", "workflow_id"),
     )
 
-    def to_dict(self) -> dict:
-        return {
-            "investigation_id": self.investigation_id,
-            "case_id": self.case_id,
-            "workflow_id": self.workflow_id,
-            "trigger_type": self.trigger_type,
-            "trigger_ids": self.trigger_ids,
-            "status": self.status,
-            "workdir": self.workdir,
-            "current_step": self.current_step,
-            "total_steps": self.total_steps,
-            "iteration_count": self.iteration_count,
-            "max_iterations": self.max_iterations,
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "cost_usd": self.cost_usd,
-            "max_cost_usd": self.max_cost_usd,
-            "priority": self.priority,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": (
-                self.completed_at.isoformat() if self.completed_at else None
-            ),
-            "last_activity_at": (
-                self.last_activity_at.isoformat() if self.last_activity_at else None
-            ),
-            "max_runtime_seconds": self.max_runtime_seconds,
-            "summary": self.summary,
-            "proposed_actions": self.proposed_actions,
-            "master_review_notes": self.master_review_notes,
-            "error_count": self.error_count,
-            "last_error": self.last_error,
-            "current_activity": self.current_activity,
-        }
-
 
 class InvestigationLog(Base):
     """Append-only audit log for investigation agent actions."""
@@ -2100,16 +1579,6 @@ class InvestigationLog(Base):
         Index("idx_inv_log_timestamp", "timestamp"),
         Index("idx_inv_log_event_type", "event_type"),
     )
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "investigation_id": self.investigation_id,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "event_type": self.event_type,
-            "details": self.details,
-            "tokens_used": self.tokens_used,
-        }
 
 
 class LLMInteractionLog(Base):
@@ -2165,42 +1634,6 @@ class LLMInteractionLog(Base):
         Index("idx_llm_interaction_vk", "virtual_key_id", "created_at"),
     )
 
-    def to_summary_dict(self) -> dict:
-        """Lightweight dict (no heavy text fields) for list endpoints."""
-        return {
-            "id": self.id,
-            "interaction_id": self.interaction_id,
-            "session_id": self.session_id,
-            "agent_id": self.agent_id,
-            "investigation_id": self.investigation_id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "model": self.model,
-            "thinking_enabled": self.thinking_enabled,
-            "has_thinking": bool(self.thinking_content),
-            "has_tools": bool(self.tool_calls),
-            "stop_reason": self.stop_reason,
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "cost_usd": float(self.cost_usd) if self.cost_usd is not None else 0.0,
-            "duration_ms": self.duration_ms,
-            "error": self.error,
-        }
-
-    def to_dict(self) -> dict:
-        """Full dict including heavy text/JSONB fields for detail endpoint."""
-        return {
-            **self.to_summary_dict(),
-            "request_messages": self.request_messages,
-            "system_prompt": self.system_prompt,
-            "thinking_budget": self.thinking_budget,
-            "thinking_content": self.thinking_content,
-            "response_content": self.response_content,
-            "tool_calls": self.tool_calls,
-            "tool_results": self.tool_results,
-            "cache_read_tokens": self.cache_read_tokens,
-            "cache_creation_tokens": self.cache_creation_tokens,
-        }
-
 
 class SharedIOC(Base):
     """Cross-investigation IOC index for deduplication and correlation."""
@@ -2224,15 +1657,6 @@ class SharedIOC(Base):
         Index("idx_shared_ioc_type", "ioc_type"),
         Index("idx_shared_ioc_investigation", "investigation_id"),
     )
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "investigation_id": self.investigation_id,
-            "ioc_type": self.ioc_type,
-            "value": self.value,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
 
 
 class CaseNotification(Base):
@@ -2292,25 +1716,6 @@ class CaseNotification(Base):
         Index("idx_case_notification_created_at", "created_at"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert notification to dictionary."""
-        return {
-            "notification_id": self.notification_id,
-            "case_id": self.case_id,
-            "user_id": self.user_id,
-            "notification_type": self.notification_type,
-            "title": self.title,
-            "message": self.message,
-            "delivery_channel": self.delivery_channel,
-            "priority": self.priority,
-            "is_read": self.is_read,
-            "is_sent": self.is_sent,
-            "sent_at": self.sent_at.isoformat() if self.sent_at else None,
-            "read_at": self.read_at.isoformat() if self.read_at else None,
-            "metadata": self.notification_metadata,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
-
 
 class CustomWorkflow(Base):
     """
@@ -2362,23 +1767,6 @@ class CustomWorkflow(Base):
         Index("idx_custom_workflows_name", "name"),
     )
 
-    def to_dict(self) -> dict:
-        """Convert custom workflow to dictionary."""
-        return {
-            "workflow_id": self.workflow_id,
-            "name": self.name,
-            "description": self.description,
-            "use_case": self.use_case,
-            "trigger_examples": self.trigger_examples or [],
-            "phases": self.phases or [],
-            "graph_layout": self.graph_layout or {},
-            "is_active": self.is_active,
-            "created_by": self.created_by,
-            "version": self.version,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class WorkflowRun(Base):
     """Per-invocation record of ``execute_workflow`` (#127).
@@ -2424,29 +1812,6 @@ class WorkflowRun(Base):
         Index("idx_workflow_runs_started_at", "started_at"),
     )
 
-    def to_dict(self, include_result: bool = False) -> dict:
-        """Serialise the run. ``include_result`` gates the potentially-large
-        ``result_summary`` field so list endpoints stay light."""
-        out: dict = {
-            "run_id": self.run_id,
-            "workflow_id": self.workflow_id,
-            "workflow_version": self.workflow_version,
-            "workflow_source": self.workflow_source,
-            "workflow_name": self.workflow_name,
-            "status": self.status,
-            "triggered_by": self.triggered_by,
-            "trigger_context": self.trigger_context or {},
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
-            "duration_ms": self.duration_ms,
-            "total_cost_usd": float(self.total_cost_usd or 0),
-            "skill_tools_available": self.skill_tools_available or [],
-            "error": self.error,
-        }
-        if include_result:
-            out["result_summary"] = self.result_summary
-        return out
-
 
 class WorkflowRunPhase(Base):
     """Per-phase record within a workflow run.
@@ -2485,23 +1850,6 @@ class WorkflowRunPhase(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __table_args__ = (Index("idx_workflow_run_phases_run_id", "run_id", "phase_order"),)
-
-    def to_dict(self) -> dict:
-        return {
-            "run_id": self.run_id,
-            "phase_id": self.phase_id,
-            "phase_order": self.phase_order,
-            "agent_id": self.agent_id,
-            "status": self.status,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
-            "duration_ms": self.duration_ms,
-            "input_context": self.input_context or {},
-            "output": self.output or {},
-            "approval_state": self.approval_state,
-            "cost_usd": float(self.cost_usd or 0),
-            "error": self.error,
-        }
 
 
 class ApprovalAction(Base):
@@ -2554,30 +1902,6 @@ class ApprovalAction(Base):
         Index("idx_approval_actions_status_created", "status", "created_at"),
         Index("idx_approval_actions_workflow_run", "workflow_run_id"),
     )
-
-    def to_dict(self) -> dict:
-        return {
-            "action_id": self.action_id,
-            "action_type": self.action_type,
-            "title": self.title,
-            "description": self.description,
-            "target": self.target,
-            "confidence": float(self.confidence or 0),
-            "reason": self.reason,
-            "evidence": self.evidence or [],
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "created_by": self.created_by,
-            "requires_approval": bool(self.requires_approval),
-            "status": self.status,
-            "approved_at": self.approved_at.isoformat() if self.approved_at else None,
-            "approved_by": self.approved_by,
-            "executed_at": self.executed_at.isoformat() if self.executed_at else None,
-            "execution_result": self.execution_result,
-            "rejection_reason": self.rejection_reason,
-            "parameters": self.parameters or {},
-            "workflow_run_id": self.workflow_run_id,
-            "workflow_phase_id": self.workflow_phase_id,
-        }
 
 
 class Skill(Base):
@@ -2652,25 +1976,6 @@ class Skill(Base):
         ts = datetime.utcnow().strftime("%Y%m%d")
         return f"s-{ts}-{uuid.uuid4().hex[:8].upper()}"
 
-    def to_dict(self) -> dict:
-        """Convert skill to dictionary."""
-        return {
-            "skill_id": self.skill_id,
-            "name": self.name,
-            "description": self.description,
-            "category": self.category,
-            "input_schema": self.input_schema or {},
-            "output_schema": self.output_schema or {},
-            "required_tools": self.required_tools or [],
-            "prompt_template": self.prompt_template,
-            "execution_steps": self.execution_steps or [],
-            "is_active": self.is_active,
-            "created_by": self.created_by,
-            "version": self.version,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class CustomAgent(Base):
     """User-defined SOC agent created via the Agent Builder UI."""
@@ -2728,30 +2033,6 @@ class CustomAgent(Base):
 
     __table_args__ = (Index("idx_custom_agents_updated_at", "updated_at"),)
 
-    def to_dict(self) -> dict:
-        """Convert custom agent to dictionary."""
-        return {
-            "id": self.id,
-            "name": self.name,
-            "description": self.description,
-            "icon": self.icon,
-            "color": self.color,
-            "specialization": self.specialization,
-            "role": self.role,
-            "extra_principles": self.extra_principles,
-            "methodology": self.methodology,
-            "system_prompt_override": self.system_prompt_override,
-            "recommended_tools": self.recommended_tools or [],
-            "max_tokens": self.max_tokens,
-            "enable_thinking": self.enable_thinking,
-            "model": self.model,
-            "component_category": self.component_category,
-            "forked_from": self.forked_from,
-            "created_by": self.created_by,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class LLMProviderConfig(Base):
     """LLM provider configuration (Anthropic, OpenAI, Ollama, ...).
@@ -2795,27 +2076,6 @@ class LLMProviderConfig(Base):
         ),
     )
 
-    def to_dict(self, include_secrets: bool = False) -> dict:
-        return {
-            "provider_id": self.provider_id,
-            "provider_type": self.provider_type,
-            "name": self.name,
-            "base_url": self.base_url,
-            "api_key_ref": self.api_key_ref if include_secrets else None,
-            "has_api_key": bool(self.api_key_ref),
-            "default_model": self.default_model,
-            "is_active": self.is_active,
-            "is_default": self.is_default,
-            "config": self.config or {},
-            "last_test_at": (
-                self.last_test_at.isoformat() if self.last_test_at else None
-            ),
-            "last_test_success": self.last_test_success,
-            "last_error": self.last_error,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
-
 
 class AIModelConfig(Base):
     """Per-component AI model assignment (GH #89).
@@ -2848,17 +2108,6 @@ class AIModelConfig(Base):
     )
 
     __table_args__ = (Index("idx_ai_model_configs_provider", "provider_id"),)
-
-    def to_dict(self) -> dict:
-        return {
-            "component": self.component,
-            "provider_id": self.provider_id,
-            "model_id": self.model_id,
-            "settings": self.settings or {},
-            "updated_by": self.updated_by,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
 
 
 class ThreatIndicator(Base):
@@ -2895,22 +2144,6 @@ class ThreatIndicator(Base):
         Index("idx_threat_indicators_last_seen", "last_seen"),
         Index("idx_threat_indicators_valid_until", "valid_until"),
     )
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "indicator_type": self.indicator_type,
-            "indicator_value": self.indicator_value,
-            "source": self.source,
-            "collection_id": self.collection_id,
-            "confidence": float(self.confidence) if self.confidence is not None else None,
-            "threat_level": self.threat_level,
-            "labels": list(self.labels or []),
-            "valid_from": self.valid_from.isoformat() if self.valid_from else None,
-            "valid_until": self.valid_until.isoformat() if self.valid_until else None,
-            "first_seen": self.first_seen.isoformat() if self.first_seen else None,
-            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
-        }
 
 
 class Conversation(Base):
@@ -2972,30 +2205,6 @@ class Conversation(Base):
         Index("idx_conversations_user_archived", "user_id", "archived"),
     )
 
-    def to_summary_dict(self) -> dict:
-        """Lightweight dict for the conversation list (no messages)."""
-        return {
-            "id": self.id,
-            "user_id": self.user_id,
-            "title": self.title,
-            "agent_id": self.agent_id,
-            "model": self.model,
-            "archived": self.archived,
-            "message_count": self.message_count,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "last_message_at": (
-                self.last_message_at.isoformat() if self.last_message_at else None
-            ),
-        }
-
-    def to_dict(self) -> dict:
-        """Full dict including ordered messages for the detail endpoint."""
-        return {
-            **self.to_summary_dict(),
-            "messages": [m.to_dict() for m in self.messages],
-        }
-
 
 class ChatMessage(Base):
     """A single message within a :class:`Conversation`.
@@ -3045,20 +2254,3 @@ class ChatMessage(Base):
         UniqueConstraint("conversation_id", "seq", name="uq_chat_messages_conv_seq"),
         Index("idx_chat_messages_conversation", "conversation_id"),
     )
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "conversation_id": self.conversation_id,
-            "seq": self.seq,
-            "role": self.role,
-            "content": self.content,
-            "thinking": self.thinking,
-            "tool_calls": self.tool_calls or [],
-            "complete": self.complete,
-            "model": self.model,
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "cost_usd": float(self.cost_usd) if self.cost_usd is not None else 0.0,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }

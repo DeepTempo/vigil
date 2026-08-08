@@ -71,6 +71,20 @@ from services.daemon.workdir import WorkdirManager
 logger = logging.getLogger(__name__)
 
 
+def _inv_as_dict(inv):
+    """Serialize an investigation to a dict, passing through one already a dict.
+
+    The polling loops receive investigations already serialized; the model
+    branch is a safety net. Imports the schema lazily to keep this module
+    importable without a database.
+    """
+    if isinstance(inv, dict):
+        return inv
+    from core.storage.schemas import InvestigationSchema
+
+    return InvestigationSchema.dump(inv)
+
+
 class Orchestrator:
     """Master agent that manages autonomous SOC investigations."""
 
@@ -445,7 +459,7 @@ class Orchestrator:
                     return
 
                 self._update_investigation_status(inv_id, "assigned")
-                inv_dict = inv if isinstance(inv, dict) else inv.to_dict()
+                inv_dict = _inv_as_dict(inv)
                 inv_dict["status"] = "assigned"
                 await self.agent_runner.start_agent(inv_dict, shutdown_event)
 
@@ -463,7 +477,7 @@ class Orchestrator:
 
                 waiting = self._get_investigations_by_status("waiting_approval")
                 for inv in waiting:
-                    inv_dict = inv if isinstance(inv, dict) else inv.to_dict()
+                    inv_dict = _inv_as_dict(inv)
                     w_inv_id = inv_dict.get("investigation_id")
                     if not w_inv_id:
                         continue
@@ -488,7 +502,7 @@ class Orchestrator:
                 now = datetime.utcnow()
 
                 for inv in executing:
-                    inv_dict = inv if isinstance(inv, dict) else inv.to_dict()
+                    inv_dict = _inv_as_dict(inv)
                     inv_id = inv_dict.get("investigation_id")
                     if not inv_id:
                         continue
@@ -558,7 +572,7 @@ class Orchestrator:
                 self._supervision_tick += 1
                 if self._supervision_tick % 5 == 0:
                     for inv in executing:
-                        inv_dict = inv if isinstance(inv, dict) else inv.to_dict()
+                        inv_dict = _inv_as_dict(inv)
                         x_inv_id = inv_dict.get("investigation_id")
                         if x_inv_id:
                             await self._check_cross_correlations(x_inv_id)
@@ -597,7 +611,7 @@ class Orchestrator:
 
                 submitted = self._get_investigations_by_status("review_submitted")
                 for inv in submitted:
-                    inv_dict = inv if isinstance(inv, dict) else inv.to_dict()
+                    inv_dict = _inv_as_dict(inv)
                     inv_id = inv_dict.get("investigation_id")
                     if not inv_id:
                         continue
@@ -1185,8 +1199,10 @@ class Orchestrator:
             from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
+                from core.storage.schemas import InvestigationSchema
+
                 results = session.query(Investigation).filter_by(status=status).all()
-                return [inv.to_dict() for inv in results]
+                return InvestigationSchema.dump_many(results)
         except Exception as e:
             logger.debug(f"DB query for status={status} failed: {e}")
             return []
@@ -1198,13 +1214,14 @@ class Orchestrator:
             from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
+                from core.storage.schemas import InvestigationSchema
+
                 query = session.query(Investigation)
                 if status:
                     query = query.filter_by(status=status)
-                return [
-                    inv.to_dict()
-                    for inv in query.order_by(Investigation.created_at.desc()).all()
-                ]
+                return InvestigationSchema.dump_many(
+                    query.order_by(Investigation.created_at.desc()).all()
+                )
         except Exception as e:
             logger.debug(f"DB query failed: {e}")
             return []
@@ -1220,7 +1237,9 @@ class Orchestrator:
                     .filter_by(investigation_id=inv_id)
                     .first()
                 )
-                return inv.to_dict() if inv else None
+                from core.storage.schemas import InvestigationSchema
+
+                return InvestigationSchema.dump(inv) if inv else None
         except Exception:
             return None
 

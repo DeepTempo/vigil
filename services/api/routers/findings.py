@@ -17,7 +17,7 @@ from core.findings.source_evidence import (
     normalize_finding_source_evidence,
     project_finding_source_evidence_for_list,
 )
-from core.routing import Auth, RouterMeta
+from core.routing import Auth, RouterMeta, UnitOfWorkSession
 
 router = APIRouter()
 
@@ -392,16 +392,13 @@ async def get_or_generate_enrichment(finding_id: str, force_regenerate: bool = Q
 
 
 @router.delete("/all")
-def clear_all_findings():
+def clear_all_findings(session: UnitOfWorkSession):
     """Delete all findings from the database."""
     try:
-        from core.storage.connection import get_session
         from core.storage.models import Finding
 
-        with get_session() as session:
-            count = session.query(Finding).count()
-            session.query(Finding).delete()
-            session.commit()
+        count = session.query(Finding).count()
+        session.query(Finding).delete()
 
         logger.info(f"Cleared {count} findings")
         return {"success": True, "deleted": count, "message": f"Deleted {count} findings"}

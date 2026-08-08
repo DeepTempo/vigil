@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from core.storage.models import CaseIOC
-from core.storage.connection import get_db_session
+from core.storage.unit_of_work import unit_of_work
 
 logger = logging.getLogger(__name__)
 
@@ -56,56 +56,47 @@ class CaseIOCService:
         Returns:
             Created CaseIOC or None
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
         try:
-            # Check for existing IOC to avoid duplicates
-            existing = session.query(CaseIOC).filter(
-                and_(
-                    CaseIOC.case_id == case_id,
-                    CaseIOC.ioc_type == ioc_type,
-                    CaseIOC.value == value
+            with unit_of_work(session) as session:
+                # Check for existing IOC to avoid duplicates
+                existing = session.query(CaseIOC).filter(
+                    and_(
+                        CaseIOC.case_id == case_id,
+                        CaseIOC.ioc_type == ioc_type,
+                        CaseIOC.value == value
+                    )
+                ).first()
+
+                if existing:
+                    # Update last_seen if provided
+                    if last_seen:
+                        existing.last_seen = last_seen
+                    logger.info(f"IOC already exists: {value}")
+                    return existing
+
+                ioc = CaseIOC(
+                    case_id=case_id,
+                    ioc_type=ioc_type,
+                    value=value,
+                    threat_level=threat_level,
+                    confidence=confidence,
+                    source=source,
+                    first_seen=first_seen or datetime.utcnow(),
+                    last_seen=last_seen or datetime.utcnow(),
+                    tags=tags or [],
+                    context=context,
+                    is_active=True,
+                    is_false_positive=False
                 )
-            ).first()
-            
-            if existing:
-                # Update last_seen if provided
-                if last_seen:
-                    existing.last_seen = last_seen
-                    session.commit()
-                logger.info(f"IOC already exists: {value}")
-                return existing
-            
-            ioc = CaseIOC(
-                case_id=case_id,
-                ioc_type=ioc_type,
-                value=value,
-                threat_level=threat_level,
-                confidence=confidence,
-                source=source,
-                first_seen=first_seen or datetime.utcnow(),
-                last_seen=last_seen or datetime.utcnow(),
-                tags=tags or [],
-                context=context,
-                is_active=True,
-                is_false_positive=False
-            )
-            
-            session.add(ioc)
-            session.commit()
-            
-            logger.info(f"Added IOC {ioc_type}:{value} to case {case_id}")
-            return ioc
-        
+
+                session.add(ioc)
+
+                logger.info(f"Added IOC {ioc_type}:{value} to case {case_id}")
+                return ioc
+
         except Exception as e:
-            session.rollback()
             logger.error(f"Error adding IOC: {e}")
             return None
-        finally:
-            if should_close_session:
-                session.close()
     
     def bulk_add_iocs(
         self,
@@ -145,7 +136,6 @@ class CaseIOCService:
         return count
     
     
-    
     def get_case_iocs(
         self,
         case_id: str,
@@ -165,26 +155,18 @@ class CaseIOCService:
         Returns:
             List of CaseIOC objects
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             query = session.query(CaseIOC).filter(
                 CaseIOC.case_id == case_id
             )
-            
+
             if ioc_type:
                 query = query.filter(CaseIOC.ioc_type == ioc_type)
-            
+
             if active_only:
                 query = query.filter(CaseIOC.is_active == True)
-            
+
             return query.order_by(CaseIOC.threat_level.desc()).all()
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def export_iocs_json(
         self,
@@ -201,13 +183,9 @@ class CaseIOCService:
         Returns:
             JSON string
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             iocs = self.get_case_iocs(case_id, session=session)
-            
+
             ioc_list = []
             for ioc in iocs:
                 ioc_list.append({
@@ -221,12 +199,8 @@ class CaseIOCService:
                     'tags': ioc.tags,
                     'context': ioc.context
                 })
-            
+
             return json.dumps(ioc_list, indent=2)
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def export_iocs_csv(
         self,
@@ -243,13 +217,9 @@ class CaseIOCService:
         Returns:
             CSV string
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             iocs = self.get_case_iocs(case_id, session=session)
-            
+
             lines = ['type,value,threat_level,confidence,source,first_seen,last_seen']
             for ioc in iocs:
                 lines.append(
@@ -258,12 +228,8 @@ class CaseIOCService:
                     f'{ioc.first_seen.isoformat() if ioc.first_seen else ""},'
                     f'{ioc.last_seen.isoformat() if ioc.last_seen else ""}'
                 )
-            
+
             return '\n'.join(lines)
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def export_iocs_stix(
         self,
@@ -280,24 +246,20 @@ class CaseIOCService:
         Returns:
             STIX bundle dictionary
         """
-        should_close_session = session is None
-        if session is None:
-            session = get_db_session()
-        
-        try:
+        with unit_of_work(session) as session:
             iocs = self.get_case_iocs(case_id, session=session)
-            
+
             # Build STIX bundle
             bundle = {
                 'type': 'bundle',
                 'id': f'bundle--{case_id}',
                 'objects': []
             }
-            
+
             for ioc in iocs:
                 # Map IOC type to STIX type
                 stix_type = self._map_ioc_to_stix_type(ioc.ioc_type)
-                
+
                 stix_obj = {
                     'type': 'indicator',
                     'id': f'indicator--{ioc.ioc_id}',
@@ -307,17 +269,13 @@ class CaseIOCService:
                     'pattern_type': 'stix',
                     'valid_from': (ioc.first_seen.isoformat() + 'Z') if ioc.first_seen else datetime.utcnow().isoformat() + 'Z'
                 }
-                
+
                 if ioc.threat_level:
                     stix_obj['labels'] = [ioc.threat_level]
-                
+
                 bundle['objects'].append(stix_obj)
-            
+
             return bundle
-        
-        finally:
-            if should_close_session:
-                session.close()
     
     def _map_ioc_to_stix_type(self, ioc_type: str) -> str:
         """Map IOC type to STIX observable type."""

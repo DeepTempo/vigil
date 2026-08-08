@@ -5,7 +5,7 @@ Handles user CRUD operations, role assignment, and user administration.
 """
 
 import logging
-from typing import Optional
+from typing import Annotated, List, Optional
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
@@ -15,8 +15,8 @@ from services.api.middleware.auth import get_current_user
 from core.auth.password_validator import PasswordPolicyError, validate_password_strength
 from core.auth.token_blacklist import revoke_all_for_user
 from core.storage.models import User, Role
-from core.storage.connection import get_db, get_db_session
-from core.routing import Auth, RouterMeta
+from core.storage.schemas import RoleSchema, UserSchema
+from core.routing import Auth, RouterMeta, UnitOfWorkSession
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +72,9 @@ async def list_users(
     role_id: Optional[str] = None,
     is_active: Optional[bool] = None,
     search: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db)
+    *,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: UnitOfWorkSession,
 ):
     """
     List all users (requires users.read permission).
@@ -125,7 +126,7 @@ async def list_users(
             "total": total,
             "skip": skip,
             "limit": limit,
-            "users": [user.to_dict() for user in users]
+            "users": UserSchema.dump_many(users)
         }
     
     except Exception as e:
@@ -139,8 +140,8 @@ async def list_users(
 @router.get("/{user_id}")
 async def get_user(
     user_id: str,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db)
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: UnitOfWorkSession,
 ):
     """
     Get user by ID (requires users.read permission).
@@ -168,12 +169,12 @@ async def get_user(
             detail="User not found"
         )
     
-    user_dict = user.to_dict()
+    user_dict = UserSchema.dump(user)
     
     # Add role information
     role = session.query(Role).filter(Role.role_id == user.role_id).first()
     if role:
-        user_dict["role"] = role.to_dict()
+        user_dict["role"] = RoleSchema.dump(role)
     
     # Add permissions
     user_dict["permissions"] = AuthService.get_user_permissions(user_id)
@@ -184,8 +185,8 @@ async def get_user(
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_user(
     request: CreateUserRequest,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db)
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: UnitOfWorkSession,
 ):
     """
     Create a new user (requires users.write permission).
@@ -249,15 +250,15 @@ async def create_user(
         )
     
     logger.info(f"User created by {current_user.username}: {user.username}")
-    return user.to_dict()
+    return UserSchema.dump(user)
 
 
 @router.put("/{user_id}")
 async def update_user(
     user_id: str,
     request: UpdateUserRequest,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db)
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: UnitOfWorkSession,
 ):
     """
     Update user information (requires users.write permission).
@@ -327,7 +328,9 @@ async def update_user(
         if request.is_active is not None:
             user.is_active = request.is_active
 
-        session.commit()
+        # Flush so the read-back sees server defaults; the request's unit
+        # of work commits.
+        session.flush()
         session.refresh(user)
 
         if email_changed:
@@ -341,13 +344,12 @@ async def update_user(
                 )
 
         logger.info(f"User updated by {current_user.username}: {user.username}")
-        return user.to_dict()
+        return UserSchema.dump(user)
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Update user error: {e}")
-        session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update user"
@@ -357,8 +359,8 @@ async def update_user(
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: str,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db)
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: UnitOfWorkSession,
 ):
     """
     Delete a user (requires users.delete permission).
@@ -396,14 +398,12 @@ async def delete_user(
     try:
         username = user.username
         session.delete(user)
-        session.commit()
-        
+
         logger.info(f"User deleted by {current_user.username}: {username}")
         return {"message": "User deleted successfully"}
     
     except Exception as e:
         logger.error(f"Delete user error: {e}")
-        session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete user"
@@ -414,8 +414,8 @@ async def delete_user(
 async def change_user_role(
     user_id: str,
     request: ChangeUserRoleRequest,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db)
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: UnitOfWorkSession,
 ):
     """
     Change user role (requires users.write permission).
@@ -461,7 +461,9 @@ async def change_user_role(
     try:
         old_role_id = user.role_id
         user.role_id = request.role_id
-        session.commit()
+        # Flush so the read-back sees server defaults; the request's unit
+        # of work commits.
+        session.flush()
         session.refresh(user)
 
         # Invalidate the target user's existing tokens so the new
@@ -479,11 +481,10 @@ async def change_user_role(
             )
 
         logger.info(f"User role changed by {current_user.username}: {user.username} from {old_role_id} to {request.role_id}")
-        return user.to_dict()
+        return UserSchema.dump(user)
     
     except Exception as e:
         logger.error(f"Change role error: {e}")
-        session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to change user role"
@@ -492,8 +493,8 @@ async def change_user_role(
 
 @router.get("/roles/list")
 async def list_roles(
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db)
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: UnitOfWorkSession,
 ):
     """
     List all available roles.
@@ -513,7 +514,7 @@ async def list_roles(
     try:
         roles = session.query(Role).all()
         return {
-            "roles": [role.to_dict() for role in roles]
+            "roles": RoleSchema.dump_many(roles)
         }
     
     except Exception as e:

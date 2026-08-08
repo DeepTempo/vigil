@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -40,7 +41,10 @@ async def test_clear_all_cases_denied_without_permission(monkeypatch):
     )
 
     with pytest.raises(HTTPException) as exc:
-        await cases.clear_all_cases(current_user=_User("analyst-1"))
+        # The permission check must reject before the session is touched.
+        await cases.clear_all_cases(
+            session=MagicMock(), current_user=_User("analyst-1")
+        )
 
     assert exc.value.status_code == 403
 
@@ -59,6 +63,8 @@ async def test_clear_all_cases_checks_cases_delete(monkeypatch):
     monkeypatch.setattr(AuthService, "check_permission", staticmethod(_record))
 
     with pytest.raises(Exception):
-        await cases.clear_all_cases(current_user=_User("analyst-1"))
+        await cases.clear_all_cases(
+            session=MagicMock(), current_user=_User("analyst-1")
+        )
 
     assert seen["permission"] == "cases.delete"

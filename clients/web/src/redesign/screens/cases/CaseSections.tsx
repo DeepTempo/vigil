@@ -559,7 +559,7 @@ export function CommentsCard({ caseId }: { caseId: string }) {
    =================================================================== */
 interface Watcher {
   user_id: string
-  added_at?: string
+  created_at?: string
 }
 export function WatchersCard({ caseId }: { caseId: string }) {
   const { data, phase, reload } = useResource<Watcher[]>(caseId, () =>
@@ -601,7 +601,7 @@ export function WatchersCard({ caseId }: { caseId: string }) {
             <span className="avatar">{initials(w.user_id)}</span>
             <div className="min-w-0 flex-1">
               <div className="text-[13px] text-tx">{w.user_id}</div>
-              <div className="text-xs text-tx-faint">Watching since {fmtD(w.added_at)}</div>
+              <div className="text-xs text-tx-faint">Watching since {fmtD(w.created_at)}</div>
             </div>
             <span className="watcher-active" title="Receiving notifications"><span className="wa-dot" />Active</span>
             <button className="btn ghost icon" title="Remove" onClick={() => remove(w.user_id)}><Icon name="trash" size={14} /></button>

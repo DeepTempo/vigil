@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from core.storage.connection import get_db_manager
 from core.storage.models import CustomAgent
+from core.storage.schemas import CustomAgentSchema
 from core.agents.manager import CUSTOM_AGENT_ID_PREFIX
 from core.agents.prompts import render_base_prompt
 
@@ -62,7 +63,7 @@ class CustomAgentService:
             rows = (
                 session.query(CustomAgent).order_by(CustomAgent.updated_at.desc()).all()
             )
-            return [row.to_dict() for row in rows]
+            return CustomAgentSchema.dump_many(rows)
 
     def get_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
         db_manager = get_db_manager()
@@ -72,7 +73,7 @@ class CustomAgentService:
                 .filter(CustomAgent.id == agent_id)
                 .one_or_none()
             )
-            return row.to_dict() if row else None
+            return CustomAgentSchema.dump(row) if row else None
 
     def get_effective_prompt(self, agent_row: Dict[str, Any]) -> str:
         """Return the system prompt that will actually be sent to Claude."""
@@ -134,7 +135,7 @@ class CustomAgentService:
             agent = CustomAgent(**kwargs)
             session.add(agent)
             session.flush()
-            return agent.to_dict()
+            return CustomAgentSchema.dump(agent)
 
     def fork_from_profile(
         self,
@@ -224,7 +225,7 @@ class CustomAgentService:
                     setattr(agent, key, value)
 
             session.flush()
-            return agent.to_dict()
+            return CustomAgentSchema.dump(agent)
 
     def delete_agent(self, agent_id: str) -> bool:
         db_manager = get_db_manager()

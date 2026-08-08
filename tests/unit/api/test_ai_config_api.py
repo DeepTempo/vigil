@@ -13,6 +13,7 @@ from typing import Dict, List
 from unittest.mock import patch
 
 import pytest
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -20,9 +21,9 @@ REPO = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO))
 
 from services.api.routers.ai_config import router as ai_config_router  # noqa: E402
-from core.storage.connection import get_db  # noqa: E402
 from core.storage.models import AIModelConfig, LLMProviderConfig  # noqa: E402
 from core.llm.providers.registry import ModelInfo  # noqa: E402
+from core.routing import request_unit_of_work  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -63,7 +64,7 @@ class _FakeSession:
         if isinstance(row, AIModelConfig):
             self.assignments.pop(row.component, None)
 
-    def commit(self):
+    def flush(self):
         pass
 
     def refresh(self, row):
@@ -107,7 +108,7 @@ def client(session):
     def _get_session():
         return session
 
-    app.dependency_overrides[get_db] = _get_session
+    app.dependency_overrides[request_unit_of_work] = _get_session
     return TestClient(app)
 
 

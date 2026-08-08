@@ -9,9 +9,20 @@ from pathlib import Path
 from services.api.middleware.auth import get_current_user
 from core.auth.auth_service import AuthService
 from core.storage.models import User
+from core.storage.schemas import (
+    CaseClosureInfoSchema,
+    CaseCommentSchema,
+    CaseEscalationSchema,
+    CaseEvidenceSchema,
+    CaseIOCSchema,
+    CaseRelationshipSchema,
+    CaseSLASchema,
+    CaseTaskSchema,
+    CaseWatcherSchema,
+)
 from core.storage.database_data_service import DatabaseDataService
 from core.reporting.report_service import ReportService, REPORTLAB_AVAILABLE
-from core.routing import Auth, RouterMeta
+from core.routing import Auth, RouterMeta, UnitOfWorkSession
 
 router = APIRouter()
 
@@ -88,14 +99,16 @@ async def get_cases(
 
 
 @router.delete("/all")
-async def clear_all_cases(current_user: User = Depends(get_current_user)):
+async def clear_all_cases(
+    session: UnitOfWorkSession,
+    current_user: User = Depends(get_current_user),
+):
     """Delete all cases and case-derived generated data (requires cases.delete)."""
     if not AuthService.check_permission(current_user.user_id, "cases.delete"):
         raise HTTPException(
             status_code=403, detail="Permission denied: cases.delete required"
         )
     try:
-        from core.storage.connection import get_session
         from core.storage.models import (
             AIDecisionLog,
             AttackLayer,
@@ -118,43 +131,41 @@ async def clear_all_cases(current_user: User = Depends(get_current_user)):
             case_findings,
         )
 
-        with get_session() as session:
-            count = session.query(Case).count()
+        count = session.query(Case).count()
 
-            for model in (
-                CaseAttachment,
-                CaseClosureInfo,
-                CaseEscalation,
-                CaseEvidence,
-                CaseIOC,
-                CaseMetrics,
-                CaseNotification,
-                CaseRelationship,
-                CaseSLA,
-                CaseTask,
-                CaseWatcher,
-                CaseComment,
-            ):
-                session.query(model).delete(synchronize_session=False)
+        for model in (
+            CaseAttachment,
+            CaseClosureInfo,
+            CaseEscalation,
+            CaseEvidence,
+            CaseIOC,
+            CaseMetrics,
+            CaseNotification,
+            CaseRelationship,
+            CaseSLA,
+            CaseTask,
+            CaseWatcher,
+            CaseComment,
+        ):
+            session.query(model).delete(synchronize_session=False)
 
-            session.execute(case_findings.delete())
-            session.query(SketchMapping).filter(SketchMapping.case_id.isnot(None)).delete(
-                synchronize_session=False
-            )
-            session.query(AIDecisionLog).filter(AIDecisionLog.case_id.isnot(None)).delete(
-                synchronize_session=False
-            )
-            session.query(Investigation).filter(Investigation.case_id.isnot(None)).update(
-                {"case_id": None},
-                synchronize_session=False,
-            )
-            session.query(AttackLayer).filter(AttackLayer.case_id.isnot(None)).update(
-                {"case_id": None},
-                synchronize_session=False,
-            )
-            session.query(CaseAuditLog).delete(synchronize_session=False)
-            session.query(Case).delete(synchronize_session=False)
-            session.commit()
+        session.execute(case_findings.delete())
+        session.query(SketchMapping).filter(SketchMapping.case_id.isnot(None)).delete(
+            synchronize_session=False
+        )
+        session.query(AIDecisionLog).filter(AIDecisionLog.case_id.isnot(None)).delete(
+            synchronize_session=False
+        )
+        session.query(Investigation).filter(Investigation.case_id.isnot(None)).update(
+            {"case_id": None},
+            synchronize_session=False,
+        )
+        session.query(AttackLayer).filter(AttackLayer.case_id.isnot(None)).update(
+            {"case_id": None},
+            synchronize_session=False,
+        )
+        session.query(CaseAuditLog).delete(synchronize_session=False)
+        session.query(Case).delete(synchronize_session=False)
 
         return {
             "success": True,
@@ -562,7 +573,7 @@ async def assign_sla(case_id: str, data: SLAAssign):
     result = sla_service.assign_sla_to_case(case_id, data.sla_policy_id)
     if not result:
         raise HTTPException(status_code=500, detail="Failed to assign SLA")
-    return result.to_dict()
+    return CaseSLASchema.dump(result)
 
 
 @router.get("/{case_id}/sla")
@@ -612,7 +623,7 @@ async def get_comments(case_id: str):
     from core.cases.case_collaboration_service import CaseCollaborationService
     collab_service = CaseCollaborationService()
     comments = collab_service.get_case_comments(case_id)
-    return {"comments": [c.to_dict() for c in comments]}
+    return {"comments": CaseCommentSchema.dump_many(comments)}
 
 
 @router.post("/{case_id}/comments")
@@ -625,7 +636,7 @@ async def add_comment(case_id: str, data: CommentAdd):
     )
     if not comment:
         raise HTTPException(status_code=500, detail="Failed to add comment")
-    return comment.to_dict()
+    return CaseCommentSchema.dump(comment)
 
 
 class CommentUpdate(BaseModel):
@@ -672,7 +683,7 @@ async def add_watcher(case_id: str, data: WatcherAdd):
     )
     if not watcher:
         raise HTTPException(status_code=500, detail="Failed to add watcher")
-    return watcher.to_dict()
+    return CaseWatcherSchema.dump(watcher)
 
 
 @router.delete("/{case_id}/watchers/{user_id}")
@@ -692,7 +703,7 @@ async def get_watchers(case_id: str):
     from core.cases.case_collaboration_service import CaseCollaborationService
     collab_service = CaseCollaborationService()
     watchers = collab_service.get_case_watchers(case_id)
-    return {"watchers": [w.to_dict() for w in watchers]}
+    return {"watchers": CaseWatcherSchema.dump_many(watchers)}
 
 
 # Evidence Management
@@ -724,7 +735,7 @@ async def add_evidence(case_id: str, data: EvidenceAdd):
     )
     if not evidence:
         raise HTTPException(status_code=500, detail="Failed to add evidence")
-    return evidence.to_dict()
+    return CaseEvidenceSchema.dump(evidence)
 
 
 @router.get("/{case_id}/evidence")
@@ -733,7 +744,7 @@ async def get_evidence(case_id: str, evidence_type: Optional[str] = None):
     from core.cases.case_evidence_service import CaseEvidenceService
     evidence_service = CaseEvidenceService()
     evidence_list = evidence_service.get_case_evidence(case_id, evidence_type)
-    return {"evidence": [e.to_dict() for e in evidence_list]}
+    return {"evidence": CaseEvidenceSchema.dump_many(evidence_list)}
 
 
 class ChainOfCustodyAdd(BaseModel):
@@ -785,7 +796,7 @@ async def add_ioc(case_id: str, data: IOCAdd):
     )
     if not ioc:
         raise HTTPException(status_code=500, detail="Failed to add IOC")
-    return ioc.to_dict()
+    return CaseIOCSchema.dump(ioc)
 
 
 @router.get("/{case_id}/iocs")
@@ -794,7 +805,7 @@ async def get_iocs(case_id: str, ioc_type: Optional[str] = None):
     from core.cases.case_ioc_service import CaseIOCService
     ioc_service = CaseIOCService()
     iocs = ioc_service.get_case_iocs(case_id, ioc_type)
-    return {"iocs": [ioc.to_dict() for ioc in iocs]}
+    return {"iocs": CaseIOCSchema.dump_many(iocs)}
 
 
 class IOCBulkAdd(BaseModel):
@@ -840,12 +851,10 @@ class TaskAdd(BaseModel):
 
 
 @router.post("/{case_id}/tasks")
-async def add_task(case_id: str, data: TaskAdd):
+async def add_task(case_id: str, data: TaskAdd, session: UnitOfWorkSession):
     """Add task to case."""
-    from core.storage.connection import get_session
     from core.storage.models import CaseTask
-    
-    session = get_session()
+
     try:
         task = CaseTask(
             case_id=case_id,
@@ -858,30 +867,28 @@ async def add_task(case_id: str, data: TaskAdd):
             checklist_items=data.checklist_items or []
         )
         session.add(task)
-        session.commit()
-        return task.to_dict()
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
+        return CaseTaskSchema.dump(task)
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to add task: {str(e)}")
-    finally:
-        session.close()
 
 
 @router.get("/{case_id}/tasks")
 async def get_tasks(case_id: str):
     """Get all tasks for case."""
-    from core.storage.connection import get_db_session
     from core.storage.models import CaseTask
-    
+    from core.storage.unit_of_work import unit_of_work
+
     try:
-        session = get_db_session()
-        try:
+        # Own transaction: a failed query must not poison a request-scoped
+        # session, which would turn this graceful fallback into a 500.
+        with unit_of_work() as session:
             tasks = session.query(CaseTask).filter(CaseTask.case_id == case_id).all()
-            return {"tasks": [t.to_dict() for t in tasks]}
-        finally:
-            session.close()
+            return {"tasks": CaseTaskSchema.dump_many(tasks)}
     except Exception:
-        # If database is not available, return empty list
+        # If the database is not available, return an empty list.
         return {"tasks": []}
 
 
@@ -898,12 +905,12 @@ class TaskUpdate(BaseModel):
 
 
 @router.put("/{case_id}/tasks/{task_id}")
-async def update_task(case_id: str, task_id: int, data: TaskUpdate):
+async def update_task(
+    case_id: str, task_id: int, data: TaskUpdate, session: UnitOfWorkSession
+):
     """Update task."""
-    from core.storage.connection import get_session
     from core.storage.models import CaseTask
-    
-    session = get_session()
+
     try:
         task = session.query(CaseTask).filter(CaseTask.task_id == task_id).first()
         if not task:
@@ -926,13 +933,12 @@ async def update_task(case_id: str, task_id: int, data: TaskUpdate):
         if data.actual_hours is not None:
             task.actual_hours = data.actual_hours
         
-        session.commit()
-        return task.to_dict()
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
+        return CaseTaskSchema.dump(task)
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to update task: {str(e)}")
-    finally:
-        session.close()
 
 
 # Case Relationships
@@ -945,12 +951,12 @@ class RelationshipAdd(BaseModel):
 
 
 @router.post("/{case_id}/relationships")
-async def add_relationship(case_id: str, data: RelationshipAdd):
+async def add_relationship(
+    case_id: str, data: RelationshipAdd, session: UnitOfWorkSession
+):
     """Link related case."""
-    from core.storage.connection import get_session
     from core.storage.models import CaseRelationship
-    
-    session = get_session()
+
     try:
         rel = CaseRelationship(
             case_id=case_id,
@@ -960,29 +966,25 @@ async def add_relationship(case_id: str, data: RelationshipAdd):
             notes=data.notes
         )
         session.add(rel)
-        session.commit()
-        return rel.to_dict()
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
+        return CaseRelationshipSchema.dump(rel)
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to add relationship: {str(e)}")
-    finally:
-        session.close()
 
 
 @router.get("/{case_id}/relationships")
-async def get_relationships(case_id: str):
+async def get_relationships(case_id: str, session: UnitOfWorkSession):
     """Get related cases."""
-    from core.storage.connection import get_session
     from core.storage.models import CaseRelationship
-    
-    session = get_session()
-    try:
-        rels = session.query(CaseRelationship).filter(
-            CaseRelationship.case_id == case_id
-        ).all()
-        return {"relationships": [r.to_dict() for r in rels]}
-    finally:
-        session.close()
+
+    rels = (
+        session.query(CaseRelationship)
+        .filter(CaseRelationship.case_id == case_id)
+        .all()
+    )
+    return {"relationships": CaseRelationshipSchema.dump_many(rels)}
 
 
 # Case Closure
@@ -997,12 +999,10 @@ class ClosureInfo(BaseModel):
 
 
 @router.post("/{case_id}/close")
-async def close_case(case_id: str, data: ClosureInfo):
+async def close_case(case_id: str, data: ClosureInfo, session: UnitOfWorkSession):
     """Close case with closure metadata."""
-    from core.storage.connection import get_session
     from core.storage.models import CaseClosureInfo, Case
-    
-    session = get_session()
+
     try:
         # Update case status
         case = session.query(Case).filter(Case.case_id == case_id).first()
@@ -1028,13 +1028,12 @@ async def close_case(case_id: str, data: ClosureInfo):
         sla_service = CaseSLAService()
         sla_service.mark_resolution_complete(case_id, session)
         
-        session.commit()
-        return {"success": True, "closure": closure.to_dict()}
+        # Flush so the read-back sees server defaults; the request's
+        # unit of work commits.
+        session.flush()
+        return {"success": True, "closure": CaseClosureInfoSchema.dump(closure)}
     except Exception as e:
-        session.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to close case: {str(e)}")
-    finally:
-        session.close()
 
 
 # Case Escalation
@@ -1061,19 +1060,14 @@ async def escalate_case(case_id: str, data: EscalationAdd):
 
 
 @router.get("/{case_id}/escalations")
-async def get_escalations(case_id: str):
+async def get_escalations(case_id: str, session: UnitOfWorkSession):
     """Get escalation history."""
-    from core.storage.connection import get_session
     from core.storage.models import CaseEscalation
-    
-    session = get_session()
-    try:
-        escalations = session.query(CaseEscalation).filter(
-            CaseEscalation.case_id == case_id
-        ).all()
-        return {"escalations": [e.to_dict() for e in escalations]}
-    finally:
-        session.close()
+
+    escalations = (
+        session.query(CaseEscalation).filter(CaseEscalation.case_id == case_id).all()
+    )
+    return {"escalations": CaseEscalationSchema.dump_many(escalations)}
 
 
 # Case Merge

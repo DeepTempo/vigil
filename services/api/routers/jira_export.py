@@ -5,18 +5,16 @@ Provides endpoints to export case reports and remediation steps to JIRA.
 """
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from services.api.middleware.auth import get_current_user
 from core.auth.auth_service import AuthService
 from core.storage.models import User, Case, Finding
-from core.storage.connection import get_db, get_db_session
 from core.config import get_integration_config
 import requests
-from core.routing import Auth, RouterMeta
+from core.routing import Auth, RouterMeta, UnitOfWorkSession
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +54,8 @@ class JiraExportResponse(BaseModel):
 def export_case_to_jira(
     case_id: str,
     request: JiraExportRequest,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db)
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: UnitOfWorkSession,
 ):
     """
     Export a case to JIRA as a ticket with findings as subtasks.
@@ -222,8 +220,8 @@ def export_case_to_jira(
 def export_remediation_to_jira(
     case_id: str,
     request: JiraRemediationExportRequest,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db)
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: UnitOfWorkSession,
 ):
     """
     Export remediation steps to JIRA as subtasks.
