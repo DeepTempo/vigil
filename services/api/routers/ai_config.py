@@ -11,19 +11,15 @@ Endpoints (registered under /api/ai):
 from __future__ import annotations
 
 import logging
-import sys
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from core.routing import Auth, RouterMeta
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.storage.connection import get_db, get_db_session
-from core.storage.models import AIModelConfig, LLMProviderConfig  # noqa: E402
-from core.llm.providers.registry import (  # noqa: E402
+from core.storage.models import AIModelConfig, LLMProviderConfig
+from core.llm.providers.registry import (
     COMPONENTS,
     ModelInfo,
     get_registry,

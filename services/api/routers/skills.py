@@ -5,16 +5,11 @@ will be added by a follow-up PR on top of the llm_worker ARQ pattern.
 """
 
 import logging
-import sys
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from core.routing import Auth, RouterMeta
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-from core.skills.schemas import (  # noqa: E402
+from core.skills.schemas import (
     SkillCreate,
     SkillGenerateRequest,
     SkillGenerateResponse,
@@ -22,12 +17,12 @@ from core.skills.schemas import (  # noqa: E402
     SkillResponse,
     SkillUpdate,
 )
-from core.skills.skill_importer import (  # noqa: E402
+from core.skills.skill_importer import (
     MAX_ZIP_BYTES,
     SkillImportError,
     import_skill_zip,
 )
-from core.skills.skill_service import SkillService  # noqa: E402
+from core.skills.skill_service import SkillService
 
 router = APIRouter()
 

@@ -8,15 +8,8 @@ import json
 import logging
 import os
 
-# Import new secrets manager
-import sys
 from core.routing import Auth, RouterMeta
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.secrets import get_secret, set_secret
-
-# Import database config service
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from core.storage.config_service import get_config_service
 from core.llm.defaults import DEFAULT_MODEL
 from core.integrations.integration_secrets import redact_secrets, secret_fields_for, split_secrets
@@ -866,7 +859,6 @@ async def get_integrations_status():
     """
     try:
         # Import here to avoid circular dependencies
-        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
         from core.integrations.integration_bridge_service import get_integration_bridge
 
         bridge = get_integration_bridge()
@@ -891,7 +883,6 @@ async def test_integration(integration_id: str):
     """
     try:
         # Import here to avoid circular dependencies
-        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
         from core.integrations.integration_bridge_service import get_integration_bridge
 
         bridge = get_integration_bridge()

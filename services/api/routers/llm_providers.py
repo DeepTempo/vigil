@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import logging
 import re
-import sys
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -19,17 +17,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete as sa_delete, update
 from sqlalchemy.orm import Session
 from core.routing import Auth, RouterMeta
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from core.secrets import delete_secret, get_secret, set_secret  # noqa: E402
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from services.api.middleware.auth import get_current_active_user  # noqa: E402
-from core.auth.auth_service import AuthService  # noqa: E402
-from core.storage.connection import get_db  # noqa: E402
-from core.storage.models import AIModelConfig, LLMProviderConfig, User  # noqa: E402
-from core.llm.bifrost.admin import push_provider_key  # noqa: E402
-from core.platform.url_safety import (  # noqa: E402
+from core.secrets import delete_secret, get_secret, set_secret
+from services.api.middleware.auth import get_current_active_user
+from core.auth.auth_service import AuthService
+from core.storage.connection import get_db
+from core.storage.models import AIModelConfig, LLMProviderConfig, User
+from core.llm.bifrost.admin import push_provider_key
+from core.platform.url_safety import (
     UrlSafetyError,
     validate_provider_url,
 )

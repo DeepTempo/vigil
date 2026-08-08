@@ -107,7 +107,7 @@ def test_registry_exception_returns_zero(caplog):
 
 def test_sonnet_constants_are_gone():
     """Guardrail against accidental reintroduction of the legacy fallback."""
-    from daemon import agent_runner
+    from services.daemon import agent_runner
 
     assert not hasattr(agent_runner, "SONNET_INPUT_COST")
     assert not hasattr(agent_runner, "SONNET_OUTPUT_COST")

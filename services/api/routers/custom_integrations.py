@@ -9,12 +9,8 @@ to be smuggled through ``--url-query`` (see 2026-05 disclosure).
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
-from pathlib import Path
 import logging
-import sys
 from core.routing import Auth, RouterMeta
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from services.api.middleware.auth import get_current_active_user
 from core.auth.auth_service import AuthService
 from core.storage.models import User
