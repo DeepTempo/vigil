@@ -7,10 +7,10 @@ Handles SLA monitoring, auto-assignment, escalation, and periodic tasks.
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from database.connection import get_db_session
-from database.models import Case, CaseSLA, CaseNotification
+from database.models import Case, CaseSLA
 from services.case_sla_service import CaseSLAService
 from services.case_workflow_service import CaseWorkflowService
 from services.case_notification_service import CaseNotificationService
@@ -224,70 +224,7 @@ class CaseAutomationService:
         finally:
             session.close()
     
-    def auto_assign_new_case(
-        self,
-        case_id: str,
-        available_analysts: List[str]
-    ) -> Optional[str]:
-        """
-        Auto-assign a newly created case.
-        
-        Args:
-            case_id: Case ID
-            available_analysts: List of available analyst IDs
-        
-        Returns:
-            Assigned analyst ID
-        """
-        try:
-            assigned = self.workflow_service.auto_assign_case(
-                case_id,
-                assignment_strategy='least_workload',
-                available_analysts=available_analysts
-            )
-            
-            if assigned:
-                logger.info(f"Auto-assigned case {case_id} to {assigned}")
-                
-                # Send notification
-                self.notification_service.notify_case_assignment(
-                    case_id, assigned, "System"
-                )
-            
-            return assigned
-        except Exception as e:
-            logger.error(f"Error auto-assigning case {case_id}: {e}")
-            return None
     
-    def auto_escalate_breached_cases(self):
-        """Auto-escalate cases that have breached SLA."""
-        session = get_db_session()
-        try:
-            breached_cases = self.sla_service.get_breached_cases(session)
-            
-            for case_data in breached_cases:
-                case_id = case_data['case_id']
-                case = session.query(Case).filter(Case.case_id == case_id).first()
-                
-                if case and case.assignee:
-                    # In real implementation, would determine escalation target
-                    escalation_target = "soc_manager"  # Placeholder
-                    
-                    self.workflow_service.escalate_case(
-                        case_id,
-                        escalated_from=case.assignee,
-                        escalated_to=escalation_target,
-                        reason="SLA breach - automatic escalation",
-                        urgency_level="critical",
-                        session=session
-                    )
-                    
-                    logger.info(f"Auto-escalated breached case {case_id}")
-        except Exception as e:
-            logger.error(f"Error auto-escalating cases: {e}")
-            session.rollback()
-        finally:
-            session.close()
 
 
 # Singleton instance

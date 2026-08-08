@@ -15,11 +15,11 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from database.models import Finding, Case, CaseClosureInfo, LLMInteractionLog
-from database.connection import get_db, get_db_session
+from database.connection import get_db
 from backend.services.ai_insights_service import AIInsightsService
 from services.mitre_lookup import get_time_range, resolve_technique  # noqa: F401
 from api._meta import Auth, RouterMeta

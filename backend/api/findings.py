@@ -31,15 +31,6 @@ logger = logging.getLogger(__name__)
 data_service = DatabaseDataService()
 
 
-class FindingFilter(BaseModel):
-    """Filter parameters for findings."""
-    severity: Optional[str] = None
-    data_source: Optional[str] = None
-    cluster_id: Optional[int] = None
-    min_anomaly_score: Optional[float] = None
-    limit: Optional[int] = 100
-
-
 @router.get("/")
 def get_findings(
     severity: Optional[str] = Query(None),

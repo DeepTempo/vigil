@@ -3,15 +3,15 @@
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 try:
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib.enums import TA_CENTER
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
@@ -72,167 +72,6 @@ class ReportService:
             spaceAfter=6
         ))
     
-    def generate_overall_report(self, output_path: Path, findings: List[Dict], 
-                               cases: List[Dict], include_findings_detail: bool = True) -> bool:
-        """
-        Generate an overall SOC report PDF.
-        
-        Args:
-            output_path: Path to save the PDF file.
-            findings: List of all findings.
-            cases: List of all cases.
-            include_findings_detail: Whether to include detailed findings section.
-        
-        Returns:
-            True if successful, False otherwise.
-        """
-        try:
-            doc = SimpleDocTemplate(str(output_path), pagesize=letter,
-                                   rightMargin=72, leftMargin=72,
-                                   topMargin=72, bottomMargin=18)
-            story = []
-            
-            # Title
-            story.append(Paragraph("Vigil SOC - Overall Report", self.styles['CustomTitle']))
-            story.append(Spacer(1, 0.2*inch))
-            
-            # Report metadata
-            report_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            metadata = [
-                ["Report Generated:", report_date],
-                ["Total Findings:", str(len(findings))],
-                ["Total Cases:", str(len(cases))],
-            ]
-            metadata_table = Table(metadata, colWidths=[2*inch, 4*inch])
-            metadata_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#ecf0f1')),
-                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 0), (-1, -1), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ]))
-            story.append(metadata_table)
-            story.append(Spacer(1, 0.3*inch))
-            
-            # Executive Summary
-            story.append(Paragraph("Executive Summary", self.styles['CustomHeading']))
-            
-            # Findings by severity
-            severity_counts = {}
-            for finding in findings:
-                severity = finding.get('severity', 'unknown')
-                severity_counts[severity] = severity_counts.get(severity, 0) + 1
-            
-            summary_data = [["Severity", "Count", "Percentage"]]
-            total = len(findings)
-            for severity in ["critical", "high", "medium", "low"]:
-                count = severity_counts.get(severity, 0)
-                percentage = (count / total * 100) if total > 0 else 0
-                summary_data.append([severity.capitalize(), str(count), f"{percentage:.1f}%"])
-            
-            summary_table = Table(summary_data, colWidths=[2*inch, 1.5*inch, 1.5*inch])
-            summary_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ]))
-            story.append(summary_table)
-            story.append(Spacer(1, 0.2*inch))
-            
-            # Cases summary
-            story.append(Paragraph("Cases Summary", self.styles['CustomHeading']))
-            
-            cases_data = [["Case ID", "Title", "Status", "Priority", "Findings"]]
-            for case in cases[:20]:  # Limit to first 20 cases
-                cases_data.append([
-                    case.get('case_id', 'N/A'),
-                    case.get('title', 'N/A')[:40] + ('...' if len(case.get('title', '')) > 40 else ''),
-                    case.get('status', 'N/A'),
-                    case.get('priority', 'N/A'),
-                    str(len(case.get('finding_ids', [])))
-                ])
-            
-            if len(cases) > 20:
-                cases_data.append(["", f"... and {len(cases) - 20} more cases", "", "", ""])
-            
-            cases_table = Table(cases_data, colWidths=[1.5*inch, 2.5*inch, 1*inch, 1*inch, 1*inch])
-            cases_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2ecc71')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-                ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ]))
-            story.append(cases_table)
-            story.append(PageBreak())
-            
-            # Findings detail (if requested)
-            if include_findings_detail and findings:
-                story.append(Paragraph("Findings Detail", self.styles['CustomHeading']))
-                
-                for i, finding in enumerate(findings[:50], 1):  # Limit to first 50 findings
-                    story.append(Paragraph(f"Finding {i}: {finding.get('finding_id', 'N/A')}", 
-                                          self.styles['CustomSubheading']))
-                    
-                    finding_info = [
-                        ["Field", "Value"],
-                        ["Finding ID", finding.get('finding_id', 'N/A')],
-                        ["Timestamp", finding.get('timestamp', 'N/A')],
-                        ["Severity", finding.get('severity', 'N/A')],
-                        ["Data Source", finding.get('data_source', 'N/A')],
-                        ["Anomaly Score", f"{finding.get('anomaly_score', 0):.3f}"],
-                        ["Cluster ID", finding.get('cluster_id', 'None')],
-                    ]
-                    
-                    # Entity context
-                    entity_context = finding.get('entity_context') or {}
-                    if entity_context:
-                        for key, value in list(entity_context.items())[:5]:  # Limit fields
-                            finding_info.append([f"Entity: {key}", str(value)])
-                    
-                    # MITRE techniques
-                    mitre_preds = finding.get('mitre_predictions') or {}
-                    if mitre_preds:
-                        top_techniques = sorted(mitre_preds.items(), key=lambda x: float(x[1] or 0), reverse=True)[:5]
-                        tech_str = ", ".join([f"{t[0]} ({float(t[1] or 0):.2f})" for t in top_techniques])
-                        finding_info.append(["MITRE Techniques", tech_str])
-                    
-                    finding_table = Table(finding_info, colWidths=[2*inch, 4*inch])
-                    finding_table.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#95a5a6')),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 10),
-                        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-                        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-                        ('FONTSIZE', (0, 1), (-1, -1), 9),
-                    ]))
-                    story.append(finding_table)
-                    story.append(Spacer(1, 0.1*inch))
-                    
-                    if i % 10 == 0:  # Page break every 10 findings
-                        story.append(PageBreak())
-            
-            # Build PDF
-            doc.build(story)
-            logger.info(f"Generated overall report: {output_path}")
-            return True
-        
-        except Exception as e:
-            logger.error(f"Error generating overall report: {e}", exc_info=True)
-            return False
     
     def generate_case_report(self, output_path: Path, case: Dict, findings: List[Dict]) -> bool:
         """

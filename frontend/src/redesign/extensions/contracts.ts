@@ -5,7 +5,6 @@
 // (host → element via `hostContext`), and Extension events (element → host).
 
 /** We accept any extension whose declared major matches (see isHostApiCompatible). */
-export const HOST_API_VERSION = '1.x'
 export const HOST_API_MAJOR = 1
 
 /** Composed so it crosses the element's shadow boundary. */

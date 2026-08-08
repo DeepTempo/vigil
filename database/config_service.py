@@ -7,13 +7,11 @@ and integration configurations with automatic audit logging.
 
 import logging
 from typing import Optional, Dict, Any, List, Set
-from datetime import datetime
 from contextlib import contextmanager
 
 from database.connection import get_db_manager
-from database.models import SystemConfig, UserPreference, IntegrationConfig, ConfigAuditLog
+from database.models import SystemConfig, IntegrationConfig, ConfigAuditLog
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -138,180 +136,14 @@ class ConfigService:
             logger.error(f"Error setting system config '{key}': {e}")
             return False
     
-    def delete_system_config(self, key: str, change_reason: Optional[str] = None) -> bool:
-        """
-        Delete a system configuration.
-        
-        Args:
-            key: Configuration key to delete
-            change_reason: Reason for deletion (for audit)
-            
-        Returns:
-            True if successful
-        """
-        try:
-            with get_session() as session:
-                config = session.query(SystemConfig).filter_by(key=key).first()
-                
-                if not config:
-                    logger.warning(f"System config '{key}' not found")
-                    return False
-                
-                old_value = config.value
-                config_type = config.config_type
-                
-                # Create audit log before deletion
-                self._create_audit_log(
-                    session,
-                    config_type=config_type,
-                    config_key=key,
-                    action='delete',
-                    old_value=old_value,
-                    new_value=None,
-                    change_reason=change_reason
-                )
-                
-                session.delete(config)
-                session.commit()
-                logger.info(f"System config '{key}' deleted by {self.user_id}")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error deleting system config '{key}': {e}")
-            return False
     
-    def list_system_configs(self, config_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        List all system configurations.
-        
-        Args:
-            config_type: Optional filter by config type
-            
-        Returns:
-            List of configuration dictionaries
-        """
-        try:
-            with get_session() as session:
-                query = session.query(SystemConfig)
-                
-                if config_type:
-                    query = query.filter_by(config_type=config_type)
-                
-                configs = query.all()
-                return [config.to_dict() for config in configs]
-                
-        except Exception as e:
-            logger.error(f"Error listing system configs: {e}")
-            return []
     
     # =========================================================================
     # User Preferences Methods
     # =========================================================================
     
-    def get_user_preferences(self, user_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Get user preferences.
-        
-        Args:
-            user_id: User ID (defaults to current user)
-            
-        Returns:
-            User preferences dictionary
-        """
-        user_id = user_id or self.user_id
-        
-        try:
-            with get_session() as session:
-                user_pref = session.query(UserPreference).filter_by(user_id=user_id).first()
-                
-                if user_pref:
-                    return user_pref.preferences
-                
-                # Return defaults if no preferences found
-                return {
-                    'theme': 'dark',
-                    'show_notifications': True,
-                    'auto_start_sync': False
-                }
-                
-        except Exception as e:
-            logger.error(f"Error getting user preferences for '{user_id}': {e}")
-            return {}
     
-    def set_user_preferences(
-        self, 
-        preferences: Dict[str, Any], 
-        user_id: Optional[str] = None,
-        display_name: Optional[str] = None,
-        email: Optional[str] = None
-    ) -> bool:
-        """
-        Set user preferences.
-        
-        Args:
-            preferences: Preferences dictionary
-            user_id: User ID (defaults to current user)
-            display_name: Optional display name
-            email: Optional email
-            
-        Returns:
-            True if successful
-        """
-        user_id = user_id or self.user_id
-        
-        try:
-            with get_session() as session:
-                user_pref = session.query(UserPreference).filter_by(user_id=user_id).first()
-                
-                if user_pref:
-                    user_pref.preferences = preferences
-                    if display_name:
-                        user_pref.display_name = display_name
-                    if email:
-                        user_pref.email = email
-                else:
-                    user_pref = UserPreference(
-                        user_id=user_id,
-                        preferences=preferences,
-                        display_name=display_name,
-                        email=email
-                    )
-                    session.add(user_pref)
-                
-                session.commit()
-                logger.info(f"User preferences updated for '{user_id}'")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error setting user preferences for '{user_id}': {e}")
-            return False
     
-    def update_last_login(self, user_id: Optional[str] = None) -> bool:
-        """
-        Update last login timestamp for a user.
-        
-        Args:
-            user_id: User ID (defaults to current user)
-            
-        Returns:
-            True if successful
-        """
-        user_id = user_id or self.user_id
-        
-        try:
-            with get_session() as session:
-                user_pref = session.query(UserPreference).filter_by(user_id=user_id).first()
-                
-                if user_pref:
-                    user_pref.last_login = datetime.utcnow()
-                    session.commit()
-                    return True
-                
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error updating last login for '{user_id}': {e}")
-            return False
     
     # =========================================================================
     # Integration Configuration Methods
@@ -419,74 +251,7 @@ class ConfigService:
             logger.error(f"Error setting integration config '{integration_id}': {e}")
             return False
     
-    def enable_integration(self, integration_id: str, enabled: bool = True) -> bool:
-        """
-        Enable or disable an integration.
-        
-        Args:
-            integration_id: Integration identifier
-            enabled: Whether to enable (True) or disable (False)
-            
-        Returns:
-            True if successful
-        """
-        try:
-            with get_session() as session:
-                integration = session.query(IntegrationConfig).filter_by(
-                    integration_id=integration_id
-                ).first()
-                
-                if not integration:
-                    logger.warning(f"Integration '{integration_id}' not found")
-                    return False
-                
-                integration.enabled = enabled
-                integration.updated_by = self.user_id
-                session.commit()
-                
-                status = "enabled" if enabled else "disabled"
-                logger.info(f"Integration '{integration_id}' {status} by {self.user_id}")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error enabling/disabling integration '{integration_id}': {e}")
-            return False
     
-    def update_integration_test_result(
-        self,
-        integration_id: str,
-        success: bool,
-        error: Optional[str] = None
-    ) -> bool:
-        """
-        Update integration test result.
-        
-        Args:
-            integration_id: Integration identifier
-            success: Whether test was successful
-            error: Error message if test failed
-            
-        Returns:
-            True if successful
-        """
-        try:
-            with get_session() as session:
-                integration = session.query(IntegrationConfig).filter_by(
-                    integration_id=integration_id
-                ).first()
-                
-                if not integration:
-                    return False
-                
-                integration.last_test_at = datetime.utcnow()
-                integration.last_test_success = success
-                integration.last_error = error
-                session.commit()
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error updating test result for '{integration_id}': {e}")
-            return False
     
     def list_integrations(self, enabled_only: bool = False) -> List[Dict[str, Any]]:
         """
@@ -512,20 +277,6 @@ class ConfigService:
             logger.error(f"Error listing integrations: {e}")
             return []
     
-    def get_enabled_integration_ids(self) -> List[str]:
-        """
-        Get list of enabled integration IDs.
-        
-        Returns:
-            List of integration IDs
-        """
-        try:
-            with get_session() as session:
-                integrations = session.query(IntegrationConfig).filter_by(enabled=True).all()
-                return [i.integration_id for i in integrations]
-        except Exception as e:
-            logger.error(f"Error getting enabled integrations: {e}")
-            return []
 
     def get_disabled_integration_ids(self) -> Set[str]:
         """Registered-but-disabled integration IDs. Sources with no config row
@@ -583,41 +334,6 @@ class ConfigService:
                 session, config_type, config_key, action,
                 old_value, new_value, change_reason,
             )
-
-    def get_audit_log(
-        self,
-        config_type: Optional[str] = None,
-        config_key: Optional[str] = None,
-        limit: int = 100
-    ) -> List[Dict[str, Any]]:
-        """
-        Get configuration audit log.
-        
-        Args:
-            config_type: Optional filter by config type
-            config_key: Optional filter by config key
-            limit: Maximum number of entries to return
-            
-        Returns:
-            List of audit log entries
-        """
-        try:
-            with get_session() as session:
-                query = session.query(ConfigAuditLog).order_by(
-                    ConfigAuditLog.timestamp.desc()
-                )
-                
-                if config_type:
-                    query = query.filter_by(config_type=config_type)
-                if config_key:
-                    query = query.filter_by(config_key=config_key)
-                
-                entries = query.limit(limit).all()
-                return [entry.to_dict() for entry in entries]
-                
-        except Exception as e:
-            logger.error(f"Error getting audit log: {e}")
-            return []
 
 
 # Global instance for singleton pattern

@@ -450,11 +450,3 @@ ALL_TOOLS = (
     APPROVAL_TOOLS
 )
 
-
-def get_tool_by_name(name: str):
-    """Get tool schema by name"""
-    for tool in ALL_TOOLS:
-        if tool["name"] == name:
-            return tool
-    return None
-

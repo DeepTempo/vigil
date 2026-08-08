@@ -8,7 +8,7 @@ investigations.
 import io
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -53,10 +53,6 @@ class InvestigationCreateRequest(BaseModel):
     case_id: Optional[str] = None
     hypothesis: Optional[str] = None
     priority: str = "medium"
-
-
-class OrchestratorToggleRequest(BaseModel):
-    enabled: bool
 
 
 # ---- Status & Control ----

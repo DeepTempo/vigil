@@ -6,7 +6,6 @@ from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
-from core.config import get_integration_config
 
 logger = logging.getLogger(__name__)
 server = Server("ip-geolocation")

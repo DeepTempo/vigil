@@ -880,7 +880,7 @@ async def get_tasks(case_id: str):
             return {"tasks": [t.to_dict() for t in tasks]}
         finally:
             session.close()
-    except Exception as e:
+    except Exception:
         # If database is not available, return empty list
         return {"tasks": []}
 
@@ -1096,7 +1096,7 @@ async def merge_cases(case_id: str, data: MergeRequest):
 
     from database.connection import get_db_manager
     from database.models import (
-        Case, case_findings, CaseRelationship,
+        Case, CaseRelationship,
     )
 
     with get_db_manager().session_scope() as session:

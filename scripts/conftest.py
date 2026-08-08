@@ -8,7 +8,7 @@ and a database initialization fixture for SLA assignment tests.
 
 import os
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 
 @pytest.fixture(autouse=True)

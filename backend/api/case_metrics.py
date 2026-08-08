@@ -2,7 +2,6 @@
 
 from typing import Optional
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from datetime import datetime
 
 from services.case_metrics_service import CaseMetricsService
@@ -264,7 +263,6 @@ async def get_mttd(
     """
     from database.connection import get_db_session
     from database.models import Case, CaseMetrics
-    from sqlalchemy import and_
     
     session = get_db_session()
     try:

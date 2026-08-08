@@ -192,37 +192,6 @@ class CaseCollaborationService:
 
             return query.order_by(CaseComment.created_at.asc()).all()
 
-    def get_comment_thread(
-        self,
-        comment_id: int,
-        session: Optional[Session] = None
-    ) -> List[CaseComment]:
-        """
-        Get a comment and all its replies.
-
-        Args:
-            comment_id: Parent comment ID
-            session: Database session (optional)
-
-        Returns:
-            List of CaseComment objects in thread
-        """
-        with unit_of_work(session) as session:
-            # Get parent comment
-            parent = session.query(CaseComment).filter(
-                CaseComment.comment_id == comment_id
-            ).first()
-
-            if not parent:
-                return []
-
-            # Get all replies
-            replies = session.query(CaseComment).filter(
-                CaseComment.parent_comment_id == comment_id
-            ).order_by(CaseComment.created_at.asc()).all()
-
-            return [parent] + replies
-
     def add_watcher(
         self,
         case_id: str,
@@ -328,25 +297,3 @@ class CaseCollaborationService:
             return session.query(CaseWatcher).filter(
                 CaseWatcher.case_id == case_id
             ).all()
-
-    def get_user_watched_cases(
-        self,
-        user_id: str,
-        session: Optional[Session] = None
-    ) -> List[str]:
-        """
-        Get all cases a user is watching.
-
-        Args:
-            user_id: User ID
-            session: Database session (optional)
-
-        Returns:
-            List of case IDs
-        """
-        with unit_of_work(session) as session:
-            watchers = session.query(CaseWatcher).filter(
-                CaseWatcher.user_id == user_id
-            ).all()
-
-            return [watcher.case_id for watcher in watchers]

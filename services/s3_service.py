@@ -4,7 +4,6 @@ import json
 import logging
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 
@@ -236,18 +235,6 @@ class S3Service:
             logger.error(f"Error reading file from S3: {e}")
             return None
     
-    def get_parquet_keys(self, prefix: str = "") -> List[str]:
-        """
-        List all .parquet file keys under the given S3 prefix.
-
-        Args:
-            prefix: S3 key prefix (folder path), e.g. "embeddings/"
-
-        Returns:
-            List of S3 object keys ending in .parquet
-        """
-        all_files = self.list_files(prefix=prefix)
-        return [f for f in all_files if f.endswith('.parquet')]
 
     def upload_file(self, local_path: Path, s3_key: str) -> bool:
         """

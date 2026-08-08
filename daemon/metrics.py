@@ -16,7 +16,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from aiohttp import web
 

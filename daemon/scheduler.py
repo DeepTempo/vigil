@@ -4,7 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from core.config import get_settings
 from daemon.config import SchedulerConfig
@@ -244,7 +244,6 @@ class TaskScheduler:
             severity_counts[sev] = severity_counts.get(sev, 0) + 1
         
         critical_count = severity_counts.get("critical", 0)
-        high_count = severity_counts.get("high", 0)
         
         if critical_count > 5:
             patterns.append({

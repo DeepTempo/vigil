@@ -141,33 +141,6 @@ class ElasticEnrichmentService:
     # Case enrichment
     # ------------------------------------------------------------------
 
-    async def enrich_case(
-        self, case_id: str, lookback_hours: int = 168
-    ) -> Dict[str, Any]:
-        """Enrich a case with Elasticsearch data."""
-        case = self.data_service.get_case(case_id)
-        if not case:
-            return {"success": False, "error": f"Case {case_id} not found"}
-
-        findings = []
-        for fid in case.get("finding_ids", []):
-            f = self.data_service.get_finding(fid)
-            if f:
-                findings.append(f)
-
-        indicators = self.extract_indicators(case, findings)
-        enrichment = await self.query_elastic_for_indicators(
-            indicators, hours=lookback_hours
-        )
-
-        return {
-            "success": True,
-            "case_id": case_id,
-            "enrichment_timestamp": datetime.utcnow().isoformat(),
-            "indicators": {k: v for k, v in indicators.items() if v},
-            "elastic_data": enrichment,
-        }
-
 
 # ------------------------------------------------------------------
 # Helpers

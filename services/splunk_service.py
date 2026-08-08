@@ -2,9 +2,7 @@
 
 import logging
 import requests
-from typing import Optional, List, Dict, Any
-import json
-from datetime import datetime, timedelta
+from typing import Optional, List, Dict
 import urllib3
 
 # Disable SSL warnings for self-signed certificates
@@ -217,19 +215,6 @@ class SplunkService:
         query = f'"{ip_address}" | head 1000'
         return self.search(query, earliest_time=f"-{hours}h")
     
-    def search_by_domain(self, domain: str, hours: int = 24) -> Optional[List[Dict]]:
-        """
-        Search for events related to a domain.
-        
-        Args:
-            domain: Domain name to search for
-            hours: Number of hours to look back (default: 24)
-        
-        Returns:
-            List of events or None
-        """
-        query = f'"{domain}" | head 1000'
-        return self.search(query, earliest_time=f"-{hours}h")
     
     def search_by_hash(self, file_hash: str, hours: int = 24) -> Optional[List[Dict]]:
         """
@@ -273,34 +258,5 @@ class SplunkService:
         query = f'host="{hostname}" OR hostname="{hostname}" OR dest="{hostname}" | head 1000'
         return self.search(query, earliest_time=f"-{hours}h")
     
-    def get_indexes(self) -> Optional[List[str]]:
-        """
-        Get list of available indexes.
-        
-        Returns:
-            List of index names or None
-        """
-        try:
-            if not self.session_key:
-                if not self.authenticate():
-                    return None
-            
-            response = self.session.get(
-                f"{self.server_url}/services/data/indexes",
-                params={'output_mode': 'json'}
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                entries = data.get('entry', [])
-                indexes = [entry.get('name') for entry in entries if entry.get('name')]
-                return indexes
-            else:
-                logger.error(f"Failed to get indexes: {response.status_code}")
-                return None
-        
-        except Exception as e:
-            logger.error(f"Error getting indexes: {e}")
-            return None
 
 

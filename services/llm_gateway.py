@@ -11,7 +11,6 @@ enqueue LLM requests here instead of calling Claude directly. This provides:
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from arq import create_pool
@@ -87,25 +86,6 @@ class RedisSessionStore:
 # ---------------------------------------------------------------------------
 # Gateway -- singleton entry point used by all callers
 # ---------------------------------------------------------------------------
-
-
-@dataclass
-class LLMRequest:
-    """Describes a single LLM call to be queued."""
-
-    messages: List[Dict]
-    model: str = DEFAULT_MODEL
-    max_tokens: int = 4096
-    system_prompt: Optional[str] = None
-    session_id: Optional[str] = None
-    enable_thinking: bool = False
-    thinking_budget: int = 10000
-    tools: Optional[List[Dict]] = None
-    temperature: Optional[float] = None
-    # Multi-provider routing (GH #88). None means "use the default
-    # anthropic provider" which preserves pre-#88 behavior.
-    provider_id: Optional[str] = None
-    extra_kwargs: Dict[str, Any] = field(default_factory=dict)
 
 
 class LLMGateway:
