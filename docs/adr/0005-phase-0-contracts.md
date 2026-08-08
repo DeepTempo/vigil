@@ -137,6 +137,12 @@ is why editing an arch file mid-run cannot change a run in flight.
 rather than in application code, and `run_id:seq` for a re-entrant resume step,
 so a double enqueue at the same ledger position dedupes for the same reason.
 
+The queue is named `agent-runs`, with no colon. BullMQ's Node library refuses a
+queue name containing one; its Python library accepts it and writes the keys
+anyway. The first name tried was `agent:runs`, which enqueued cleanly from
+Python and could never have been consumed by any Node worker. Redis keys are
+therefore `bull:agent-runs:*`, which is what #594's autoscaler must watch.
+
 ### 5. The rate table — `database/init/20_model_rates.sql`, `services/agent/contracts/rates.ts`
 
 Consumed by WS-E (#593) and WS-A.
