@@ -81,8 +81,9 @@ arq>=0.27.0
 redis>=5.0.0
 
 # Agent-layer queue. ARQ is Python-only, so runs bound for the TypeScript worker
-# go through BullMQ instead. Pinned in step with ai/package.json's bullmq: the two
-# share a key layout and Lua scripts, so their major versions move together.
+# go through BullMQ instead. This and ai/package.json's bullmq are separately
+# versioned lines (3.x here, 5.x there) that have to stay wire-compatible, so both
+# are exact pins and neither moves without the walking-skeleton test proving it.
 bullmq==3.0.4
 
 # Kafka ingestion (optional; only used when KAFKA_ENABLED=true)

@@ -6,8 +6,9 @@ lives in ``ai/contracts/job.ts`` and is mirrored here, so a change on either sid
 is a change to both.
 
 BullMQ rather than ARQ because ARQ is a Python library the TypeScript worker
-cannot consume. The two libraries share a key layout and a set of Lua scripts,
-so their major versions are pinned in step and must be bumped together.
+cannot consume. The Python and Node BullMQ libraries are separately versioned
+lines that agree on a key layout and a set of Lua scripts; both are exact pins,
+and the walking-skeleton integration test is what proves they still agree.
 """
 
 from __future__ import annotations
