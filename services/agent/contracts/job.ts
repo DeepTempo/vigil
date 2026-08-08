@@ -4,7 +4,10 @@
 import type { RunKind } from "./events.js";
 
 export const JOB_SCHEMA_VERSION = 1;
-export const RUN_QUEUE = "agent:runs";
+
+// No colon: BullMQ's Node library refuses a queue name containing one, while
+// its Python library accepts it and writes the keys anyway. Keys are bull:agent-runs:*.
+export const RUN_QUEUE = "agent-runs";
 
 interface JobBase {
   schema_version: number;
