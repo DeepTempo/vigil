@@ -321,7 +321,7 @@ jobs:
         run: pip install bandit[toml]
       
       - name: Run Bandit
-        run: bandit -r backend/ services/ -f json -o bandit-report.json || true
+        run: bandit -r core/ services/ tools/ scripts/ -f json -o bandit-report.json || true
       
       - name: Upload Bandit results
         uses: actions/upload-artifact@v5
