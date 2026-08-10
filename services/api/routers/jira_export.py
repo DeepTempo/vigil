@@ -13,10 +13,15 @@ from services.api.middleware.auth import get_current_user
 from core.auth.auth_service import AuthService
 from core.storage.models import User, Case, Finding
 from core.config import get_integration_config
-import requests
+import httpx
 from core.routing import Auth, RouterMeta, UnitOfWorkSession
 
 logger = logging.getLogger(__name__)
+
+# httpx defaults to follow_redirects=False; requests followed redirects.
+# Jira Cloud does redirect (site moves, context-path changes), so this is
+# passed on every call to keep the swap behaviour-preserving.
+_FOLLOW_REDIRECTS = True
 
 router = APIRouter()
 
@@ -152,12 +157,13 @@ def export_case_to_jira(
             }
         }
         
-        response = requests.post(
+        response = httpx.post(
             f"{url}/rest/api/2/issue",
             auth=auth,
             headers=headers,
             json=issue_data,
-            timeout=30
+            timeout=30,
+            follow_redirects=_FOLLOW_REDIRECTS,
         )
         response.raise_for_status()
         result_data = response.json()
@@ -178,12 +184,13 @@ def export_case_to_jira(
                 }
                 
                 try:
-                    sub_response = requests.post(
+                    sub_response = httpx.post(
                         f"{url}/rest/api/2/issue",
                         auth=auth,
                         headers=headers,
                         json=subtask_data,
-                        timeout=30
+                        timeout=30,
+                        follow_redirects=_FOLLOW_REDIRECTS,
                     )
                     sub_response.raise_for_status()
                     subtasks_created += 1
@@ -202,7 +209,7 @@ def export_case_to_jira(
     
     except HTTPException:
         raise
-    except requests.exceptions.RequestException as e:
+    except (httpx.HTTPError, httpx.InvalidURL) as e:
         logger.error(f"JIRA API error: {e}")
         return JiraExportResponse(
             success=False,
@@ -275,11 +282,12 @@ def export_remediation_to_jira(
         auth = (email, token)
         headers = {"Content-Type": "application/json"}
         
-        parent_response = requests.get(
+        parent_response = httpx.get(
             f"{url}/rest/api/2/issue/{request.parent_issue_key}",
             auth=auth,
             headers=headers,
-            timeout=30
+            timeout=30,
+            follow_redirects=_FOLLOW_REDIRECTS,
         )
         parent_response.raise_for_status()
         parent_data = parent_response.json()
@@ -300,23 +308,25 @@ def export_remediation_to_jira(
             
             if request.assign_to:
                 # Try to find user by email
-                user_response = requests.get(
+                user_response = httpx.get(
                     f"{url}/rest/api/2/user/search",
                     auth=auth,
                     headers=headers,
                     params={"username": request.assign_to},
-                    timeout=30
+                    timeout=30,
+                    follow_redirects=_FOLLOW_REDIRECTS,
                 )
                 if user_response.ok and user_response.json():
                     subtask_data["fields"]["assignee"] = {"name": user_response.json()[0]["name"]}
             
             try:
-                response = requests.post(
+                response = httpx.post(
                     f"{url}/rest/api/2/issue",
                     auth=auth,
                     headers=headers,
                     json=subtask_data,
-                    timeout=30
+                    timeout=30,
+                    follow_redirects=_FOLLOW_REDIRECTS,
                 )
                 response.raise_for_status()
                 created_subtasks += 1
@@ -334,7 +344,7 @@ def export_remediation_to_jira(
     
     except HTTPException:
         raise
-    except requests.exceptions.RequestException as e:
+    except (httpx.HTTPError, httpx.InvalidURL) as e:
         logger.error(f"JIRA API error: {e}")
         return JiraExportResponse(
             success=False,
