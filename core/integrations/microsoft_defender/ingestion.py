@@ -8,12 +8,20 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import uuid
-import requests
+import httpx
 
 from core.ingestion.siem_ingestion_service import SIEMIngestionService
 from core.config import get_integration_config
 
 logger = logging.getLogger(__name__)
+
+# Neither call site passed a timeout and requests defaults to None, so a
+# stalled Microsoft endpoint could hang the poll indefinitely.
+DEFAULT_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0)
+
+# httpx defaults to follow_redirects=False; requests followed redirects.
+# Microsoft's login endpoints do redirect, so this one matters.
+_FOLLOW_REDIRECTS = True
 
 
 class MicrosoftDefenderIngestion(SIEMIngestionService):
@@ -51,7 +59,12 @@ class MicrosoftDefenderIngestion(SIEMIngestionService):
                 'grant_type': 'client_credentials'
             }
             
-            response = requests.post(token_url, data=token_data)
+            response = httpx.post(
+                token_url,
+                data=token_data,
+                timeout=DEFAULT_TIMEOUT,
+                follow_redirects=_FOLLOW_REDIRECTS,
+            )
             response.raise_for_status()
             
             self.access_token = response.json()['access_token']
@@ -104,7 +117,13 @@ class MicrosoftDefenderIngestion(SIEMIngestionService):
                 '$orderby': 'alertCreationTime desc'
             }
             
-            response = requests.get(api_url, headers=headers, params=params)
+            response = httpx.get(
+                api_url,
+                headers=headers,
+                params=params,
+                timeout=DEFAULT_TIMEOUT,
+                follow_redirects=_FOLLOW_REDIRECTS,
+            )
             response.raise_for_status()
             
             alerts = response.json().get('value', [])
@@ -112,7 +131,7 @@ class MicrosoftDefenderIngestion(SIEMIngestionService):
             logger.info(f"Fetched {len(alerts)} alerts from Microsoft Defender")
             return alerts
         
-        except requests.exceptions.RequestException as e:
+        except (httpx.HTTPError, httpx.InvalidURL) as e:
             logger.error(f"Microsoft Defender API error: {e}")
             return []
         except Exception as e:
