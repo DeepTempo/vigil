@@ -78,7 +78,7 @@ def _emit(stmt: str):
 
 
 def main() -> int:
-    init_dir = project_root / "database" / "init"
+    init_dir = project_root / "infra" / "database" / "init"
     files = sorted(init_dir.glob("*.sql"))
     if not files:
         logger.error("no SQL files in %s", init_dir)

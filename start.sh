@@ -131,7 +131,7 @@ if [ "$DAEMON" -eq 0 ]; then
     trap cleanup INT TERM EXIT
 
     uvicorn services.api.main:app --host "$BIND_HOST" --port 6987 --reload \
-        --reload-dir backend --reload-dir services --reload-dir database &
+        --reload-dir services --reload-dir core --reload-dir tools &
     BACKEND_PID=$!
 
     python3 -m services.worker &
@@ -155,7 +155,7 @@ else
     }
 
     nohup uvicorn services.api.main:app --host "$BIND_HOST" --port 6987 --reload \
-        --reload-dir backend --reload-dir services --reload-dir database \
+        --reload-dir services --reload-dir core --reload-dir tools \
         > logs/backend.log 2>&1 &
     BACKEND_PID=$!
     echo $BACKEND_PID > logs/backend.pid
