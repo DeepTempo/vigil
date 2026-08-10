@@ -1121,7 +1121,7 @@ class Orchestrator:
             if get_settings().daemon_slack_enabled is not True:
                 return
 
-            import requests
+            import httpx
 
             from core.config import get_integration_config
 
@@ -1144,7 +1144,7 @@ class Orchestrator:
                 ],
             }
             await asyncio.to_thread(
-                requests.post,
+                httpx.post,
                 "https://slack.com/api/chat.postMessage",
                 headers={
                     "Authorization": f"Bearer {token}",
@@ -1152,6 +1152,7 @@ class Orchestrator:
                 },
                 json=payload,
                 timeout=10,
+                follow_redirects=True,
             )
         except Exception as e:
             logger.debug(f"Slack notification failed: {e}")

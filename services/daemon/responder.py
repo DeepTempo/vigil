@@ -231,7 +231,7 @@ class AutonomousResponder:
                 logger.warning("Slack not configured, skipping escalation")
                 return
             
-            import requests
+            import httpx
             
             color_map = {
                 "critical": "#ff0000",
@@ -241,7 +241,7 @@ class AutonomousResponder:
             }
             
             response = await asyncio.to_thread(
-                requests.post,
+                httpx.post,
                 "https://slack.com/api/chat.postMessage",
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json={
@@ -254,7 +254,8 @@ class AutonomousResponder:
                         "ts": datetime.utcnow().timestamp()
                     }]
                 },
-                timeout=30
+                timeout=30,
+                follow_redirects=True,
             )
             
             if response.status_code == 200 and response.json().get("ok"):
@@ -276,12 +277,12 @@ class AutonomousResponder:
                 logger.warning("PagerDuty not configured, skipping escalation")
                 return
             
-            import requests
+            import httpx
             
             pd_severity = self.escalation_config.pagerduty_severity_map.get(severity, "warning")
             
             response = await asyncio.to_thread(
-                requests.post,
+                httpx.post,
                 "https://events.pagerduty.com/v2/enqueue",
                 json={
                     "routing_key": routing_key,
@@ -293,7 +294,8 @@ class AutonomousResponder:
                         "custom_details": {"details": details}
                     }
                 },
-                timeout=30
+                timeout=30,
+                follow_redirects=True,
             )
             
             data = response.json()

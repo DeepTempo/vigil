@@ -703,14 +703,15 @@ REASONING: [Brief explanation]
         # Shodan lookup
         if self._enrichment_services.get("shodan", {}).get("enabled"):
             try:
-                import requests
+                import httpx
 
                 api_key = self._enrichment_services["shodan"]["api_key"]
                 resp = await asyncio.to_thread(
-                    requests.get,
+                    httpx.get,
                     f"https://api.shodan.io/shodan/host/{ip}",
                     params={"key": api_key},
                     timeout=10,
+                    follow_redirects=True,
                 )
                 if resp.status_code == 200:
                     data = resp.json()
@@ -727,14 +728,15 @@ REASONING: [Brief explanation]
         # VirusTotal IP lookup
         if self._enrichment_services.get("virustotal", {}).get("enabled"):
             try:
-                import requests
+                import httpx
 
                 api_key = self._enrichment_services["virustotal"]["api_key"]
                 resp = await asyncio.to_thread(
-                    requests.get,
+                    httpx.get,
                     f"https://www.virustotal.com/api/v3/ip_addresses/{ip}",
                     headers={"x-apikey": api_key},
                     timeout=10,
+                    follow_redirects=True,
                 )
                 if resp.status_code == 200:
                     data = resp.json().get("data", {}).get("attributes", {})
@@ -756,14 +758,15 @@ REASONING: [Brief explanation]
             return None
 
         try:
-            import requests
+            import httpx
 
             api_key = self._enrichment_services["virustotal"]["api_key"]
             resp = await asyncio.to_thread(
-                requests.get,
+                httpx.get,
                 f"https://www.virustotal.com/api/v3/files/{hash_val}",
                 headers={"x-apikey": api_key},
                 timeout=10,
+                follow_redirects=True,
             )
             if resp.status_code == 200:
                 data = resp.json().get("data", {}).get("attributes", {})

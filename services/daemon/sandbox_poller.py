@@ -17,7 +17,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
-import requests
+import httpx
 
 from core.config import get_settings
 from core.secrets import get_secret
@@ -171,10 +171,11 @@ class SandboxPoller:
             return None
         headers = {"Authorization": f"Token {api_key}"} if api_key else {}
         status_resp = await asyncio.to_thread(
-            requests.get,
+            httpx.get,
             f"{base}/apiv2/tasks/status/{task_id}/",
             headers=headers,
             timeout=15,
+            follow_redirects=True,
         )
         if status_resp.status_code != 200:
             return None
@@ -183,10 +184,11 @@ class SandboxPoller:
         if status != "reported":
             return None
         report_resp = await asyncio.to_thread(
-            requests.get,
+            httpx.get,
             f"{base}/apiv2/tasks/get/report/{task_id}/",
             headers=headers,
             timeout=60,
+            follow_redirects=True,
         )
         if report_resp.status_code == 200:
             return report_resp.json()
@@ -200,10 +202,11 @@ class SandboxPoller:
         if not api_key:
             return None
         resp = await asyncio.to_thread(
-            requests.get,
+            httpx.get,
             f"https://www.hybrid-analysis.com/api/v2/report/{task_id}/summary",
             headers={"api-key": api_key, "User-Agent": "Falcon Sandbox"},
             timeout=30,
+            follow_redirects=True,
         )
         if resp.status_code == 200:
             data = resp.json()
@@ -220,10 +223,11 @@ class SandboxPoller:
         if not api_key:
             return None
         resp = await asyncio.to_thread(
-            requests.get,
+            httpx.get,
             f"https://api.any.run/v1/analysis/{task_id}",
             headers={"Authorization": f"API-Key {api_key}"},
             timeout=30,
+            follow_redirects=True,
         )
         if resp.status_code == 200:
             data = resp.json()
@@ -237,10 +241,11 @@ class SandboxPoller:
         if not api_key:
             return None
         resp = await asyncio.to_thread(
-            requests.post,
+            httpx.post,
             f"{base}/v2/analysis/info",
             data={"apikey": api_key, "webid": task_id},
             timeout=30,
+            follow_redirects=True,
         )
         if resp.status_code == 200:
             data = resp.json()

@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 from core.config import get_settings
 from core.secrets import get_secret
 
-import requests
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -182,10 +182,11 @@ class SandboxSubmitter:
             return {"status": "skipped", "reason": "unknown_hash_format"}
         try:
             resp = await asyncio.to_thread(
-                requests.get,
+                httpx.get,
                 f"{url}/apiv2/tasks/search/{hash_type}/{hash_val}/",
                 headers=headers,
                 timeout=15,
+                follow_redirects=True,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -213,11 +214,12 @@ class SandboxSubmitter:
             return {"status": "skipped", "reason": "no_api_key"}
         try:
             resp = await asyncio.to_thread(
-                requests.post,
+                httpx.post,
                 "https://www.hybrid-analysis.com/api/v2/search/hash",
                 headers={"api-key": api_key, "User-Agent": "Falcon Sandbox"},
                 data={"hash": hash_val},
                 timeout=15,
+                follow_redirects=True,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -238,11 +240,12 @@ class SandboxSubmitter:
             return {"status": "skipped", "reason": "no_api_key"}
         try:
             resp = await asyncio.to_thread(
-                requests.get,
+                httpx.get,
                 "https://api.any.run/v1/tasks",
                 headers={"Authorization": f"API-Key {api_key}"},
                 params={"hash": hash_val},
                 timeout=15,
+                follow_redirects=True,
             )
             if resp.status_code == 200:
                 tasks = resp.json().get("data", {}).get("tasks", [])
@@ -261,10 +264,11 @@ class SandboxSubmitter:
             return {"status": "skipped", "reason": "no_api_key"}
         try:
             resp = await asyncio.to_thread(
-                requests.post,
+                httpx.post,
                 f"{base}/v2/analysis/search",
                 data={"apikey": api_key, "q": hash_val},
                 timeout=15,
+                follow_redirects=True,
             )
             if resp.status_code == 200:
                 data = resp.json().get("data", [])
