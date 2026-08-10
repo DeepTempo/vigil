@@ -47,7 +47,7 @@ async def demo_case_building():
     # Check if Claude is configured
     if not claude.has_api_key():
         print("❌ Claude API key not configured. Please set CLAUDE_API_KEY.")
-        print("   Use: python3 backend/api/config.py set claude api_key YOUR_KEY")
+        print("   Configure it in the UI: Settings → AI / LLM Providers")
         return
     
     print("✅ Claude API configured")

@@ -1,7 +1,7 @@
 """Base class and field types for the ORM-mode serialization schemas.
 
 These schemas own the JSON contract for the models in ``database.models``.
-They live beside the models rather than under ``backend/`` because the
+They live beside the models rather than under ``services/api/`` because the
 daemon and the service layer serialize the same objects and should not have
 to import the web layer to do it.
 

@@ -1,7 +1,7 @@
 """Regression tests for the Splunk MCP secrets migration (GH #84 PR-F follow-up).
 
 ``core/integrations/splunk/tool.py`` previously read SPLUNK_* credentials straight
-from ``os.environ``. It now routes through ``backend/secrets_manager`` so
+from ``os.environ``. It now routes through ``core/secrets_manager`` so
 operators can keep Splunk creds in the keyring / dotenv without surfacing
 them in ``.env``. These tests lock in the fallback behavior so a refactor
 can't silently revert to plain env reads.

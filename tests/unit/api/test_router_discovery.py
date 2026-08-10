@@ -1,7 +1,8 @@
 """Guards for the router auto-discovery introduced in issue #478.
 
 The refactor replaced 42 hand-written ``include_router`` calls with a
-``pkgutil`` scan over ``backend/api/``. These tests lock in the invariants
+filesystem scan over ``core/**/*_router.py`` plus the parked modules under
+``services/api/routers/``. These tests lock in the invariants
 that made that safe, so the assumptions can't rot silently:
 
 * every router module declares ``ROUTER_META`` (no convention fallback,

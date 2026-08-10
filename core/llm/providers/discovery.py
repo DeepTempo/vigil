@@ -4,7 +4,7 @@ One module, three providers, one normalized return shape. Each provider's
 public catalog endpoint is queried directly (not through Bifrost — this is
 capability discovery, not LLM traffic, so the "single LLM routing path"
 policy doesn't apply: the same carve-out already applies to
-``backend/api/llm_providers.py::test_provider`` which validates user keys
+``services/api/routers/llm_providers.py::test_provider`` which validates user keys
 against upstream).
 
 Returned shape — ``ModelMeta``:

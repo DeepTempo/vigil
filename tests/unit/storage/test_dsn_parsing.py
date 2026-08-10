@@ -122,7 +122,7 @@ def test_config_uses_env_when_no_dsn(monkeypatch):
 
 
 def test_env_connection_string_does_not_outrank_postgres_vars(monkeypatch):
-    """backend/main.py exports a hardcoded default POSTGRESQL_CONNECTION_STRING
+    """services/api/main.py exports a hardcoded default POSTGRESQL_CONNECTION_STRING
     for the MCP servers whenever the secret is unset. Resolving the DSN through
     the secrets manager's env fallback would let that default silently pin an
     operator's POSTGRES_* config to localhost."""

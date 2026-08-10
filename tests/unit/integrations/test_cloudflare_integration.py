@@ -5,7 +5,7 @@ Covers:
   when the integration is disabled, and the REST helpers shape arguments
   correctly when enabled (Cloudflare API itself is mocked).
 - services/threat_feed_service.py — STIX 2.1 indicator parsing.
-- backend/api/cloudflare_webhooks.py — the Cloudy receiver returns 503
+- core/integrations/cloudflare/cloudflare_webhooks_router.py — the Cloudy receiver returns 503
   when CLOUDY_INGESTION_ENABLED is unset.
 """
 
@@ -155,7 +155,7 @@ def test_parse_stix_indicator_skips_non_indicator():
 
 
 # ---------------------------------------------------------------------------
-# backend/api/cloudflare_webhooks.py — gating
+# core/integrations/cloudflare/cloudflare_webhooks_router.py — gating
 # ---------------------------------------------------------------------------
 
 

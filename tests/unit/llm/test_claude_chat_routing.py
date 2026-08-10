@@ -1,5 +1,5 @@
 """Unit tests for the reconciled non-Anthropic chat routing in
-``backend/api/claude.py``.
+``services/api/routers/claude.py``.
 
 Background: ``main`` merged #348 ("route local Ollama providers through
 Bifrost") while this branch carried an overlapping non-Anthropic routing
@@ -44,7 +44,7 @@ AN_OLLAMA_MODEL = "llama3.1:8b"
 
 
 def _load_claude_module():
-    """Load backend/api/claude.py as a standalone module, bypassing the
+    """Load services/api/routers/claude.py as a standalone module, bypassing the
     services.api.routers package __init__ (auth/DB). Skip the suite if its imports are
     unavailable in this environment."""
     spec = importlib.util.spec_from_file_location(

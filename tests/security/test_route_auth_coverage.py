@@ -6,7 +6,7 @@ security disclosure. If you add a new router or route without auth,
 this test fails — and the fix is either to add ``dependencies=AUTH_DEPENDENCY``
 to the include_router call (or ``Depends(get_current_active_user)`` to
 the handler) or, if the route is intentionally public, to add it to
-``PUBLIC_API_PATHS`` in ``backend/main.py``.
+``PUBLIC_API_PATHS`` in ``services/api/main.py``.
 """
 
 from __future__ import annotations
