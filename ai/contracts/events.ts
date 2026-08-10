@@ -5,7 +5,10 @@ import type { BudgetLimits, SpendPayload } from "./budget.js";
 
 export const EVENT_SCHEMA_VERSION = 1;
 
-export const RUN_KINDS = ["hunt", "investigate", "compose", "chat"] as const;
+// tally is the harness's own conformance workflow (#592), not a product surface.
+// It is here so the harness's boundary is first exercised by something that is
+// not a real domain, and it keeps the domain-free requirement checkable.
+export const RUN_KINDS = ["hunt", "investigate", "compose", "chat", "tally"] as const;
 export type RunKind = (typeof RUN_KINDS)[number];
 
 // Domain-free (ADR-0002), so the harness never imports a workflow's vocabulary.

@@ -53,6 +53,10 @@ export type ReserveOutcome =
 export interface Budget {
   readonly limits: BudgetLimits;
   readonly spent: Spend;
+  // The only thing that advances Spend.iterations, and therefore the only thing
+  // that can enforce max_iterations. Separate from reserve because a tool loop
+  // is many model calls inside one iteration, so counting calls would be wrong.
+  beginIteration(): Refusal | null;
   reserve(model_id: string, estimate_tokens: TokenCounts): ReserveOutcome;
   commit(reservation: Reservation, actual: SpendPayload): void;
   release(reservation: Reservation): void;
