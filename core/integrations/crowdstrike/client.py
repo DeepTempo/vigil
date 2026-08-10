@@ -7,11 +7,10 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-# Every call site already passes timeout=30; this is the client-level floor
-# so a future call that forgets one still cannot hang forever.
+# Client-level floor; every call site also passes timeout=30 explicitly.
 DEFAULT_TIMEOUT = 30.0
 
-# httpx defaults to follow_redirects=False; requests followed redirects.
+# requests followed redirects by default; httpx does not.
 _FOLLOW_REDIRECTS = True
 
 

@@ -95,8 +95,7 @@ class SplunkAdapter:
         for query_tmpl in _QUERIES:
             query = query_tmpl.format(limit=max_items)
             try:
-                # Blocking: polls the search job with time.sleep for up to
-                # ~60s. Keep it off the federation loop (#461).
+                # search() polls its job with time.sleep for up to ~60s.
                 results = await asyncio.to_thread(
                     svc.search,
                     query=query,

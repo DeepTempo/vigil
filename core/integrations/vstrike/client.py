@@ -34,14 +34,12 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30
 
-# `requests` folded every transport failure into RequestException, but
-# httpx.InvalidURL sits outside the httpx.HTTPError tree — so a malformed
-# VSTRIKE_BASE_URL would escape a bare `except httpx.HTTPError` and 500 the
-# caller instead of returning None. Catch both to keep the old contract.
+# httpx.InvalidURL sits outside the httpx.HTTPError tree, but requests
+# folded both into RequestException — so a malformed VSTRIKE_BASE_URL would
+# escape a bare `except httpx.HTTPError` and 500 instead of returning None.
 _HTTP_ERRORS = (httpx.HTTPError, httpx.InvalidURL)
 
-# httpx defaults to follow_redirects=False; requests followed redirects.
-# Passed on every call so the swap is behaviour-preserving.
+# requests followed redirects by default; httpx does not.
 _FOLLOW_REDIRECTS = True
 
 # MCP JSON-RPC endpoint exposed by VStrike. Confirmed live against

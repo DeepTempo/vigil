@@ -284,9 +284,8 @@ class DataPoller:
         findings = []
         for query in queries:
             try:
-                # SplunkService.search is blocking — it polls the search
-                # job with time.sleep for up to ~60s. Run it on a worker
-                # thread so it cannot freeze the daemon's loop (#461).
+                # search() polls its job with time.sleep for up to ~60s,
+                # which would otherwise freeze the whole daemon loop.
                 results = await asyncio.to_thread(
                     self._splunk_service.search,
                     query=query,

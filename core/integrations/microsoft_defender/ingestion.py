@@ -16,12 +16,11 @@ from core.config import get_integration_config
 
 logger = logging.getLogger(__name__)
 
-# Neither call site passed a timeout and requests defaults to None, so a
-# stalled Microsoft endpoint could hang the poll indefinitely.
+# Neither call site passed a timeout, and requests defaulted to none.
 DEFAULT_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0)
 
-# httpx defaults to follow_redirects=False; requests followed redirects.
-# Microsoft's login endpoints do redirect, so this one matters.
+# requests followed redirects by default, httpx does not — and Microsoft's
+# login endpoints redirect.
 _FOLLOW_REDIRECTS = True
 
 
@@ -93,9 +92,8 @@ class MicrosoftDefenderIngestion(SIEMIngestionService):
             List of raw alert dictionaries
         """
         try:
-            # Get access token. Both the token exchange and the alert fetch
-            # below are blocking HTTP, so they go to a worker thread rather
-            # than stalling the caller's event loop (execution model, #461).
+            # Token exchange and the alert fetch below are both blocking
+            # HTTP; this method is async by interface, so offload them.
             token = await asyncio.to_thread(self._get_access_token)
             if not token:
                 return []

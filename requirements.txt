@@ -19,12 +19,11 @@ ijson>=3.2.0
 anthropic>=0.45.0
 claude-agent-sdk>=0.1.0
 openai>=1.40.0
-# httpx is the HTTP client for every integration client (#462). It arrives
-# transitively via anthropic/openai anyway; pinned explicitly so the
-# integrations don't depend on someone else's dependency graph.
+# HTTP client for every integration client. Arrives transitively via
+# anthropic/openai; pinned so we don't rely on someone else's graph.
 httpx>=0.27.0
-# `requests` is no longer used by any integration client. Still needed by
-# scripts/ (sample-data + Splunk export helpers) and a few tests.
+# No longer used by any integration client — still needed by scripts/,
+# tests, and the MCP servers under tools/.
 requests>=2.31.0
 urllib3>=2.0.0
 boto3>=1.34.0
@@ -51,11 +50,9 @@ pgvector>=0.3.0  # pgvector column type + <=> ANN for finding embeddings
 # Optional proxy hops in front of the metadata DB and DB-shaped
 # integrations (Settings → System → Database, plus per-integration
 # proxy block). sshtunnel only loaded when the operator picks an SSH
-# tunnel. SOCKS5 support for integrations whose clients pick up
-# HTTPS_PROXY / ALL_PROXY needs a per-library backend: httpx (every
-# integration client) resolves socks5:// through socksio, while pysocks
-# covers the requests/urllib callers left in scripts/. Both are required
-# — httpx cannot use pysocks.
+# tunnel. SOCKS5 via HTTPS_PROXY / ALL_PROXY needs a per-library backend:
+# httpx cannot use pysocks, so both are required — socksio for the
+# integration clients, pysocks for the requests callers in scripts/tools.
 sshtunnel>=0.4.0
 pysocks>=1.7.1
 socksio>=1.0.0

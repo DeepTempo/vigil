@@ -1,9 +1,8 @@
 """Unit tests for services/splunk_service.py (httpx transport, respx-mocked).
 
-Added alongside the requests->httpx swap (#462). The module previously had
-no HTTP-level coverage at all, which is how it shipped with *no timeout on
-any request* — a hang against an unresponsive Splunk was unbounded, and
-search() is driven by the daemon's poll loop.
+The module had no HTTP-level coverage at all, which is how it shipped with
+no timeout on any request — a hang against an unresponsive Splunk was
+unbounded, and search() is driven by the daemon's poll loop.
 """
 
 from __future__ import annotations

@@ -18,9 +18,8 @@ from core.routing import Auth, RouterMeta, UnitOfWorkSession
 
 logger = logging.getLogger(__name__)
 
-# httpx defaults to follow_redirects=False; requests followed redirects.
-# Jira Cloud does redirect (site moves, context-path changes), so this is
-# passed on every call to keep the swap behaviour-preserving.
+# requests followed redirects by default, httpx does not — and Jira Cloud
+# redirects on site moves and context-path changes.
 _FOLLOW_REDIRECTS = True
 
 router = APIRouter()

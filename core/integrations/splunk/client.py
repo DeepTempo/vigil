@@ -4,25 +4,22 @@ import logging
 import httpx
 from typing import Optional, List, Dict
 
-# NOTE: urllib3.disable_warnings() used to live here to silence
-# InsecureRequestWarning for verify_ssl=False deployments. httpx does not
-# use urllib3 and emits no such warning, so it was dropped along with the
-# requests dependency.
+# urllib3.disable_warnings() used to live here to silence
+# InsecureRequestWarning; httpx doesn't use urllib3 and emits no such
+# warning.
 
 logger = logging.getLogger(__name__)
 
-# requests defaults to no timeout, so every call in this module could hang
-# forever against an unresponsive Splunk — and search() is invoked from the
-# daemon's poll loop. Give the client an explicit budget instead. read is
-# generous because a results fetch can return max_count events.
+# requests defaulted to no timeout and no call site passed one, so every
+# request here could hang forever. read is generous because a results fetch
+# can return max_count events.
 DEFAULT_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=5.0)
 
-# httpx defaults to follow_redirects=False; requests followed redirects.
+# requests followed redirects by default; httpx does not.
 _FOLLOW_REDIRECTS = True
 
-# httpx.InvalidURL is not an httpx.HTTPError, but requests folded both into
-# RequestException. Catch both so a malformed server_url keeps returning a
-# clean failure instead of escaping the handler.
+# httpx.InvalidURL sits outside the httpx.HTTPError tree, but requests
+# folded both into RequestException.
 _HTTP_ERRORS = (httpx.HTTPError, httpx.InvalidURL)
 
 
@@ -44,8 +41,8 @@ class SplunkService:
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl
-        # verify and timeout are constructor-only on httpx.Client (unlike
-        # requests.Session, where they could be assigned afterwards).
+        # verify/timeout are constructor-only on httpx.Client; requests
+        # allowed session.verify to be assigned afterwards.
         self.session = httpx.Client(
             verify=verify_ssl,
             timeout=DEFAULT_TIMEOUT,
