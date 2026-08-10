@@ -53,6 +53,10 @@ export interface TurnConfig {
 export interface Attempt {
   tool: string;
   args: string;
+  // The structured result for the workflow and the rendered one for the model.
+  // A workflow reading rows never parses what was rendered, and rendering still
+  // happens in exactly one place (ADR-0005).
+  result: ToolResult;
   wrapped: Wrapped;
 }
 
@@ -93,12 +97,17 @@ export async function commitTurn<Kinds extends Record<string, unknown>>(
   return state.append(runId, outcome.from, [...harness, ...own]);
 }
 
-export async function runTurn<T>(cfg: TurnConfig, harness: Harness): Promise<Outcome<T>> {
-  const run = new Run<T>(cfg, harness);
-  return run.execute();
+// Generic over the workflow's kinds only so any workflow's harness fits. The
+// loop appends none of them and reads only the domain-free set, which is the
+// domain-free requirement showing up in the signature.
+export async function runTurn<T, Kinds extends Record<string, unknown> = Record<never, never>>(
+  cfg: TurnConfig,
+  harness: Harness<Kinds>,
+): Promise<Outcome<T>> {
+  return new Run<T, Kinds>(cfg, harness).execute();
 }
 
-class Run<T> {
+class Run<T, Kinds extends Record<string, unknown>> {
   private readonly scan: ReturnType<typeof scannerFor>;
   private readonly tools: readonly RegisteredTool[];
   private readonly events: NewEvent<Record<never, never>>[] = [];
@@ -111,7 +120,7 @@ class Run<T> {
 
   constructor(
     private readonly cfg: TurnConfig,
-    private readonly harness: Harness,
+    private readonly harness: Harness<Kinds>,
   ) {
     this.scan = scannerFor(cfg.verbs);
     this.tools = harness.registry.granted(cfg.role);
@@ -189,7 +198,7 @@ class Run<T> {
   // whatever the dispatch implementation handed back.
   private record(tool: string, args: string, result: ToolResult, callId: string): void {
     const wrapped = wrap(tool, result, this.scan, this.cfg.result_cap);
-    this.calls.push({ tool, args, wrapped });
+    this.calls.push({ tool, args, result, wrapped });
     this.transcript.push({ role: "tool", call_id: callId, content: wrapped.text });
   }
 
@@ -284,8 +293,8 @@ class Run<T> {
 
 // Only an approving or rejecting resolution counts; a checkpoint with none is
 // still open, which is what keeps the run parked (ADR-0003).
-async function resolutionsOf(
-  state: State,
+async function resolutionsOf<Kinds extends Record<string, unknown>>(
+  state: State<Kinds>,
   runId: string,
 ): Promise<ReadonlyMap<string, ResolutionPayload["answer"]>> {
   const events = await state.read(runId);
