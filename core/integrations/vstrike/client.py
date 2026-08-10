@@ -26,13 +26,23 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-import requests
+import httpx
 
 from core.secrets import get_secret
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30
+
+# `requests` folded every transport failure into RequestException, but
+# httpx.InvalidURL sits outside the httpx.HTTPError tree — so a malformed
+# VSTRIKE_BASE_URL would escape a bare `except httpx.HTTPError` and 500 the
+# caller instead of returning None. Catch both to keep the old contract.
+_HTTP_ERRORS = (httpx.HTTPError, httpx.InvalidURL)
+
+# httpx defaults to follow_redirects=False; requests followed redirects.
+# Passed on every call so the swap is behaviour-preserving.
+_FOLLOW_REDIRECTS = True
 
 # MCP JSON-RPC endpoint exposed by VStrike. Confirmed live against
 # https://vstrike.net — VStrike replies with `text/event-stream`.
@@ -59,7 +69,7 @@ class VStrikeToolNotImplemented(RuntimeError):
     """
 
 
-def _parse_response_body(resp: requests.Response) -> Any:
+def _parse_response_body(resp: httpx.Response) -> Any:
     """Return the JSON body of a response, tolerating SSE framing.
 
     VStrike's MCP endpoint replies with `text/event-stream` even though the
@@ -221,7 +231,7 @@ class VStrikeService:
             "Content-Type": "application/json",
         }
 
-    def _get(self, path: str, **kwargs) -> requests.Response:
+    def _get(self, path: str, **kwargs) -> httpx.Response:
         """GET ``{base_url}{path}`` with JWT auth, retrying once on 401.
 
         Used by every legacy ``/api/v1/*`` topology helper. The JWT is the
@@ -230,12 +240,13 @@ class VStrikeService:
         url = f"{self.base_url}{path}"
         params = kwargs.pop("params", None)
 
-        def _do(jwt: str) -> requests.Response:
-            return requests.get(
+        def _do(jwt: str) -> httpx.Response:
+            return httpx.get(
                 url,
                 params=params,
                 timeout=self.timeout,
                 verify=self.verify_ssl,
+                follow_redirects=_FOLLOW_REDIRECTS,
                 headers=self._bearer_headers(jwt),
                 **kwargs,
             )
@@ -257,7 +268,7 @@ class VStrikeService:
             if response.status_code == 200:
                 return True, "Connection successful"
             return False, f"HTTP {response.status_code}: {response.text[:200]}"
-        except requests.exceptions.RequestException as e:
+        except _HTTP_ERRORS as e:
             return False, f"Connection error: {e}"
 
     def get_asset_topology(self, asset_id: str) -> Optional[Dict[str, Any]]:
@@ -272,7 +283,7 @@ class VStrikeService:
                 response.status_code,
             )
             return None
-        except requests.exceptions.RequestException as e:
+        except _HTTP_ERRORS as e:
             logger.error("VStrike get_asset_topology(%s) failed: %s", asset_id, e)
             return None
 
@@ -283,7 +294,7 @@ class VStrikeService:
             if response.status_code == 200:
                 return response.json().get("adjacent", [])
             return None
-        except requests.exceptions.RequestException as e:
+        except _HTTP_ERRORS as e:
             logger.error("VStrike list_adjacent(%s) failed: %s", asset_id, e)
             return None
 
@@ -294,7 +305,7 @@ class VStrikeService:
             if response.status_code == 200:
                 return response.json()
             return None
-        except requests.exceptions.RequestException as e:
+        except _HTTP_ERRORS as e:
             logger.error("VStrike get_blast_radius(%s) failed: %s", asset_id, e)
             return None
 
@@ -310,7 +321,7 @@ class VStrikeService:
             if response.status_code == 200:
                 return response.json().get("findings", [])
             return None
-        except requests.exceptions.RequestException as e:
+        except _HTTP_ERRORS as e:
             logger.error("VStrike find_findings_by_segment(%s) failed: %s", segment, e)
             return None
 
@@ -327,17 +338,18 @@ class VStrikeService:
             )
         url = f"{self.base_url}/mcp-login"
         try:
-            resp = requests.post(
+            resp = httpx.post(
                 url,
                 json={"username": self.username, "password": self.password},
                 timeout=self.timeout,
                 verify=self.verify_ssl,
+                follow_redirects=_FOLLOW_REDIRECTS,
                 headers={
                     "Content-Type": "application/json",
                     "Accept": "application/json, text/event-stream",
                 },
             )
-        except requests.exceptions.RequestException as e:
+        except _HTTP_ERRORS as e:
             raise RuntimeError(f"VStrike mcp-login failed: {e}") from e
 
         if resp.status_code != 200:
@@ -409,12 +421,13 @@ class VStrikeService:
             "params": {"name": tool_name, "arguments": arguments},
         }
 
-        def _post(jwt: str) -> requests.Response:
-            return requests.post(
+        def _post(jwt: str) -> httpx.Response:
+            return httpx.post(
                 url,
                 json=payload,
                 timeout=self.timeout,
                 verify=self.verify_ssl,
+                follow_redirects=_FOLLOW_REDIRECTS,
                 headers={
                     "Authorization": f"Bearer {jwt}",
                     "Content-Type": "application/json",
@@ -426,7 +439,7 @@ class VStrikeService:
         jwt = self._ensure_jwt()
         try:
             resp = _post(jwt)
-        except requests.exceptions.RequestException as e:
+        except _HTTP_ERRORS as e:
             raise RuntimeError(f"VStrike MCP {tool_name} failed: {e}") from e
 
         if resp.status_code == 401:
@@ -434,7 +447,7 @@ class VStrikeService:
             jwt = self._ensure_jwt()
             try:
                 resp = _post(jwt)
-            except requests.exceptions.RequestException as e:
+            except _HTTP_ERRORS as e:
                 raise RuntimeError(f"VStrike MCP {tool_name} retry failed: {e}") from e
 
         if resp.status_code != 200:
@@ -478,19 +491,20 @@ class VStrikeService:
             "params": {},
         }
 
-        def _post(jwt: str) -> requests.Response:
-            return requests.post(
+        def _post(jwt: str) -> httpx.Response:
+            return httpx.post(
                 url,
                 json=payload,
                 timeout=self.timeout,
                 verify=self.verify_ssl,
+                follow_redirects=_FOLLOW_REDIRECTS,
                 headers=self._bearer_headers(jwt),
             )
 
         jwt = self._ensure_jwt()
         try:
             resp = _post(jwt)
-        except requests.exceptions.RequestException as e:
+        except _HTTP_ERRORS as e:
             raise RuntimeError(f"VStrike MCP tools/list failed: {e}") from e
 
         if resp.status_code == 401:
@@ -498,7 +512,7 @@ class VStrikeService:
             jwt = self._ensure_jwt()
             try:
                 resp = _post(jwt)
-            except requests.exceptions.RequestException as e:
+            except _HTTP_ERRORS as e:
                 raise RuntimeError(
                     f"VStrike MCP tools/list retry failed: {e}"
                 ) from e
