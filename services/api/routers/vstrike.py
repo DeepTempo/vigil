@@ -290,7 +290,7 @@ def ingest_findings(
 
 
 @authenticated_router.get("/health", response_model=VStrikeHealthResponse)
-async def health_check() -> VStrikeHealthResponse:
+def health_check() -> VStrikeHealthResponse:
     """Check outbound connectivity to the configured VStrike server."""
     service = get_vstrike_service()
     if service is None:
@@ -313,7 +313,7 @@ async def health_check() -> VStrikeHealthResponse:
 
 
 @authenticated_router.get("/topology/asset/{asset_id}")
-async def get_asset_topology(asset_id: str) -> dict:
+def get_asset_topology(asset_id: str) -> dict:
     """Proxy to VStrike asset-topology lookup (outbound)."""
     service = get_vstrike_service()
     if service is None:
@@ -332,7 +332,7 @@ async def get_asset_topology(asset_id: str) -> dict:
 
 
 @authenticated_router.get("/topology/asset/{asset_id}/adjacent")
-async def list_adjacent_assets(asset_id: str) -> dict:
+def list_adjacent_assets(asset_id: str) -> dict:
     """Proxy to VStrike adjacent-assets lookup."""
     service = get_vstrike_service()
     if service is None:
@@ -347,7 +347,7 @@ async def list_adjacent_assets(asset_id: str) -> dict:
 
 
 @authenticated_router.get("/topology/asset/{asset_id}/blast-radius")
-async def get_blast_radius(asset_id: str) -> dict:
+def get_blast_radius(asset_id: str) -> dict:
     """Proxy to VStrike blast-radius lookup."""
     service = get_vstrike_service()
     if service is None:
@@ -367,7 +367,7 @@ async def get_blast_radius(asset_id: str) -> dict:
 
 
 @authenticated_router.post("/ui/iframe-token")
-async def ui_iframe_token() -> dict:
+def ui_iframe_token() -> dict:
     """Return a short-lived auto-login token + the iframe URL.
 
     Used by the VStrikeIframe frontend component to render
@@ -387,7 +387,7 @@ async def ui_iframe_token() -> dict:
 
 
 @authenticated_router.get("/ui/networks")
-async def ui_list_networks() -> dict:
+def ui_list_networks() -> dict:
     """List networks visible to the configured VStrike account."""
     service = _ui_service_or_503()
     try:
@@ -399,7 +399,7 @@ async def ui_list_networks() -> dict:
 
 
 @authenticated_router.post("/ui/load-network")
-async def ui_load_network(request: VStrikeLoadNetworkRequest) -> dict:
+def ui_load_network(request: VStrikeLoadNetworkRequest) -> dict:
     """Tell VStrike to load a network into the active iframe.
 
     VStrike pushes the actual UI command via its own WebSocket; this endpoint
@@ -415,7 +415,7 @@ async def ui_load_network(request: VStrikeLoadNetworkRequest) -> dict:
 
 
 @authenticated_router.post("/ui/killchain-replay")
-async def ui_killchain_replay(request: VStrikeKillchainReplayRequest) -> dict:
+def ui_killchain_replay(request: VStrikeKillchainReplayRequest) -> dict:
     """Walk a kill-chain through the active VStrike iframe session.
 
     Returns 501 when VStrike's MCP server hasn't shipped the
@@ -452,7 +452,7 @@ class VStrikeNodeSearchRequest(BaseModel):
 
 
 @authenticated_router.post("/nodes/search")
-async def node_search(request: VStrikeNodeSearchRequest) -> dict:
+def node_search(request: VStrikeNodeSearchRequest) -> dict:
     """Omni-search across nodes in the VStrike network."""
     service = _ui_service_or_503()
     try:
@@ -471,7 +471,7 @@ class VStrikeNodeDriftRequest(BaseModel):
 
 
 @authenticated_router.post("/nodes/drift")
-async def node_drift(request: VStrikeNodeDriftRequest) -> dict:
+def node_drift(request: VStrikeNodeDriftRequest) -> dict:
     """Return end-node state changes for the supplied node."""
     service = _ui_service_or_503()
     try:
@@ -483,7 +483,7 @@ async def node_drift(request: VStrikeNodeDriftRequest) -> dict:
 
 
 @authenticated_router.get("/storylines")
-async def list_storylines(network_id: Optional[str] = None) -> dict:
+def list_storylines(network_id: Optional[str] = None) -> dict:
     """List storylines available for the network."""
     service = _ui_service_or_503()
     try:
@@ -500,7 +500,7 @@ class VStrikeStorylineEventsRequest(BaseModel):
 
 
 @authenticated_router.post("/storylines/events")
-async def storyline_events(request: VStrikeStorylineEventsRequest) -> dict:
+def storyline_events(request: VStrikeStorylineEventsRequest) -> dict:
     """List events in a storyline along with their properties."""
     service = _ui_service_or_503()
     try:
@@ -514,7 +514,7 @@ async def storyline_events(request: VStrikeStorylineEventsRequest) -> dict:
 
 
 @authenticated_router.get("/legend-runs")
-async def list_legend_runs(network_id: Optional[str] = None) -> dict:
+def list_legend_runs(network_id: Optional[str] = None) -> dict:
     """List legend runs available for the network."""
     service = _ui_service_or_503()
     try:
@@ -531,7 +531,7 @@ class VStrikeLegendRunResultsRequest(BaseModel):
 
 
 @authenticated_router.post("/legend-runs/results")
-async def legend_run_results(request: VStrikeLegendRunResultsRequest) -> dict:
+def legend_run_results(request: VStrikeLegendRunResultsRequest) -> dict:
     """Return results for the specified legend run."""
     service = _ui_service_or_503()
     try:
@@ -555,7 +555,7 @@ class VStrikeCameraNodeRequest(BaseModel):
 
 
 @authenticated_router.post("/ui/camera-node")
-async def ui_camera_node(request: VStrikeCameraNodeRequest) -> dict:
+def ui_camera_node(request: VStrikeCameraNodeRequest) -> dict:
     """Move the camera to focus on the provided nodes."""
     service = _ui_service_or_503()
     try:
@@ -575,7 +575,7 @@ class VStrikeCameraPositionRequest(BaseModel):
 
 
 @authenticated_router.post("/ui/camera-position")
-async def ui_camera_position(request: VStrikeCameraPositionRequest) -> dict:
+def ui_camera_position(request: VStrikeCameraPositionRequest) -> dict:
     """Set the camera position and rotation explicitly."""
     service = _ui_service_or_503()
     try:
@@ -598,7 +598,7 @@ class VStrikeStorylineApplyRequest(BaseModel):
 
 
 @authenticated_router.post("/ui/storyline-apply")
-async def ui_storyline_apply(request: VStrikeStorylineApplyRequest) -> dict:
+def ui_storyline_apply(request: VStrikeStorylineApplyRequest) -> dict:
     """Apply the specified storyline to the active network view."""
     service = _ui_service_or_503()
     try:
@@ -619,7 +619,7 @@ class VStrikeStorylineModeRequest(BaseModel):
 
 
 @authenticated_router.post("/ui/storyline-mode")
-async def ui_storyline_mode(request: VStrikeStorylineModeRequest) -> dict:
+def ui_storyline_mode(request: VStrikeStorylineModeRequest) -> dict:
     """Set the timeslice mode for the VCR controls and reset frame counters."""
     service = _ui_service_or_503()
     try:
@@ -633,7 +633,7 @@ async def ui_storyline_mode(request: VStrikeStorylineModeRequest) -> dict:
 
 
 @authenticated_router.post("/ui/storyline-forward")
-async def ui_storyline_forward(network_id: Optional[str] = None) -> dict:
+def ui_storyline_forward(network_id: Optional[str] = None) -> dict:
     """Step forward in the storyline timeline."""
     service = _ui_service_or_503()
     try:
@@ -647,7 +647,7 @@ async def ui_storyline_forward(network_id: Optional[str] = None) -> dict:
 
 
 @authenticated_router.post("/ui/storyline-backward")
-async def ui_storyline_backward(network_id: Optional[str] = None) -> dict:
+def ui_storyline_backward(network_id: Optional[str] = None) -> dict:
     """Step backward in the storyline timeline."""
     service = _ui_service_or_503()
     try:
@@ -683,7 +683,7 @@ class VStrikeNetworkGraphRequest(_PassthroughModel):
 
 
 @authenticated_router.post("/network-graph")
-async def network_graph(request: VStrikeNetworkGraphRequest) -> dict:
+def network_graph(request: VStrikeNetworkGraphRequest) -> dict:
     """Fetch the active network graph: {label, nodes, edges, bbox}."""
     service = _ui_service_or_503()
     extras = _passthrough_extras(request, {"network_id"})
@@ -705,7 +705,7 @@ class VStrikeLegendApplyRequest(_PassthroughModel):
 
 
 @authenticated_router.post("/ui/legend-apply")
-async def ui_legend_apply(request: VStrikeLegendApplyRequest) -> dict:
+def ui_legend_apply(request: VStrikeLegendApplyRequest) -> dict:
     """Apply a legend run inside the active VStrike iframe session."""
     service = _ui_service_or_503()
     extras = _passthrough_extras(request, {"legend_run_id", "network_id"})
@@ -733,7 +733,7 @@ class VStrikeRightpanelFocusRequest(_PassthroughModel):
 
 
 @authenticated_router.post("/ui/rightpanel-focus")
-async def ui_rightpanel_focus(
+def ui_rightpanel_focus(
     request: VStrikeRightpanelFocusRequest = VStrikeRightpanelFocusRequest(),
 ) -> dict:
     """Open the right-hand details panel in the VStrike iframe.
