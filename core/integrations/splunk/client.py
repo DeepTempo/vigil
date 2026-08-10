@@ -1,14 +1,29 @@
 """Splunk API service for data enrichment."""
 
 import logging
-import requests
+import httpx
 from typing import Optional, List, Dict
-import urllib3
 
-# Disable SSL warnings for self-signed certificates
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# NOTE: urllib3.disable_warnings() used to live here to silence
+# InsecureRequestWarning for verify_ssl=False deployments. httpx does not
+# use urllib3 and emits no such warning, so it was dropped along with the
+# requests dependency.
 
 logger = logging.getLogger(__name__)
+
+# requests defaults to no timeout, so every call in this module could hang
+# forever against an unresponsive Splunk — and search() is invoked from the
+# daemon's poll loop. Give the client an explicit budget instead. read is
+# generous because a results fetch can return max_count events.
+DEFAULT_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=5.0)
+
+# httpx defaults to follow_redirects=False; requests followed redirects.
+_FOLLOW_REDIRECTS = True
+
+# httpx.InvalidURL is not an httpx.HTTPError, but requests folded both into
+# RequestException. Catch both so a malformed server_url keeps returning a
+# clean failure instead of escaping the handler.
+_HTTP_ERRORS = (httpx.HTTPError, httpx.InvalidURL)
 
 
 class SplunkService:
@@ -29,15 +44,18 @@ class SplunkService:
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl
-        self.session = requests.Session()
-        self.session.verify = verify_ssl
+        # verify and timeout are constructor-only on httpx.Client (unlike
+        # requests.Session, where they could be assigned afterwards).
+        self.session = httpx.Client(
+            verify=verify_ssl,
+            timeout=DEFAULT_TIMEOUT,
+            follow_redirects=_FOLLOW_REDIRECTS,
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
+            },
+        )
         self.session_key: Optional[str] = None
-        
-        # Set default headers
-        self.session.headers.update({
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json'
-        })
     
     def authenticate(self) -> bool:
         """
@@ -98,20 +116,24 @@ class SplunkService:
             else:
                 return False, f"Connection failed: HTTP {response.status_code}"
         
-        except requests.exceptions.RequestException as e:
+        except _HTTP_ERRORS as e:
             return False, f"Connection error: {str(e)}"
     
     def search(self, query: str, earliest_time: str = "-24h", 
                latest_time: str = "now", max_count: int = 1000) -> Optional[List[Dict]]:
         """
         Execute a search query in Splunk.
-        
+
+        Blocking: this polls the search job with time.sleep and can take up
+        to ~60s. That is fine on a worker thread, but async callers must go
+        through asyncio.to_thread — never await-free on the event loop.
+
         Args:
             query: SPL (Splunk Processing Language) query
             earliest_time: Earliest time for search (default: -24h)
             latest_time: Latest time for search (default: now)
             max_count: Maximum number of results to return
-        
+
         Returns:
             List of result dictionaries, or None if error
         """
