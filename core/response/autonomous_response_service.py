@@ -1,5 +1,6 @@
 """Autonomous response service with approval workflow integration."""
 
+import asyncio
 import logging
 from typing import Dict, List, Optional, Callable, Any
 from datetime import datetime
@@ -71,7 +72,10 @@ class AutonomousResponseService:
                 "low": "#36a64f"
             }
             
-            response = httpx.post(
+            # Blocking HTTP inside an async method — offload to a worker
+            # thread so escalation cannot stall the loop (#461).
+            response = await asyncio.to_thread(
+                httpx.post,
                 "https://slack.com/api/chat.postMessage",
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json={
@@ -120,7 +124,10 @@ class AutonomousResponseService:
                 "low": "info"
             }
             
-            response = httpx.post(
+            # Blocking HTTP inside an async method — offload to a worker
+            # thread so escalation cannot stall the loop (#461).
+            response = await asyncio.to_thread(
+                httpx.post,
                 "https://events.pagerduty.com/v2/enqueue",
                 json={
                     "routing_key": routing_key,

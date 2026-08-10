@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime
@@ -94,7 +95,10 @@ class SplunkAdapter:
         for query_tmpl in _QUERIES:
             query = query_tmpl.format(limit=max_items)
             try:
-                results = svc.search(
+                # Blocking: polls the search job with time.sleep for up to
+                # ~60s. Keep it off the federation loop (#461).
+                results = await asyncio.to_thread(
+                    svc.search,
                     query=query,
                     earliest_time=earliest_time,
                     latest_time="now",

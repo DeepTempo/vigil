@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
@@ -73,7 +74,8 @@ class CrowdStrikeAdapter:
             cutoff = datetime.utcnow() - timedelta(minutes=1)
 
         try:
-            detections = svc.get_detections(
+            detections = await asyncio.to_thread(
+                svc.get_detections,
                 filter_query=f"created_timestamp:>='{cutoff.isoformat()}Z'",
                 limit=max_items,
             ) or []

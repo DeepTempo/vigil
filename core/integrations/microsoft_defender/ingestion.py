@@ -4,6 +4,7 @@ Microsoft Defender Ingestion Service - Ingest alerts from Microsoft Defender for
 Fetches security alerts from Microsoft Defender and converts them to findings.
 """
 
+import asyncio
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
@@ -92,8 +93,10 @@ class MicrosoftDefenderIngestion(SIEMIngestionService):
             List of raw alert dictionaries
         """
         try:
-            # Get access token
-            token = self._get_access_token()
+            # Get access token. Both the token exchange and the alert fetch
+            # below are blocking HTTP, so they go to a worker thread rather
+            # than stalling the caller's event loop (execution model, #461).
+            token = await asyncio.to_thread(self._get_access_token)
             if not token:
                 return []
             
@@ -117,7 +120,8 @@ class MicrosoftDefenderIngestion(SIEMIngestionService):
                 '$orderby': 'alertCreationTime desc'
             }
             
-            response = httpx.get(
+            response = await asyncio.to_thread(
+                httpx.get,
                 api_url,
                 headers=headers,
                 params=params,
