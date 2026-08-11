@@ -124,9 +124,9 @@ def test_tier_heuristic_openai_o3_mini_orders_before_o1():
     assert entry["pricing_source"] == "heuristic"
 
 
-def test_exact_catalog_wins_over_heuristic():
-    # claude-sonnet-4-5 is in _CATALOG → "exact", even though it also
-    # matches the sonnet tier.
+def test_a_priced_model_wins_over_the_heuristic(seeded_rates):
+    # claude-sonnet-4-5 has a row in model_rates, so it prices exactly even
+    # though it also matches the sonnet tier regex.
     entry = _catalog_entry("anthropic", "claude-sonnet-4-5-20250929")
     assert entry["pricing_source"] == "exact"
     assert entry["input_per_m"] == pytest.approx(3.0)
@@ -165,7 +165,7 @@ def test_live_meta_populates_context_window(monkeypatch):
         model_registry.clear_live_meta("anthropic")
 
 
-def test_get_model_info_deprecated_flag():
+def test_get_model_info_deprecated_flag(seeded_rates):
     info = ModelRegistry.get_model_info(
         provider_id="anthropic-default",
         provider_type="anthropic",
@@ -208,9 +208,9 @@ def test_env_empty_string_disables_extras(monkeypatch):
     assert get_extra_model_ids("anthropic") == ()
 
 
-def test_extras_catalog_entry_has_exact_pricing():
-    """3.x entries were added to _CATALOG so they render with correct
-    context/pricing instead of the tier heuristic fallback."""
+def test_a_legacy_model_still_prices_exactly(seeded_rates):
+    """3.x models are still callable, so they keep a rate row and a catalog
+    entry and render real context and pricing rather than a tier estimate."""
     entry = _catalog_entry("anthropic", "claude-3-5-haiku-20241022")
     assert entry["pricing_source"] == "exact"
     assert entry["context_window"] == 200_000
