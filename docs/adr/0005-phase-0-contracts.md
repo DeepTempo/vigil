@@ -22,7 +22,7 @@ read this document.
 
 ## Decision
 
-Five contracts, in `services/agent/contracts/` and `database/init/`.
+Five contracts, in `services/agent/contracts/` and `infra/database/init/`.
 
 ### 1. The `Tool` port — `services/agent/contracts/tool.ts`
 
@@ -143,7 +143,7 @@ anyway. The first name tried was `agent:runs`, which enqueued cleanly from
 Python and could never have been consumed by any Node worker. Redis keys are
 therefore `bull:agent-runs:*`, which is what #594's autoscaler must watch.
 
-### 5. The rate table — `database/init/20_model_rates.sql`, `services/agent/contracts/rates.ts`
+### 5. The rate table — `infra/database/init/20_model_rates.sql`, `services/agent/contracts/rates.ts`
 
 Consumed by WS-E (#593) and WS-A.
 
@@ -172,7 +172,7 @@ rather than silently widening the boundary.
 
 The DDL ships as `19_agent_ledger.sql` and `20_model_rates.sql`. The migration
 plan said `18_`, which was taken by `18_agent_decision_ids.sql`. Both files went
-through all three steps in `database/init/README.md` — the chart bundle copy
+through all three steps in `infra/database/init/README.md` — the chart bundle copy
 that CI diffs, and the `values.yaml` list that it does not.
 
 Spend moving to its own event kind means the hunt workflow's existing

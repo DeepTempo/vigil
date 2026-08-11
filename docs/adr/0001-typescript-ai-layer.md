@@ -29,7 +29,8 @@ Python, or the Python AI surface is replaced by TypeScript.
 
 ## Decision
 
-The entire AI layer is TypeScript, in `ai/` with its own `package.json`. The
+The entire AI layer is TypeScript, in `services/agent/` with its own
+`package.json`. The
 backend — auth, cases, findings, the UI-facing API, federation ingest, the
 pollers — stays Python.
 
