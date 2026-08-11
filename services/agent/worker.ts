@@ -4,7 +4,7 @@ import { RUN_QUEUE, type RunJob } from "./contracts/job.js";
 import type { NewEvent } from "./contracts/events.js";
 import { LedgerRepository } from "./ledger/repository.js";
 
-// The walking skeleton (#590): no model call, no tools, no decision vocabulary.
+// The walking skeleton: no model call, no tools, no decision vocabulary.
 // It exists to prove the seam between the Python backend and this layer.
 export async function advance(ledger: LedgerRepository, job: RunJob): Promise<void> {
   const latest = await ledger.latestSeq(job.run_id);
@@ -28,7 +28,7 @@ export async function advance(ledger: LedgerRepository, job: RunJob): Promise<vo
   }
 
   // Re-entrant: a crash between the two appends resumes here rather than
-  // colliding on seq 0. The lease and the watchdog are #597, not this slice.
+  // colliding on seq 0. The lease and the watchdog are a later slice.
   if ((await ledger.terminal(job.run_id)) === null) {
     events.push({
       run_id: job.run_id,
