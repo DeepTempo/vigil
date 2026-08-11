@@ -1,13 +1,11 @@
 import type { RegisteredTool } from "../contracts/tool.js";
 
-// A grant or a registration the loop could not have honoured. Thrown at
-// construction, so a wiring mistake surfaces at startup rather than as a
-// capability a role turns out not to have seven turns into a run.
+// A grant the loop could not have honoured. Thrown at construction, so a wiring
+// mistake surfaces at startup rather than seven turns into a run.
 export class RegistryError extends Error {}
 
-// Deny-by-default per role: a role receives the tools it was granted, never a
-// catalogue. An MCP surface registers its tools individually through this same
-// port, so a grant list is the only thing that widens what a role may call.
+// Deny-by-default per role: a role gets what it was granted, never a catalogue.
+// MCP registers through this same port, so only a grant widens what a role calls.
 export interface Registry {
   granted(role: string): readonly RegisteredTool[];
   get(role: string, id: string): RegisteredTool | undefined;

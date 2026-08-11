@@ -14,9 +14,8 @@ export interface ScriptedTurn {
 
 export type ScriptedProvider = Provider & { readonly requests: readonly TurnRequest[] };
 
-// Stands in for the model and for nothing else. The registry, the scanner, the
-// budget, the turn cap, the approval gate and the other seams are all real, so a
-// test of the loop is a test of the loop.
+// Stands in for the model and nothing else: the registry, scanner, budget, turn cap
+// and approval gate are all real, so a test of the loop is a test of the loop.
 export function scriptedProvider(script: readonly ScriptedTurn[], model = "scripted/model"): ScriptedProvider {
   const requests: TurnRequest[] = [];
   let step = 0;

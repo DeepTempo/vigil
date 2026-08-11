@@ -22,23 +22,18 @@ export function addTokens(left: TokenCounts, right: TokenCounts): TokenCounts {
   };
 }
 
-// Every rate is USD per million tokens (#589 contract 5). cache_read is the
-// cached share of input rather than an addition to it, so it is deducted from
-// what input is billed at and charged at the cache rate instead. cache_write is
-// assumed to sit outside input, which is the one part of the gateway's
-// normalisation not confirmed by measurement -- #593 owns correcting it, and it
-// is arithmetic in one place so that correction is one edit.
+// Mirrors core/llm/cost/rates.py's price_tokens. Rates are USD per million tokens;
+// input is the total, so the cached and written shares bill at their own rates.
 export function priceOf(rate: ModelRate, tokens: TokenCounts): number {
-  const uncached = Math.max(0, tokens.input - tokens.cache_read);
+  const fresh = Math.max(0, tokens.input - tokens.cache_read - tokens.cache_write);
   const perMillion =
-    uncached * rate.input_per_mtok + tokens.output * rate.output_per_mtok +
+    fresh * rate.input_per_mtok + tokens.output * rate.output_per_mtok +
     tokens.cache_read * rate.cache_read_per_mtok + tokens.cache_write * rate.cache_write_per_mtok;
   return perMillion / MILLION;
 }
 
-// The Budget contract plus the pricing the harness needs from it. Pricing lives
-// with the budget because a caller pricing its own spend could disagree with the
-// pool about what a call cost, and that is how a cap stops holding.
+// Pricing lives with the budget: a caller pricing its own spend could disagree
+// with the pool about what a call cost, and that is how a cap stops holding.
 export interface PricingBudget extends Budget {
   price(model_id: string, role: string, tokens: TokenCounts, reservation: Reservation | null): SpendPayload | null;
 }

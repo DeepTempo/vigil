@@ -1,7 +1,5 @@
-// The throwaway workflow of #592. Two verbs, one tool, a count, and an ending.
-// It exists so the harness boundary is first exercised by something that is not
-// a real domain: driven first by the hunt, the boundary would get drawn around
-// hunting and nobody would find out until the second workflow landed.
+// The throwaway workflow: two verbs, one tool, a count, an ending. Driven first by
+// a real domain, the harness boundary would get drawn around that domain.
 
 export const TALLY_VERBS = ["TALLY", "HALT"] as const;
 export type TallyVerb = (typeof TALLY_VERBS)[number];
@@ -12,9 +10,8 @@ export interface TallyPayload {
   note: string;
 }
 
-// The workflow's own closed kind set, which the ledger repository is generic
-// over. The harness never imports this, and that is what makes ADR-0002's
-// domain-free requirement checkable rather than merely asserted.
+// The workflow's own closed kind set, which the ledger is generic over. The harness
+// never imports it, which is what makes the domain-free requirement checkable.
 export type TallyKinds = { tally: TallyPayload };
 
 export const TALLY_SCHEMA: Record<string, unknown> = {

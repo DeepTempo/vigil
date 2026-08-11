@@ -181,7 +181,23 @@ describe("token accounting", () => {
         cache_creation_input_tokens: 30,
       }),
     ).turn({ messages: [], tools: [] });
-    expect(alternate.tokens).toEqual({ input: 40, output: 8, cache_read: 10, cache_write: 30 });
+    // input is the total, so Anthropic's two cache counters are added back;
+    // natively input_tokens excludes both and the call would price two ways.
+    expect(alternate.tokens).toEqual({ input: 80, output: 8, cache_read: 10, cache_write: 30 });
+  });
+
+  // The OpenAI route already counts the cached share inside prompt_tokens, so
+  // adding it back there would bill it twice.
+  it("does not double-count a cached share the OpenAI route already included", async () => {
+    const turn = await surfaceOf(async () =>
+      completion({ role: "assistant", content: "ok" }, {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        prompt_tokens_details: { cached_tokens: 90 },
+      }),
+    ).turn({ messages: [], tools: [] });
+    expect(turn.tokens.input).toBe(100);
+    expect(turn.tokens.cache_read).toBe(90);
   });
 
   it("reports zeroes rather than guessing when usage is absent", async () => {

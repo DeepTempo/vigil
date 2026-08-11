@@ -38,9 +38,8 @@ export interface TurnConfig {
   schema: Record<string, unknown>;
   // The harness's own cap on tool turns, held whatever a workflow asks for.
   max_turns: number;
-  // Which tools ask a human first. Deployment's answer rather than a property of
-  // the tool: #589's tool contract is settled and carries no such field, and
-  // which checkpoints ask a human belongs to the config layer (CONTEXT.md).
+  // Which tools ask a human first is deployment's answer, not a property of the
+  // tool: the same tool needs approval in one deployment and not in another.
   approvals: ReadonlySet<string>;
   // The workflow's vocabulary, for the injection scanner and nothing else. The
   // harness passes it to the scanner and never reads it.
@@ -53,9 +52,8 @@ export interface TurnConfig {
 export interface Attempt {
   tool: string;
   args: string;
-  // The structured result for the workflow and the rendered one for the model.
-  // A workflow reading rows never parses what was rendered, and rendering still
-  // happens in exactly one place (ADR-0005).
+  // Structured for the workflow, rendered for the model: a workflow reading rows
+  // never parses what was rendered, and rendering stays in one place.
   result: ToolResult;
   wrapped: Wrapped;
 }
@@ -81,25 +79,22 @@ export interface Outcome<T> {
   reason: string;
 }
 
-// Harness events first, then the workflow's, in one append: a spend precedes
-// whatever the workflow concluded from it, and a partly written iteration never
-// lands (services/agent/ledger/repository.ts).
+// Harness events then the workflow's, in one append: a spend precedes what the
+// workflow concluded from it, and a partly written iteration never lands.
 export async function commitTurn<Kinds extends Record<string, unknown>>(
   state: State<Kinds>,
   runId: string,
   outcome: Pick<Outcome<unknown>, "events" | "from">,
   own: readonly NewEvent<Kinds>[],
 ): Promise<number> {
-  // The domain-free kinds are in every workflow's ledger by construction
-  // (ADR-0005), but Omit does not distribute over a union, so the two NewEvent
-  // types do not overlap structurally and the compiler cannot see it.
+  // Domain-free kinds are in every workflow's ledger by construction, but Omit
+  // does not distribute over a union, so the compiler cannot see the overlap.
   const harness = outcome.events as readonly unknown[] as readonly NewEvent<Kinds>[];
   return state.append(runId, outcome.from, [...harness, ...own]);
 }
 
-// Generic over the workflow's kinds only so any workflow's harness fits. The
-// loop appends none of them and reads only the domain-free set, which is the
-// domain-free requirement showing up in the signature.
+// Generic over the workflow's kinds only so any workflow fits. The loop appends
+// none of them and reads only the domain-free set.
 export async function runTurn<T, Kinds extends Record<string, unknown> = Record<never, never>>(
   cfg: TurnConfig,
   harness: Harness<Kinds>,
@@ -218,9 +213,8 @@ class Run<T, Kinds extends Record<string, unknown>> {
 
       const reason = parsed === undefined ? "the response was not valid JSON" : errorsOf(validate);
       this.rejected.push(`${reason}: ${turn.content.slice(0, 400)}`);
-      // The rejected emission goes back as the assistant turn it was. Without it
-      // the model is asked to correct something it cannot see, and the re-ask
-      // lands as a second consecutive user turn.
+      // The rejected emission goes back as the assistant turn it was, or the model
+      // is asked to correct something it cannot see.
       messages.push({ role: "assistant", content: turn.content, tool_calls: [] });
       messages.push({ role: "user", content: `That emission was rejected -- ${reason}. Emit a valid answer.` });
     }
@@ -229,8 +223,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
   }
 
   // One model call with the budget around it: reserved before, committed after,
-  // and committed rather than released when the call fails, because tokens it
-  // burned before failing were still spent.
+  // and committed even on failure, because tokens burned before it were spent.
   private async burn(request: Omit<TurnRequest, "signal">): Promise<Turn | { refusal: Refusal }> {
     const model = this.harness.provider.model;
     const estimate = { ...ZERO_TOKENS, input: estimateTokens(JSON.stringify(request.messages)), output: OUTPUT_ESTIMATE };
@@ -292,7 +285,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
 }
 
 // Only an approving or rejecting resolution counts; a checkpoint with none is
-// still open, which is what keeps the run parked (ADR-0003).
+// still open, which is what keeps the run parked.
 async function resolutionsOf<Kinds extends Record<string, unknown>>(
   state: State<Kinds>,
   runId: string,
