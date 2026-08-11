@@ -40,7 +40,7 @@ export interface TurnConfig {
   max_turns: number;
   // Which tools ask a human first. Deployment's answer rather than a property of
   // the tool: #589's tool contract is settled and carries no such field, and
-  // which checkpoints ask a human belongs to the config layer (CONTEXT.md).
+  // which checkpoints ask a human belongs to the config layer (ai/CONTEXT.md).
   approvals: ReadonlySet<string>;
   // The workflow's vocabulary, for the injection scanner and nothing else. The
   // harness passes it to the scanner and never reads it.

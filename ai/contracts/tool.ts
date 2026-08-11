@@ -7,7 +7,7 @@ export interface ToolBounds {
 }
 
 // timeout and unavailable are genuine visibility gaps; refused and invalid_args
-// are defects and must never be recorded as one (CONTEXT.md, Visibility gap).
+// are defects and must never be recorded as one (ai/CONTEXT.md, Visibility gap).
 export type ToolFailure =
   | { kind: "invalid_args"; detail: string }
   | { kind: "refused"; detail: string }

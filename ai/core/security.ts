@@ -56,7 +56,7 @@ export interface Wrapped {
 
 // timeout and unavailable are gaps in what the environment could answer;
 // refused and invalid_args are defects in the call and must never be recorded as
-// gaps (CONTEXT.md). The rule lives here because the taxonomy does.
+// gaps (ai/CONTEXT.md). The rule lives here because the taxonomy does.
 export function isVisibilityGap(failure: ToolFailure): boolean {
   return failure.kind === "timeout" || failure.kind === "unavailable";
 }

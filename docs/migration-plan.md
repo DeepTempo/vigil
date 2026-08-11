@@ -2,7 +2,7 @@
 
 Status: draft for review
 Date: 2026-08-07
-Companion documents: `CONTEXT.md` (glossary), `docs/adr/0001`–`0004`,
+Companion documents: `ai/CONTEXT.md` (glossary), `docs/adr/0001`–`0004`,
 `docs/plan.md` (hunt design), `docs/AI Agent Architecture.pdf` (target modules)
 
 ---
@@ -66,12 +66,12 @@ telemetry. Nothing to build on.
 | D2 | TypeScript owns its own Postgres tables and is their single writer | ADR-0001 |
 | D3 | Domain-free harness + one workflow module per agent type | ADR-0002 |
 | D4 | All four architecture-doc seams built up front: `memory`, `budget`, `state`, `tools/dispatch` | this doc, §4 WS-A |
-| D5 | Workers are leaves. Topology is fan-out width only; no nested loops, no peer leads | `CONTEXT.md`, §Agents |
+| D5 | Workers are leaves. Topology is fan-out width only; no nested loops, no peer leads | `ai/CONTEXT.md`, §Agents |
 | D6 | Ledger authoritative for control checkpoints; `approval_actions` is an outbound mirror | ADR-0003 |
 | D7 | Owned query port per SIEM, native dialect, per-dialect deny-by-default allow-list | ADR-0004 |
 | D8 | Tools reimplemented in TypeScript; any MCP server registers through the same tool port, allow-listed per role | ADR-0004 |
 | D9 | One append-only `hunt_events` table, `payload`/`snapshot` split, PK `(run_id, seq)` | §3 |
-| D10 | DDL lives in `database/init/*.sql`; TypeScript never issues DDL | §3 |
+| D10 | DDL lives in `infra/database/init/*.sql`; TypeScript never issues DDL | §3 |
 | D11 | BullMQ on the existing Redis; FastAPI enqueues plain JSON | ADR-0001 |
 | D12 | Context/caching layer built into the kernel from the start | §4 WS-A |
 | D13 | One Postgres rate table read by both languages | §4 WS-E |
@@ -120,7 +120,7 @@ Two changes to what is journaled today:
 - **Run kind.** Events carry which workflow produced them, so one table
   serves hunt, investigate and compose.
 
-DDL ships as `database/init/18_agent_ledger.sql` alongside the existing
+DDL ships as `infra/database/init/18_agent_ledger.sql` alongside the existing
 seventeen files, which Helm already copies. One migration system, no new ops
 surface.
 

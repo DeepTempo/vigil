@@ -46,7 +46,7 @@ expression with a comment on it, so #593 correcting it is one edit.
 ### Approval is deployment configuration, not a property of a tool
 
 Which tools ask a human first is a `ReadonlySet<string>` in the turn config, not
-a field on `RegisteredTool`. #589's tool contract is settled, and `CONTEXT.md`
+a field on `RegisteredTool`. #589's tool contract is settled, and `ai/CONTEXT.md`
 puts "which checkpoints ask a human" in the config layer. A gated call parks with
 a `checkpoint` of class `tool_approval` and dispatches nothing; a `resolution` is
 the only thing that unblocks it (ADR-0003), and a rejection comes back inside the

@@ -30,7 +30,9 @@ pydantic-settings>=2.0.0
 PyYAML>=6.0.0
 
 # Web Backend
-fastapi>=0.109.0
+# 0.129.0 is the first release with Depends(scope=...), which the per-request
+# unit-of-work boundary needs — see core/routing.py.
+fastapi>=0.129.0
 uvicorn[standard]>=0.27.0
 python-multipart>=0.0.6
 email-validator>=2.0.0
@@ -96,7 +98,7 @@ taxii2-client>=2.3.0
 stix2>=3.0.1
 
 # PDF report generation (chat reports, case reports). The feature ships in
-# backend/api/claude.py → /generate-chat-report; without this dep the endpoint
+# services/api/routers/claude.py → /generate-chat-report; without this dep the endpoint
 # returns 503 even though the feature is wired into the UI.
 reportlab>=4.0.0
 
