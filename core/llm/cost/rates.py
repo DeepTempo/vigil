@@ -29,6 +29,20 @@ WILDCARD = "*"
 
 
 @dataclass(frozen=True)
+class Rates:
+    """The four per-million rates the formula needs, without the row's identity.
+
+    Separate from ModelRate so a caller holding rates from somewhere else can
+    price with the same arithmetic instead of writing its own.
+    """
+
+    input_per_mtok: float
+    output_per_mtok: float
+    cache_read_per_mtok: float
+    cache_write_per_mtok: float
+
+
+@dataclass(frozen=True)
 class ModelRate:
     model_id: str
     provider_type: str
@@ -38,6 +52,15 @@ class ModelRate:
     cache_write_per_mtok: float
     pricing_source: str
 
+    @property
+    def rates(self) -> Rates:
+        return Rates(
+            input_per_mtok=self.input_per_mtok,
+            output_per_mtok=self.output_per_mtok,
+            cache_read_per_mtok=self.cache_read_per_mtok,
+            cache_write_per_mtok=self.cache_write_per_mtok,
+        )
+
 
 _TABLE: Optional[Dict[str, ModelRate]] = None
 
@@ -45,6 +68,41 @@ _SELECT = (
     "SELECT model_id, provider_type, input_per_mtok, output_per_mtok, "
     "cache_read_per_mtok, cache_write_per_mtok, pricing_source FROM model_rates"
 )
+
+
+@dataclass(frozen=True)
+class TokenCounts:
+    """What a call consumed, on the one definition both languages use.
+
+    ``input`` is the **total** input, cached share included. That definition is
+    the whole point: the two gateway surfaces disagree about it natively —
+    OpenAI's ``prompt_tokens`` counts cached tokens, Anthropic's ``input_tokens``
+    does not — so each reader normalises to this shape and only one formula
+    prices it. Getting that wrong bills the same call two different amounts,
+    which is what it did before GH #593.
+    """
+
+    input: int
+    output: int
+    cache_read: int = 0
+    cache_write: int = 0
+
+
+def price_tokens(rates: Rates, tokens: TokenCounts) -> float:
+    """USD for one call. The formula, stated once; services/agent/core/budget.ts mirrors it.
+
+    The cached and freshly-written shares are billed at their own rates and
+    removed from what is billed at the full input rate. A reader that reports a
+    cached share larger than the total clamps to zero rather than crediting.
+    """
+    fresh = max(0, tokens.input - tokens.cache_read - tokens.cache_write)
+    per_million = (
+        fresh * rates.input_per_mtok
+        + tokens.output * rates.output_per_mtok
+        + tokens.cache_read * rates.cache_read_per_mtok
+        + tokens.cache_write * rates.cache_write_per_mtok
+    )
+    return per_million / MILLION
 
 
 def rate_key(provider_type: str, model_id: str) -> str:
