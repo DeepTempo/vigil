@@ -5,12 +5,8 @@ import { priceOf } from "../core/budget.js";
 import { rateTableOf, type ModelRate, type PricingSource } from "../contracts/rates.js";
 import type { TokenCounts } from "../contracts/budget.js";
 
-// The other half of tests/unit/llm/test_pricing_parity.py. The fixture states
-// expected_usd itself, hand-computed from the committed seed, so neither language
-// is the oracle: a formula changed in one and not the other fails one of the two
-// suites. The rates were the visible drift, but the formula was drifting too --
-// Python billed input excluding the cached share, this layer billed it including
-// -- and a rate-parity check alone would not have caught that (GH #593).
+// The other half of tests/unit/llm/test_pricing_parity.py. expected_usd is stated
+// in the fixture, so neither language is the oracle and either drifting fails.
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 const FIXTURE = join(ROOT, "tests", "fixtures", "pricing_parity.json");
 const SEED = join(ROOT, "infra", "database", "init", "21_model_rates_seed.sql");
@@ -23,9 +19,8 @@ interface Case {
   expected_usd: number;
 }
 
-// Parsed rather than restated, for the same reason the Python fixture parses it:
-// a rate mistyped in the SQL has to fail a price assertion, not sail through
-// because the test carries its own copy.
+// Parsed rather than restated: a rate mistyped in the SQL has to fail a price
+// assertion, not sail through because the test carries its own copy.
 const VALUES = /VALUES \('([^']+)', '([^']+)', ([\d.]+), ([\d.]+), ([\d.]+), ([\d.]+), '([^']+)'\)/g;
 
 function seededRates(): ModelRate[] {

@@ -1,10 +1,4 @@
-"""Tests for the model registry's pricing helpers (#184, reworked for #593).
-
-Covers:
-  - get_cache_rates, now read from model_rates rather than derived
-  - the wildcard row, and why it is only honoured at zero
-  - get_pricing_source (visibility into which layer answered)
-  - infer_provider_type (used by analytics to badge rows)
+"""Tests for the model registry's pricing helpers.
 
 Rates come from the committed seed via the ``seeded_rates`` fixture, so a rate
 mistyped in the SQL fails here rather than shipping.
@@ -24,13 +18,8 @@ pytestmark = pytest.mark.unit
 
 
 def test_cache_rates_come_from_the_table_not_a_multiplier(seeded_rates):
-    """Stored, not derived (GH #593).
-
-    They used to be the input rate times a per-provider multiplier held in this
-    module. The agent layer prices the same calls, so it would have had to
-    reimplement that table to agree; storing the four rates is what let the
-    multipliers be deleted rather than duplicated.
-    """
+    """Stored, not derived: the agent layer prices the same calls, so a
+    multiplier here would have had to be reimplemented there to agree."""
     from core.llm.providers.registry import get_registry
 
     registry = get_registry()
@@ -50,9 +39,8 @@ def test_openai_charges_nothing_extra_for_a_cache_write(seeded_rates):
 
 
 def test_an_unpriced_model_charges_cache_at_the_full_input_rate(seeded_rates):
-    """A tier heuristic has no stored cache rates, so cache tokens are charged at
-    full input rate: an over-estimate, which is the right direction when the real
-    rate is unknown. This is the one rule left after the multiplier table."""
+    """A tier heuristic has no stored cache rates, so cache tokens charge at the
+    full input rate: the right direction when the real rate is unknown."""
     from core.llm.providers.registry import get_registry
 
     registry = get_registry()
@@ -73,9 +61,8 @@ def test_a_self_hosted_model_is_priced_by_the_wildcard_row(seeded_rates):
 
 
 def test_a_wildcard_never_prices_a_model_that_should_have_cost_something(seeded_rates):
-    """The wildcard is a zero-cost mechanism, not a general fallback. Honouring
-    one at a non-zero pricing_source would let a whole provider be silently
-    mispriced by a single row."""
+    """A zero-cost mechanism, not a general fallback: honouring one at a non-zero
+    source would let a whole provider be mispriced by a single row."""
     from core.llm.cost import rates as rate_table
 
     rate_table.load_rates(

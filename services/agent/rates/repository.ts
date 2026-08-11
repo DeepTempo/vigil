@@ -6,15 +6,12 @@ const SELECT =
 
 export class RatesUnavailable extends Error {}
 
-// Read once at startup and frozen. The budget gate prices against it in-loop, so
-// a per-call round-trip is not an option: a run that overshoots by one expensive
-// iteration is exactly what the gate exists to prevent. A rate change ships as
-// the next numbered file under infra/database/init/ and lands on restart.
+// Read once at startup and frozen: the gate prices in-loop, and a run overshooting
+// by one expensive iteration is what it exists to prevent. Rate changes ship as DDL.
 export async function loadRates(pool: Pool): Promise<RateTable> {
   const result = await pool.query(SELECT).catch((error: unknown) => {
-    // Nothing usable, and no partial table: Python degrades to a tier estimate
-    // here, but a budget cannot, because a wrong rate does not mis-report -- it
-    // disables the cap. Refusing to start is the fail-closed answer.
+    // No partial table. A wrong rate does not mis-report, it disables the cap, so
+    // refusing to start is the fail-closed answer.
     throw new RatesUnavailable(`model_rates could not be read: ${messageOf(error)}`);
   });
   if (result.rows.length === 0) throw new RatesUnavailable("model_rates is empty; nothing can be priced");
