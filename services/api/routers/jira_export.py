@@ -315,7 +315,7 @@ def export_remediation_to_jira(
                     timeout=30,
                     follow_redirects=_FOLLOW_REDIRECTS,
                 )
-                if user_response.ok and user_response.json():
+                if user_response.is_success and user_response.json():
                     subtask_data["fields"]["assignee"] = {"name": user_response.json()[0]["name"]}
             
             try:
