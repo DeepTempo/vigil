@@ -147,7 +147,7 @@ describe("an unpriced model is a miss, not a zero", () => {
   it("returns undefined so the budget refuses", () => {
     const table = rateTableOf([
       {
-        model_id: "claude-opus-5",
+        model_id: "anthropic/claude-opus-5",
         provider_type: "anthropic",
         input_per_mtok: 5,
         output_per_mtok: 25,
@@ -156,8 +156,9 @@ describe("an unpriced model is a miss, not a zero", () => {
         pricing_source: "exact",
       },
     ]);
-    expect(table.lookup("claude-opus-5", "anthropic")?.input_per_mtok).toBe(5);
-    expect(table.lookup("claude-opus-5", "openai")).toBeUndefined();
+    expect(table.lookup("anthropic/claude-opus-5", "anthropic")?.input_per_mtok).toBe(5);
+    // The prefix carries the provider, and the argument still has to agree.
+    expect(table.lookup("anthropic/claude-opus-5", "openai")).toBeUndefined();
     expect(table.size).toBe(1);
   });
 });
