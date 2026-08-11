@@ -2,8 +2,25 @@
 
 Status: draft for review
 Date: 2026-08-07
-Companion documents: `CONTEXT.md` (glossary), `docs/adr/0001`–`0004`,
-`docs/plan.md` (hunt design), `docs/AI Agent Architecture.pdf` (target modules)
+Companion documents: `services/agent/CONTEXT.md` (glossary),
+`docs/adr/0001`–`0006`, `docs/plan.md` (hunt design),
+`docs/AI Agent Architecture.pdf` (target modules)
+
+---
+
+## 0. Amendments since drafting
+
+This plan is the record of what was decided on 2026-08-07. Where building it
+settled a question differently, the later decision wins and is named here
+rather than edited into the text above it.
+
+| Drafted | Superseded by | Where |
+|---|---|---|
+| Table named `hunt_events` | `agent_events` — it serves hunt, investigate and compose, so naming it for one workflow was wrong | ADR-0005 |
+| DDL as `18_agent_ledger.sql` | `19_agent_ledger.sql` and `20_model_rates.sql`; `18_` was taken | ADR-0005 |
+| `database/init/`, `helm/` | `infra/database/init/`, `infra/helm/` after the reorg landed on main | epic #481 |
+| Code in `ai/`, mirroring `frontend/` | `services/agent/` — the layer is a deployable, `frontend/` itself moved to `clients/web/` | ADR-0001 |
+| Twelve historical `runs/*.jsonl` | Ten. Three of the thirteen files are `.inbox.jsonl` sidecars and one is `.corrupt` | measured |
 
 ---
 
@@ -71,11 +88,11 @@ telemetry. Nothing to build on.
 | D7 | Owned query port per SIEM, native dialect, per-dialect deny-by-default allow-list | ADR-0004 |
 | D8 | Tools reimplemented in TypeScript; any MCP server registers through the same tool port, allow-listed per role | ADR-0004 |
 | D9 | One append-only `hunt_events` table, `payload`/`snapshot` split, PK `(run_id, seq)` | §3 |
-| D10 | DDL lives in `database/init/*.sql`; TypeScript never issues DDL | §3 |
+| D10 | DDL lives in `infra/database/init/*.sql`; TypeScript never issues DDL | §3, §0 |
 | D11 | BullMQ on the existing Redis; FastAPI enqueues plain JSON | ADR-0001 |
 | D12 | Context/caching layer built into the kernel from the start | §4 WS-A |
 | D13 | One Postgres rate table read by both languages | §4 WS-E |
-| D14 | Code lives in `ai/` with its own `package.json` | §4 WS-E |
+| D14 | Code lives in `services/agent/` with its own `package.json` | §4 WS-E, §0 |
 | D15 | Build order: kernel → hunt → chat → compose → investigate | §5 |
 | D16 | `investigate` keeps the existing API contract; `/files` rendered from the ledger | §5 |
 | D17 | Existing `runs/*.jsonl` become a fold-equivalence regression gate | §4 WS-B |
@@ -177,7 +194,7 @@ path, the rate limiter, the sanitizer, the lease, the spec loader.
 re-entrant iteration steps (load ledger → advance one iteration → persist →
 re-enqueue), and the watchdog that reclaims expired leases.
 
-**Fold-equivalence gate.** Load each of the twelve existing `runs/*.jsonl`
+**Fold-equivalence gate.** Load each of the ten existing `runs/*.jsonl` ledgers
 through both the JSONL reader and the Postgres path; assert the projections
 are deep-equal and every digest still replays exactly. The demo run already
 replays 5/5, so there is a known-good baseline. This is the only real proof
@@ -213,7 +230,7 @@ check for that specifically.
 
 ### WS-E — Platform
 
-`ai/` with its own `package.json`, mirroring `frontend/`. TypeScript tools
+`services/agent/` with its own `package.json`, mirroring `clients/web/`. Tools
 under `services/agent/tools/` so the Python `tools/` collision never arises.
 `docker/Dockerfile.agent`, a Helm deployment mirroring the llm-worker's
 shape, a Node job in CI alongside pytest. The rate table DDL, seeded from
@@ -272,7 +289,7 @@ a second source of truth.
 | Harness/workflow boundary drawn from one workflow, then moves | Expected. `chat` lands second precisely to test it early, when moving it is still cheap |
 | Tools reimplemented in TypeScript drift from Python equivalents | Delete the Python original at cutover rather than leaving both; drift needs two live copies |
 | Both AI stacks coexist and the second cutover never happens | Cutover order is a commitment with line counts attached; track removed lines as a delivery metric |
-| Postgres swap silently changes fold semantics | The fold-equivalence gate on twelve real ledgers (WS-B) |
+| Postgres swap silently changes fold semantics | The fold-equivalence gate on ten real ledgers (WS-B) |
 | Caching layout regresses silently, costs rise unnoticed | Journal token counts including cache read/write; a cache-hit-rate assertion in CI |
 | Per-dialect allow-lists have holes | Test against known-bad queries, not only known-good; treat a permitted unknown command as a bug |
 | The mirror to `approval_actions` becomes a read path | Treat any read of `approval_actions` in the AI layer's control path as a review defect |
@@ -308,7 +325,7 @@ Phase 0:
   executing on the BullMQ worker.
 - A hunt persists to `hunt_events`, resumes after a kill, and replays with
   every digest reproduced exactly.
-- The twelve historical ledgers pass the fold-equivalence gate.
+- The ten historical ledgers pass the fold-equivalence gate.
 - A checkpoint is answerable from the product UI through the mirror, and its
   resolution is on the ledger.
 - At least one SIEM adapter behind the query port with a tested allow-list.
