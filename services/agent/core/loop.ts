@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
 import Ajv, { type ValidateFunction } from "ajv";
-import { ZERO_TOKENS, type Refusal, type Reservation, type TokenCounts } from "../contracts/budget.js";
+import { ZERO_TOKENS, type Refusal, type SpendPayload, type TokenCounts } from "../contracts/budget.js";
 import type { CheckpointPayload, NewEvent, ResolutionPayload, RunKind } from "../contracts/events.js";
 import type { RegisteredTool, ToolResult } from "../contracts/tool.js";
-import type { PricingBudget } from "./budget.js";
-import { estimateTokens } from "./limiter.js";
+import type { Budget } from "../contracts/budget.js";
 import { ProviderError, type Message, type Provider, type ToolSchema, type Turn, type TurnRequest } from "./provider.js";
 import type { Registry } from "./registry.js";
 import { scannerFor, wrap, type Wrapped } from "./security.js";
@@ -14,7 +13,6 @@ import type { Memory, State, ToolDispatch } from "./seams.js";
 // class alone. Workflow classes are the workflow's; this one is the harness's.
 export const TOOL_APPROVAL = "tool_approval";
 
-const OUTPUT_ESTIMATE = 1_024;
 
 export type Status = "completed" | "waiting_approval" | "failed";
 
@@ -24,7 +22,7 @@ export interface Harness<Kinds extends Record<string, unknown> = Record<never, n
   provider: Provider;
   registry: Registry;
   dispatch: ToolDispatch;
-  budget: PricingBudget;
+  budget: Budget;
   memory: Memory;
   state: State<Kinds>;
 }
@@ -142,7 +140,6 @@ class Run<T, Kinds extends Record<string, unknown>> {
     const schemas = this.tools.map(schemaOf);
     while (this.turns < this.cfg.max_turns) {
       const turn = await this.burn({ messages: this.transcript, tools: schemas });
-      if ("refusal" in turn) return this.failed(turn.refusal, "the budget refused a call inside the tool loop");
       this.turns += 1;
       if (turn.tool_calls.length === 0) return null;
 
@@ -204,7 +201,6 @@ class Run<T, Kinds extends Record<string, unknown>> {
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const turn = await this.burn({ messages, tools: [], emit: this.cfg.schema });
-      if ("refusal" in turn) return this.failed(turn.refusal, "the budget refused the emission");
 
       const parsed = tryParse(turn.content);
       if (parsed !== undefined && validate(parsed)) {
@@ -222,31 +218,28 @@ class Run<T, Kinds extends Record<string, unknown>> {
     return this.done("failed", null, `the role never emitted a valid answer: ${this.rejected.join(" | ")}`);
   }
 
-  // One model call with the budget around it: reserved before, committed after,
-  // and committed even on failure, because tokens burned before it were spent.
-  private async burn(request: Omit<TurnRequest, "signal">): Promise<Turn | { refusal: Refusal }> {
-    const model = this.harness.provider.model;
-    const estimate = { ...ZERO_TOKENS, input: estimateTokens(JSON.stringify(request.messages)), output: OUTPUT_ESTIMATE };
-    const outcome = this.harness.budget.reserve(model, estimate);
-    if (!outcome.ok) return { refusal: outcome.refusal };
-
+  // One model call, journaled either way: tokens burned before a failure were
+  // still spent. Cost is the gateway's to report, so it is null until it does.
+  private async burn(request: Omit<TurnRequest, "signal">): Promise<Turn> {
     try {
       const turn = await this.harness.provider.turn({ ...request, ...(this.cfg.signal ? { signal: this.cfg.signal } : {}) });
-      this.settle(turn.tokens, outcome.reservation);
+      this.settle(turn.tokens, null);
       return turn;
     } catch (error) {
-      this.settle(error instanceof ProviderError ? error.tokens : ZERO_TOKENS, outcome.reservation);
+      this.settle(error instanceof ProviderError ? error.tokens : ZERO_TOKENS, null);
       throw error;
     }
   }
 
-  private settle(tokens: TokenCounts, reservation: Reservation): void {
-    const payload = this.harness.budget.price(this.harness.provider.model, this.cfg.role, tokens, reservation);
-    if (payload === null) {
-      this.harness.budget.release(reservation);
-      return;
-    }
-    this.harness.budget.commit(reservation, payload);
+  private settle(tokens: TokenCounts, cost_usd: number | null): void {
+    const payload: SpendPayload = {
+      model_id: this.harness.provider.model,
+      provider_type: this.harness.provider.provider_type,
+      role: this.cfg.role,
+      tokens,
+      cost_usd,
+    };
+    this.harness.budget.record(payload);
     this.events.push({ run_id: this.cfg.run_id, run_kind: this.cfg.run_kind, kind: "spend", payload });
   }
 

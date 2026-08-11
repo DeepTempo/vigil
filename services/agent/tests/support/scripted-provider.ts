@@ -22,6 +22,7 @@ export function scriptedProvider(script: readonly ScriptedTurn[], model = "scrip
 
   return {
     model,
+    provider_type: "scripted",
     requests,
     turn: async (request: TurnRequest): Promise<Turn> => {
       requests.push(request);

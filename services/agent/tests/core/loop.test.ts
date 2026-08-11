@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { approvalId, commitTurn, runTurn, TOOL_APPROVAL, type Harness, type TurnConfig } from "../../core/loop.js";
-import { budgetOf } from "../../core/budget.js";
+import { budgetOf, unmeteredQuota } from "../../core/budget.js";
 import { registryOf } from "../../core/registry.js";
 import { InProcessState } from "../../core/state.js";
 import { nullMemory } from "../../core/memory.js";
 import { localDispatch } from "../../core/dispatch.js";
 import { defineTool, type RegisteredTool, type ToolResult } from "../../contracts/tool.js";
-import { rateTableOf, type ModelRate } from "../../contracts/rates.js";
 import type { Memory, ToolDispatch } from "../../core/seams.js";
 import type { CheckpointPayload, NewEvent } from "../../contracts/events.js";
 import type { SpendPayload } from "../../contracts/budget.js";
@@ -14,16 +13,6 @@ import { scriptedProvider, type ScriptedTurn } from "../support/scripted-provide
 
 const RUN = "5a2c2d3e-0000-4000-8000-000000000592";
 const SCHEMA = { type: "object", required: ["verb"], properties: { verb: { type: "string", enum: ["TALLY", "HALT"] } } };
-
-const RATE: ModelRate = {
-  model_id: "scripted/model",
-  provider_type: "scripted",
-  input_per_mtok: 1,
-  output_per_mtok: 1,
-  cache_read_per_mtok: 0,
-  cache_write_per_mtok: 0,
-  pricing_source: "exact",
-};
 
 function toolReturning(id: string, result: ToolResult): RegisteredTool {
   return defineTool({ id, description: id, parameters: {}, execute: async () => result }, { maxRows: 10, timeoutMs: 500 });
@@ -48,7 +37,7 @@ function harnessOf(script: readonly ScriptedTurn[], options: Options = {}): Harn
     dispatch: options.dispatch ?? localDispatch,
     budget: budgetOf(
       { max_iterations: options.max_iterations ?? 10, max_cost_usd: options.max_cost_usd ?? 100 },
-      rateTableOf([RATE]),
+      unmeteredQuota,
       "scripted",
     ),
     memory: options.memory ?? nullMemory,
@@ -173,13 +162,11 @@ describe("the turn cap", () => {
 });
 
 describe("the budget gate", () => {
-  it("fails the turn when the pool refuses a call inside the tool loop", async () => {
-    const harness = harnessOf([{ calls: [{ tool: "bump", args: "{}" }] }], { max_cost_usd: 0 });
-    const outcome = await runTurn(config(), harness);
-
-    expect(outcome.status).toBe("failed");
-    expect(outcome.refusal?.reason).toBe("cost_exhausted");
-    expect(outcome.calls).toEqual([]);
+  // The gateway refuses a call, not the pool: it is the one that bills, so it is
+  // the one that can stop mid-iteration. The loop surfaces that as a failure.
+  it("fails the turn when the gateway refuses a call", async () => {
+    const harness = harnessOf([{ fail: "budget exceeded (virtual_key)" }]);
+    await expect(runTurn(config(), harness)).rejects.toThrow(/budget exceeded/);
   });
 
   it("journals a spend event for every billed call", async () => {

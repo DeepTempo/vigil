@@ -3,7 +3,7 @@ import type { RegisteredTool, ToolResult } from "../contracts/tool.js";
 
 // The four seams as ports the harness receives rather than builds. Budget is
 // already a contract, re-exported so a caller wires all four from one module.
-export type { Budget, BudgetLimits, Refusal, Reservation, Spend, SpendPayload, TokenCounts } from "../contracts/budget.js";
+export type { Budget, BudgetLimits, Quota, Refusal, Spend, SpendPayload, TokenCounts } from "../contracts/budget.js";
 
 // Null by default: a contract shaped by the component being replaced is the wrong
 // contract, so recall returns nothing until something real lands.

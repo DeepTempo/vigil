@@ -27,8 +27,8 @@ export function resetEmitMode(): void {
   emitModes.clear();
 }
 
-export function openAiSurface(client: OpenAI, model: string, limiter: Limiter): Provider {
-  return new OpenAiSurface(client, model, limiter);
+export function openAiSurface(client: OpenAI, model: string, limiter: Limiter, provider_type: string): Provider {
+  return new OpenAiSurface(client, model, limiter, provider_type);
 }
 
 // The one surface built. The gateway routes to either provider family behind a
@@ -38,6 +38,7 @@ class OpenAiSurface implements Provider {
     private readonly client: OpenAI,
     readonly model: string,
     private readonly limiter: Limiter,
+    readonly provider_type: string,
   ) {}
 
   async turn(request: TurnRequest): Promise<Turn> {

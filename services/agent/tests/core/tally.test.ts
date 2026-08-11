@@ -3,35 +3,24 @@ import { runTally, type TallyOptions } from "../../workflows/tally/workflow.js";
 import { bumpTool } from "../../workflows/tally/tool.js";
 import type { TallyKinds, TallyPayload } from "../../workflows/tally/vocabulary.js";
 import { approvalId, type Harness } from "../../core/loop.js";
-import { budgetOf, type PricingBudget } from "../../core/budget.js";
+import { budgetOf, unmeteredQuota } from "../../core/budget.js";
 import { registryOf } from "../../core/registry.js";
 import { InProcessState } from "../../core/state.js";
 import { nullMemory } from "../../core/memory.js";
 import { localDispatch } from "../../core/dispatch.js";
-import { rateTableOf, type ModelRate } from "../../contracts/rates.js";
 import type { AgentEvent, NewEvent } from "../../contracts/events.js";
-import type { Refusal, ReserveOutcome } from "../../contracts/budget.js";
+import type { Budget } from "../../contracts/budget.js";
 import type { ToolResult } from "../../contracts/tool.js";
 import type { Memory, State, ToolDispatch } from "../../core/seams.js";
 import { scriptedProvider, type ScriptedTurn } from "../support/scripted-provider.js";
 
 const RUN = "7d3c2d3e-0000-4000-8000-000000000592";
 
-const RATE: ModelRate = {
-  model_id: "scripted/model",
-  provider_type: "scripted",
-  input_per_mtok: 1,
-  output_per_mtok: 1,
-  cache_read_per_mtok: 0,
-  cache_write_per_mtok: 0,
-  pricing_source: "exact",
-};
-
 interface Wiring {
   state?: State<TallyKinds>;
   memory?: Memory;
   dispatch?: ToolDispatch;
-  budget?: PricingBudget;
+  budget?: Budget;
   max_iterations?: number;
 }
 
@@ -41,7 +30,7 @@ function harnessOf(script: readonly ScriptedTurn[], wiring: Wiring = {}): Harnes
     provider: scriptedProvider(script),
     registry: registryOf([bumpTool()], { counter: ["bump"] }),
     dispatch: wiring.dispatch ?? localDispatch,
-    budget: wiring.budget ?? budgetOf(limits, rateTableOf([RATE]), "scripted"),
+    budget: wiring.budget ?? budgetOf(limits, unmeteredQuota, "scripted"),
     memory: wiring.memory ?? nullMemory,
     state: wiring.state ?? new InProcessState<TallyKinds>(),
   };
@@ -209,15 +198,11 @@ const remote: ToolDispatch = {
   },
 };
 
-function broke(): PricingBudget {
-  const refusal: Refusal = { reason: "cost_exhausted", used_usd: 1, limit_usd: 1 };
+function broke(): Budget {
   return {
     limits: { max_iterations: 0, max_cost_usd: 0 },
     spent: { iterations: 0, cost_usd: 0, tokens: { input: 0, output: 0, cache_read: 0, cache_write: 0 } },
-    beginIteration: () => ({ reason: "iterations_exhausted", used: 0, limit: 0 }),
-    reserve: (): ReserveOutcome => ({ ok: false, refusal }),
-    commit: () => {},
-    release: () => {},
-    price: () => null,
+    beginIteration: async () => ({ reason: "iterations_exhausted", used: 0, limit: 0 }),
+    record: () => {},
   };
 }

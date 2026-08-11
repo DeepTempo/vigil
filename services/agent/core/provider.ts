@@ -38,6 +38,7 @@ export interface Turn {
 // cap, approval gate and injection scan out of a component a workflow can swap.
 export interface Provider {
   readonly model: string;
+  readonly provider_type: string;
   turn(request: TurnRequest): Promise<Turn>;
 }
 

@@ -31,7 +31,7 @@ export async function runTally(harness: Harness<TallyKinds>, options: TallyOptio
   for (;;) {
     // The workflow's iteration, counted against the same pool every model call
     // draws on. It is the backstop that ends a run whose model never says HALT.
-    const refusal = harness.budget.beginIteration();
+    const refusal = await harness.budget.beginIteration();
     if (refusal !== null) {
       return end(harness, options, "budget_exhausted", `the budget refused another iteration: ${refusal.reason}`);
     }

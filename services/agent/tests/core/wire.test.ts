@@ -21,7 +21,7 @@ function completion(message: Record<string, unknown>, usage?: Record<string, unk
 
 function surfaceOf(create: (body: Body) => Promise<OpenAI.Chat.ChatCompletion>, model = "openai/gpt-4o") {
   const client = { chat: { completions: { create } } } as unknown as OpenAI;
-  return openAiSurface(client, model, limiter());
+  return openAiSurface(client, model, limiter(), "openai");
 }
 
 beforeEach(() => resetEmitMode());
