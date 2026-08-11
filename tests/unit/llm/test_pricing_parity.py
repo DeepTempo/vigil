@@ -1,15 +1,5 @@
-"""Both languages must price the same call the same (GH #593).
-
-The rates were the visible drift — a config shipped one three times too high —
-but the formula was drifting too, and a rate-parity check would not have caught
-it: Python billed input excluding the cached share while the agent layer billed
-it including. Same tokens, same rates, two different dollar figures.
-
-So the fixture states expected_usd itself, hand-computed from the committed seed,
-and both suites reproduce it. Neither implementation is the oracle, and a formula
-changed in one language and not the other fails here or in
-``services/agent/tests/pricing-parity.test.ts``.
-"""
+# Both languages must price the same call the same. expected_usd is stated in the
+# fixture, so neither implementation is the oracle and either drifting fails.
 
 from __future__ import annotations
 
@@ -43,20 +33,15 @@ def test_prices_the_shared_case(case, seeded_rates):
     assert price_tokens(rate.rates, tokens) == pytest.approx(case["expected_usd"], rel=1e-9)
 
 
+# Only-uncached cases would pass whatever the formula did with the cached share.
 def test_the_fixture_covers_both_cache_directions():
-    """A fixture of only uncached calls would pass whatever the formula did with
-    the cached share, which is the exact thing being pinned."""
     assert any(case["tokens"]["cache_read"] > 0 for case in CASES)
     assert any(case["tokens"]["cache_write"] > 0 for case in CASES)
 
 
+# The production entry point, not just the formula: compute_call_cost takes
+# Anthropic-native counts, where input excludes both cache shares.
 def test_compute_call_cost_agrees_with_the_shared_formula(seeded_rates):
-    """The production entry point, not just the formula underneath it.
-
-    compute_call_cost takes Anthropic-native counts, where input excludes both
-    cache shares, so it must reach the same dollars as the fixture case that
-    states the total.
-    """
     from core.llm.cost.calls import compute_call_cost
 
     case = next(c for c in CASES if c["provider_type"] == "anthropic" and c["tokens"]["cache_write"] > 0)

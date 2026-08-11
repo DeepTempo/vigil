@@ -1,11 +1,5 @@
-"""Rate-table fixtures for the pricing tests (GH #593).
-
-The fixture loads the committed seed SQL rather than a hand-written copy of it.
-That is deliberate: a rate mistyped in the seed then shows up as a failing price
-assertion here, which is the half of #593's "differently priced in the other
-place" criterion that lives on the Python side. The other half is the
-cross-language parity fixture both suites read.
-"""
+# Rate-table fixtures that load the committed seed SQL rather than a copy, so a
+# rate mistyped in the seed shows up as a failing price assertion here.
 
 from __future__ import annotations
 
@@ -25,8 +19,8 @@ _VALUES = re.compile(
 )
 
 
+# Every row the committed seed would insert, as ModelRate objects.
 def seed_rows():
-    """Every row the committed seed would insert, as ModelRate objects."""
     from core.llm.cost.rates import ModelRate
 
     rows = []
@@ -48,8 +42,8 @@ def seed_rows():
 
 
 @pytest.fixture
+# Load the seed into the frozen table, and forget it again afterwards.
 def seeded_rates():
-    """Load the seed into the frozen table, and forget it again afterwards."""
     from core.llm.cost import rates
 
     rates.load_rates(seed_rows())

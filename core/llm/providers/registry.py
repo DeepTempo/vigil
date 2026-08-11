@@ -10,7 +10,7 @@ Sits on top of the multi-provider layer introduced in #88:
     static override dict of hand-verified values, then a provider-specific
     tier heuristic keyed by model-id prefix, then a safe default.
   - Does NOT own rates. They live in ``model_rates`` and are read through
-    ``core.llm.cost.rates`` (GH #593), because the agent layer prices the
+    ``core.llm.cost.rates``, because the agent layer prices the
     same calls and a second copy is what drifted.
 
 The registry is intentionally decoupled from the DB hot path: all DB access
@@ -100,11 +100,9 @@ def is_valid_component(name: str) -> bool:
 #    capability flags scraped from upstream APIs. Does NOT hold pricing —
 #    no provider publishes pricing in their /models endpoint.
 # 2. Static overrides (``_CATALOG``): hand-verified display names, context
-#    windows and capability flags. It no longer carries rates (GH #593).
-# 3. Tier heuristic (``_TIER_HEURISTIC``): prefix-regex fallback for a model
-#    the rate table does not price, so a new variant still gets an estimate
-#    the moment upstream exposes it. An estimate, never a gate: the agent
-#    layer's budget refuses a model the table misses rather than guessing.
+#    windows and capability flags. It no longer carries rates.
+# 3. Tier heuristic (``_TIER_HEURISTIC``): prefix-regex fallback for a model the
+#    rate table does not price. An estimate, never a gate.
 # 4. Default: 0 for context, all-False capabilities, pricing_source unknown.
 
 
@@ -364,9 +362,8 @@ def _catalog_entry(provider_type: str, model_id: str) -> Dict[str, Any]:
             if field_name in source and source[field_name]:
                 entry[field_name] = source[field_name]
 
-    # Pricing: the rate table → tier heuristic → nothing. _CATALOG no longer
-    # carries rates (GH #593); model_rates is the one place they live, and cache
-    # rates come from it stored rather than derived from a multiplier table.
+    # Pricing: the rate table, then the tier heuristic, then nothing. Cache rates
+    # come from the table stored, not derived from a multiplier.
     rate = rates.lookup(provider_type, model_id)
     if rate is not None:
         entry["input_per_m"] = rate.input_per_mtok
@@ -378,9 +375,8 @@ def _catalog_entry(provider_type: str, model_id: str) -> Dict[str, Any]:
         tier = _match_tier(provider_type, model_id)
         if tier is not None:
             entry["input_per_m"], entry["output_per_m"] = tier
-            # No stored cache rates behind a heuristic, so cache tokens are
-            # charged at the full input rate: an over-estimate, which is the
-            # right direction when the real rate is unknown.
+            # No stored cache rates behind a heuristic, so cache tokens charge at
+            # the full input rate: the right direction when the rate is unknown.
             entry["cache_read_per_m"] = entry["input_per_m"]
             entry["cache_write_per_m"] = entry["input_per_m"]
             entry["pricing_source"] = "heuristic"
@@ -622,10 +618,8 @@ class ModelRegistry:
     def get_cache_rates(model_id: str, provider_type: str) -> Tuple[float, float]:
         """Return ``(cache_read_per_token, cache_write_per_token)`` in USD.
 
-        Read from the rate table's own columns (GH #593). They used to be derived
-        from a per-provider multiplier table here, which the agent layer would
-        have had to reimplement to price the same call the same way; storing them
-        is what let that table be deleted rather than duplicated.
+        Read from the rate table's own columns rather than derived from a
+        multiplier here, so the other language cannot reimplement it differently.
         """
         entry = _catalog_entry(provider_type, model_id)
         return (entry["cache_read_per_m"] / MILLION, entry["cache_write_per_m"] / MILLION)

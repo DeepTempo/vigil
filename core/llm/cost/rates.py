@@ -1,16 +1,5 @@
-"""The one model rate table, read by both languages (GH #593).
-
-Rates lived in two places — this package's catalog and the agent layer's
-configuration — and drifted once, by a factor of three. ``model_rates`` is now
-the single source; this module is Python's reader for it.
-
-Read once and frozen. Pricing is on the hot path for every call the gateway
-makes, so a per-call query is not an option; a rate change ships as the next
-numbered file under ``infra/database/init/`` and is picked up on restart.
-
-Every rate here is USD per **million** tokens, matching the table's column names.
-Callers wanting per-token or per-1k divide at their own boundary.
-"""
+# Python's reader for model_rates, the one rate table both languages read.
+# Read once and frozen; every rate is USD per MILLION tokens.
 
 from __future__ import annotations
 
@@ -22,20 +11,15 @@ logger = logging.getLogger(__name__)
 
 MILLION = 1_000_000
 
-# Stands in for a provider whose models cannot be enumerated — self-hosted
-# Ollama being the case that exists. Honoured only at pricing_source 'zero', so a
-# wildcard can never make a model that should have cost something look free.
+# Stands in for a provider whose models cannot be enumerated. Honoured only at
+# pricing_source 'zero', so it can never make a model that should cost look free.
 WILDCARD = "*"
 
 
 @dataclass(frozen=True)
 class Rates:
-    """The four per-million rates the formula needs, without the row's identity.
-
-    Separate from ModelRate so a caller holding rates from somewhere else can
-    price with the same arithmetic instead of writing its own.
-    """
-
+    # Separate from ModelRate so a caller holding rates from elsewhere prices
+    # with the same arithmetic instead of writing its own.
     input_per_mtok: float
     output_per_mtok: float
     cache_read_per_mtok: float
@@ -72,29 +56,17 @@ _SELECT = (
 
 @dataclass(frozen=True)
 class TokenCounts:
-    """What a call consumed, on the one definition both languages use.
-
-    ``input`` is the **total** input, cached share included. That definition is
-    the whole point: the two gateway surfaces disagree about it natively —
-    OpenAI's ``prompt_tokens`` counts cached tokens, Anthropic's ``input_tokens``
-    does not — so each reader normalises to this shape and only one formula
-    prices it. Getting that wrong bills the same call two different amounts,
-    which is what it did before GH #593.
-    """
-
+    # input is the TOTAL input, cached share included. The two gateway surfaces
+    # disagree natively, so each reader normalises here and one formula prices it.
     input: int
     output: int
     cache_read: int = 0
     cache_write: int = 0
 
 
+# USD for one call, the formula stated once; services/agent/core/budget.ts mirrors it.
+# Cached and written shares bill at their own rates, removed from the full input rate.
 def price_tokens(rates: Rates, tokens: TokenCounts) -> float:
-    """USD for one call. The formula, stated once; services/agent/core/budget.ts mirrors it.
-
-    The cached and freshly-written shares are billed at their own rates and
-    removed from what is billed at the full input rate. A reader that reports a
-    cached share larger than the total clamps to zero rather than crediting.
-    """
     fresh = max(0, tokens.input - tokens.cache_read - tokens.cache_write)
     per_million = (
         fresh * rates.input_per_mtok
@@ -105,26 +77,16 @@ def price_tokens(rates: Rates, tokens: TokenCounts) -> float:
     return per_million / MILLION
 
 
+# The table's model_id: the gateway's prefixed provider/model. Python holds the two
+# separately, so the key is reconstructed here and nowhere else.
 def rate_key(provider_type: str, model_id: str) -> str:
-    """The table's ``model_id``: the gateway's own prefixed ``provider/model``.
-
-    Python holds ``provider_type`` and a bare model id separately, so the
-    prefixed key is reconstructed here and nowhere else. An id that already
-    carries its provider passes through, because the agent layer and Bifrost's
-    cost reporting both name models that way.
-    """
     prefix = f"{provider_type}/"
     return model_id if model_id.startswith(prefix) else f"{prefix}{model_id}"
 
 
+# Idempotent. An unreachable database leaves the table empty rather than raising, so
+# lookups miss and the registry falls back to its tier heuristic.
 def load_rates(rows: Optional[Iterable[ModelRate]] = None) -> Dict[str, ModelRate]:
-    """Populate the frozen table, from ``rows`` or from Postgres. Idempotent.
-
-    A database this cannot reach leaves the table empty rather than raising:
-    lookups then miss, and the registry falls back to its tier heuristic, which
-    is a worse estimate but still an estimate. The agent layer's budget makes the
-    opposite choice and refuses, because there a bad number disables a cap.
-    """
     global _TABLE
     if rows is not None:
         _TABLE = {rate_key(rate.provider_type, rate.model_id): rate for rate in rows}
@@ -137,13 +99,12 @@ def load_rates(rows: Optional[Iterable[ModelRate]] = None) -> Dict[str, ModelRat
 
 
 def reset_rates() -> None:
-    """Forget the loaded table, so the next lookup reads again."""
     global _TABLE
     _TABLE = None
 
 
+# The rate for one model, or None when the table does not price it.
 def lookup(provider_type: str, model_id: str) -> Optional[ModelRate]:
-    """The rate for one model, or None when the table does not price it."""
     table = load_rates()
     exact = table.get(rate_key(provider_type, model_id))
     if exact is not None:

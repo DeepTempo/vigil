@@ -17,8 +17,8 @@ def compute_call_cost(
     """Compute USD cost of a single LLM call.
 
     Rates come from ``model_rates`` via the registry; cache rates are stored
-    there rather than derived from a multiplier table (GH #593). The arithmetic
-    is ``core.llm.cost.rates.price_tokens``, which ``services/agent/core/budget.ts`` mirrors,
+    there rather than derived from a multiplier table. The arithmetic is
+    ``core.llm.cost.rates.price_tokens``, which the agent layer's budget mirrors,
     so the same call costs the same in both languages.
 
     Cache tokens are billed at their own rates. Counting them at full input rate
@@ -59,10 +59,8 @@ def compute_call_cost(
         )
         return 0.0
 
-    # This function's arguments are Anthropic-native: input_tokens excludes the
-    # cached and freshly-written shares. TokenCounts.input is the total, so they
-    # are added here to reach the shared shape and price_tokens removes them
-    # again at their own rates. Same dollars as before, one formula (GH #593).
+    # Arguments are Anthropic-native, where input_tokens excludes both cache shares.
+    # They are added here to reach the shared shape, and price_tokens removes them.
     rates = Rates(
         input_per_mtok=in_rate * MILLION,
         output_per_mtok=out_rate * MILLION,
