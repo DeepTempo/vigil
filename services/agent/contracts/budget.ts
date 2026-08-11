@@ -1,5 +1,5 @@
-// Contract 3 of 5 (issue #589). Consumed by WS-A (the seam), WS-D (#596, which
-// must use it rather than keep parallel accounting) and WS-E (#593 pricing).
+// One of the five Phase-0 contracts. Consumed by the harness seam, the hunt
+// workflow, which must use it rather than keep parallel accounting, and pricing.
 
 export interface TokenCounts {
   input: number;
@@ -31,7 +31,7 @@ export interface SpendPayload {
   reservation_id: string | null;
 }
 
-// A value, never a throw: the exhaustiveness argument in ADR-0001 applies here
+// A value, never a throw: the exhaustiveness argument applies here
 // or nowhere. unpriced_model fails closed so a missing rate cannot bill zero.
 export type Refusal =
   | { reason: "iterations_exhausted"; used: number; limit: number }
@@ -53,6 +53,9 @@ export type ReserveOutcome =
 export interface Budget {
   readonly limits: BudgetLimits;
   readonly spent: Spend;
+  // The only thing that advances Spend.iterations, so the only thing that enforces
+  // max_iterations. Separate from reserve: one iteration is many model calls.
+  beginIteration(): Refusal | null;
   reserve(model_id: string, estimate_tokens: TokenCounts): ReserveOutcome;
   commit(reservation: Reservation, actual: SpendPayload): void;
   release(reservation: Reservation): void;
