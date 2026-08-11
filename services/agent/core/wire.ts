@@ -19,11 +19,8 @@ export const EMIT_TOOL = "emit";
 
 type Body = OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 
-// Not every provider the gateway fronts honours response_format. A tool whose
-// parameters are the schema works everywhere, so a 400 downgrades to it once and
-// the process remembers rather than probing on every call. Remembered per model:
-// response_format is a property of the provider behind one model name, not of
-// this process, so one gateway's 400 must not downgrade every other model.
+// Not every provider honours response_format, so a 400 downgrades once to a tool
+// whose parameters are the schema. Remembered per model, never process-wide.
 const emitModes = new Map<string, "schema" | "tool">();
 
 export function resetEmitMode(): void {
@@ -35,8 +32,7 @@ export function openAiSurface(client: OpenAI, model: string, limiter: Limiter): 
 }
 
 // The one surface built. The gateway routes to either provider family behind a
-// model name, so a second wire buys nothing until #601 needs cache_control and
-// thinking, which are the only things it would carry.
+// model name, so a second wire buys nothing until cache_control and thinking.
 class OpenAiSurface implements Provider {
   constructor(
     private readonly client: OpenAI,
@@ -105,10 +101,8 @@ function callsOf(calls: OpenAI.Chat.ChatCompletionMessageToolCall[] | undefined)
   );
 }
 
-// The gateway fronts providers whose native reply is a content-block list, and
-// that shape reaches us intact often enough to matter. Handing an array to
-// JSON.parse stringifies it to [object Object], so an answer the model got right
-// would be thrown away as invalid JSON.
+// Some providers reply with a content-block list. Handing an array to JSON.parse
+// stringifies it to [object Object], throwing away an answer the model got right.
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -117,19 +111,21 @@ function textOf(content: unknown): string {
     .join("");
 }
 
-// Two surfaces, one shape: the OpenAI route reports the cached share under
-// prompt_tokens_details, the other under its own keys. Neither reports a cache
-// write on the OpenAI shape, so it stays zero until the gateway does. Tokens
-// only -- pricing them here is what ADR-0005 moved to the budget.
+// Two surfaces disagreeing about an input token, normalised so input is always the
+// total: OpenAI already counts the cached share, Anthropic excludes both counters.
 function tokensOf(usage: OpenAI.CompletionUsage | undefined): TokenCounts {
   const alternate = usage as
     | (typeof usage & { cache_read_input_tokens?: number; cache_creation_input_tokens?: number })
     | undefined;
+  const reported = usage?.prompt_tokens ?? 0;
+  const native = alternate?.cache_read_input_tokens !== undefined || alternate?.cache_creation_input_tokens !== undefined;
+  const cache_read = usage?.prompt_tokens_details?.cached_tokens ?? alternate?.cache_read_input_tokens ?? 0;
+  const cache_write = alternate?.cache_creation_input_tokens ?? 0;
   return {
-    input: usage?.prompt_tokens ?? 0,
+    input: native ? reported + cache_read + cache_write : reported,
     output: usage?.completion_tokens ?? 0,
-    cache_read: usage?.prompt_tokens_details?.cached_tokens ?? alternate?.cache_read_input_tokens ?? 0,
-    cache_write: alternate?.cache_creation_input_tokens ?? 0,
+    cache_read,
+    cache_write,
   };
 }
 

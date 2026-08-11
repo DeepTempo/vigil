@@ -60,9 +60,8 @@ class Bucket {
   }
 }
 
-// Shared across every concurrent call in a run: RPM and TPM buckets, a
-// concurrency gate, and jittered backoff so parallel callers that hit a 429
-// together do not stay synchronized on the retry.
+// Shared across a run's concurrent calls: RPM and TPM buckets, a concurrency gate,
+// and jittered backoff so callers that hit a 429 together do not retry in step.
 export class Limiter {
   private readonly requests: Bucket;
   private readonly tokens: Bucket;

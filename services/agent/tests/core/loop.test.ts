@@ -229,7 +229,7 @@ describe("the approval gate", () => {
     expect((checkpoint?.payload as CheckpointPayload).checkpoint_class).toBe(TOOL_APPROVAL);
   });
 
-  // The resolution event is what unblocks a run, and nothing else is (ADR-0003).
+  // The resolution event is what unblocks a run, and nothing else is.
   it("goes through once an approving resolution is on the ledger", async () => {
     const state = new InProcessState();
     await seed(state, "approve", approvalId(RUN, "bump", "{}"));

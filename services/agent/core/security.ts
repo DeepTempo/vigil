@@ -1,8 +1,7 @@
 import type { ToolFailure, ToolResult } from "../contracts/tool.js";
 
-// Tool output reaches a model inside a delimited block so its content cannot
-// read as direction. A result carrying the delimiter itself would close that
-// block early, which is the one thing scrubbing must not let through.
+// Tool output reaches a model inside a delimited block so it cannot read as
+// direction. A result carrying the delimiter would close that block early.
 const DELIMITER = /<\/?vigil:/gi;
 
 // Truncation is marked rather than silent: output that just stops is
@@ -20,9 +19,8 @@ export function scrub(text: string, cap: number): string {
 
 export type Scanner = (text: string) => boolean;
 
-// ponytail: keyword heuristic, not a classifier -- it will miss paraphrase. It
-// only ever raises attention and never suppresses, so a miss costs a reader's
-// notice and a false positive costs nothing but a flag.
+// ponytail: keyword heuristic, not a classifier; upgrade if paraphrase matters.
+// It only raises attention and never suppresses, so a miss costs only notice.
 const INSTRUCTION_LIKE: readonly RegExp[] = [
   /\bignore\s+(all\s+|any\s+)?(previous|prior|above|earlier)\b/i,
   /\bdisregard\s+(all\s+|any\s+)?(previous|prior|above|earlier|instructions)\b/i,
@@ -36,9 +34,8 @@ function escape(verb: string): string {
   return verb.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// A workflow's verbs are exactly what text imitating a decision would use, and
-// exactly what the harness must not know, so they arrive as an argument. No
-// verbs means a workflow that has none, not a scanner that was switched off.
+// A workflow's verbs are what imitating text would use and what the harness must
+// not know, so they arrive as an argument. No verbs means none, not scanning off.
 export function scannerFor(verbs: readonly string[]): Scanner {
   const vocabulary = verbs.length === 0 ? [] : [new RegExp(`\\b(${verbs.map(escape).join("|")})\\b`)];
   const patterns = [...INSTRUCTION_LIKE, ...vocabulary];
@@ -54,16 +51,14 @@ export interface Wrapped {
   failure: ToolFailure | null;
 }
 
-// timeout and unavailable are gaps in what the environment could answer;
-// refused and invalid_args are defects in the call and must never be recorded as
-// gaps (CONTEXT.md). The rule lives here because the taxonomy does.
+// timeout and unavailable are gaps in what the environment could answer; refused
+// and invalid_args are defects in the call and are never recorded as gaps.
 export function isVisibilityGap(failure: ToolFailure): boolean {
   return failure.kind === "timeout" || failure.kind === "unavailable";
 }
 
-// The one place a ToolResult becomes text a model reads (ADR-0005). Rows are
-// serialised here and nowhere else, so no adapter renders for a model and no
-// caller can hand one output that skipped the scan.
+// The one place a ToolResult becomes text a model reads. Rows serialise here and
+// nowhere else, so no caller can hand a model output that skipped the scan.
 export function wrap(toolId: string, result: ToolResult, scan: Scanner, cap: number): Wrapped {
   const body = scrub(result.ok ? renderRows(result) : renderFailure(result.failure), cap);
   const id = toolId.replace(/[^\w.-]/g, "");

@@ -22,9 +22,8 @@ export interface TallyReport {
 type Emission = { verb: TallyPayload["verb"]; note: string };
 type Event = NewEvent<TallyKinds>;
 
-// The deterministic half. It owns the vocabulary, what each verb does, and when
-// the run may end; the harness owns everything else. Nothing here reaches a
-// model or a tool except through the harness it was handed.
+// The deterministic half: the vocabulary, what each verb does, and when the run may
+// end. Nothing here reaches a model or a tool except through the harness.
 export async function runTally(harness: Harness<TallyKinds>, options: TallyOptions): Promise<TallyReport> {
   const { run_id } = options;
   if ((await harness.state.latestSeq(run_id)) === null) await open(harness, options);
