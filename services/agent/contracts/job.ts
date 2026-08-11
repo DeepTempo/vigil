@@ -1,5 +1,5 @@
-// Contract 4 of 5 (issue #589). Consumed by WS-B (#597 resume), WS-E (#594
-// deployment) and the Python backend, which enqueues plain JSON (ADR-0001).
+// One of the five Phase-0 contracts. Consumed by the resume path, deployment,
+// and the Python backend, which enqueues plain JSON and writes no ledger.
 
 import type { RunKind } from "./events.js";
 

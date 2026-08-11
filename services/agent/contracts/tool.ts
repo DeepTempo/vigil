@@ -1,5 +1,5 @@
-// Contract 1 of 5 (issue #589). Consumed by WS-A (registry, dispatch), WS-C
-// (#595 query port, #600 Elastic, #602 Splunk) and WS-D (#596 hunt tools).
+// One of the five Phase-0 contracts. Consumed by the registry and dispatch, the
+// query port and its SIEM adapters, and the hunt workflow's tools.
 
 export interface ToolBounds {
   readonly maxRows: number;
@@ -20,7 +20,7 @@ export type ToolResult =
   | { ok: false; failure: ToolFailure };
 
 // What an adapter author writes. Receives the bounds and must enforce them at
-// the source: capping a serialised result afterwards is what ADR-0004 forbids.
+// the source: capping a serialised result afterwards yields malformed data.
 export interface ToolAdapter {
   readonly id: string;
   readonly description: string;
@@ -44,7 +44,7 @@ export interface RegisteredTool {
 }
 
 // An adapter returning more rows than it was told to is a defect in the adapter,
-// so it throws rather than resolving: truncating here is what ADR-0004 forbids.
+// so it throws rather than resolving; truncating here would malform the result.
 export class ToolBoundsViolation extends Error {}
 
 // The brand is type-only and is never materialised, so the cast is the whole

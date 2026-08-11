@@ -1,14 +1,16 @@
-// Contract 2 of 5 (issue #589). Consumed by WS-B (#591 ledger, #597 resume),
-// WS-D (#596 hunt), WS-F (#599 mirror) and the Python read path in #590.
+// One of the five Phase-0 contracts. Consumed by the ledger and resume paths,
+// the hunt workflow, the checkpoint mirror, and Python's two permitted reads.
 
 import type { BudgetLimits, SpendPayload } from "./budget.js";
 
 export const EVENT_SCHEMA_VERSION = 1;
 
-export const RUN_KINDS = ["hunt", "investigate", "compose", "chat"] as const;
+// tally is the conformance workflow, not a product surface: it keeps the harness
+// boundary exercised by something that is not a real domain.
+export const RUN_KINDS = ["hunt", "investigate", "compose", "chat", "tally"] as const;
 export type RunKind = (typeof RUN_KINDS)[number];
 
-// Domain-free (ADR-0002), so the harness never imports a workflow's vocabulary.
+// Domain-free, so the harness never imports a workflow's vocabulary.
 // A workflow declares its own kinds and the ledger repository is generic over them.
 export const RUN_EVENT_KINDS = [
   "run",
@@ -53,7 +55,7 @@ export interface CheckpointPayload {
   raised_at: string;
 }
 
-// The resolution event is what unblocks a run, and nothing else does (ADR-0003).
+// The resolution event is what unblocks a run, and nothing else does.
 export interface ResolutionPayload {
   checkpoint_id: string;
   actor: string;
