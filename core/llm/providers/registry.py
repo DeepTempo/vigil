@@ -6,9 +6,12 @@ Sits on top of the multi-provider layer introduced in #88:
   - Live-queries providers for their current model lists via
     ``core.llm.providers.discovery`` (Anthropic /v1/models, OpenAI
     /v1/models, Ollama /api/tags + /api/show), with a short TTL cache.
-  - Owns a layered cost/capability catalog: live upstream meta first, then
-    a static override dict for known-exact values, then a provider-specific
-    tier heuristic keyed by model-id prefix, then a safe (0, 0) default.
+  - Owns a layered capability catalog: live upstream meta first, then a
+    static override dict of hand-verified values, then a provider-specific
+    tier heuristic keyed by model-id prefix, then a safe default.
+  - Does NOT own rates. They live in ``model_rates`` and are read through
+    ``core.llm.cost.rates`` (GH #593), because the agent layer prices the
+    same calls and a second copy is what drifted.
 
 The registry is intentionally decoupled from the DB hot path: all DB access
 goes through short-lived sessions that are closed before returning.
@@ -22,6 +25,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.llm.cost import rates
+from core.llm.cost.rates import MILLION
 
 logger = logging.getLogger(__name__)
 
@@ -94,25 +99,22 @@ def is_valid_component(name: str) -> bool:
 #    dynamic-discovery path runs. Holds display_name, context_window and
 #    capability flags scraped from upstream APIs. Does NOT hold pricing —
 #    no provider publishes pricing in their /models endpoint.
-# 2. Static overrides (``_CATALOG``): exact-known values we've hand-verified
-#    against provider pricing pages. Takes precedence over tier heuristics
-#    so cost math stays precise for the models we actually use a lot.
-# 3. Tier heuristic (``_TIER_HEURISTIC``): prefix-regex fallback. Ensures a
-#    new model (e.g. a future Haiku or Sonnet variant) gets a reasonable
-#    cost estimate the moment upstream exposes it, without a code change.
-# 4. Default: (0, 0) for cost, 0 for context, all-False capabilities.
+# 2. Static overrides (``_CATALOG``): hand-verified display names, context
+#    windows and capability flags. It no longer carries rates (GH #593).
+# 3. Tier heuristic (``_TIER_HEURISTIC``): prefix-regex fallback for a model
+#    the rate table does not price, so a new variant still gets an estimate
+#    the moment upstream exposes it. An estimate, never a gate: the agent
+#    layer's budget refuses a model the table misses rather than guessing.
+# 4. Default: 0 for context, all-False capabilities, pricing_source unknown.
 
 
-# Exact overrides — per-million-token USD rates. Sourced from provider
-# public pricing pages as of 2025-Q4. Ollama models are self-hosted → $0.
+# Display names, context windows and capabilities. Rates come from model_rates.
 
 _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     # (provider_type, model_id) → metadata
     ("anthropic", "claude-opus-4-7"): {
         "display_name": "Claude Opus 4.7",
         "context_window": 1_000_000,
-        "input_per_m": 15.0,
-        "output_per_m": 75.0,
         "supports_tools": True,
         "supports_thinking": True,
         "supports_vision": True,
@@ -120,8 +122,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("anthropic", "claude-sonnet-4-6"): {
         "display_name": "Claude Sonnet 4.6",
         "context_window": 200_000,
-        "input_per_m": 3.0,
-        "output_per_m": 15.0,
         "supports_tools": True,
         "supports_thinking": True,
         "supports_vision": True,
@@ -129,8 +129,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("anthropic", "claude-sonnet-4-5-20250929"): {
         "display_name": "Claude Sonnet 4.5",
         "context_window": 200_000,
-        "input_per_m": 3.0,
-        "output_per_m": 15.0,
         "supports_tools": True,
         "supports_thinking": True,
         "supports_vision": True,
@@ -138,8 +136,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("anthropic", "claude-sonnet-4-20250514"): {
         "display_name": "Claude Sonnet 4",
         "context_window": 200_000,
-        "input_per_m": 3.0,
-        "output_per_m": 15.0,
         "supports_tools": True,
         "supports_thinking": True,
         "supports_vision": True,
@@ -147,8 +143,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("anthropic", "claude-opus-4-20250514"): {
         "display_name": "Claude Opus 4",
         "context_window": 200_000,
-        "input_per_m": 15.0,
-        "output_per_m": 75.0,
         "supports_tools": True,
         "supports_thinking": True,
         "supports_vision": True,
@@ -156,8 +150,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("anthropic", "claude-haiku-4-5-20251001"): {
         "display_name": "Claude Haiku 4.5",
         "context_window": 200_000,
-        "input_per_m": 0.80,
-        "output_per_m": 4.0,
         "supports_tools": True,
         "supports_thinking": False,
         "supports_vision": True,
@@ -168,8 +160,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("anthropic", "claude-3-5-sonnet-20241022"): {
         "display_name": "Claude Sonnet 3.5 v2",
         "context_window": 200_000,
-        "input_per_m": 3.0,
-        "output_per_m": 15.0,
         "supports_tools": True,
         "supports_thinking": False,
         "supports_vision": True,
@@ -177,8 +167,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("anthropic", "claude-3-5-haiku-20241022"): {
         "display_name": "Claude Haiku 3.5",
         "context_window": 200_000,
-        "input_per_m": 0.80,
-        "output_per_m": 4.0,
         "supports_tools": True,
         "supports_thinking": False,
         "supports_vision": False,
@@ -186,8 +174,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("anthropic", "claude-3-haiku-20240307"): {
         "display_name": "Claude Haiku 3",
         "context_window": 200_000,
-        "input_per_m": 0.25,
-        "output_per_m": 1.25,
         "supports_tools": True,
         "supports_thinking": False,
         "supports_vision": True,
@@ -195,8 +181,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("openai", "gpt-4o"): {
         "display_name": "GPT-4o",
         "context_window": 128_000,
-        "input_per_m": 2.50,
-        "output_per_m": 10.0,
         "supports_tools": True,
         "supports_thinking": False,
         "supports_vision": True,
@@ -204,8 +188,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("openai", "gpt-4o-mini"): {
         "display_name": "GPT-4o mini",
         "context_window": 128_000,
-        "input_per_m": 0.15,
-        "output_per_m": 0.60,
         "supports_tools": True,
         "supports_thinking": False,
         "supports_vision": True,
@@ -213,8 +195,6 @@ _CATALOG: Dict[Tuple[str, str], Dict[str, Any]] = {
     ("openai", "gpt-4-turbo"): {
         "display_name": "GPT-4 Turbo",
         "context_window": 128_000,
-        "input_per_m": 10.0,
-        "output_per_m": 30.0,
         "supports_tools": True,
         "supports_thinking": False,
         "supports_vision": True,
@@ -258,42 +238,6 @@ _TIER_HEURISTIC: Dict[str, Tuple[_TierPattern, ...]] = {
     "openai": _OPENAI_TIERS,
     "ollama": (),  # always $0 — handled as a separate branch
 }
-
-
-# ---------------------------------------------------------------------------
-# Cache token pricing multipliers (#184 Phase 3)
-# ---------------------------------------------------------------------------
-# Cache token pricing is uniform across a provider's tier, not per-model, so
-# multipliers live here rather than in _CATALOG. Multiplier semantics:
-#   cache_read_cost     = cache_read_tokens     × input_per_token × read_mult
-#   cache_creation_cost = cache_creation_tokens × input_per_token × creation_mult
-#
-# Anthropic 5-minute ephemeral cache: write 1.25×, read 0.1× — the default for
-# every cache_control: {"type": "ephemeral"} block we send. The 1-hour cache
-# tier (write 2×) is a separate Anthropic feature we don't currently use; if
-# we adopt it, encode the choice in the call site, not here.
-#
-# OpenAI prompt caching: read 0.5×, write 0× (no premium — just regular input
-# tokens). Applies to gpt-4o family, o1, o3 when the prefix is reused.
-#
-# Ollama: self-hosted, $0 for all paths — multipliers are moot but defined
-# for symmetry.
-_CACHE_MULTIPLIERS: Dict[str, Tuple[float, float]] = {
-    # provider_type → (read_mult, creation_mult)
-    "anthropic": (0.10, 1.25),
-    "openai": (0.50, 0.0),
-    "ollama": (0.0, 0.0),
-}
-
-
-def get_cache_multipliers(provider_type: str) -> Tuple[float, float]:
-    """Return ``(read_mult, creation_mult)`` for ``provider_type``.
-
-    Unknown providers fall back to ``(1.0, 1.0)`` — i.e., charge cache
-    tokens at full input rate. That's a conservative over-estimate, which
-    is the right default when we don't know the provider's caching rules.
-    """
-    return _CACHE_MULTIPLIERS.get(provider_type, (1.0, 1.0))
 
 
 def infer_provider_type(model_id: str) -> str:
@@ -375,8 +319,12 @@ def _default_entry(provider_type: str, model_id: str) -> Dict[str, Any]:
     return {
         "display_name": model_id,
         "context_window": 0,
+        # Per million tokens, as the rate table stores them. Zero here means
+        # "nothing priced this", which pricing_source reports as unknown.
         "input_per_m": 0.0,
         "output_per_m": 0.0,
+        "cache_read_per_m": 0.0,
+        "cache_write_per_m": 0.0,
         "supports_tools": False,
         "supports_thinking": False,
         "supports_vision": False,
@@ -416,24 +364,30 @@ def _catalog_entry(provider_type: str, model_id: str) -> Dict[str, Any]:
             if field_name in source and source[field_name]:
                 entry[field_name] = source[field_name]
 
-    # Pricing: static override → tier heuristic → provider-specific default.
-    if static and ("input_per_m" in static or "output_per_m" in static):
-        entry["input_per_m"] = float(static.get("input_per_m", 0.0))
-        entry["output_per_m"] = float(static.get("output_per_m", 0.0))
-        entry["pricing_source"] = "exact"
-    elif provider_type == "ollama":
-        entry["input_per_m"] = 0.0
-        entry["output_per_m"] = 0.0
-        entry["pricing_source"] = "zero"
+    # Pricing: the rate table → tier heuristic → nothing. _CATALOG no longer
+    # carries rates (GH #593); model_rates is the one place they live, and cache
+    # rates come from it stored rather than derived from a multiplier table.
+    rate = rates.lookup(provider_type, model_id)
+    if rate is not None:
+        entry["input_per_m"] = rate.input_per_mtok
+        entry["output_per_m"] = rate.output_per_mtok
+        entry["cache_read_per_m"] = rate.cache_read_per_mtok
+        entry["cache_write_per_m"] = rate.cache_write_per_mtok
+        entry["pricing_source"] = rate.pricing_source
     else:
         tier = _match_tier(provider_type, model_id)
         if tier is not None:
             entry["input_per_m"], entry["output_per_m"] = tier
+            # No stored cache rates behind a heuristic, so cache tokens are
+            # charged at the full input rate: an over-estimate, which is the
+            # right direction when the real rate is unknown.
+            entry["cache_read_per_m"] = entry["input_per_m"]
+            entry["cache_write_per_m"] = entry["input_per_m"]
             entry["pricing_source"] = "heuristic"
         else:
             entry["pricing_source"] = "unknown"
             logger.warning(
-                "No catalog entry for %s/%s — defaulting cost to $0 and "
+                "No rate row or tier match for %s/%s — defaulting cost to $0 and "
                 "capabilities to false",
                 provider_type,
                 model_id,
@@ -662,20 +616,19 @@ class ModelRegistry:
         inside ``_catalog_entry``).
         """
         entry = _catalog_entry(provider_type, model_id)
-        return (entry["input_per_m"] / 1_000_000, entry["output_per_m"] / 1_000_000)
+        return (entry["input_per_m"] / MILLION, entry["output_per_m"] / MILLION)
 
     @staticmethod
     def get_cache_rates(model_id: str, provider_type: str) -> Tuple[float, float]:
-        """Return ``(cache_read_per_token, cache_creation_per_token)`` in USD.
+        """Return ``(cache_read_per_token, cache_write_per_token)`` in USD.
 
-        Built from the input rate × provider-specific multipliers so a
-        repricing of input automatically reprices cache tokens — there is
-        no second pricing table to keep in sync.
+        Read from the rate table's own columns (GH #593). They used to be derived
+        from a per-provider multiplier table here, which the agent layer would
+        have had to reimplement to price the same call the same way; storing them
+        is what let that table be deleted rather than duplicated.
         """
         entry = _catalog_entry(provider_type, model_id)
-        input_per_token = entry["input_per_m"] / 1_000_000
-        read_mult, creation_mult = get_cache_multipliers(provider_type)
-        return (input_per_token * read_mult, input_per_token * creation_mult)
+        return (entry["cache_read_per_m"] / MILLION, entry["cache_write_per_m"] / MILLION)
 
     @staticmethod
     def get_pricing_source(model_id: str, provider_type: str) -> str:
@@ -703,8 +656,8 @@ class ModelRegistry:
             provider_type=provider_type,
             display_name=entry["display_name"],
             context_window=entry["context_window"],
-            input_cost_per_1k=entry["input_per_m"] / 1000,
-            output_cost_per_1k=entry["output_per_m"] / 1000,
+            input_cost_per_1k=entry["input_per_m"] / 1_000,
+            output_cost_per_1k=entry["output_per_m"] / 1_000,
             supports_tools=entry["supports_tools"],
             supports_thinking=entry["supports_thinking"],
             supports_vision=entry["supports_vision"],

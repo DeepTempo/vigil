@@ -194,12 +194,12 @@ def test_zero_cache_tokens_match_pre_184_behavior():
     assert legacy == pytest.approx(1_000 * in_rate + 500 * out_rate, rel=1e-9)
 
 
-def test_real_anthropic_multipliers_via_registry():
-    """End-to-end: hit the real ModelRegistry (no mock) and verify the
-    Anthropic multipliers (0.1× read / 1.25× creation) are applied."""
+def test_real_anthropic_cache_rates_via_registry(seeded_rates):
+    """End-to-end against the real registry and the committed seed: the stored
+    cache rates are applied, at the same values the deleted multipliers produced."""
     from core.llm.cost.calls import compute_call_cost
 
-    # Sonnet 4.5 has exact pricing in _CATALOG: $3/MTok in, $15/MTok out.
+    # Sonnet 4.5 is priced in model_rates: $3/MTok in, $15/MTok out.
     cost = compute_call_cost(
         "claude-sonnet-4-5-20250929",
         "anthropic",
@@ -210,10 +210,11 @@ def test_real_anthropic_multipliers_via_registry():
     )
     in_rate = 3.0 / 1_000_000
     out_rate = 15.0 / 1_000_000
+    # 0.30 and 3.75 per MTok are stored, not computed from in_rate here.
     expected = (
         1_000 * in_rate
         + 500 * out_rate
-        + 10_000 * in_rate * 0.10
-        + 2_000 * in_rate * 1.25
+        + 10_000 * (0.30 / 1_000_000)
+        + 2_000 * (3.75 / 1_000_000)
     )
     assert cost == pytest.approx(expected, rel=1e-9)

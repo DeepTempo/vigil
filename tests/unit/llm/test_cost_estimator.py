@@ -24,7 +24,7 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def test_openai_estimator_uses_registry_rates():
+def test_openai_estimator_uses_registry_rates(seeded_rates):
     from core.llm.cost.estimator import estimate_openai
 
     est = estimate_openai(
@@ -32,7 +32,7 @@ def test_openai_estimator_uses_registry_rates():
         messages=[{"role": "user", "content": "hello"}],
         max_tokens=1000,
     )
-    # gpt-4o has exact pricing: $2.50/MTok in, $10/MTok out.
+    # gpt-4o is priced in model_rates: $2.50/MTok in, $10/MTok out.
     in_rate = 2.50 / 1_000_000
     out_rate = 10.0 / 1_000_000
 
@@ -126,7 +126,7 @@ def test_unknown_provider_calls_record_pricing_unknown(monkeypatch):
     assert calls == [("some-future-vendor", "some-model")]
 
 
-def test_anthropic_estimator_uses_count_tokens_when_available(monkeypatch):
+def test_anthropic_estimator_uses_count_tokens_when_available(seeded_rates, monkeypatch):
     """Mock the Bifrost-routed Anthropic client so the test doesn't
     depend on a real API key or network.
 

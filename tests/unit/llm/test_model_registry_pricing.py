@@ -1,10 +1,13 @@
-"""Tests for the model_registry pricing helpers added in #184.
+"""Tests for the model registry's pricing helpers (#184, reworked for #593).
 
 Covers:
-  - get_cache_multipliers (provider-level lookup)
-  - get_cache_rates (composed: input rate × multiplier)
-  - get_pricing_source (visibility into which catalog layer answered)
+  - get_cache_rates, now read from model_rates rather than derived
+  - the wildcard row, and why it is only honoured at zero
+  - get_pricing_source (visibility into which layer answered)
   - infer_provider_type (used by analytics to badge rows)
+
+Rates come from the committed seed via the ``seeded_rates`` fixture, so a rate
+mistyped in the SQL fails here rather than shipping.
 """
 
 from __future__ import annotations
@@ -20,54 +23,103 @@ sys.path.insert(0, str(REPO))
 pytestmark = pytest.mark.unit
 
 
-def test_anthropic_cache_multipliers():
-    from core.llm.providers.registry import get_cache_multipliers
+def test_cache_rates_come_from_the_table_not_a_multiplier(seeded_rates):
+    """Stored, not derived (GH #593).
 
-    read_mult, creation_mult = get_cache_multipliers("anthropic")
-    # Anthropic 5-min ephemeral cache: 0.1× read, 1.25× creation.
-    assert read_mult == pytest.approx(0.10)
-    assert creation_mult == pytest.approx(1.25)
-
-
-def test_openai_cache_multipliers():
-    from core.llm.providers.registry import get_cache_multipliers
-
-    read_mult, creation_mult = get_cache_multipliers("openai")
-    # OpenAI: 0.5× cached read, no write premium.
-    assert read_mult == pytest.approx(0.50)
-    assert creation_mult == pytest.approx(0.0)
-
-
-def test_unknown_provider_falls_back_to_full_input_rate():
-    """Unknown providers should over-bound, not under-bound — charge cache
-    tokens at full input rate so we don't silently miss costs."""
-    from core.llm.providers.registry import get_cache_multipliers
-
-    assert get_cache_multipliers("future-vendor") == (1.0, 1.0)
-
-
-def test_get_cache_rates_uses_input_rate_times_multiplier():
-    """The cache rate is derived from the input rate, so a repricing of
-    input automatically reprices cache — no second table to maintain."""
+    They used to be the input rate times a per-provider multiplier held in this
+    module. The agent layer prices the same calls, so it would have had to
+    reimplement that table to agree; storing the four rates is what let the
+    multipliers be deleted rather than duplicated.
+    """
     from core.llm.providers.registry import get_registry
 
     registry = get_registry()
-    in_rate, _ = registry.get_cost_rates("claude-sonnet-4-5-20250929", "anthropic")
-    cache_read, cache_creation = registry.get_cache_rates(
-        "claude-sonnet-4-5-20250929", "anthropic"
+    read, write = registry.get_cache_rates("claude-sonnet-4-5-20250929", "anthropic")
+    assert read == pytest.approx(0.30 / 1_000_000)
+    assert write == pytest.approx(3.75 / 1_000_000)
+
+
+def test_openai_charges_nothing_extra_for_a_cache_write(seeded_rates):
+    """The gateway's prompt_tokens already covers an OpenAI cache write, so the
+    stored rate is zero rather than a premium."""
+    from core.llm.providers.registry import get_registry
+
+    read, write = get_registry().get_cache_rates("gpt-4o", "openai")
+    assert read == pytest.approx(1.25 / 1_000_000)
+    assert write == 0.0
+
+
+def test_an_unpriced_model_charges_cache_at_the_full_input_rate(seeded_rates):
+    """A tier heuristic has no stored cache rates, so cache tokens are charged at
+    full input rate: an over-estimate, which is the right direction when the real
+    rate is unknown. This is the one rule left after the multiplier table."""
+    from core.llm.providers.registry import get_registry
+
+    registry = get_registry()
+    in_rate, _ = registry.get_cost_rates("claude-sonnet-9-future", "anthropic")
+    read, write = registry.get_cache_rates("claude-sonnet-9-future", "anthropic")
+    assert in_rate > 0
+    assert read == pytest.approx(in_rate)
+    assert write == pytest.approx(in_rate)
+
+
+def test_a_self_hosted_model_is_priced_by_the_wildcard_row(seeded_rates):
+    """Ollama models cannot be enumerated, so one wildcard row prices them all."""
+    from core.llm.providers.registry import get_registry
+
+    registry = get_registry()
+    assert registry.get_cost_rates("some-local-llama", "ollama") == (0.0, 0.0)
+    assert registry.get_pricing_source("some-local-llama", "ollama") == "zero"
+
+
+def test_a_wildcard_never_prices_a_model_that_should_have_cost_something(seeded_rates):
+    """The wildcard is a zero-cost mechanism, not a general fallback. Honouring
+    one at a non-zero pricing_source would let a whole provider be silently
+    mispriced by a single row."""
+    from core.llm.cost import rates as rate_table
+
+    rate_table.load_rates(
+        [
+            rate_table.ModelRate(
+                model_id="*",
+                provider_type="expensive",
+                input_per_mtok=999.0,
+                output_per_mtok=999.0,
+                cache_read_per_mtok=999.0,
+                cache_write_per_mtok=999.0,
+                pricing_source="exact",
+            )
+        ]
     )
-    assert cache_read == pytest.approx(in_rate * 0.10)
-    assert cache_creation == pytest.approx(in_rate * 1.25)
+    assert rate_table.lookup("expensive", "anything") is None
 
 
-def test_pricing_source_exact_for_catalog_models():
+def test_the_table_is_read_once(seeded_rates, monkeypatch):
+    """Pricing is on the hot path for every call, so a per-call query is not an
+    option. Read once, frozen, and re-read only on restart."""
+    from core.llm.cost import rates as rate_table
+
+    rate_table.reset_rates()
+    reads = {"n": 0}
+
+    def counting_read():
+        reads["n"] += 1
+        return {}
+
+    monkeypatch.setattr(rate_table, "_read", counting_read)
+    rate_table.lookup("anthropic", "claude-sonnet-4-6")
+    rate_table.lookup("openai", "gpt-4o")
+    assert reads["n"] == 1
+
+
+def test_pricing_source_exact_for_catalog_models(seeded_rates):
     from core.llm.providers.registry import get_registry
 
     src = get_registry().get_pricing_source("claude-sonnet-4-5-20250929", "anthropic")
     assert src == "exact"
 
 
-def test_pricing_source_heuristic_for_unknown_anthropic_variant():
+def test_pricing_source_heuristic_for_unknown_anthropic_variant(seeded_rates):
     """A model id we haven't catalog'd but matches a tier regex (e.g.
     a future Sonnet variant) should resolve via heuristic."""
     from core.llm.providers.registry import get_registry
@@ -76,19 +128,19 @@ def test_pricing_source_heuristic_for_unknown_anthropic_variant():
     assert src == "heuristic"
 
 
-def test_pricing_source_zero_for_ollama():
+def test_pricing_source_zero_for_ollama(seeded_rates):
     from core.llm.providers.registry import get_registry
 
     assert get_registry().get_pricing_source("llama3.1", "ollama") == "zero"
 
 
-def test_pricing_source_unknown_for_novel_provider():
+def test_pricing_source_unknown_for_novel_provider(seeded_rates):
     from core.llm.providers.registry import get_registry
 
     assert get_registry().get_pricing_source("foo-1", "future-vendor") == "unknown"
 
 
-def test_unknown_pricing_increments_counter(monkeypatch):
+def test_unknown_pricing_increments_counter(seeded_rates, monkeypatch):
     """#184 acceptance #2: the 'unknown' path must increment the OTEL
     counter so dashboards/alerts can see unsupported models, not silently
     record $0."""
@@ -106,7 +158,7 @@ def test_unknown_pricing_increments_counter(monkeypatch):
     assert ("future-vendor", "foo-1") in calls
 
 
-def test_known_pricing_does_not_increment_counter(monkeypatch):
+def test_known_pricing_does_not_increment_counter(seeded_rates, monkeypatch):
     """Known models must NOT increment the unknown-pricing counter."""
     from core.llm.providers import registry as model_registry
 
