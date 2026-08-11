@@ -17,7 +17,7 @@ export class SeqConflict extends Error {
 
 const UNIQUE_VIOLATION = "23505";
 
-// The single writer to agent_events (ADR-0001). Assigns seq itself, so no
+// The single writer to agent_events. Assigns seq itself, so no
 // caller chooses its own position in the log.
 export class LedgerRepository<Kinds extends Record<string, unknown> = Record<never, never>> {
   constructor(private readonly pool: Pool) {}
