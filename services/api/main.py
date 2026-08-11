@@ -327,28 +327,6 @@ async def startup_event():
 
     _testing = get_settings().testing
 
-    # Keep the sync-endpoint threadpool in lockstep with the DB connection pool.
-    # Starlette runs `def` endpoints (and sync deps) on anyio's default thread
-    # limiter, which defaults to 40; our pool ceiling is pool_size + max_overflow
-    # (30 by default). Without this, a burst of 31+ concurrent DB-bound requests
-    # would occupy threads that then block on the pool up to DB_POOL_TIMEOUT.
-    try:
-        import anyio.to_thread
-        from core.storage.connection import get_db_manager
-
-        _pool_cfg = get_db_manager().config
-        _db_ceiling = _pool_cfg.pool_size + _pool_cfg.max_overflow
-        anyio.to_thread.current_default_thread_limiter().total_tokens = _db_ceiling
-        logger.info(
-            "Threadpool capacity set to %d to match DB pool "
-            "(pool_size=%d + max_overflow=%d)",
-            _db_ceiling,
-            _pool_cfg.pool_size,
-            _pool_cfg.max_overflow,
-        )
-    except Exception as e:  # pragma: no cover - best-effort tuning
-        logger.warning("Could not align threadpool with DB pool: %s", e)
-
     # Initialize Sentry error tracking (was never called before — bug fix)
     try:
         from core.platform.monitoring import init_sentry
