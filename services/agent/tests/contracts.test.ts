@@ -8,7 +8,6 @@ import {
 } from "../contracts/tool.js";
 import { RUN_EVENT_KINDS, isRunEventKind, type AgentEvent } from "../contracts/events.js";
 import { jobIdFor, type RunJob } from "../contracts/job.js";
-import { rateTableOf } from "../contracts/rates.js";
 
 const rows = (n: number, sourceSystem = "duckdb"): ToolResult => ({
   ok: true,
@@ -143,21 +142,3 @@ describe("a resume job carries nothing but its identity", () => {
   });
 });
 
-describe("an unpriced model is a miss, not a zero", () => {
-  it("returns undefined so the budget refuses", () => {
-    const table = rateTableOf([
-      {
-        model_id: "claude-opus-5",
-        provider_type: "anthropic",
-        input_per_mtok: 5,
-        output_per_mtok: 25,
-        cache_read_per_mtok: 0.5,
-        cache_write_per_mtok: 6.25,
-        pricing_source: "exact",
-      },
-    ]);
-    expect(table.lookup("claude-opus-5", "anthropic")?.input_per_mtok).toBe(5);
-    expect(table.lookup("claude-opus-5", "openai")).toBeUndefined();
-    expect(table.size).toBe(1);
-  });
-});

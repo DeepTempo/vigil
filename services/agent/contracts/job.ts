@@ -1,4 +1,4 @@
-// One of the five Phase-0 contracts. Consumed by the resume path, deployment,
+// One of the four Phase-0 contracts. Consumed by the resume path, deployment,
 // and the Python backend, which enqueues plain JSON and writes no ledger.
 
 import type { RunKind } from "./events.js";

@@ -1,5 +1,5 @@
-// One of the five Phase-0 contracts. Consumed by the harness seam, the hunt
-// workflow, which must use it rather than keep parallel accounting, and pricing.
+// One of the four Phase-0 contracts. Consumed by the harness seam and by any
+// workflow, which must use it rather than keep parallel accounting.
 
 export interface TokenCounts {
   input: number;
@@ -19,46 +19,34 @@ export interface Spend {
   tokens: TokenCounts;
 }
 
-// One model call, journaled. Replaces the cost_usd field the prototype hung on
-// decision and dispatch records, so the budget is a fold over one kind of event.
+// One model call, journaled. Tokens come from the provider and are exact here;
+// cost is null until the gateway reports it, because the gateway prices, not us.
 export interface SpendPayload {
   model_id: string;
   provider_type: string;
   role: string;
   tokens: TokenCounts;
-  cost_usd: number;
-  pricing_source: string;
-  reservation_id: string | null;
+  cost_usd: number | null;
 }
 
-// A value, never a throw: the exhaustiveness argument applies here
-// or nowhere. unpriced_model fails closed so a missing rate cannot bill zero.
+// A value, never a throw: the exhaustiveness argument applies here or nowhere.
 export type Refusal =
   | { reason: "iterations_exhausted"; used: number; limit: number }
-  | { reason: "cost_exhausted"; used_usd: number; limit_usd: number }
-  | { reason: "would_exceed"; estimate_usd: number; remaining_usd: number }
-  | { reason: "unpriced_model"; model_id: string };
+  | { reason: "cost_exhausted"; used_usd: number; limit_usd: number };
 
-export interface Reservation {
-  readonly id: string;
-  readonly estimate_usd: number;
+// What the gateway says has been spent against this run's key. Returning null
+// means it could not be read, which is not a refusal: the gateway still caps.
+export interface Quota {
+  spent(): Promise<{ used_usd: number; limit_usd: number } | null>;
 }
 
-export type ReserveOutcome =
-  | { ok: true; reservation: Reservation }
-  | { ok: false; refusal: Refusal };
-
-// Reserve/commit rather than check/spend: with dispatch.max_workers above one,
-// concurrent independent checks would each pass and collectively overshoot.
+// Iterations are the harness's to count, dollars the gateway's to enforce. Quota
+// is read once per iteration, so an exhausted run parks before paying for one.
 export interface Budget {
   readonly limits: BudgetLimits;
   readonly spent: Spend;
-  // The only thing that advances Spend.iterations, so the only thing that enforces
-  // max_iterations. Separate from reserve: one iteration is many model calls.
-  beginIteration(): Refusal | null;
-  reserve(model_id: string, estimate_tokens: TokenCounts): ReserveOutcome;
-  commit(reservation: Reservation, actual: SpendPayload): void;
-  release(reservation: Reservation): void;
+  beginIteration(): Promise<Refusal | null>;
+  record(payload: SpendPayload): void;
 }
 
 export const ZERO_TOKENS: TokenCounts = { input: 0, output: 0, cache_read: 0, cache_write: 0 };

@@ -1,4 +1,4 @@
-// One of the five Phase-0 contracts. Consumed by the registry and dispatch, the
+// One of the four Phase-0 contracts. Consumed by the registry and dispatch, the
 // query port and its SIEM adapters, and the hunt workflow's tools.
 
 export interface ToolBounds {

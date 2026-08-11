@@ -1,8 +1,10 @@
-// One of the five Phase-0 contracts. Consumed by the ledger and resume paths,
+// One of the four Phase-0 contracts. Consumed by the ledger and resume paths,
 // the hunt workflow, the checkpoint mirror, and Python's two permitted reads.
 
 import type { BudgetLimits, SpendPayload } from "./budget.js";
 
+// Adding a kind is never a migration: kind is text in the table and validated here
+// against a closed union. Changing an existing kind's payload bumps this.
 export const EVENT_SCHEMA_VERSION = 1;
 
 // tally is the conformance workflow, not a product surface: it keeps the harness
