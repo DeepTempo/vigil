@@ -39,6 +39,14 @@ DEFAULT_TIMEOUT = 30
 # escape a bare `except httpx.HTTPError` and 500 instead of returning None.
 _HTTP_ERRORS = (httpx.HTTPError, httpx.InvalidURL)
 
+# requests.exceptions.JSONDecodeError subclassed both ValueError and
+# RequestException, so `except RequestException` also swallowed a malformed
+# body. httpx raises a plain json.JSONDecodeError, so the REST helpers have
+# to name it to keep returning None instead of raising. The MCP paths below
+# handle ValueError separately, with their own message — which is why this
+# is a second tuple rather than an addition to _HTTP_ERRORS.
+_REST_ERRORS = _HTTP_ERRORS + (ValueError,)
+
 # requests followed redirects by default; httpx does not.
 _FOLLOW_REDIRECTS = True
 
@@ -281,7 +289,7 @@ class VStrikeService:
                 response.status_code,
             )
             return None
-        except _HTTP_ERRORS as e:
+        except _REST_ERRORS as e:
             logger.error("VStrike get_asset_topology(%s) failed: %s", asset_id, e)
             return None
 
@@ -292,7 +300,7 @@ class VStrikeService:
             if response.status_code == 200:
                 return response.json().get("adjacent", [])
             return None
-        except _HTTP_ERRORS as e:
+        except _REST_ERRORS as e:
             logger.error("VStrike list_adjacent(%s) failed: %s", asset_id, e)
             return None
 
@@ -303,7 +311,7 @@ class VStrikeService:
             if response.status_code == 200:
                 return response.json()
             return None
-        except _HTTP_ERRORS as e:
+        except _REST_ERRORS as e:
             logger.error("VStrike get_blast_radius(%s) failed: %s", asset_id, e)
             return None
 
@@ -319,7 +327,7 @@ class VStrikeService:
             if response.status_code == 200:
                 return response.json().get("findings", [])
             return None
-        except _HTTP_ERRORS as e:
+        except _REST_ERRORS as e:
             logger.error("VStrike find_findings_by_segment(%s) failed: %s", segment, e)
             return None
 

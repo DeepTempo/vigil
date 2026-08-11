@@ -292,6 +292,49 @@ def test_network_error_returns_none_not_raise():
     assert svc.get_asset_topology("srv-01") is None
 
 
+@respx.mock
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("get_asset_topology", "/api/v1/topology/asset/srv-01"),
+        ("list_adjacent", "/api/v1/topology/asset/srv-01/adjacent"),
+        ("get_blast_radius", "/api/v1/topology/asset/srv-01/blast-radius"),
+    ],
+)
+def test_malformed_json_body_returns_none_not_raise(method, path):
+    """A 200 with a non-JSON body must not escape as an exception.
+
+    requests.exceptions.JSONDecodeError subclassed both ValueError and
+    RequestException, so the old `except RequestException` swallowed this.
+    httpx raises a plain json.JSONDecodeError, which is not an
+    httpx.HTTPError — without _REST_ERRORS these would 500 the proxy
+    endpoint instead of returning None (which the API turns into a 502).
+    """
+    svc = _service()
+    _seed_jwt(svc)
+    respx.get(f"https://vstrike.example.com{path}").mock(
+        return_value=httpx.Response(
+            200, text="<html>gateway</html>",
+            headers={"Content-Type": "application/json"},
+        )
+    )
+
+    assert getattr(svc, method)("srv-01") is None
+
+
+@respx.mock
+def test_malformed_json_body_on_findings_returns_none():
+    svc = _service()
+    _seed_jwt(svc)
+    respx.get("https://vstrike.example.com/api/v1/findings").mock(
+        return_value=httpx.Response(
+            200, text="not json", headers={"Content-Type": "application/json"}
+        )
+    )
+
+    assert svc.find_findings_by_segment("dmz") is None
+
+
 def test_get_vstrike_service_returns_none_when_unconfigured(isolate_secrets):
     isolate_secrets.delenv("VSTRIKE_BASE_URL", raising=False)
     isolate_secrets.delenv("VSTRIKE_USERNAME", raising=False)
