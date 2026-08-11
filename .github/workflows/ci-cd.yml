@@ -62,6 +62,10 @@ jobs:
       - name: Run import-linter
         run: lint-imports
 
+      # The agent layer's comment style. Gates, like import-linter above.
+      - name: Check comment style
+        run: python scripts/check_comment_style.py
+
   lint-frontend:
     name: Lint Frontend
     if: github.repository == 'Vigil-SOC/vigil'
