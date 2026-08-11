@@ -313,6 +313,7 @@ dbInit:
     - 18_agent_decision_ids.sql
     - 19_agent_ledger.sql
     - 20_model_rates.sql
+    - 21_model_rates_seed.sql
   resources:
     requests:
       cpu: 50m
