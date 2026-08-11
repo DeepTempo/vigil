@@ -70,7 +70,7 @@ describe("the ledger is append-only and derives nothing", () => {
 });
 
 // The composite primary key is the single-mutator guarantee, not an index:
-// this is the test that says so (issue #590).
+// this is the test that says so.
 describe("concurrent writers are rejected by the composite primary key", () => {
   it("lets exactly one of two writers take a ledger position", async () => {
     await ledger.append(runId, 0, [runEvent(runId)]);
