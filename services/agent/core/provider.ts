@@ -22,10 +22,8 @@ export interface ToolSchema {
 export interface TurnRequest {
   messages: readonly Message[];
   tools: readonly ToolSchema[];
-  // Set on the emission turn: the provider must answer against this schema and
-  // offer no tools. Combining tools with a strict output format degrades
-  // unpredictably across the providers the gateway fronts, and a silent schema
-  // violation is the worst failure available here.
+  // Set on the emission turn: answer against this schema, offer no tools. Combining
+  // tools with a strict output format degrades unpredictably across providers.
   emit?: Record<string, unknown>;
   signal?: AbortSignal;
 }
@@ -36,9 +34,8 @@ export interface Turn {
   tokens: TokenCounts;
 }
 
-// Exactly one model call. The loop around it belongs to the harness, which is
-// what keeps the turn cap, the approval gate and the injection scan on this side
-// of the seam rather than inside a provider a workflow could swap.
+// Exactly one model call. The loop belongs to the harness, which keeps the turn
+// cap, approval gate and injection scan out of a component a workflow can swap.
 export interface Provider {
   readonly model: string;
   turn(request: TurnRequest): Promise<Turn>;

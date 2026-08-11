@@ -2,11 +2,8 @@ import { EVENT_SCHEMA_VERSION, type AgentEvent, type NewEvent, type TerminalPayl
 import { SeqConflict } from "../ledger/repository.js";
 import type { State } from "./seams.js";
 
-// The State seam without Postgres, for tests and for the conformance workflow.
-// It reproduces the two guarantees the repository gets from the composite key
-// rather than approximating them: seq is assigned here, and an append landing on
-// a taken position raises SeqConflict instead of interleaving. Reads are cloned
-// and ordered, so a caller cannot tell the two implementations apart.
+// The State seam without Postgres. It reproduces rather than approximates the
+// composite key's guarantees, so a caller cannot tell the two implementations apart.
 export class InProcessState<Kinds extends Record<string, unknown> = Record<never, never>> implements State<Kinds> {
   private readonly runs = new Map<string, AgentEvent<Kinds>[]>();
 

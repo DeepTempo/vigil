@@ -4,9 +4,8 @@ import { describe, expect, it } from "vitest";
 
 const CORE = join(import.meta.dirname, "..", "..", "core");
 
-// ADR-0002's requirement, enforced rather than reviewed. A grep is enough: the
-// failure it catches is someone reaching for the nearest word from the domain
-// they happen to be working in, and that leaves the word behind.
+// The domain-free requirement, enforced rather than reviewed. A grep is enough:
+// reaching for the nearest word of a domain leaves the word behind.
 const FORBIDDEN: readonly RegExp[] = [
   /\bhypothes\w*/i,
   /\bverdicts?\b/i,
