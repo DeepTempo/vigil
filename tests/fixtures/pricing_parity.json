@@ -1,0 +1,61 @@
+{
+  "$comment": [
+    "Cross-language pricing parity (GH #593). Read by tests/unit/llm/test_pricing_parity.py",
+    "and by services/agent/tests/pricing-parity.test.ts. Both must reproduce expected_usd from the same",
+    "rates, so a formula that changes in one language and not the other fails a suite.",
+    "expected_usd is stated here, hand-computed from the rates in",
+    "infra/database/init/21_model_rates_seed.sql, so neither implementation is the oracle.",
+    "tokens.input is the TOTAL input, cached share included, which is the definition that",
+    "lets one formula serve both gateway surfaces."
+  ],
+  "cases": [
+    {
+      "name": "no caching at all",
+      "model_id": "openai/gpt-4o",
+      "provider_type": "openai",
+      "tokens": { "input": 1000, "output": 500, "cache_read": 0, "cache_write": 0 },
+      "expected_usd": 0.0075,
+      "$working": "1000*2.50 + 500*10.00 = 7500 per Mtok"
+    },
+    {
+      "name": "an OpenAI cached read, already inside prompt_tokens",
+      "model_id": "openai/gpt-4o",
+      "provider_type": "openai",
+      "tokens": { "input": 1000, "output": 500, "cache_read": 600, "cache_write": 0 },
+      "expected_usd": 0.00675,
+      "$working": "400*2.50 + 600*1.25 + 500*10.00 = 6750 per Mtok"
+    },
+    {
+      "name": "an Anthropic read and write, both outside input_tokens natively",
+      "model_id": "anthropic/claude-sonnet-4-6",
+      "provider_type": "anthropic",
+      "tokens": { "input": 13000, "output": 500, "cache_read": 10000, "cache_write": 2000 },
+      "expected_usd": 0.021,
+      "$working": "1000*3.00 + 10000*0.30 + 2000*3.75 + 500*15.00 = 21000 per Mtok"
+    },
+    {
+      "name": "a cache write with no premium is still deducted from input",
+      "model_id": "openai/gpt-4o-mini",
+      "provider_type": "openai",
+      "tokens": { "input": 2000, "output": 100, "cache_read": 0, "cache_write": 500 },
+      "expected_usd": 0.000285,
+      "$working": "1500*0.15 + 500*0.00 + 100*0.60 = 285 per Mtok"
+    },
+    {
+      "name": "a self-hosted model priced by the wildcard row",
+      "model_id": "ollama/whatever-was-pulled-today",
+      "provider_type": "ollama",
+      "tokens": { "input": 50000, "output": 20000, "cache_read": 1000, "cache_write": 1000 },
+      "expected_usd": 0.0,
+      "$working": "every rate is zero"
+    },
+    {
+      "name": "a cached share reported larger than the total clamps rather than crediting",
+      "model_id": "anthropic/claude-3-haiku-20240307",
+      "provider_type": "anthropic",
+      "tokens": { "input": 100, "output": 0, "cache_read": 500, "cache_write": 0 },
+      "expected_usd": 0.0000125,
+      "$working": "max(0, 100-500)*0.25 + 500*0.025 = 12.5 per Mtok"
+    }
+  ]
+}
