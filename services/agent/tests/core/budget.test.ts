@@ -4,7 +4,7 @@ import { rateTableOf, type ModelRate } from "../../contracts/rates.js";
 import type { TokenCounts } from "../../contracts/budget.js";
 
 const RATE: ModelRate = {
-  model_id: "gpt-4o",
+  model_id: "openai/gpt-4o",
   provider_type: "openai",
   input_per_mtok: 10,
   output_per_mtok: 30,
@@ -45,7 +45,7 @@ describe("reserve", () => {
   });
 
   it("issues a reservation priced from the table", () => {
-    const outcome = pool(25).reserve("gpt-4o", tokens({ input: 1_000_000 }));
+    const outcome = pool(25).reserve("openai/gpt-4o", tokens({ input: 1_000_000 }));
     expect(outcome.ok && outcome.reservation.estimate_usd).toBe(10);
   });
 
@@ -53,31 +53,31 @@ describe("reserve", () => {
   // independent checks against the same pool would each pass.
   it("counts an outstanding reservation against the pool", () => {
     const budget = pool(15);
-    expect(budget.reserve("gpt-4o", tokens({ input: 1_000_000 })).ok).toBe(true);
-    const second = budget.reserve("gpt-4o", tokens({ input: 1_000_000 }));
+    expect(budget.reserve("openai/gpt-4o", tokens({ input: 1_000_000 })).ok).toBe(true);
+    const second = budget.reserve("openai/gpt-4o", tokens({ input: 1_000_000 }));
     expect(second.ok).toBe(false);
     expect(!second.ok && second.refusal).toEqual({ reason: "would_exceed", estimate_usd: 10, remaining_usd: 5 });
   });
 
   it("returns the pool when a reservation is released unspent", () => {
     const budget = pool(15);
-    const first = budget.reserve("gpt-4o", tokens({ input: 1_000_000 }));
+    const first = budget.reserve("openai/gpt-4o", tokens({ input: 1_000_000 }));
     if (!first.ok) throw new Error("the first reservation should have been issued");
     budget.release(first.reservation);
-    expect(budget.reserve("gpt-4o", tokens({ input: 1_000_000 })).ok).toBe(true);
+    expect(budget.reserve("openai/gpt-4o", tokens({ input: 1_000_000 })).ok).toBe(true);
   });
 
   it("refuses once what was actually committed reaches the cap", () => {
     const budget = pool(10);
-    const first = budget.reserve("gpt-4o", tokens({ input: 1_000_000 }));
+    const first = budget.reserve("openai/gpt-4o", tokens({ input: 1_000_000 }));
     if (!first.ok) throw new Error("the first reservation should have been issued");
 
-    const payload = budget.price("gpt-4o", "lead", tokens({ input: 1_000_000 }), first.reservation);
+    const payload = budget.price("openai/gpt-4o", "lead", tokens({ input: 1_000_000 }), first.reservation);
     if (payload === null) throw new Error("a model the table prices should price");
     budget.commit(first.reservation, payload);
 
     expect(budget.spent.cost_usd).toBe(10);
-    const second = budget.reserve("gpt-4o", tokens({ input: 1 }));
+    const second = budget.reserve("openai/gpt-4o", tokens({ input: 1 }));
     expect(!second.ok && second.refusal.reason).toBe("cost_exhausted");
   });
 });
@@ -88,8 +88,8 @@ describe("iterations", () => {
   it("advances only on beginIteration", () => {
     const budget = pool(1_000, 2);
     expect(budget.beginIteration()).toBeNull();
-    budget.reserve("gpt-4o", tokens({ input: 10 }));
-    budget.reserve("gpt-4o", tokens({ input: 10 }));
+    budget.reserve("openai/gpt-4o", tokens({ input: 10 }));
+    budget.reserve("openai/gpt-4o", tokens({ input: 10 }));
     expect(budget.spent.iterations).toBe(1);
   });
 
@@ -105,9 +105,9 @@ describe("spend", () => {
   it("accumulates tokens across calls and carries the pricing source", () => {
     const budget = pool(1_000);
     for (const _ of [1, 2]) {
-      const outcome = budget.reserve("gpt-4o", tokens({ input: 100 }));
+      const outcome = budget.reserve("openai/gpt-4o", tokens({ input: 100 }));
       if (!outcome.ok) throw new Error("the reservation should have been issued");
-      const payload = budget.price("gpt-4o", "lead", tokens({ input: 100, output: 20 }), outcome.reservation);
+      const payload = budget.price("openai/gpt-4o", "lead", tokens({ input: 100, output: 20 }), outcome.reservation);
       if (payload === null) throw new Error("a model the table prices should price");
       expect(payload.pricing_source).toBe("exact");
       expect(payload.reservation_id).toBe(outcome.reservation.id);
