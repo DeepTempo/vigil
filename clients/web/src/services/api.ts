@@ -530,14 +530,6 @@ export const agentsApi = {
     additional_context?: string
   }) => api.post('/agents/agents/investigate', data, { timeout: LLM_TIMEOUT }),
 
-  runAgent: (data: {
-    finding_id?: string
-    case_id?: string
-    task?: string
-    agent_id?: string
-    use_agent_sdk?: boolean
-  }) => api.post('/agents/agents/run', data, { timeout: LLM_TIMEOUT }),
-
   // Custom Agent Builder (issue #80)
   listCustom: () => api.get('/agents/custom'),
   getCustom: (agent_id: string) => api.get(`/agents/custom/${agent_id}`),

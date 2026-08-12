@@ -207,18 +207,6 @@ class TestConsumerIntegration:
     honor the DB-backed settings, not just env vars.
     """
 
-    def test_history_window_respects_db(self):
-        from core.platform import runtime_config
-        from core.llm.harness.claude import ClaudeService
-
-        with patch.object(
-            runtime_config, "_fetch_db_config", return_value={"history_window": 3}
-        ):
-            msgs = [{"role": "user", "content": f"m{i}"} for i in range(10)]
-            out = ClaudeService._apply_history_window(msgs)
-        assert len(out) == 6  # 3 turns = 6 messages
-        assert out[-1]["content"] == "m9"
-
     def test_thinking_budget_respects_db(self):
         from core.platform import runtime_config
         from services.daemon.agent_runner import _default_thinking_budget
@@ -228,28 +216,14 @@ class TestConsumerIntegration:
         ):
             assert _default_thinking_budget() == 2048
 
-    def test_prompt_cache_kill_switch_from_db(self):
-        from core.platform import runtime_config
-        from core.llm.harness.claude import ClaudeService
 
-        with patch.object(
-            runtime_config,
-            "_fetch_db_config",
-            return_value={"prompt_cache_enabled": False},
-        ):
-            kw = {"system": "big system prompt"}
-            ClaudeService._apply_prompt_cache_controls(kw)
-        # Kill switch engaged → system stays a bare string, no cache_control block.
-        assert kw["system"] == "big system prompt"
-
-    def test_tool_response_budget_from_db(self):
-        from core.platform import runtime_config
-        from core.llm.harness.claude import ClaudeService
-
-        with patch.object(
-            runtime_config,
-            "_fetch_db_config",
-            return_value={"tool_response_budget_default": 1234},
-        ):
-            # unknown_tool falls through to default lookup
-            assert ClaudeService._response_budget_for("unknown_tool") == 1234
+# Three consumers dropped with the helpers they exercised (#631). The plumbing
+# they went through -- DB over env over default, coercion, caching -- is covered
+# above and unchanged; only these consumers moved:
+#
+#   history_window       -> the fold in services/agent/core/context.ts, which
+#                           holds both edges instead of keeping a flat tail.
+#   prompt_cache_enabled -> nothing. ADR 0011 traded cache_control away: the
+#                           OpenAI surface caches on a byte-identical prefix, so
+#                           there is no marker to place and no switch to kill.
+#   tool_response_budget -> result_cap, applied where a result is rendered.

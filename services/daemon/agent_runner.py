@@ -15,7 +15,6 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from core.agents.builtins import ORCHESTRATOR_ACTOR
-
 # Tool safety tiers live in core.integrations.mcp.tool_manager so every agent loop (daemon,
 # interactive OpenAI agent, workflows) shares one policy. Aliased to the
 # historical name so call sites — and the test that patches
@@ -60,7 +59,6 @@ except Exception:
 
 
 from core.llm.cost.calls import compute_call_cost
-
 
 WORKDIR_TOOLS = [
     {
@@ -188,7 +186,6 @@ class AgentRunner:
                 self._claude_service = ClaudeService(
                     use_backend_tools=True,
                     use_mcp_tools=True,
-                    use_agent_sdk=False,
                     enable_thinking=True,
                     thinking_budget=_default_thinking_budget(),
                 )
@@ -198,7 +195,8 @@ class AgentRunner:
 
         if self._data_service is None:
             try:
-                from core.storage.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import \
+                    DatabaseDataService
 
                 self._data_service = DatabaseDataService()
             except Exception as e:
@@ -1306,7 +1304,8 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
     ) -> str:
         """Create an approval request and put the agent into waiting_approval state."""
         try:
-            from core.response.approval_service import ActionType, get_approval_service
+            from core.response.approval_service import (ActionType,
+                                                        get_approval_service)
 
             service = get_approval_service()
 
@@ -1390,7 +1389,8 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
             return None
 
         try:
-            from core.response.approval_service import ActionStatus, get_approval_service
+            from core.response.approval_service import (ActionStatus,
+                                                        get_approval_service)
 
             service = get_approval_service()
             action = service.get_action(action_id)

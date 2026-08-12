@@ -104,10 +104,6 @@ async def llm_call(
                     model=model,
                     max_tokens=max_tokens,
                     system_prompt=system_prompt,
-                    enable_thinking=enable_thinking,
-                    thinking_budget=thinking_budget,
-                    tools=tools,
-                    temperature=temperature,
                     session_id=session_id,
                     agent_id=agent_id,
                     investigation_id=investigation_id,
@@ -375,10 +371,6 @@ def _sync_claude_call(
     model: str,
     max_tokens: int,
     system_prompt: Optional[str],
-    enable_thinking: bool,
-    thinking_budget: int,
-    tools: Optional[List[Dict]],
-    temperature: Optional[float],
     session_id: Optional[str] = None,
     agent_id: Optional[str] = None,
     investigation_id: Optional[str] = None,
@@ -392,8 +384,6 @@ def _sync_claude_call(
         system_prompt=system_prompt,
         model=model,
         max_tokens=max_tokens,
-        enable_thinking=enable_thinking,
-        thinking_budget=thinking_budget if enable_thinking else None,
         session_id=session_id,
         agent_id=agent_id,
         investigation_id=investigation_id,
@@ -416,10 +406,8 @@ def _sync_claude_raw(
     # A direct messages.create() call, for multi-turn tool loops.
     import time as _time
 
-    from core.llm.defaults import (
-        build_thinking_kwargs,
-        model_requires_adaptive_thinking,
-    )
+    from core.llm.defaults import (build_thinking_kwargs,
+                                   model_requires_adaptive_thinking)
 
     kwargs: Dict[str, Any] = {
         "model": model,
@@ -579,13 +567,7 @@ async def on_startup(ctx: Dict[str, Any]):
 
     from core.llm.harness.claude import ClaudeService
 
-    claude_service = ClaudeService(
-        use_backend_tools=True,
-        use_mcp_tools=True,
-        use_agent_sdk=False,
-        enable_thinking=True,
-        thinking_budget=8000,
-    )
+    claude_service = ClaudeService(use_backend_tools=False, use_mcp_tools=False)
     ctx["claude_service"] = claude_service
     ctx["rate_limiter"] = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
     ctx["session_store"] = RedisSessionStore(ctx["redis"])
