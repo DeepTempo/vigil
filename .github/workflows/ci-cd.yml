@@ -62,6 +62,11 @@ jobs:
       - name: Run import-linter
         run: lint-imports
 
+      # One tool-calling loop, and it is in TypeScript (#632). Gates for the same
+      # reason: each new loop looks reasonable alone, and there were five.
+      - name: Run one-loop gate
+        run: python scripts/check_one_loop.py
+
   lint-frontend:
     name: Lint Frontend
     if: github.repository == 'Vigil-SOC/vigil'
