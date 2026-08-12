@@ -50,9 +50,33 @@ A vendor slice carries both: `ingestion.py` subclasses `SIEMIngestionService`,
 and `adapter.py` wraps that service to satisfy the Federation contract.
 _Avoid_: polling, sync, multi-tenancy (it is not Vigil-to-Vigil federation)
 
-**Workflows**, **Reporting**, **Chat**:
-Multi-agent playbooks; PDF/report generation; the agentic chat loop + durable
-conversations.
+**Workflow** (`workflows`):
+The user-facing product noun — a named, multi-agent procedure an analyst runs
+from the Workflows screen. Authored as a **Playbook**, executed by **Compose**.
+_Avoid_: playbook (that is the artifact, not the product noun)
+
+**Playbook**:
+The authored artifact a Workflow compiles to, and the single source of truth for
+it — its ordered **Phases**, its per-role directives, its narrative, and the
+catalog facts the Workflows screen shows. No schemas, no model or budget
+settings: those are the arch and config layers of the three-file split
+(arch · playbook · config). Both a `WORKFLOW.md` and a custom workflow's
+structured phases are Playbooks. Every other reader derives from it.
+_Avoid_: workflow definition, template
+
+**Phase**:
+One step of a Playbook — an agent, its instructions, and whether it stops for
+approval first. Phases are ordered and the order is authored, not decided: an
+agent may appear in more than one Phase, and Compose never reorders or skips
+them.
+_Avoid_: step, stage
+
+**Compose**:
+The run kind that executes a Playbook's phases in order. One of the harness run
+kinds beside hunt, investigate and chat.
+
+**Reporting**, **Chat**:
+PDF/report generation; the agentic chat loop + durable conversations.
 
 **Auth** (`auth`):
 User identity — who the human is and what they may do: authentication, password
@@ -99,8 +123,23 @@ setting, is `platform`; knowing what the setting *means* is the domain's.
 - The **LLM gateway** (`core/llm/gateway`) enqueues LLM jobs onto the `arq:llm`
   queue; the **worker** (`services/worker`) is the sole consumer that executes
   them — the enqueue/execute seam between `core/` and the `services/` deployables
+- A **Workflow** is authored as exactly one **Playbook** and executed by
+  **Compose**; a Playbook holds one or more ordered **Phases**, and a **Phase**
+  names exactly one agent
+- The **Playbook** is the registry for a Workflow: the Workflows catalog, the
+  phase sequence and the per-role prompts all derive from it and none restates it
 
 ## Flagged ambiguities
+
+- **"workflow" meant three things.** The five `WORKFLOW.md` definitions, the
+  DB-authored custom workflows built in `WorkflowBuilder.tsx`, and the
+  TypeScript control-flow modules under `services/agent/workflows/` were all
+  "workflows", and `CONTEXT.md` itself glossed the domain as "multi-agent
+  playbooks" — making "playbook" an informal synonym. #624 spent that word on a
+  precise concept, so the synonym is withdrawn. Resolved: **Workflow** is the
+  product noun, **Playbook** is the authored artifact, **Compose** is the run
+  kind that executes one. A Workflow is authored as a Playbook and executed by
+  Compose.
 
 - **"finding" work kept falling into `cases`.** `source_evidence` and
   `graph_builder` are finding-level, not case-level. Resolved: they belong to a
