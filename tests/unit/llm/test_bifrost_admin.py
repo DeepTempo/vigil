@@ -1,8 +1,11 @@
-"""Unit tests for core.llm.bifrost.admin sync helpers (GH #139).
+"""Unit tests for core.llm.bifrost.admin sync helpers.
 
-Verifies the new ``sync_provider_models`` path: empty-list guard, dedup,
-GET-modify-PUT flow, and error handling. httpx is monkeypatched via a
-fake client so tests don't depend on a running Bifrost.
+Covers the key upsert path against Bifrost's ``/api/providers/{name}/keys``
+subresource: empty-list guard, dedup, create-vs-update, clearing, and error
+handling. Two of these are regression tests for traps in that API — keys are
+absent from the provider document, and secrets come back masked on read, so a
+naive read-modify-write stores the mask as the credential. httpx is
+monkeypatched via a fake client so tests don't depend on a running Bifrost.
 """
 
 from __future__ import annotations
@@ -39,10 +42,21 @@ class _FakeResp:
 class _RecordingClient:
     """Mimic ``httpx.Client`` as a context manager with recorded calls."""
 
-    def __init__(self, get_payload=None, get_status=200, put_status=200):
+    def __init__(
+        self,
+        get_payload=None,
+        get_status=200,
+        put_status=200,
+        post_status=200,
+        delete_status=200,
+        write_payload=None,
+    ):
         self._get_payload = get_payload
         self._get_status = get_status
         self._put_status = put_status
+        self._post_status = post_status
+        self._delete_status = delete_status
+        self._write_payload = write_payload if write_payload is not None else {}
         self.calls: List[Dict[str, Any]] = []
 
     def __enter__(self):
@@ -51,31 +65,57 @@ class _RecordingClient:
     def __exit__(self, exc_type, exc, tb):
         return False
 
+    def _record(self, method, status, url, kwargs):
+        self.calls.append({"method": method, "url": url, "kwargs": kwargs})
+        return _FakeResp(status, self._write_payload, "")
+
     def get(self, url, **kwargs):
         self.calls.append({"method": "GET", "url": url, "kwargs": kwargs})
         return _FakeResp(self._get_status, self._get_payload)
 
     def put(self, url, **kwargs):
-        self.calls.append({"method": "PUT", "url": url, "kwargs": kwargs})
-        return _FakeResp(self._put_status, None, "")
+        return self._record("PUT", self._put_status, url, kwargs)
+
+    def post(self, url, **kwargs):
+        return self._record("POST", self._post_status, url, kwargs)
+
+    def delete(self, url, **kwargs):
+        return self._record("DELETE", self._delete_status, url, kwargs)
+
+
+_SECRET = "sk-ant-real-secret"
+
+
+# Bifrost's read shape: one key, secret masked, allow-list alongside it.
+def _key_doc(models=None, value="sk-ant-****-masked", key_id="key-1"):
+    return {
+        "keys": [
+            {
+                "id": key_id,
+                "name": "default-anthropic-key",
+                "value": {"value": value, "type": "plain_text"},
+                "models": models if models is not None else ["old"],
+                "weight": 1,
+                "enabled": True,
+                "config_hash": "abc123",
+                "status": "unknown",
+            }
+        ],
+        "total": 1,
+    }
 
 
 def test_sync_provider_models_skips_empty_list():
     # Must not even hit the admin API — refuses to wipe the allow-list.
     with patch.object(bifrost_admin.httpx, "Client", lambda: _RecordingClient()):
-        assert bifrost_admin.sync_provider_models("anthropic", []) is False
+        assert (
+            bifrost_admin.sync_provider_models("anthropic", [], key_value=_SECRET)
+            is False
+        )
 
 
 def test_sync_provider_models_dedupes_and_preserves_order():
-    provider_doc = {
-        "keys": [
-            {
-                "value": {"value": "sk-...", "env_var": "", "from_env": False},
-                "models": ["old"],
-            }
-        ]
-    }
-    rec = _RecordingClient(get_payload=provider_doc)
+    rec = _RecordingClient(get_payload=_key_doc())
 
     with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
         ok = bifrost_admin.sync_provider_models(
@@ -87,41 +127,162 @@ def test_sync_provider_models_dedupes_and_preserves_order():
                 "",
                 "claude-haiku-3-5",
             ],
+            key_value=_SECRET,
         )
     assert ok is True
 
     put = [c for c in rec.calls if c["method"] == "PUT"][0]
     body = put["kwargs"]["json"]
-    assert body["keys"][0]["models"] == [
+    assert body["models"] == [
         "claude-opus-4-7",
         "claude-sonnet-4-6",
         "claude-haiku-3-5",
     ]
 
 
+def test_keys_are_read_from_the_keys_subresource():
+    """Regression: keys are not part of the provider document.
+
+    Reading them from ``/api/providers/{name}`` yields no ``keys`` field at
+    all, which silently disabled every sync path in this module.
+    """
+    rec = _RecordingClient(get_payload=_key_doc())
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        bifrost_admin.sync_provider_models(
+            "anthropic", ["claude-opus-4-7"], key_value=_SECRET
+        )
+
+    get = [c for c in rec.calls if c["method"] == "GET"][0]
+    assert get["url"].endswith("/api/providers/anthropic/keys")
+
+
+def test_write_never_echoes_the_masked_value_back():
+    """Regression: Bifrost masks secrets on read and accepts the mask on write.
+
+    A read-modify-write would store ``sk-ant-****-masked`` *as the credential*
+    with a 200 and no error, silently breaking a working provider. Every write
+    must carry the value from the secrets store instead.
+    """
+    masked = "sk-ant-****-masked"
+    rec = _RecordingClient(get_payload=_key_doc(value=masked))
+
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        bifrost_admin.sync_provider_models(
+            "anthropic", ["claude-opus-4-7"], key_value=_SECRET
+        )
+
+    body = [c for c in rec.calls if c["method"] == "PUT"][0]["kwargs"]["json"]
+    assert body["value"]["value"] == _SECRET
+    assert masked not in str(body)
+
+
+def test_write_strips_readback_only_fields():
+    rec = _RecordingClient(get_payload=_key_doc())
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        bifrost_admin.sync_provider_models(
+            "anthropic", ["claude-opus-4-7"], key_value=_SECRET
+        )
+
+    body = [c for c in rec.calls if c["method"] == "PUT"][0]["kwargs"]["json"]
+    for field in ("id", "config_hash", "status", "description"):
+        assert field not in body
+
+
 def test_sync_provider_models_returns_false_when_provider_missing():
     rec = _RecordingClient(get_status=404, get_payload=None)
     with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
-        ok = bifrost_admin.sync_provider_models("anthropic", ["claude-opus-4-7"])
+        ok = bifrost_admin.sync_provider_models(
+            "anthropic", ["claude-opus-4-7"], key_value=_SECRET
+        )
     assert ok is False
-    # No PUT was attempted.
-    assert not any(c["method"] == "PUT" for c in rec.calls)
+    assert not any(c["method"] in ("PUT", "POST") for c in rec.calls)
 
 
 def test_sync_provider_models_returns_false_on_put_error():
-    provider_doc = {"keys": [{"models": []}]}
-    rec = _RecordingClient(get_payload=provider_doc, put_status=500)
+    rec = _RecordingClient(get_payload=_key_doc(), put_status=500)
     with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
-        ok = bifrost_admin.sync_provider_models("openai", ["gpt-4o"])
+        ok = bifrost_admin.sync_provider_models("openai", ["gpt-4o"], key_value=_SECRET)
     assert ok is False
 
 
-def test_sync_provider_models_returns_false_when_no_keys_slot():
-    # A provider without any keys slot can't be updated.
-    rec = _RecordingClient(get_payload={"keys": []})
+def test_sync_provider_models_creates_key_when_none_exists():
+    # Bifrost accepts key creation at runtime, so an unconfigured provider is
+    # not a dead end — no placeholder slot has to be seeded up front.
+    rec = _RecordingClient(get_payload={"keys": [], "total": 0})
     with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
-        ok = bifrost_admin.sync_provider_models("anthropic", ["claude-opus-4-7"])
+        ok = bifrost_admin.sync_provider_models(
+            "anthropic", ["claude-opus-4-7"], key_value=_SECRET
+        )
+    assert ok is True
+
+    post = [c for c in rec.calls if c["method"] == "POST"][0]
+    assert post["url"].endswith("/api/providers/anthropic/keys")
+    assert post["kwargs"]["json"]["models"] == ["claude-opus-4-7"]
+
+
+def test_sync_provider_models_skips_when_no_secret_configured():
+    # Every write must carry the credential, so there is nothing to sync.
+    rec = _RecordingClient(get_payload=_key_doc())
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        ok = bifrost_admin.sync_provider_models(
+            "anthropic", ["claude-opus-4-7"], key_value=None
+        )
     assert ok is False
+    assert not rec.calls
+
+
+def test_sync_provider_models_leaves_ollama_alone():
+    # Ollama's key holds a masked URL, not a secret we own, and its allow-list
+    # is the static wildcard.
+    rec = _RecordingClient(get_payload=_key_doc())
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        ok = bifrost_admin.sync_provider_models(
+            "ollama", ["llama3.2:1b"], key_value=None
+        )
+    assert ok is True
+    assert not rec.calls
+
+
+def test_push_provider_key_updates_existing_key_in_place():
+    rec = _RecordingClient(get_payload=_key_doc(models=["claude-opus-4-7"]))
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        assert bifrost_admin.push_provider_key("anthropic", "sk-ant-new") is True
+
+    put = [c for c in rec.calls if c["method"] == "PUT"][0]
+    assert put["url"].endswith("/api/providers/anthropic/keys/key-1")
+    body = put["kwargs"]["json"]
+    assert body["value"] == {"value": "sk-ant-new", "type": "plain_text"}
+    # Carries the existing allow-list forward rather than wiping it.
+    assert body["models"] == ["claude-opus-4-7"]
+
+
+def test_push_provider_key_creates_key_when_absent():
+    rec = _RecordingClient(get_payload={"keys": [], "total": 0})
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        assert bifrost_admin.push_provider_key("anthropic", "sk-ant-new") is True
+
+    post = [c for c in rec.calls if c["method"] == "POST"][0]
+    assert post["url"].endswith("/api/providers/anthropic/keys")
+    assert post["kwargs"]["json"]["value"]["value"] == "sk-ant-new"
+
+
+def test_push_provider_key_deletes_on_empty_value():
+    # Bifrost rejects a key with an empty value, so "cleared" is a deletion.
+    rec = _RecordingClient(get_payload=_key_doc())
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        assert bifrost_admin.push_provider_key("anthropic", "") is True
+
+    delete = [c for c in rec.calls if c["method"] == "DELETE"][0]
+    assert delete["url"].endswith("/api/providers/anthropic/keys/key-1")
+    assert not any(c["method"] in ("PUT", "POST") for c in rec.calls)
+
+
+def test_push_provider_key_reports_false_on_write_error():
+    # llm_providers surfaces this to the user, so a failed push must not
+    # report success.
+    rec = _RecordingClient(get_payload=_key_doc(), put_status=500)
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        assert bifrost_admin.push_provider_key("anthropic", "sk-ant-new") is False
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +298,7 @@ class _FakeProviderRow:
         self.api_key_ref = None
         self.config = {}
         self.is_active = True
+        self.is_default = False
 
 
 class _FakeSessionScope:
@@ -218,7 +380,7 @@ def test_sync_all_populates_dropdown_cache_and_bifrost_allowlist(monkeypatch):
     _patch_db(monkeypatch, rows)
 
     # Stub the discovery fetch — returns two live models.
-    async def fake_fetch_row(row_dict, discovery):
+    async def fake_fetch_row(row_dict, discovery, key=None):
         return [_M("claude-opus-4-7"), _M("claude-haiku-4-5-20251001")]
 
     monkeypatch.setattr(ba, "_fetch_meta_for_row", fake_fetch_row)
@@ -226,7 +388,7 @@ def test_sync_all_populates_dropdown_cache_and_bifrost_allowlist(monkeypatch):
     # Capture Bifrost PUTs.
     pushed = {}
 
-    def fake_push(provider_type, model_ids):
+    def fake_push(provider_type, model_ids, *, key_value=None):
         pushed[provider_type] = list(model_ids)
         return True
 
@@ -274,7 +436,7 @@ def test_sync_all_unions_across_same_type_providers(monkeypatch):
     ]
     _patch_db(monkeypatch, rows)
 
-    async def fake_fetch_row(row_dict, discovery):
+    async def fake_fetch_row(row_dict, discovery, key=None):
         if row_dict["provider_id"] == "ant-dev":
             return [_M("claude-opus-4-7"), _M("claude-haiku-4-5-20251001")]
         return [_M("claude-opus-4-7"), _M("claude-sonnet-4-6")]
@@ -283,7 +445,7 @@ def test_sync_all_unions_across_same_type_providers(monkeypatch):
 
     pushed = {}
 
-    def fake_push(provider_type, model_ids):
+    def fake_push(provider_type, model_ids, *, key_value=None):
         pushed[provider_type] = list(model_ids)
         return True
 
@@ -323,14 +485,14 @@ def test_sync_all_falls_back_when_all_fetches_fail(monkeypatch):
     rows = [_FakeProviderRow("ant-default", "anthropic")]
     _patch_db(monkeypatch, rows)
 
-    async def fake_fetch_row(row_dict, discovery):
+    async def fake_fetch_row(row_dict, discovery, key=None):
         raise RuntimeError("upstream down")
 
     monkeypatch.setattr(ba, "_fetch_meta_for_row", fake_fetch_row)
 
     pushed = {}
 
-    def fake_push(provider_type, model_ids):
+    def fake_push(provider_type, model_ids, *, key_value=None):
         pushed[provider_type] = list(model_ids)
         return True
 
@@ -368,7 +530,7 @@ def test_sync_all_coalesces_concurrent_callers(monkeypatch):
     fetch_calls = {"n": 0}
     gate = asyncio.Event()
 
-    async def slow_fake_fetch_row(row_dict, discovery):
+    async def slow_fake_fetch_row(row_dict, discovery, key=None):
         fetch_calls["n"] += 1
         # Hold the sync open long enough for the second caller to join.
         await gate.wait()
