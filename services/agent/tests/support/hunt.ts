@@ -88,6 +88,8 @@ export interface ControllerOptions {
   costPerDecision?: number;
   verdicts?: Verdicts;
   provider?: ScriptedDecisionProvider;
+  dispatch?: RunSpec["dispatch"];
+  maxWorkers?: number;
 }
 
 export function controllerFor(
@@ -96,9 +98,10 @@ export function controllerFor(
   options: ControllerOptions = {},
 ): HuntController {
   const dispatch =
-    options.dispatcher === undefined
+    options.dispatch ??
+    (options.dispatcher === undefined
       ? undefined
-      : { ...DEFAULT_DISPATCH, mode: "parallel" as const, max_workers: 3 };
+      : { ...DEFAULT_DISPATCH, mode: "parallel" as const, max_workers: options.maxWorkers ?? 3 });
   return new HuntController(
     ledger,
     options.provider ?? new ScriptedDecisionProvider(decisions, options.costPerDecision ?? 0),

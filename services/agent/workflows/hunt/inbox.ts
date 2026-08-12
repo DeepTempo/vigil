@@ -83,9 +83,9 @@ export function journalNote(ledger: Journal, text: string): Directive {
   return directive;
 }
 
-function read(ledgerPath: string): Directive[] {
+function read(path: string): Directive[] {
   try {
-    return readFileSync(inboxPath(ledgerPath), "utf8")
+    return readFileSync(path, "utf8")
       .split("\n")
       .filter((line) => line.trim().length > 0)
       .map((line) => JSON.parse(line) as Directive);
