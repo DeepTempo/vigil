@@ -4,8 +4,8 @@ import type { Journal } from "./journal.js";
 import type { DirectiveQueue } from "./ports.js";
 import { DIRECTIVE_KINDS, type BudgetGrant, type Directive, type DirectiveKind } from "./types.js";
 
-// The controller's own voice in the directive stream. Named rather than borrowed
-// from the operator so the drain can tell the two apart.
+// The controller's own voice in the directive stream. The drain tells a queued
+// directive from a controller note by id, not by this; it is for the report.
 export const CONTROLLER_ACTOR = "controller";
 
 // The stub operator a DEV_MODE deployment attributes to, so the attribution path
@@ -129,13 +129,16 @@ export async function drain(ledger: Journal): Promise<Directive[]> {
       // Journaled under its own id, as a controller note: the operator's attempt
       // is on the record, the switch never sees a kind it cannot read, and the
       // refusal happens once rather than on every drain for the rest of the run.
+      // Their own words and the kind they asked for carry into the note, because
+      // the refusal is the only thing the record will hold of the attempt.
+      const said = typeof directive.text === "string" && directive.text.length > 0 ? ` — ${directive.text}` : "";
       ledger.append({
         kind: "directive",
         payload: {
           ...directive,
           kind: "note",
           origin: "controller",
-          text: `refused a malformed directive: ${(error as Error).message}`,
+          text: `refused a malformed ${String(directive.kind)} directive: ${(error as Error).message}${said}`,
         },
       });
       continue;

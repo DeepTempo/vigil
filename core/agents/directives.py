@@ -49,6 +49,14 @@ class InvalidDirective(ValueError):
     """The directive is malformed, so it is refused before it reaches the queue."""
 
 
+class UnknownRun(InvalidDirective):
+    """No ledger under that run id, so nothing will ever drain the directive."""
+
+
+class RunAlreadyEnded(InvalidDirective):
+    """The run journaled its terminal event, so no drain will run again."""
+
+
 def new_directive_id() -> str:
     return f"dir-{secrets.token_hex(4)}"
 
@@ -82,6 +90,23 @@ def build_directive(
     }
 
 
+# The reads agent_runs_router already makes, in one pass: a directive is only
+# worth queueing while the run has a ledger and has not journaled its terminal.
+def _refuse_unless_running(session: Session, run_id: str) -> None:
+    row = session.execute(
+        text(
+            "SELECT count(*) AS events, "
+            "count(*) FILTER (WHERE kind = 'terminal') AS ended "
+            "FROM agent_events WHERE run_id = CAST(:run_id AS uuid)"
+        ),
+        {"run_id": run_id},
+    ).one()
+    if int(row.events) == 0:
+        raise UnknownRun(f"no such run: {run_id}")
+    if int(row.ended) > 0:
+        raise RunAlreadyEnded(f"run {run_id} has already ended")
+
+
 # Idempotent on directive_id, so a retried request is not a second directive. The
 # columns are the envelope every workflow shares; the payload carries the whole
 # directive, including the fields only the workflow reads.
@@ -97,6 +122,10 @@ def enqueue_directive(
         uuid.UUID(run_id)
     except ValueError:
         raise InvalidDirective(f"not a run id: {run_id}") from None
+
+    # A well-formed id for a run that never existed or has already ended would
+    # queue a row nothing drains, and the operator would be told it took effect.
+    _refuse_unless_running(session, run_id)
 
     directive = build_directive(kind, body, actor, fields)
     session.execute(

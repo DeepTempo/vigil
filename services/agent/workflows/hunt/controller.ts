@@ -1350,8 +1350,14 @@ export class HuntController {
 
   // Only what an operator queued and the drain has not taken yet: a halt already
   // on the ledger has ended the hunt, and a controller note is not an abort.
+  // A queue that cannot be reached reads as no abort rather than throwing: the
+  // check runs on a timer nothing awaits, and the next drain asks again anyway.
   private async abortQueued(): Promise<boolean> {
-    return (await peek(this.ledger)).some((directive) => directive.kind === "abort");
+    try {
+      return (await peek(this.ledger)).some((directive) => directive.kind === "abort");
+    } catch {
+      return false;
+    }
   }
 
   // The only call that can lead to proven. Runs before anything is written, so

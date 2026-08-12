@@ -163,7 +163,8 @@ export interface Directive {
   // everything else — the suppression it undoes stays on the record.
   revoke?: boolean;
   // Set on the notes the controller journals itself (a refused CONCLUDE, a
-  // clamped extension). The inbox drain counts only what the operator wrote, so
+  // clamped extension), so the report can say whose voice a line is. The drain
+  // excludes by id and never reads this.
   origin?: "inbox" | "controller";
 }
 

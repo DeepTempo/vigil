@@ -27,8 +27,8 @@ export class DirectiveRepository implements DirectiveQueue {
   }
 
   // Insertion order, because the order an operator queued two directives in is
-  // the order they meant them. Rows already on the ledger are filtered here so a
-  // long-running drain does not carry the whole queue back over the wire.
+  // the order they meant them. Excluding by id rather than by a row count is what
+  // survives a directive that commits behind one already journaled.
   async pending(runId: string, journaled: readonly string[]): Promise<Directive[]> {
     const result = await this.pool.query<{ directive_id: string; payload: Directive }>(
       `SELECT directive_id, payload FROM agent_directives
