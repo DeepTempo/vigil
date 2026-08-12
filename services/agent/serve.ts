@@ -8,7 +8,9 @@ import { chatEvents, sse } from "./workflows/chat/sse.js";
 import { runChat, type Turn } from "./workflows/chat/workflow.js";
 import { harnessFor, type HarnessFactory } from "./harness.js";
 
-const PATH = "/chat/stream";
+const CHAT = "/chat/stream";
+// GET /runs/<id>/projection -- what a supervisor outside this process reads.
+const PROJECTION = /^\/runs\/([0-9a-fA-F-]{36})\/projection$/;
 // A conversation is prose and a config, not an upload. Anything larger is a
 // mistake or an attack, and either way it is refused before it is parsed.
 const MAX_BODY = 1_000_000;
@@ -103,23 +105,52 @@ function refuse(res: ServerResponse, status: number, detail: string): void {
   res.end(JSON.stringify({ detail }));
 }
 
+// A run folded by the workflow that owns it. The events stay ours: a supervisor
+// reads what the run decided, never how it was written down.
+export async function projectionOf(state: State, runId: string): Promise<unknown | null> {
+  const events = await state.read(runId);
+  const opened = events[0];
+  if (opened === undefined || !registeredKinds().includes(opened.run_kind)) return null;
+
+  const project = archFor(opened.run_kind).projection;
+  return project === undefined ? null : project(runId, events);
+}
+
+async function readProjection(state: State, runId: string, res: ServerResponse): Promise<void> {
+  const projection = await projectionOf(state, runId);
+  if (projection === null) return refuse(res, 404, `no readable run: ${runId}`);
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify(projection));
+}
+
+async function openChat(state: State, req: IncomingMessage, res: ServerResponse, build: HarnessFactory): Promise<void> {
+  let request: ChatRequest;
+  try {
+    request = JSON.parse(await body(req)) as ChatRequest;
+  } catch (error) {
+    return refuse(res, 400, error instanceof Error ? error.message : String(error));
+  }
+
+  // Headers before the first token, so the reader is streaming rather than
+  // buffering a response it will be handed all at once.
+  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+  await streamChat(state, request, res, build);
+}
+
 export function chatServer(state: State, build: HarnessFactory = harnessFor): Server {
   return createServer((req, res) => {
     void (async () => {
-      if (req.method !== "POST" || (req.url ?? "") !== PATH) return refuse(res, 404, `no such route: ${req.method} ${req.url}`);
+      // Before the route, not per route: an unauthorised caller learns nothing
+      // about which routes exist.
       if (!authorised(req)) return refuse(res, 401, "loopback and a valid internal token, or neither");
 
-      let request: ChatRequest;
-      try {
-        request = JSON.parse(await body(req)) as ChatRequest;
-      } catch (error) {
-        return refuse(res, 400, error instanceof Error ? error.message : String(error));
-      }
+      const url = req.url ?? "";
+      if (req.method === "POST" && url === CHAT) return openChat(state, req, res, build);
 
-      // Headers before the first token, so the reader is streaming rather than
-      // buffering a response it will be handed all at once.
-      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
-      await streamChat(state, request, res, build);
+      const run = req.method === "GET" ? PROJECTION.exec(url) : null;
+      if (run !== null) return readProjection(state, run[1] as string, res);
+
+      return refuse(res, 404, `no such route: ${req.method} ${url}`);
     })();
   });
 }

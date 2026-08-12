@@ -1,10 +1,12 @@
 import { fileURLToPath } from "node:url";
-import type { RunKind } from "../contracts/events.js";
+import type { AgentEvent, RunKind } from "../contracts/events.js";
 import type { Notes } from "../core/memory.js";
 import type { State } from "../core/seams.js";
 import { SpecError, type Owned } from "../core/spec.js";
 import type { HuntKinds } from "../workflows/hunt/ledger.js";
 import { huntNotes } from "../workflows/hunt/recall.js";
+import { leadProjection } from "../workflows/lead/projection.js";
+import type { LeadKinds } from "../workflows/lead/workflow.js";
 
 // What a run kind runs, and what its workflow can act on. Adding an agent type is
 // an arch file plus an entry here, never a change to the loop.
@@ -18,6 +20,9 @@ export interface ArchEntry {
   // How a later run recalls a finished one of this kind. Absent means it carries
   // nothing forward, which is the honest default rather than a summary of events.
   notes?: (state: State, runId: string) => Notes;
+  // What a reader outside this process is told about a run of this kind. Absent
+  // means there is nothing to report but the terminal the ledger already carries.
+  projection?: (runId: string, events: readonly AgentEvent<Record<never, never>>[]) => unknown;
 }
 
 const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
@@ -30,7 +35,12 @@ const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
     // kind, the same trade the worker makes when it hands a ledger to a workflow.
     notes: (state, runId) => huntNotes(state as unknown as State<HuntKinds>, runId),
   },
-  investigate: { arch: packaged("investigate.yaml"), actions: ["EXAMINE", "CONCLUDE"], halts: ["CONCLUDE"] },
+  investigate: {
+    arch: packaged("investigate.yaml"),
+    actions: ["EXAMINE", "CONCLUDE"],
+    halts: ["CONCLUDE"],
+    projection: (runId, events) => leadProjection(runId, events as readonly AgentEvent<LeadKinds>[]),
+  },
   // No actions: nothing emits one. A step ends when its agent answers, and the run
   // ends when the list does, so there is no verb for a model to choose or to halt on.
   compose: { arch: packaged("compose.yaml"), actions: [], halts: [] },
