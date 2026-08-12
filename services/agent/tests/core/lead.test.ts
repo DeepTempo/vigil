@@ -10,6 +10,7 @@ import { nullMemory } from "../../core/memory.js";
 import { registryOf } from "../../core/registry.js";
 import { buildSpec, type RunSpec } from "../../core/spec.js";
 import { InProcessState } from "../../core/state.js";
+import type { Answers } from "../../core/answers.js";
 import { grantsOf, runLead, type LeadKinds, type LeadOptions } from "../../workflows/lead/workflow.js";
 import { scriptedProvider, type ScriptedTurn } from "../support/scripted-provider.js";
 
@@ -48,9 +49,10 @@ function harnessOf(spec: RunSpec, script: readonly ScriptedTurn[], state: InProc
   };
 }
 
-function options(kind: RunKind, spec: RunSpec): LeadOptions {
+function options(kind: RunKind, spec: RunSpec, answers?: Answers): LeadOptions {
   const entry = archFor(kind);
-  return { run_id: RUN, run_kind: kind, spec, actions: entry.actions, halts: entry.halts };
+  const from = answers === undefined ? {} : { answers };
+  return { run_id: RUN, run_kind: kind, spec, actions: entry.actions, halts: entry.halts, ...from };
 }
 
 const STOP: ScriptedTurn = { calls: [] };
@@ -132,6 +134,54 @@ describe("an arch drives the loop", () => {
 
     const [opened] = await state.read(RUN);
     expect(opened?.payload).toMatchObject({ spec: { arch: "threathunt", dispatch: { max_workers: 4 } } });
+  });
+
+  it("parks on a gated call and comes back when the answer arrives", async () => {
+    const spec = specFor("investigate", "case.playbook.yaml", "case.config.yaml");
+    const state = new InProcessState<LeadKinds>();
+    const gated: ScriptedTurn = { calls: [{ tool: "case_records", args: "{}" }] };
+
+    // case.config.yaml gates case_records, so the first call parks the run.
+    const parked = await runLead(harnessOf(spec, [gated], state), options("investigate", spec));
+    expect(parked.status).toBe("waiting_approval");
+    const checkpoint = parked.pending?.checkpoint_id as string;
+    expect(checkpoint).toBeTypeOf("string");
+
+    // Resumed with nobody to ask: still parked, because an unanswered gate is not
+    // an approval and a resume must not be one either.
+    const again = await runLead(harnessOf(spec, [gated], state), options("investigate", spec));
+    expect(again.status).toBe("waiting_approval");
+
+    const answered: Answers = async () => [
+      { checkpoint_id: checkpoint, actor: "analyst", answer: "approve", text: "", resolved_at: "2026-08-12T00:01:00Z" },
+    ];
+    const done = await runLead(harnessOf(spec, SINGLE, state), options("investigate", spec, answered));
+
+    expect(done.status).toBe("completed");
+    const resolutions = (await state.read(RUN)).filter((event) => event.kind === "resolution");
+    expect(resolutions).toHaveLength(1);
+  });
+
+  it("declines the call and carries on when the answer was a rejection", async () => {
+    const spec = specFor("investigate", "case.playbook.yaml", "case.config.yaml");
+    const state = new InProcessState<LeadKinds>();
+    const gated: ScriptedTurn = { calls: [{ tool: "case_records", args: "{}" }] };
+
+    const parked = await runLead(harnessOf(spec, [gated], state), options("investigate", spec));
+    const rejected: Answers = async () => [
+      {
+        checkpoint_id: parked.pending?.checkpoint_id as string,
+        actor: "analyst",
+        answer: "reject",
+        text: "not without a change window",
+        resolved_at: "2026-08-12T00:01:00Z",
+      },
+    ];
+
+    // A rejection resumes the run rather than ending it: the lead is told the
+    // call was refused and decides again over what it does have.
+    const done = await runLead(harnessOf(spec, SINGLE, state), options("investigate", spec, rejected));
+    expect(done.status).toBe("completed");
   });
 
   // The two arches grant different tools to different roles, and the registry is

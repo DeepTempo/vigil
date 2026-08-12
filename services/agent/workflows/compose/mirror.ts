@@ -1,4 +1,5 @@
 import type { ResolutionPayload, RunOutcome } from "../../contracts/events.js";
+import { httpAnswers } from "../../core/answers.js";
 
 // Where a run's progress goes for a human to read, and where a human's answer
 // comes back from. The ledger stays the record; this is the copy the UI reads.
@@ -43,17 +44,6 @@ export interface MirrorOptions {
   fetch?: typeof globalThis.fetch;
 }
 
-const ANSWERS = new Set(["approve", "reject"]);
-
-function resolutionsOf(body: unknown): ResolutionPayload[] {
-  const decisions = (body as Record<string, unknown> | null)?.["decisions"];
-  if (!Array.isArray(decisions)) return [];
-  return decisions.filter((entry): entry is ResolutionPayload => {
-    const value = entry as Record<string, unknown>;
-    return typeof value?.["checkpoint_id"] === "string" && ANSWERS.has(String(value["answer"]));
-  });
-}
-
 export function httpMirror(options: MirrorOptions): Mirror {
   const call = options.fetch ?? globalThis.fetch;
   const base = options.url.replace(/\/$/, "");
@@ -74,12 +64,6 @@ export function httpMirror(options: MirrorOptions): Mirror {
     answerable: true,
     phase: (runId, update) => post(`/${encodeURIComponent(runId)}/phases`, update),
     terminal: (runId, outcome, reason, summary) => post(`/${encodeURIComponent(runId)}/terminal`, { outcome, reason, summary }),
-    // Unlike an update, this one throws: proceeding without an answer that exists
-    // would run a step a human rejected.
-    decisions: async (runId) => {
-      const response = await call(`${base}/${encodeURIComponent(runId)}/decisions`, { headers });
-      if (!response.ok) throw new Error(`could not read decisions for ${runId}: the endpoint answered ${response.status}`);
-      return resolutionsOf(await response.json());
-    },
+    decisions: httpAnswers(options),
   };
 }

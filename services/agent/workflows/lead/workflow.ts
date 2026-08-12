@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { DispatchPayload, NewEvent, RunKind, RunOutcome } from "../../contracts/events.js";
+import { journalAnswers, noAnswers, type Answers } from "../../core/answers.js";
 import { commitTurn, type Harness, type Outcome, type TurnConfig } from "../../core/loop.js";
 import { drain, streamTurn } from "../../core/stream.js";
 import { SpecError, type RoleSpec, type RunSpec } from "../../core/spec.js";
@@ -35,6 +36,9 @@ export interface LeadOptions {
   actions: readonly string[];
   halts: readonly string[];
   started_by?: string;
+  // Where an answer to a parked call comes from. Defaults to nobody, so a run
+  // with no source parks and stays parked rather than proceeding unapproved.
+  answers?: Answers;
 }
 
 export interface LeadReport {
@@ -65,6 +69,10 @@ export async function runLead(harness: Harness<LeadKinds>, options: LeadOptions)
   // workflow that sequences itself, and running it here would decide nothing.
   if (lead === undefined) throw new SpecError(`arch ${spec.arch} declares no lead, so it cannot run a lead loop`);
   if ((await harness.state.latestSeq(run_id)) === null) await open(harness, options);
+
+  // Before the first turn, because the loop reads the ledger to decide whether it
+  // is still parked: an answer journaled after that check waits a whole resume.
+  await journalAnswers(harness.state, run_id, options.run_kind, options.answers ?? noAnswers);
 
   const topology = topologyFor(spec.dispatch.topology);
   const rounds: Round[] = [];
