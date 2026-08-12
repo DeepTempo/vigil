@@ -5,9 +5,9 @@ import {
   type RegisteredTool,
   type ToolAdapter,
   type ToolResult,
-} from "../contracts/tool.js";
-import { RUN_EVENT_KINDS, isRunEventKind, type AgentEvent } from "../contracts/events.js";
-import { jobIdFor, type RunJob } from "../contracts/job.js";
+} from "../../contracts/tool.js";
+import { RUN_EVENT_KINDS, isRunEventKind, type AgentEvent } from "../../contracts/events.js";
+import { jobIdFor, type RunJob } from "../../contracts/job.js";
 
 const rows = (n: number, sourceSystem = "duckdb"): ToolResult => ({
   ok: true,

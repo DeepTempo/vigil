@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
-import { LedgerRepository, SeqConflict } from "../ledger/repository.js";
-import type { NewEvent } from "../contracts/events.js";
+import { LedgerRepository, SeqConflict } from "../../ledger/repository.js";
+import type { NewEvent } from "../../contracts/events.js";
 
 const pool = new pg.Pool({
   connectionString: process.env["DATABASE_URL"] ?? "postgres://vigil:vigil@localhost:55432/vigil_test",

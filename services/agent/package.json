@@ -10,6 +10,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run tests/core tests/hunt",
     "worker": "tsx worker.ts"
   },
   "dependencies": {

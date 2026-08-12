@@ -2,11 +2,11 @@ import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { RunJob } from "../contracts/job.js";
-import { InProcessState } from "../core/state.js";
-import { advance, resolveSpec, specOf } from "../worker.js";
+import type { RunJob } from "../../contracts/job.js";
+import { InProcessState } from "../../core/state.js";
+import { advance, resolveSpec, specOf } from "../../worker.js";
 
-const FIXTURES = join(import.meta.dirname, "fixtures");
+const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 const RUN = "7d3c2d3e-0000-4000-8000-000000000619";
 
 let config: string;
@@ -58,7 +58,7 @@ describe("resolving a run", () => {
 
   it("lets an explicit arch path override the registry's default", () => {
     const job = startJob();
-    job.request.arch = join(import.meta.dirname, "..", "arch", "threathunt.yaml");
+    job.request.arch = join(import.meta.dirname, "..", "..", "arch", "threathunt.yaml");
     expect(resolveSpec(job).dispatch.max_workers).toBe(4);
   });
 });
