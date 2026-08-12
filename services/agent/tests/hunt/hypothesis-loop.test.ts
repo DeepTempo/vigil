@@ -4,10 +4,10 @@ import {
   BASE_RATE_PROVENANCE,
   InvalidDecision,
   NULL_HYPOTHESIS,
-  unclassified,
   validateDecision,
 } from "../../workflows/hunt/controller.js";
 import { buildDigest, scoredFrontier } from "../../workflows/hunt/digest.js";
+import { unclassified } from "../../workflows/hunt/strength.js";
 import { terminationVerdict } from "../../workflows/hunt/termination.js";
 import type { Decision } from "../../workflows/hunt/types.js";
 import {
@@ -187,6 +187,24 @@ describe("stop when one dominates, or when none can", () => {
     // The honest ending the document asks for: better to fail and not know.
     expect(result.hunt_outcome).toBe("data_starved");
     expect(finalized(started.ledger)[0]!.outcome).toBe("data_starved");
+  });
+
+  it("reports the observations it ended without ruling on, and omits the count on a legacy run", async () => {
+    const started = await loop();
+    bareEvidence(started.ledger);
+    resolve(started.ledger, contenders(started)[0]!.hypothesis_id, "proven");
+    controllerFor(started.ledger, []).terminate("completed");
+
+    // A hunt that stopped mid-classification says so rather than reading as if
+    // every observation had been weighed.
+    expect(finalized(started.ledger)[0]!.unruled).toBe(1);
+
+    const legacy = await newLedger();
+    bareEvidence(legacy.ledger);
+    controllerFor(legacy.ledger, []).terminate("completed");
+    // Absent, not zero: a legacy run was never asked to rule on anything, and a
+    // new key would move the fold the #625 gate pins.
+    expect(finalized(legacy.ledger)[0]!.unruled).toBeUndefined();
   });
 
   it("keeps the three endings distinct", async () => {

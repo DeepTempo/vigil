@@ -11,7 +11,7 @@ import {
   type Termination,
   type Verdicts,
 } from "../../workflows/hunt/config.js";
-import { HuntController, startHunt, unclassified } from "../../workflows/hunt/controller.js";
+import { HuntController, startHunt } from "../../workflows/hunt/controller.js";
 import { Journal, type HuntEvent, type HuntKinds } from "../../workflows/hunt/journal.js";
 import { newId } from "../../workflows/hunt/ids.js";
 import type { Enricher, WorkerDispatcher } from "../../workflows/hunt/ports.js";
@@ -21,7 +21,7 @@ import {
   ScriptedDisconfirmationCritic,
   type ScriptedDecision,
 } from "../../workflows/hunt/scripted.js";
-import { NULL_CHECK_PROVENANCE } from "../../workflows/hunt/strength.js";
+import { NULL_CHECK_PROVENANCE, unclassified } from "../../workflows/hunt/strength.js";
 import type { Decision, Entity, EvidenceRecord, LinkRelation } from "../../workflows/hunt/types.js";
 
 export const INVESTIGATE: Decision = { action: "INVESTIGATE", rationale: "look", query_intent: "baseline" };

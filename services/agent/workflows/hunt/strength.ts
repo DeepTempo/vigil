@@ -104,3 +104,29 @@ export function unmetPredicates(strength: EvidenceStrength, verdicts: Verdicts):
   }
   return unmet;
 }
+
+export const pairKey = (evidenceId: string, hypothesisId: string) => `${evidenceId} ${hypothesisId}`;
+
+// Observations the lead has seen and not yet ruled on, against every hypothesis
+// still standing. Scoped to the latest iteration because that is what it can see.
+export function unclassified(projection: Projection): { evidence_id: string; hypothesis_id: string }[] {
+  const active = [...projection.hypotheses.values()].filter((hypothesis) => hypothesis.status === "active");
+  const observed = [...projection.evidence.values()].filter((record) => record.provenance === "worker");
+  if (active.length === 0 || observed.length === 0) return [];
+
+  const latest = Math.max(...observed.map((record) => record.iteration));
+  const linked = new Set(projection.links.map((link) => pairKey(link.evidence_id, link.hypothesis_id)));
+  return observed
+    .filter((record) => record.iteration === latest)
+    .flatMap((record) => active.map((hypothesis) => ({ evidence_id: record.evidence_id, hypothesis_id: hypothesis.hypothesis_id })))
+    .filter((pair) => !linked.has(pairKey(pair.evidence_id, pair.hypothesis_id)));
+}
+
+// What the hunt never ruled on at all. Distinct from unclassified(), which is
+// scoped to active hypotheses: by report time the terminal coercion resolved them.
+export function unruledObservations(projection: Projection): number {
+  const linked = new Set(projection.links.map((link) => link.evidence_id));
+  return [...projection.evidence.values()].filter(
+    (record) => record.provenance === "worker" && !linked.has(record.evidence_id),
+  ).length;
+}
