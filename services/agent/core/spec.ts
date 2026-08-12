@@ -22,9 +22,13 @@ export type Counts = Readonly<Record<string, number>>;
 export interface RoleSpec {
   prompt: string;
   description: string;
-  output_schema: Record<string, unknown>;
+  // null for a role declared `output_schema: prose`. A missing key stays the error
+  // it was, so a typo cannot quietly turn a role conversational.
+  output_schema: Record<string, unknown> | null;
   tools: string[];
 }
+
+export const PROSE = "prose";
 
 // Worker keys are the ids the lead may name. The lead is optional too: an arch
 // whose order is authored elsewhere has nothing for one to decide.
@@ -288,12 +292,13 @@ function parseRole(raw: unknown, name: string): RoleSpec {
   const record = asRecord(raw, `roles.${name}`);
   const prompt = str(record["prompt"]);
   if (prompt.trim() === "") throw new SpecError(`roles.${name} needs a prompt`);
-  if (record["output_schema"] === undefined) throw new SpecError(`roles.${name} needs an output_schema`);
+  const declared = record["output_schema"];
+  if (declared === undefined) throw new SpecError(`roles.${name} needs an output_schema`);
 
   return {
     prompt,
     description: str(record["description"]),
-    output_schema: asRecord(record["output_schema"], `roles.${name}.output_schema`),
+    output_schema: declared === PROSE ? null : asRecord(declared, `roles.${name}.output_schema`),
     tools: strings(record["tools"], `roles.${name}.tools`),
   };
 }
@@ -325,7 +330,8 @@ function parseRoles(raw: unknown, handled: readonly string[]): Roles {
   // vocabulary to check: a workflow that sequences its own phases decides nothing.
   if (record["lead"] !== undefined) {
     const lead = parseRole(record["lead"], "lead");
-    assertVocabulary(lead.output_schema, handled);
+    // A conversational lead chooses nothing, so there is no vocabulary to check.
+    if (lead.output_schema !== null) assertVocabulary(lead.output_schema, handled);
     roles.lead = lead;
   }
   if (record["critic"] !== undefined) roles.critic = parseRole(record["critic"], "critic");
@@ -464,7 +470,11 @@ function roster(workers: Record<string, RoleSpec>): string {
 
 // The registry again, as a schema constraint: an unconstrained string is where a
 // struggling emission puts its overflow, and the id arrives carrying half a query.
-function constrainWorkerId(schema: Record<string, unknown>, workers: Record<string, RoleSpec>): Record<string, unknown> {
+function constrainWorkerId(
+  schema: Record<string, unknown> | null,
+  workers: Record<string, RoleSpec>,
+): Record<string, unknown> | null {
+  if (schema === null) return null;
   const properties = asRecord(schema["properties"], "roles.lead.output_schema.properties");
   const field = properties["worker_agent_id"];
   if (typeof field !== "object" || field === null) return schema;

@@ -24,6 +24,7 @@ export type StreamEvent<T = unknown> =
   | { type: "usage"; payload: SpendPayload }
   | { type: "tool_call"; call: ToolCall }
   | { type: "tool_result"; call: ToolCall; attempt: Attempt }
+  | { type: "folded"; folded: number; remaining: number }
   | { type: "approval_required"; pending: Pending }
   | { type: "done"; outcome: Outcome<T> }
   | { type: "failed"; outcome: Outcome<T> };
@@ -56,9 +57,11 @@ class Run<T, Kinds extends Record<string, unknown>> {
   private readonly transcript: Message[] = [];
   private prefix: Prefix = { system: "", tools: [], recall: "" };
   private folded = 0;
+  private lastFold = 0;
   private from = 0;
   private turns = 0;
   private capped = false;
+  private prose = "";
 
   constructor(
     private readonly cfg: TurnConfig,
@@ -70,14 +73,20 @@ class Run<T, Kinds extends Record<string, unknown>> {
 
   async *execute(): TurnStream<T> {
     this.from = ((await this.harness.state.latestSeq(this.cfg.run_id)) ?? -1) + 1;
+    this.transcript.push(...(this.cfg.history ?? []));
 
     // Recalled once and rendered into the opening turn, never re-recalled per
     // tool turn: a prefix that changes mid-loop is a prefix that cannot cache.
     const recalled = await this.harness.memory.recall(this.cfg.task, this.cfg.recall_limit);
     this.prefix = prefixOf(this.cfg.system, this.tools.map(schemaOf), recalled);
 
+    const schema = this.cfg.schema;
     const ended = yield* this.toolLoop();
-    return yield* announce(ended ?? (yield* this.emit()));
+    if (ended !== null) return yield* announce(ended);
+    // Prose was already streamed as it arrived, so asking for it again would bill
+    // a second call to be told the same thing.
+    if (schema === null) return yield* announce(this.done("completed", this.prose as T, "the role answered"));
+    return yield* announce(yield* this.emit(schema));
   }
 
   // Returns an outcome only when the run ends here; otherwise the loop stops
@@ -91,8 +100,12 @@ class Run<T, Kinds extends Record<string, unknown>> {
       const refusal = await this.harness.budget.beginCall();
       if (refusal !== null) return this.exhausted(refusal);
 
-      const turn = yield* this.burn({ messages: this.assembled(), tools: this.prefix.tools });
+      const messages = this.assembled();
+      if (this.lastFold > 0) yield { type: "folded", folded: this.lastFold, remaining: messages.length };
+
+      const turn = yield* this.burn({ messages, tools: this.prefix.tools });
       this.turns += 1;
+      this.prose = turn.content;
       if (turn.tool_calls.length === 0) return null;
 
       this.transcript.push({ role: "assistant", content: turn.content, tool_calls: turn.tool_calls });
@@ -159,8 +172,8 @@ class Run<T, Kinds extends Record<string, unknown>> {
     yield { type: "tool_result", call, attempt };
   }
 
-  private async *emit(): AsyncGenerator<StreamEvent<T>, Outcome<T>> {
-    const validate = compile(this.cfg.schema);
+  private async *emit(schema: Record<string, unknown>): AsyncGenerator<StreamEvent<T>, Outcome<T>> {
+    const validate = compile(schema);
     // The ask and any correction are the transient tail: they belong to this
     // attempt, so they are re-rendered rather than written into the transcript.
     let tail = "Emit your answer now as JSON matching the schema.";
@@ -169,7 +182,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
       const refusal = await this.harness.budget.beginCall();
       if (refusal !== null) return this.exhausted(refusal);
 
-      const turn = yield* this.burn({ messages: this.assembled(tail), tools: [], emit: this.cfg.schema });
+      const turn = yield* this.burn({ messages: this.assembled(tail), tools: [], emit: schema });
 
       const parsed = tryParse(turn.content);
       if (parsed !== undefined && validate(parsed)) {
@@ -195,6 +208,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
   private assembled(working = ""): Message[] {
     const { messages, folded } = assemble(this.prefix, this.cfg.task, this.transcript, working, summariseFolded);
     this.folded += folded;
+    this.lastFold = folded;
     return messages;
   }
 

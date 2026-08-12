@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { approvalId, commitTurn, TOOL_APPROVAL, type Harness, type Outcome, type TurnConfig } from "../../core/loop.js";
 import { drain, streamTurn, type StreamEvent } from "../../core/stream.js";
+import type { Message } from "../../core/provider.js";
 import { budgetOf, unmeteredQuota } from "../../core/budget.js";
 import { registryOf } from "../../core/registry.js";
 import { InProcessState } from "../../core/state.js";
@@ -452,6 +453,90 @@ describe("commitTurn", () => {
     expect(outcome.from).toBe(1);
     await commitTurn(state, RUN, outcome, []);
     expect((await state.read(RUN)).map((event) => event.seq)).toEqual([0, 1, 2]);
+  });
+});
+
+describe("a role that answers in prose", () => {
+  const prose = (overrides: Partial<TurnConfig> = {}) => config({ schema: null, ...overrides });
+
+  it("takes the last text turn as the answer rather than asking for it again", async () => {
+    const harness = harnessOf([{ content: "the host is clean" }]);
+    const outcome = await outcomeOf<string>(prose(), harness);
+
+    expect(outcome.status).toBe("completed");
+    expect(outcome.value).toBe("the host is clean");
+    // One call, not two: the emission turn is what prose mode exists to avoid.
+    expect(requestsOf(harness)).toBe(1);
+  });
+
+  it("still runs tools first, and answers over what they returned", async () => {
+    const harness = harnessOf([{ calls: [{ tool: "bump", args: "{}" }] }, { content: "bumped once" }]);
+    const { seen, outcome } = await watch<string>(prose(), harness);
+
+    expect(resultsIn(seen)).toHaveLength(1);
+    expect(outcome.value).toBe("bumped once");
+  });
+
+  it("answers over a truncated set when the turn cap stops the loop, and says so", async () => {
+    const calling = { calls: [{ tool: "bump", args: "{}" }], content: "still looking" };
+    const harness = harnessOf([calling, calling]);
+    const outcome = await outcomeOf<string>(prose({ max_turns: 2 }), harness);
+
+    expect(outcome.capped).toBe(true);
+    expect(outcome.value).toBe("still looking");
+  });
+
+  it("leaves a schema-carrying role emitting JSON exactly as before", async () => {
+    const harness = harnessOf([{ calls: [] }, HALT]);
+    const outcome = await outcomeOf<{ verb: string }>(config(), harness);
+    expect(outcome.value).toEqual({ verb: "HALT" });
+  });
+});
+
+describe("turns the caller already holds", () => {
+  const said = (content: string): Message => ({ role: "user", content });
+  const replied = (content: string): Message => ({ role: "assistant", content, tool_calls: [] });
+
+  it("seeds them ahead of the opening turn, so the model sees the conversation", async () => {
+    const harness = harnessOf([{ content: "still Tuesday" }]);
+    const history = [replied("it is Tuesday"), said("and now?")];
+    await outcomeOf<string>(config({ schema: null, history }), harness);
+
+    const sent = (harness.provider as ScriptedProvider).requests[0]!.messages;
+    expect(sent.map((message) => message.content)).toEqual([
+      "count things",
+      "count to one",
+      "it is Tuesday",
+      "and now?",
+    ]);
+  });
+
+  it("keeps the prefix byte-identical as the conversation grows", async () => {
+    const opening = async (history: readonly Message[]) => {
+      const harness = harnessOf([{ content: "ok" }]);
+      await outcomeOf<string>(config({ schema: null, history }), harness);
+      return (harness.provider as ScriptedProvider).requests[0]!.messages.slice(0, 2);
+    };
+
+    // The two edges the fold never takes are also the bytes the cache is keyed on.
+    expect(await opening([])).toEqual(await opening([replied("ok")]));
+  });
+
+  it("reports what it folded away, so a caller can say the middle went", async () => {
+    const history = Array.from({ length: 60 }, (_, at) =>
+      at % 2 === 0 ? replied(`turn ${at}`) : said(`turn ${at}`),
+    );
+    const { seen } = await watch<string>(config({ schema: null, history }), harnessOf([{ content: "ok" }]));
+
+    const folded = seen.filter((event) => event.type === "folded");
+    expect(folded).toHaveLength(1);
+    expect(folded[0]!.folded).toBeGreaterThan(0);
+    expect(folded[0]!.remaining).toBeLessThan(history.length);
+  });
+
+  it("says nothing when nothing folded", async () => {
+    const { seen } = await watch<string>(config({ schema: null }), harnessOf([{ content: "ok" }]));
+    expect(seen.filter((event) => event.type === "folded")).toHaveLength(0);
   });
 });
 

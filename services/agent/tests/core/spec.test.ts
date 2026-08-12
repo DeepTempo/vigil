@@ -81,7 +81,7 @@ describe("the shipped arches", () => {
 
   it("generates the roster from the worker registry and narrows worker_agent_id to it", () => {
     const spec = huntSpec();
-    const properties = spec.roles.lead?.output_schema["properties"] as Record<string, { enum?: unknown[] }>;
+    const properties = spec.roles.lead?.output_schema?.["properties"] as Record<string, { enum?: unknown[] }>;
     expect(spec.roles.lead?.prompt).toContain("- network_analyst — traffic shape");
     expect(properties["worker_agent_id"]?.enum).toEqual(["threat_hunter", "network_analyst", "threat_intel", null]);
   });
@@ -90,7 +90,7 @@ describe("the shipped arches", () => {
   it("leaves the lead schema alone when the arch declares no workers", () => {
     const spec = buildSpec(CASE, archFor("investigate").actions);
     expect(spec.roles.lead?.prompt).not.toContain("Workers you may dispatch");
-    expect(spec.roles.lead?.output_schema["properties"]).not.toHaveProperty("worker_agent_id");
+    expect(spec.roles.lead?.output_schema?.["properties"]).not.toHaveProperty("worker_agent_id");
   });
 
   it("layers playbook directives onto the arch prompts rather than replacing them", () => {

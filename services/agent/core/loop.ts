@@ -31,7 +31,12 @@ export interface TurnConfig {
   role: string;
   system: string;
   task: string;
-  schema: Record<string, unknown>;
+  // null for a conversational role, whose answer is prose: the last text turn is
+  // the answer, and there is no second call asking for it again as JSON.
+  schema: Record<string, unknown> | null;
+  // Turns the caller already holds, seeded before the loop. A stateless client
+  // posts the whole conversation each time and the run is one turn of it.
+  history?: readonly Message[];
   // The harness's own cap on tool turns, held whatever a workflow asks for.
   max_turns: number;
   // Which tools ask a human first is deployment's answer, not a property of the
