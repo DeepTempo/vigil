@@ -124,8 +124,7 @@ describe("verdict review", () => {
     await controllerFor(resumed, [INVESTIGATE]).advanceIteration();
 
     // The snapshot is the one the reviewer was shown, never one recomputed on
-    // approval: approving is the same verdict delivered late, not a second and
-    // better-informed one.
+    // approval: the same verdict delivered late, not a better-informed one.
     const hypothesis = resumed.projection.hypotheses.get(hypothesisId)!;
     expect(hypothesis.status).toBe("proven");
     expect(hypothesis.evidence_strength).toEqual(atValidateTime);
@@ -135,9 +134,8 @@ describe("verdict review", () => {
   it("refuses to land a verdict the argue-the-null pass no longer covers", async () => {
     const { started, hypothesisId, checkpointId } = await parkedOnVerdict();
 
-    // Support the critic never argued against arrives while the review waits.
-    // The stored patch still says the hypothesis survived disconfirmation, and
-    // by the time it would land that sentence is no longer true.
+    // Support the critic never argued against arrives while the review waits, so
+    // the stored patch's "survived disconfirmation" is no longer true by landing.
     evidenceOn(started.ledger, hypothesisId, { source: "okta" });
     expect(evidenceStrength(started.ledger.projection, hypothesisId).survived_disconfirmation).toBe(false);
 
@@ -152,9 +150,8 @@ describe("verdict review", () => {
   it("closes inconclusive when the operator declares a gap and then approves", async () => {
     const { started, hypothesisId, checkpointId } = await parkedOnVerdict();
 
-    // The honest sequence this guards: a reviewer remembers the hunt is blind
-    // somewhere, says so, and approves in the same breath. The gap they just
-    // declared must not be the one thing the approval ignores.
+    // A reviewer says the hunt is blind somewhere and approves in the same breath.
+    // The gap they just declared must not be the one thing the approval ignores.
     for (const blind of ["no EDR on that subnet", "no CloudTrail before August", "netflow sampled at 1:100"]) {
       steer(started.runId, "gap", blind, { hypothesis_id: hypothesisId });
     }
@@ -664,9 +661,8 @@ describe("the report carries the supervision", () => {
   });
 });
 
-// The whole ticket in one walk, driven through the ports with nothing scripted
-// but the decisions: start approval, a verdict a human holds, the escalation,
-// and an ending the same human signs off.
+// The whole ticket in one walk: start approval, a verdict a human holds, the
+// escalation, and an ending the same human signs off.
 describe("a supervised hunt end to end", () => {
   it("runs start approval → parked verdict → approve → proven → handoff → conclude", async () => {
     const started: Started = await newLedger({

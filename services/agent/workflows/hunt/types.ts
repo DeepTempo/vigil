@@ -84,7 +84,9 @@ export type HypothesisStatus =
   | "handed_off";
 
 export type Salience = "routine" | "notable" | "anomalous";
-export type LinkRelation = "supports" | "weakens";
+// "neither" is a first-class answer, not an omission: considered-and-irrelevant
+// and never-considered are the difference the cross-hypothesis update exists for.
+export type LinkRelation = "supports" | "weakens" | "neither";
 
 // The harness's limits under the hunt's name, so a spec reads as one thing.
 export type Budgets = BudgetLimits;
@@ -309,6 +311,15 @@ export interface Decision {
   target_entity?: string | null;
   worker_agent_id?: string | null;
   query_intent?: string;
+  // How the evidence of the previous iteration bears on every active hypothesis.
+  // The lead cannot classify what its own dispatch has not returned yet.
+  evidence_relations?: EvidenceRelation[];
+}
+
+export interface EvidenceRelation {
+  evidence_id: string;
+  hypothesis_id: string;
+  relation: LinkRelation;
 }
 
 // What the hunt is currently looking at. Derived from the decisions, never stored.

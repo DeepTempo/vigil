@@ -98,9 +98,14 @@ export interface EnrichmentPolicy {
 
 export const DEFAULT_ENRICHMENT: EnrichmentPolicy = { max_depth: 1, max_entities: 8, chains: [] };
 
+// The p.6 hypothesis loop: null seeded at base rate, frontier ranked by
+// discrimination, termination on dominance. Per run, so a ledger replays as ranked.
+export const DEFAULT_HYPOTHESIS_LOOP = false;
+
 // Typed rather than a bag: a hypothesis is shaped by results and reshaped again,
 // so it has to be a first-class record everywhere the workflow touches it.
 export interface HuntSpec extends RunSpec {
+  hypothesis_loop: boolean;
   hypotheses: string[];
   attack_techniques: string[];
   data_domains: string[];
@@ -124,6 +129,7 @@ export function huntSpec(spec: RunSpec): HuntSpec {
   validateCeilings(terminationOf(spec), spec.budgets);
   return {
     ...spec,
+    hypothesis_loop: held["hypothesis_loop"] === true,
     hypotheses: Array.isArray(held["hypotheses"]) ? (held["hypotheses"] as string[]) : [],
     attack_techniques: Array.isArray(held["attack_techniques"]) ? (held["attack_techniques"] as string[]) : [],
     data_domains: Array.isArray(held["data_domains"]) ? (held["data_domains"] as string[]) : [],

@@ -83,9 +83,8 @@ export class ScriptedWorkerDispatcher implements WorkerDispatcher {
   }
 }
 
-// Argues whichever way the test needs, so the proven path can be driven without
-// a model. `survives` is about the hypothesis: false means the benign
-// explanation accounted for the evidence.
+// Argues whichever way the test needs. `survives` is about the hypothesis: false
+// means the benign explanation accounted for the evidence.
 export class ScriptedDisconfirmationCritic implements DisconfirmationCritic {
   readonly checks: NullCheckInput[] = [];
 

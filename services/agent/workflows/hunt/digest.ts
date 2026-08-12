@@ -9,6 +9,7 @@ import type {
   EvidenceRecord,
   EvidenceView,
   Focus,
+  LinkRelation,
   OpenQuestion,
   Salience,
 } from "./types.js";
@@ -146,6 +147,11 @@ const W_SALIENCE = 2;
 const W_RECENCY = 1;
 const HYPOTHESIS_CAP = 3;
 const RECENCY_SPAN = 3;
+// Splitting outranks bearing, and the two together spend what bearing alone did.
+const W_DISCRIMINATE = 2;
+const W_BEARING = 1;
+const SPLIT_CAP = 2;
+const BEARING_CAP = 2;
 
 // A lead with no entity has only its own text to be compared on.
 function coverage(question: OpenQuestion): string {
@@ -178,6 +184,40 @@ function priority(question: OpenQuestion, projection: Projection, iteration: num
   );
 }
 
+// Bearing counts hypotheses a lead touches; splitting counts hypotheses it would
+// move in opposite directions. Only the second can separate the field.
+function discriminating(question: OpenQuestion, projection: Projection, iteration: number, taken: ReadonlySet<string>, active: ReadonlySet<string>): number {
+  const spawning = behind(question, projection);
+  const ids = new Set(spawning.map((record) => record.evidence_id));
+  const bearingOn = (relation: LinkRelation) =>
+    new Set(
+      projection.links
+        .filter((link) => ids.has(link.evidence_id) && active.has(link.hypothesis_id) && link.relation === relation)
+        .map((link) => link.hypothesis_id),
+    );
+
+  const supports = bearingOn("supports");
+  const weakens = bearingOn("weakens");
+  const split = Math.min(supports.size, weakens.size);
+  const bearing = new Set([...supports, ...weakens]).size;
+
+  // Same six points the bearing term spent, redistributed, so a score still tops
+  // out at 16 and priority_floor keeps the meaning it was calibrated against.
+  return (
+    (taken.has(coverage(question)) ? 0 : W_NOVEL) +
+    W_DISCRIMINATE * Math.min(split, SPLIT_CAP) +
+    W_BEARING * Math.min(bearing, BEARING_CAP) +
+    W_SALIENCE * Math.max(0, ...spawning.map((record) => RANK[record.salience])) +
+    W_RECENCY * Math.max(0, RECENCY_SPAN - (iteration - question.spawned_iteration))
+  );
+}
+
+// Which scorer a run uses is fixed by its spec. A ledger written before the
+// discrimination scorer existed replays under the one that actually ranked it.
+function scorerOf(projection: Projection) {
+  return projection.hunt.spec.hypothesis_loop ? discriminating : priority;
+}
+
 export interface ScoredQuestion {
   question: OpenQuestion;
   score: number;
@@ -197,12 +237,13 @@ export function scoredFrontier(projection: Projection, iteration: number): Score
     [...projection.hypotheses.values()].filter((h) => h.status === "active").map((h) => h.hypothesis_id),
   );
   const boosted = boostedQuestions(projection);
+  const score = scorerOf(projection);
 
   return questions
     .filter((question) => question.status === "open")
     .map((question) => ({
       question,
-      score: priority(question, projection, iteration, taken, active),
+      score: score(question, projection, iteration, taken, active),
       boosted: boosted.has(question.question_id),
     }))
     // A boost outranks every score: an operator saying "look at this next" is

@@ -4,13 +4,14 @@ import { DEFAULT_BUDGETS, DEFAULT_DISPATCH, DEFAULT_RUNTIME, type RunSpec } from
 import { DEFAULT_CHECKPOINTS, type Checkpoints } from "../../workflows/hunt/checkpoints.js";
 import {
   DEFAULT_ENRICHMENT,
+  DEFAULT_HYPOTHESIS_LOOP,
   DEFAULT_TERMINATION,
   DEFAULT_VERDICTS,
   type HuntSpec,
   type Termination,
   type Verdicts,
 } from "../../workflows/hunt/config.js";
-import { HuntController, startHunt } from "../../workflows/hunt/controller.js";
+import { HuntController, startHunt, unclassified } from "../../workflows/hunt/controller.js";
 import { Journal, type HuntEvent, type HuntKinds } from "../../workflows/hunt/journal.js";
 import { newId } from "../../workflows/hunt/ids.js";
 import type { Enricher, WorkerDispatcher } from "../../workflows/hunt/ports.js";
@@ -36,6 +37,7 @@ export interface SpecOverrides {
   checkpoints?: Partial<Checkpoints>;
   scope?: Record<string, unknown>;
   dispatch?: RunSpec["dispatch"];
+  hypothesisLoop?: boolean;
 }
 
 // Built as an object rather than parsed from three files: the loader has its own
@@ -51,6 +53,7 @@ export function huntSpecFor(overrides: SpecOverrides = {}): HuntSpec {
     approvals: [],
     thresholds: {},
     arch: "threathunt",
+    hypothesis_loop: overrides.hypothesisLoop ?? DEFAULT_HYPOTHESIS_LOOP,
     name: "test hunt",
     objectives: [],
     scope: overrides.scope ?? {},
@@ -156,6 +159,35 @@ export function evidenceOn(ledger: Journal, hypothesisId: string, options: Evide
   return evidenceId;
 }
 
+// Evidence with no link at all, so a test can wire the relations it needs
+// across several hypotheses rather than the single one evidenceOn assumes.
+export function bareEvidence(ledger: Journal, source = "duckdb", iteration = 1): string {
+  const evidenceId = newId("ev");
+  ledger.append({
+    kind: "evidence",
+    payload: {
+      evidence_id: evidenceId,
+      dispatch_id: null,
+      iteration,
+      source_system: source,
+      summary: `${source} observed something`,
+      payload: { rows: 3 },
+      salience: "notable",
+      why_notable: "",
+      provenance: "worker",
+      attacker_influenceable: false,
+      instruction_like: false,
+      entities: [],
+      captured_at: new Date().toISOString(),
+    },
+  });
+  return evidenceId;
+}
+
+export function relate(ledger: Journal, evidenceId: string, hypothesisId: string, relation: LinkRelation): void {
+  ledger.append({ kind: "link", payload: { evidence_id: evidenceId, hypothesis_id: hypothesisId, relation } });
+}
+
 // Enough support to clear every verdict predicate, so what a test is measuring is
 // the checkpoint or the termination rather than the strength computation.
 export function provable(ledger: Journal, hypothesisId: string): string[] {
@@ -210,6 +242,7 @@ export interface QuestionFields {
   spawned_iteration?: number;
   status?: "open" | "closed";
   hypothesis_id?: string | null;
+  spawning_evidence_id?: string | null;
 }
 
 export function question(ledger: Journal, text: string, fields: QuestionFields = {}): string {
@@ -221,7 +254,7 @@ export function question(ledger: Journal, text: string, fields: QuestionFields =
       question: text,
       status: fields.status ?? "open",
       entity_key: fields.entity_key ?? null,
-      spawning_evidence_id: null,
+      spawning_evidence_id: fields.spawning_evidence_id ?? null,
       spawning_dispatch_id: null,
       spawned_iteration: fields.spawned_iteration ?? 1,
       hypothesis_id: fields.hypothesis_id ?? null,
@@ -241,6 +274,14 @@ export function validateOn(hypothesisId: string, citations: string[], extra: Par
   };
 }
 
+// Rules on whatever the loop still needs ruled, as "neither": evidence gathered
+// for one hypothesis usually says nothing about the others, and silence is refused.
+export function ruled<T extends Decision>(ledger: Journal, decision: T): T {
+  const pending = unclassified(ledger.projection);
+  if (pending.length === 0) return decision;
+  return { ...decision, evidence_relations: pending.map((pair) => ({ ...pair, relation: "neither" as const })) };
+}
+
 // Terminal by any route the hunt actually has; the predicate cares that nothing
 // is active, not how it got there.
 export function resolve(ledger: Journal, hypothesisId: string, status = "parked"): void {
@@ -255,7 +296,7 @@ export async function gapLock(ledger: Journal, hypothesisId: string): Promise<vo
     evidenceOn(ledger, hypothesisId, { source: "duckdb" }),
   ];
   for (let gap = 0; gap < DEFAULT_VERDICTS.gap_lock_threshold; gap += 1) gapOn(ledger, hypothesisId);
-  await controllerFor(ledger, [validateOn(hypothesisId, citations)], {
+  await controllerFor(ledger, [ruled(ledger, validateOn(hypothesisId, citations))], {
     critic: new ScriptedDisconfirmationCritic(true),
   }).advanceIteration();
 }

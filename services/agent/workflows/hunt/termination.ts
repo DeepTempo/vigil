@@ -1,3 +1,4 @@
+import { BASE_RATE_PROVENANCE } from "./controller.js";
 import { scoredFrontier } from "./digest.js";
 import type { Projection } from "./ledger.js";
 import { DEFAULT_VERDICTS, type Termination, type Verdicts } from "./config.js";
@@ -23,6 +24,30 @@ function gapLocked(hypothesis: Hypothesis, verdicts: Verdicts): boolean {
   );
 }
 
+function blockingActive(hypotheses: readonly Hypothesis[]): TerminationVerdict | null {
+  const active = hypotheses.find((hypothesis) => hypothesis.status === "active");
+  if (active === undefined) return null;
+  return { outcome: null, blocked_by: `${active.hypothesis_id} is still active: ${active.statement}` };
+}
+
+// One dominates, or none can. A claim that beat the null is the first; every
+// remaining claim being blind is the second, and it is an answer rather than a failure.
+function dominates(hypotheses: readonly Hypothesis[], verdicts: Verdicts): TerminationVerdict | null {
+  const settled = (hypothesis: Hypothesis) => hypothesis.status === "proven" || hypothesis.status === "handed_off";
+  if (hypotheses.some(settled)) return null;
+
+  const active = hypotheses.filter((hypothesis) => hypothesis.status === "active");
+  const contenders = active.filter((hypothesis) => hypothesis.provenance !== BASE_RATE_PROVENANCE);
+  if (contenders.length === 0) return null;
+
+  // Every claim that could still have beaten the null is blind, so no further
+  // query changes the answer. Saying so is the point; guessing instead is the failure.
+  if (hypotheses.filter((h) => h.provenance !== BASE_RATE_PROVENANCE).every((h) => gapLocked(h, verdicts))) return null;
+
+  const first = contenders[0]!;
+  return { outcome: null, blocked_by: `${first.hypothesis_id} is still active: ${first.statement}` };
+}
+
 // The controller's own answer to "may this hunt stop?", computed from the
 // projection exactly like evidence_strength — never from anything the Hunt Lead
 export function terminationVerdict(
@@ -33,13 +58,12 @@ export function terminationVerdict(
 ): TerminationVerdict {
   const hypotheses = [...projection.hypotheses.values()];
 
-  const active = hypotheses.find((hypothesis) => hypothesis.status === "active");
-  if (active !== undefined) {
-    return {
-      outcome: null,
-      blocked_by: `${active.hypothesis_id} is still active: ${active.statement}`,
-    };
-  }
+  // Under the hypothesis loop the null is always active until something beats it,
+  // so "nothing active" would never come true and the hunt could never stop.
+  const dominance = projection.hunt.spec.hypothesis_loop
+    ? dominates(hypotheses, verdicts)
+    : blockingActive(hypotheses);
+  if (dominance !== null) return dominance;
 
   const frontier = scoredFrontier(projection, iteration);
   const above = frontier.find((entry) => entry.score >= config.priority_floor);
