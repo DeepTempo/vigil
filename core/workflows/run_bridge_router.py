@@ -38,6 +38,7 @@ class PhaseUpdate(BaseModel):
     name: str
     order: int
     status: str
+    approval_state: Optional[str] = None
     output: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     checkpoint_id: Optional[str] = None
@@ -83,7 +84,10 @@ def record_phase(
         status=update.status,
         output=update.output,
         error=update.error,
-        approval_state="pending" if update.status == WAITING else None,
+        # The agent layer says how a gate was answered; a waiting step is the only
+        # state this side can name on its own.
+        approval_state=update.approval_state
+        or ("pending" if update.status == WAITING else None),
         started_at=now if update.status == "running" else None,
         finished_at=now if update.status in ("completed", "failed") else None,
     )

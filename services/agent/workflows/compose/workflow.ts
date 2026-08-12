@@ -2,7 +2,7 @@ import type { CheckpointPayload, DispatchPayload, NewEvent, ResolutionPayload, R
 import { commitTurn, type Harness, type Outcome, type TurnConfig } from "../../core/loop.js";
 import { drain, streamTurn } from "../../core/stream.js";
 import type { State } from "../../core/seams.js";
-import type { PhaseSpec, RunSpec } from "../../core/spec.js";
+import { SpecError, type PhaseSpec, type RunSpec } from "../../core/spec.js";
 import { nullMirror, type Mirror, type PhaseUpdate } from "./mirror.js";
 import { PHASE_APPROVAL, PHASE_SCHEMA, type ComposeKinds, type PhaseAnswer, type PhasePayload } from "./vocabulary.js";
 
@@ -23,10 +23,10 @@ export interface ComposeReport {
 
 type Event = NewEvent<ComposeKinds>;
 
-// Deny-by-default per step, off the resolved playbook: a step may call what its
-// own agent was granted, and no step sees another's tools.
+// Deny-by-default per step, off the resolved playbook: a step may call what it was
+// granted, and no step sees another's. Keyed by step, since one agent may run two.
 export function grantsOf(spec: RunSpec): Record<string, readonly string[]> {
-  return Object.fromEntries(spec.phases.map((phase) => [phase.agent, phase.tools]));
+  return Object.fromEntries(spec.phases.map((phase) => [phase.id, phase.tools]));
 }
 
 // Addressed by step rather than derived from content: a resume has to recognise
@@ -35,11 +35,22 @@ export function checkpointFor(phase: PhaseSpec): string {
   return `chk-${phase.id}`;
 }
 
+// Refused before the ledger opens. A step that stops for a human, on a deployment
+// with nowhere to ask, parks on its first gate and no answer can ever reach it.
+function assertAnswerable(spec: RunSpec, mirror: Mirror): void {
+  if (mirror.answerable) return;
+  const gated = spec.phases.filter((phase) => phase.approval_required).map((phase) => phase.id);
+  if (gated.length > 0) {
+    throw new SpecError(`${spec.name} stops for a human at ${gated.join(", ")}, and no mirror is configured to carry a decision back`);
+  }
+}
+
 // The whole of the control flow. The playbook decided the order, so this walks it:
 // no decision is taken here, and no step is skipped, reordered or repeated.
 export async function runCompose(harness: Harness<ComposeKinds>, options: ComposeOptions): Promise<ComposeReport> {
   const { run_id, spec } = options;
   const mirror = options.mirror ?? nullMirror;
+  assertAnswerable(spec, mirror);
   if ((await harness.state.latestSeq(run_id)) === null) await open(harness, options);
 
   await journal(harness, run_id, mirror);
@@ -51,7 +62,7 @@ export async function runCompose(harness: Harness<ComposeKinds>, options: Compos
     const gate = await clear(harness, options, phase, ledger, mirror, order);
     if (gate !== null) return gate;
 
-    await mirror.phase(run_id, { ...at(phase, order), status: "running" });
+    await mirror.phase(run_id, { ...at(phase, order), ...answered(phase, ledger), status: "running" });
     const outcome = await drain(
       streamTurn<PhaseAnswer, ComposeKinds>(turnFor(options, phase, brief(spec, ledger.answers)), harness),
     );
@@ -105,6 +116,13 @@ function idOf(pending: Outcome<unknown>["pending"]): { checkpoint_id?: string } 
   return pending === null ? {} : { checkpoint_id: pending.checkpoint_id };
 }
 
+// A gate that has been answered says so on the row. Without it the projection
+// reads pending for a step that cleared its approval and ran hours ago.
+function answered(phase: PhaseSpec, ledger: Ledger): Pick<PhaseUpdate, "approval_state"> {
+  if (!phase.approval_required) return {};
+  return ledger.resolutions.has(checkpointFor(phase)) ? { approval_state: "approved" } : {};
+}
+
 interface Ledger {
   done: Set<string>;
   answers: PhasePayload[];
@@ -146,7 +164,12 @@ async function clear(
   const resolution = ledger.resolutions.get(id);
   if (resolution !== undefined) {
     if (resolution.answer === "approve") return null;
-    await mirror.phase(options.run_id, { ...at(phase, order), status: "failed", error: `rejected: ${resolution.text}` });
+    await mirror.phase(options.run_id, {
+      ...at(phase, order),
+      status: "failed",
+      approval_state: "rejected",
+      error: `rejected: ${resolution.text}`,
+    });
     return end(harness, options, "failed", `${phase.name} was rejected: ${resolution.text}`, mirror);
   }
 
@@ -181,7 +204,9 @@ function turnFor(options: ComposeOptions, phase: PhaseSpec, context: string): Tu
   return {
     run_id: options.run_id,
     run_kind: "compose",
-    role: phase.agent,
+    // The step, not its agent: grants are per step, and spend attributed to an
+    // agent would merge two steps the playbook deliberately kept apart.
+    role: phase.id,
     system: phase.prompt,
     task: [context, `## Your step: ${phase.name}`, phase.instructions].filter((part) => part).join("\n\n"),
     schema: PHASE_SCHEMA,

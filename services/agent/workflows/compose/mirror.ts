@@ -8,6 +8,9 @@ export interface PhaseUpdate {
   name: string;
   order: number;
   status: "running" | "completed" | "failed" | "pending_approval";
+  // How a gate on this step was answered. Absent means the step has no gate, so
+  // the row keeps whatever it already said.
+  approval_state?: "approved" | "rejected";
   output?: Record<string, unknown>;
   error?: string;
   checkpoint_id?: string;
