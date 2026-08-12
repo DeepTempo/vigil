@@ -90,6 +90,10 @@ NOT_SETTINGS = {
     "BIND_HOST",
     "GRAFANA_PASSWORD",
     "VITE_EXTENSION_ORIGIN_ALLOWLIST",
+    # Read by the TypeScript agent worker's own process, not by Settings.
+    "VIGIL_PLAYBOOKS_URL",
+    "VIGIL_RUNS_URL",
+    "VIGIL_TOOLS_URL",
     # Bootstrap for the secrets manager itself, which cannot depend on Settings.
     "ENABLE_KEYRING",
     "SECRETS_BACKEND",
