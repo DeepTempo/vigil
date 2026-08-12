@@ -46,7 +46,7 @@ class WorkflowAIGenerator:
 
         from core.llm.harness.claude import ClaudeService
 
-        claude = ClaudeService(use_backend_tools=False, use_mcp_tools=False)
+        claude = ClaudeService()
         if not claude.has_api_key():
             return {
                 "success": False,

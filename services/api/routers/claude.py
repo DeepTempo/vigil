@@ -566,7 +566,7 @@ async def summarize_conversation(request: SummarizeRequest):
     Returns a single summary message that preserves key context.
     """
 
-    claude_service = ClaudeService(use_backend_tools=False, enable_thinking=False)
+    claude_service = ClaudeService(enable_thinking=False)
 
     if not claude_service.has_api_key():
         _raise_no_provider()
@@ -728,7 +728,7 @@ async def analyze_finding(finding_id: str, context: Optional[str] = None):
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
 
-    claude_service = ClaudeService(use_backend_tools=True)
+    claude_service = ClaudeService()
 
     # Check if API key is configured (works for both implementations)
     if not claude_service.has_api_key():

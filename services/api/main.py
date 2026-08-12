@@ -18,21 +18,21 @@ project_root = str(_repo_root)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from core.config import get_settings
+from core.platform.monitoring import (PROMETHEUS_AVAILABLE,
+                                      get_metrics_response, init_sentry)
 from core.version import __version__
+from services.api.discovery import mount_routers
+from services.api.middleware.auth import get_current_active_user
 from services.api.middleware.csrf import CSRFMiddleware
 from services.api.middleware.rate_limit import limiter
 from services.api.middleware.security_headers import SecurityHeadersMiddleware
-
-from services.api.discovery import mount_routers
-from services.api.middleware.auth import get_current_active_user
-from core.config import get_settings
-from core.platform.monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
 
 # Single source of truth for the "require an authenticated active user"
 # dependency. Applied to every non-public /api/* router below so that any
@@ -312,6 +312,12 @@ async def _connect_external_services():
             logger.info(
                 f"Persistent connections: {sum(1 for connected in status.values() if connected)}/{len(status)}"
             )
+
+            # Explicitly, now the LLM client no longer does it on the way past
+            # (#632): the AI generators discover tools through this registry.
+            from core.integrations.mcp.registry import populate_from_cache
+
+            populate_from_cache()
         else:
             logger.warning("MCP client not available - MCP SDK may not be installed")
     except Exception as e:
@@ -383,7 +389,8 @@ async def startup_event():
         # Rehydrate integration credentials into os.environ so MCP servers gated
         # on ${<ID>_<FIELD>} survive a restart — set_secret only writes os.environ
         # in the saving process, so without this they'd go dormant.
-        from core.integrations.integration_secrets import INTEGRATION_SECRET_FIELDS
+        from core.integrations.integration_secrets import \
+            INTEGRATION_SECRET_FIELDS
 
         rehydrated = 0
         for field_map in INTEGRATION_SECRET_FIELDS.values():
@@ -400,10 +407,12 @@ async def startup_event():
     # A configured connector with no allowlisted origin will be blocked by the
     # default CSP — warn rather than fail silently. Best-effort.
     try:
-        from core.integrations.extension.trust import connector_allowlist_origins
+        from core.integrations.extension.trust import \
+            connector_allowlist_origins
 
         if not connector_allowlist_origins():
-            from core.integrations.integration_bridge_service import get_integration_bridge
+            from core.integrations.integration_bridge_service import \
+                get_integration_bridge
 
             cfg = get_integration_bridge().load_integration_config()
             connectors = [
@@ -426,8 +435,8 @@ async def startup_event():
     # Initialize data storage backend
     logger.info("Initializing data storage...")
     try:
-        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
+        from core.storage.database_data_service import DatabaseDataService
 
         # Defense-in-depth: ensure the SQLAlchemy-managed schema exists before
         # any endpoint tries to query it. start.sh runs scripts/init_schema.py
@@ -500,7 +509,8 @@ async def startup_event():
     # Check integration compatibility
     logger.info("Checking integration compatibility...")
     try:
-        from core.integrations.integration_compatibility_service import get_compatibility_service
+        from core.integrations.integration_compatibility_service import \
+            get_compatibility_service
 
         compat_service = get_compatibility_service()
         system_info = compat_service.get_system_info()
@@ -595,8 +605,8 @@ async def metrics():
 async def health_check():
     """Health check endpoint with storage backend info."""
     try:
-        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
+        from core.storage.database_data_service import DatabaseDataService
 
         service = DatabaseDataService()
         backend_info = service.get_backend_info()
@@ -629,7 +639,9 @@ static_dir = frontend_build_dir / "static"
 # This prevents errors during development when frontend hasn't been built
 if frontend_build_dir.exists() and static_dir.exists():
     try:
-        app.mount(f"{_CONTEXT_PATH}/static", StaticFiles(directory=static_dir), name="static")
+        app.mount(
+            f"{_CONTEXT_PATH}/static", StaticFiles(directory=static_dir), name="static"
+        )
         logger.info(f"Serving static files from: {static_dir}")
     except Exception as e:
         logger.warning(f"Failed to mount static files: {e}")
@@ -647,7 +659,9 @@ else:
 assets_dir = frontend_build_dir / "assets"
 if frontend_build_dir.exists() and assets_dir.exists():
     try:
-        app.mount(f"{_CONTEXT_PATH}/assets", StaticFiles(directory=assets_dir), name="assets")
+        app.mount(
+            f"{_CONTEXT_PATH}/assets", StaticFiles(directory=assets_dir), name="assets"
+        )
         logger.info(f"Serving frontend assets from: {assets_dir}")
     except Exception as e:
         logger.warning(f"Failed to mount frontend assets: {e}")
@@ -672,7 +686,8 @@ if frontend_build_dir.exists() and (frontend_build_dir / "index.html").exists():
             # SSRF guard). A <meta>, not an inline <script>, because CSP is
             # script-src 'self'.
             try:
-                from core.integrations.extension.trust import connector_allowlist_origins
+                from core.integrations.extension.trust import \
+                    connector_allowlist_origins
 
                 origins = connector_allowlist_origins()
                 if origins:
@@ -709,5 +724,9 @@ if __name__ == "__main__":
 
     logger.info("Starting Vigil SOC API server...")
     uvicorn.run(
-        "services.api.main:app", host="0.0.0.0", port=6987, reload=True, log_level="info"
+        "services.api.main:app",
+        host="0.0.0.0",
+        port=6987,
+        reload=True,
+        log_level="info",
     )

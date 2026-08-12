@@ -7,6 +7,7 @@ Test backend tool integration with Claude function calling.
 Claude tool-calling and are marked `external_service` so they run only in
 the dedicated CI lane; they skip when no API key is configured.
 """
+
 import sys
 from pathlib import Path
 
@@ -22,8 +23,6 @@ from core.llm.harness.claude import ClaudeService
 def test_security_detections():
     """Smoke-test security-detection tool calls end to end (needs a live API key)."""
     claude = ClaudeService(
-        use_backend_tools=True,
-        use_mcp_tools=False,
         enable_thinking=False,
     )
 
@@ -65,8 +64,6 @@ def test_security_detections():
 def test_backend_integration():
     """Smoke-test a multi-tool backend query end to end (needs a live API key)."""
     claude = ClaudeService(
-        use_backend_tools=True,
-        use_mcp_tools=False,
         enable_thinking=False,
     )
 
@@ -87,15 +84,14 @@ def test_backend_integration():
 
 
 def test_tool_availability():
-    """Backend tools load into ClaudeService (offline; no API key required)."""
-    claude = ClaudeService(
-        use_backend_tools=True,
-        use_mcp_tools=False,
-    )
+    """The backend tool manifest is usable (offline; no API key required).
 
-    assert claude.use_backend_tools
-    assert len(claude.backend_tools) > 0
-    # Every loaded tool must be a usable definition.
-    for tool in claude.backend_tools:
+    Was asserted through ClaudeService.backend_tools until #632, when the LLM
+    client stopped loading tools at all. The manifest is the real subject.
+    """
+    from core.llm.tool_schemas import ALL_TOOLS
+
+    assert len(ALL_TOOLS) > 0
+    for tool in ALL_TOOLS:
         assert tool.get("name")
         assert tool.get("description")

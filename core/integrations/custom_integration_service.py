@@ -4,12 +4,12 @@ import json
 import logging
 import os
 import re
-from pathlib import Path
-from typing import Dict, Any, Optional, List
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from core.llm.defaults import DEFAULT_MODEL
 from core.config import vigil_path
+from core.llm.defaults import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class CustomIntegrationService:
             from core.llm.harness.claude import ClaudeService
 
             # Initialize Claude
-            claude = ClaudeService(use_mcp_tools=False)
+            claude = ClaudeService()
 
             # Check if Claude is configured
             if not claude.api_key or not claude.client:

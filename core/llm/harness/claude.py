@@ -7,8 +7,6 @@ import uuid
 from pathlib import Path  # noqa: F401 — patched as ``claude.Path`` in tests
 from typing import Any, Dict, List, Optional, Union
 
-from core.agents.tool_registry import execute_backend_tool
-from core.config import REPO_ROOT, get_settings
 from core.llm.defaults import DEFAULT_MODEL
 from core.secrets import get_secret
 
@@ -74,7 +72,6 @@ logger = logging.getLogger(__name__)
 from core.chat.context_manager import ContextManager  # noqa: E402
 # Sub-module imports (lazy to avoid circular deps at module load)
 from core.chat.session_manager import SessionManager  # noqa: E402
-from core.chat.tool_executor import ToolExecutor  # noqa: E402
 
 
 class ClaudeService:
@@ -85,20 +82,15 @@ class ClaudeService:
 
     def __init__(
         self,
-        use_mcp_tools: bool = True,
         enable_thinking: bool = False,
         thinking_budget: int = 10000,
-        use_backend_tools: bool = False,
         provider_api_key_ref: Optional[str] = None,
     ):
-        """
-        Initialize Claude service.
+        """One completion at a time. Tools and the loop live in the agent layer.
 
         Args:
-            use_mcp_tools: Whether to enable MCP tool integration
-            enable_thinking: Whether to enable extended thinking (default: False)
-            thinking_budget: Token budget for extended thinking (default: 10000)
-            use_backend_tools: Whether to use backend function calling (bypasses MCP)
+            enable_thinking: Retained for callers; the one-shot sends no thinking.
+            thinking_budget: Likewise.
             provider_api_key_ref: Optional secret-manager key for a non-default
                 Anthropic provider row (GH #88). When set, _load_api_key reads
                 this secret first before the legacy CLAUDE_API_KEY fallback chain.
@@ -107,36 +99,14 @@ class ClaudeService:
         self.async_client: Optional[AsyncAnthropic] = None
         self.api_key: Optional[str] = None
         self.provider_api_key_ref = provider_api_key_ref
-        self.use_mcp_tools = use_mcp_tools
-        self.use_backend_tools = use_backend_tools
-        self.mcp_tools: List[Dict] = []
-        self.backend_tools: List[Dict] = []
         self.enable_thinking = enable_thinking
         self.thinking_budget = thinking_budget
 
-        # Sub-modules — own session lifecycle, context reduction, and tool dispatch.
         self._session_mgr = SessionManager()
         self._context_mgr = ContextManager()
-        self._tool_executor = ToolExecutor()
-
-        # Default system prompt with Claude 4.5 best practices
         self.default_system_prompt = self._get_default_system_prompt()
-
-        # Try to load API key
         self._load_api_key()
-
-        # Keep ContextManager clients in sync after key load.
         self._context_mgr.update_clients(self.client, self.async_client)
-
-        # Load backend tools if enabled
-        if self.use_backend_tools and BACKEND_TOOLS_AVAILABLE:
-            self._load_backend_tools()
-            logger.info(
-                f"✓ Loaded {len(self.backend_tools)} backend tools for direct function calling"
-            )
-        # Load MCP tools if enabled (independently of backend tools)
-        if self.use_mcp_tools:
-            self._load_mcp_tools()
 
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt with Claude 4.5 best practices."""
@@ -357,269 +327,6 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             logger.error(f"Error loading API key: {e}")
             return False
 
-    def _load_backend_tools(self):
-        """Load backend tools for Claude to use via function calling.
-
-        Also appends a tool per active DB-backed Skill so the model can
-        invoke user-created Skills directly (Issue #82 Phase 1 wiring).
-        Skill tool lookups happen via ``self._skill_tool_index`` set here.
-        """
-        self.backend_tools = list(BACKEND_TOOLS)
-        self._static_backend_tools_count = len(self.backend_tools)
-        self._skill_tool_index = {}
-        self._refresh_skill_tools()
-        for tool in self.backend_tools:
-            logger.debug(f"  - {tool['name']}: {tool['description'][:60]}...")
-
-    def _refresh_skill_tools(self) -> int:
-        """Reload DB-backed skill tools in place.
-
-        The chat path calls this at the start of every request so skills
-        created after the (shared, worker-pool) ClaudeService booted are
-        still visible. Trims any previously-loaded skill tools first so
-        deletes and renames propagate cleanly. Cheap: one DB query.
-
-        Returns the number of skill tools loaded.
-        """
-        # Reset to the static portion only.
-        if hasattr(self, "_static_backend_tools_count"):
-            self.backend_tools = self.backend_tools[: self._static_backend_tools_count]
-        self._skill_tool_index = {}
-        try:
-            from core.skills.skill_tools_bridge import list_active_skill_tools
-
-            skill_tools, skill_index = list_active_skill_tools()
-            self.backend_tools.extend(skill_tools)
-            self._skill_tool_index = skill_index
-            if skill_tools:
-                logger.info(
-                    f"Backend tools refreshed: {len(self.backend_tools)} total "
-                    f"(incl. {len(skill_tools)} skill tool(s))"
-                )
-            self._tool_executor.skill_tool_index = self._skill_tool_index
-            return len(skill_tools)
-        except Exception as e:
-            logger.debug(f"Could not load skill tools: {e}")
-            return 0
-
-    async def _execute_backend_tool(self, tool_name: str, tool_input: dict):
-        """Execute a single backend tool by name. Used by the daemon agent runner."""
-        result, handled = await execute_backend_tool(
-            tool_name,
-            tool_input,
-            skill_index=getattr(self, "_skill_tool_index", None),
-        )
-        if handled:
-            return result
-
-        try:
-            mcp_result = await self._execute_mcp_tool(tool_name, tool_input)
-            logger.info(f"✅ Executed MCP tool: {tool_name}")
-            return {"result": mcp_result}
-        except Exception:
-            logger.warning(f"Unknown tool: {tool_name}")
-            return {"error": f"Unknown tool: {tool_name}"}
-
-    async def _execute_mcp_tool(self, tool_name: str, arguments: Dict) -> str:
-        """Execute an MCP tool via the tool name, with response size guard."""
-        parts = tool_name.split("_", 1)
-        if len(parts) != 2:
-            return f"Invalid MCP tool format: {tool_name}"
-
-        server_name, actual_tool_name = parts
-
-        try:
-            from core.integrations.mcp.client import get_mcp_client
-
-            mcp_client = get_mcp_client()
-            if mcp_client:
-                result = await mcp_client.call_tool(
-                    server_name, actual_tool_name, arguments, timeout=30.0
-                )
-                if isinstance(result, dict):
-                    raw = json.dumps(result.get("content", result))
-                else:
-                    raw = str(result)
-                return self._truncate_tool_response(raw, tool_name=actual_tool_name)
-        except Exception as e:
-            logger.error(f"MCP tool execution error: {e}")
-            return f"Error: {str(e)}"
-
-        return "MCP client unavailable"
-
-    def _load_mcp_tools(self):
-        """Load MCP tools for Claude to use from persistent cache."""
-        # Clear existing tools to prevent duplicates
-        self.mcp_tools = []
-
-        try:
-            # Compute cache file path relative to project root
-            cache_file = REPO_ROOT / "data" / "mcp_tools_cache.json"
-
-            tools_dict = {}
-
-            # First, try to load from persistent cache file (works in all contexts)
-            if cache_file.exists():
-                try:
-                    with open(cache_file, "r") as f:
-                        tools_dict = json.load(f)
-                    logger.info(
-                        f"✓ Loaded {sum(len(v) for v in tools_dict.values())} MCP tools from cache file"
-                    )
-                except Exception as e:
-                    logger.warning(f"Could not load tools from cache file: {e}")
-                    tools_dict = {}
-
-            # If cache file didn't yield tools, fall back to in-memory cache
-            from core.integrations.mcp.client import get_mcp_client
-
-            mcp_client = get_mcp_client()
-            if not tools_dict:
-                if mcp_client and mcp_client.tools_cache:
-                    tools_dict = mcp_client.tools_cache
-                    logger.info("✓ Using in-memory MCP tools cache")
-                else:
-                    logger.warning("No MCP tools available - cache not yet populated")
-                    return
-
-            # Gate on live connection status (#129). The disk cache is a
-            # warm-start artifact — a server can appear there but have
-            # failed to connect this boot (missing creds, subprocess
-            # crashed, unreachable host). Previously we'd still hand
-            # those tool schemas to Claude, and the model would confidently
-            # claim capabilities it couldn't exercise. Intersect with
-            # live-connection state so tools surface only when the
-            # underlying session is actually up.
-            connection_status: Dict[str, bool] = {}
-            if mcp_client:
-                try:
-                    connection_status = mcp_client.get_connection_status() or {}
-                except Exception as e:  # noqa: BLE001
-                    logger.debug("Could not read MCP connection status: %s", e)
-
-            # Track tool names to prevent duplicates
-            seen_tool_names = set()
-
-            # Flatten tools from all servers with server prefix
-            for server_name, server_tools in tools_dict.items():
-                if connection_status and not connection_status.get(server_name, False):
-                    logger.info(
-                        "Skipping %d tools from %s — server not connected",
-                        len(server_tools),
-                        server_name,
-                    )
-                    continue
-                for tool in server_tools:
-                    # Format for Claude API with server prefix
-                    tool_name = f"{server_name}_{tool['name']}"
-
-                    # Skip if we've already seen this tool name
-                    if tool_name in seen_tool_names:
-                        logger.warning(f"Skipping duplicate tool: {tool_name}")
-                        continue
-                    seen_tool_names.add(tool_name)
-
-                    # Get input schema - handle both dict and object formats
-                    input_schema = tool.get("inputSchema", {})
-                    if hasattr(input_schema, "model_dump"):
-                        input_schema = input_schema.model_dump()
-                    elif not isinstance(input_schema, dict):
-                        input_schema = dict(input_schema) if input_schema else {}
-
-                    # Ensure input_schema has required structure
-                    if not input_schema or "type" not in input_schema:
-                        input_schema = {
-                            "type": "object",
-                            "properties": {},
-                            "required": [],
-                        }
-
-                    claude_tool = {
-                        "name": tool_name,
-                        "description": f"[{server_name}] {tool.get('description', '')}",
-                        "input_schema": input_schema,
-                    }
-                    # Scan the tool's own schema for prompt-injection — a
-                    # poisoned MCP server can smuggle instructions through tool
-                    # names/descriptions, not just tool output.
-                    from core.llm.security import scan_tool_schema
-
-                    schema_scan = scan_tool_schema(claude_tool)
-                    if schema_scan:
-                        logger.warning(
-                            "prompt_injection in MCP tool schema: "
-                            "server=%s tool=%s patterns=%s",
-                            server_name,
-                            tool_name,
-                            schema_scan.patterns,
-                        )
-                        if get_settings().prompt_injection_block:
-                            logger.error("Skipping poisoned tool %s", tool_name)
-                            continue
-                    self.mcp_tools.append(claude_tool)
-
-            if self.mcp_tools:
-                tool_names = [t["name"] for t in self.mcp_tools]
-                logger.info(
-                    f"✓ Loaded {len(self.mcp_tools)} MCP tools from {len(tools_dict)} servers"
-                )
-                logger.debug(f"Available tools: {', '.join(tool_names)}")
-
-                # Populate the MCP registry for dynamic tool discovery
-                self._populate_mcp_registry(tools_dict)
-            else:
-                logger.warning(
-                    "No MCP tools were loaded. Check that MCP servers are configured and running."
-                )
-        except Exception as e:
-            logger.warning(f"Could not load MCP tools: {e}")
-            self.mcp_tools = []
-
-    def _populate_mcp_registry(self, tools_dict: Dict):
-        """Populate the MCP registry with discovered tools for dynamic tool discovery."""
-        try:
-            from core.integrations.mcp.client import get_mcp_client
-            from core.integrations.mcp.registry import get_mcp_registry
-
-            registry = get_mcp_registry()
-            mcp_client = get_mcp_client()
-
-            for server_name, server_tools in tools_dict.items():
-                # Build tool list
-                tools = []
-                for tool in server_tools:
-                    input_schema = tool.get("inputSchema", {})
-                    if hasattr(input_schema, "model_dump"):
-                        input_schema = input_schema.model_dump()
-                    elif not isinstance(input_schema, dict):
-                        input_schema = dict(input_schema) if input_schema else {}
-
-                    tools.append(
-                        {
-                            "name": tool.get("name", "unknown"),
-                            "description": tool.get("description", ""),
-                            "inputSchema": input_schema,
-                        }
-                    )
-
-                # Get server config from MCPService
-                config = {}
-                if mcp_client and mcp_client.mcp_service:
-                    mcp_service = mcp_client.mcp_service
-                    if server_name in mcp_service.servers:
-                        server = mcp_service.servers[server_name]
-                        config = {
-                            "command": server.command,
-                            "args": server.args,
-                            "env": server.env,
-                        }
-
-                registry.register_server(server_name, config, tools)
-
-            logger.info(f"MCP registry populated with {len(tools_dict)} servers")
-        except Exception as e:
-            logger.debug(f"Could not populate MCP registry: {e}")
-
     def has_api_key(self) -> bool:
         """Return True if this ClaudeService can call the Anthropic SDK.
 
@@ -786,32 +493,6 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
         },
         "image": {"type", "source", "cache_control"},
     }
-
-    @classmethod
-    def _clean_blocks_for_resend(cls, content) -> List[Dict]:
-        """Convert response content blocks to Anthropic-spec dicts for replay.
-
-        Accepts SDK block objects or dicts. Drops non-spec keys (e.g. a
-        "caller" field injected by a proxy) per block type while preserving all
-        valid fields. Unknown block types are passed through untouched.
-        """
-        out: List[Dict] = []
-        for block in content or []:
-            if isinstance(block, dict):
-                d = block
-            elif hasattr(block, "model_dump"):
-                d = block.model_dump(exclude_none=True)
-            elif hasattr(block, "dict"):
-                d = block.dict()
-            else:
-                out.append(block)
-                continue
-            allowed = cls._RESEND_ALLOWED_BLOCK_KEYS.get(d.get("type"))
-            if allowed is None or set(d).issubset(allowed):
-                out.append(d)
-            else:
-                out.append({k: v for k, v in d.items() if k in allowed})
-        return out
 
     @staticmethod
     def _sanitize_messages_for_log(messages: List[Dict]) -> List[Dict]:

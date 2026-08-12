@@ -18,12 +18,10 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
-from core.findings.enrichment.errors import (
-    FindingNotFound,
-    NoProviderConfigured,
-    ProviderUnavailable,
-    UnidentifiableFinding,
-)
+from core.findings.enrichment.errors import (FindingNotFound,
+                                             NoProviderConfigured,
+                                             ProviderUnavailable,
+                                             UnidentifiableFinding)
 from core.findings.enrichment.parse import parse_enrichment
 from core.findings.enrichment.prompt import build_prompt, summarize_finding
 
@@ -70,8 +68,8 @@ def _resolve_provider(component: str) -> Tuple[Any, str, Any]:
         NoProviderConfigured: nothing resolved, or no Anthropic API key.
         ProviderUnavailable: the resolved provider id has no spec row.
     """
-    from core.llm.router.router import get_provider_spec
     from core.llm.providers.registry import get_registry
+    from core.llm.router.router import get_provider_spec
 
     resolved_model = get_registry().resolve_model_for_component(component)
     if not resolved_model:
@@ -88,7 +86,7 @@ def _resolve_provider(component: str) -> Tuple[Any, str, Any]:
     if provider.provider_type == "anthropic":
         from core.llm.harness.claude import ClaudeService
 
-        claude_service = ClaudeService(use_backend_tools=True, use_mcp_tools=False)
+        claude_service = ClaudeService()
         if not claude_service.has_api_key():
             raise NoProviderConfigured(
                 f"Anthropic provider '{provider_id}' has no resolvable API key"
@@ -128,13 +126,10 @@ async def _dispatch(
         "model": model_id,
         "max_tokens": LOCAL_MAX_TOKENS,
     }
-    from core.llm.router.router import LLMRouter
     from core.llm.providers.recovery import (
-        is_gateway_connection_error,
-        local_bifrost_recovery_enabled,
-        local_bifrost_recovery_retry_limit,
-        recover_local_bifrost,
-    )
+        is_gateway_connection_error, local_bifrost_recovery_enabled,
+        local_bifrost_recovery_retry_limit, recover_local_bifrost)
+    from core.llm.router.router import LLMRouter
 
     retry_limit = local_bifrost_recovery_retry_limit()
     for attempt in range(retry_limit + 1):
