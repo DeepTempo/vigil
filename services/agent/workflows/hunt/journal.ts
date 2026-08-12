@@ -3,6 +3,7 @@ import type { State } from "../../core/seams.js";
 import { fold, type HuntEvent, type HuntKinds, type Projection } from "./ledger.js";
 
 export type { HuntEvent, HuntKinds, Projection } from "./ledger.js";
+import type { DirectiveQueue } from "./ports.js";
 import type { HuntState } from "./types.js";
 
 // run_id and run_kind come from the journal, not from each call site: a caller
@@ -11,6 +12,8 @@ export type Body = Omit<NewEvent<HuntKinds>, "run_id" | "run_kind">;
 
 // The controller's ledger, backed by the State seam. append stays synchronous so
 // the decision logic reads unchanged; flush is what makes an iteration durable.
+// It carries the directive queue as well: the two stores are both scoped to this
+// run, and holding them together is what lets a drain keep its signature.
 export class Journal {
   private events: HuntEvent[] = [];
   private pending: Body[] = [];
@@ -19,19 +22,31 @@ export class Journal {
 
   private constructor(
     private readonly state: State<HuntKinds>,
+    readonly queue: DirectiveQueue,
     readonly runId: string,
     private readonly runKind: RunKind,
   ) {}
 
-  static async open(state: State<HuntKinds>, runId: string, runKind: RunKind = "hunt"): Promise<Journal> {
-    const journal = new Journal(state, runId, runKind);
+  static async open(
+    state: State<HuntKinds>,
+    queue: DirectiveQueue,
+    runId: string,
+    runKind: RunKind = "hunt",
+  ): Promise<Journal> {
+    const journal = new Journal(state, queue, runId, runKind);
     journal.events = await state.read(runId);
     journal.written = journal.events.length;
     return journal;
   }
 
-  static async create(state: State<HuntKinds>, runId: string, hunt: HuntState, runKind: RunKind = "hunt"): Promise<Journal> {
-    const journal = new Journal(state, runId, runKind);
+  static async create(
+    state: State<HuntKinds>,
+    queue: DirectiveQueue,
+    runId: string,
+    hunt: HuntState,
+    runKind: RunKind = "hunt",
+  ): Promise<Journal> {
+    const journal = new Journal(state, queue, runId, runKind);
     journal.append({ kind: "run", payload: { hunt } } as unknown as Body);
     await journal.flush();
     return journal;

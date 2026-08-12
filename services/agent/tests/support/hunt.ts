@@ -12,6 +12,7 @@ import {
   type Verdicts,
 } from "../../workflows/hunt/config.js";
 import { HuntController, startHunt } from "../../workflows/hunt/controller.js";
+import { InProcessDirectiveQueue } from "../../workflows/hunt/directives.js";
 import { Journal, type HuntEvent, type HuntKinds } from "../../workflows/hunt/journal.js";
 import { newId } from "../../workflows/hunt/ids.js";
 import type { Enricher, WorkerDispatcher } from "../../workflows/hunt/ports.js";
@@ -78,22 +79,25 @@ export function huntSpecFor(overrides: SpecOverrides = {}): HuntSpec {
 export interface Started {
   ledger: Journal;
   state: InProcessState<HuntKinds>;
+  queue: InProcessDirectiveQueue;
   runId: string;
   hypothesisIds: string[];
 }
 
 export async function newLedger(overrides: SpecOverrides = {}): Promise<Started> {
   const state = new InProcessState<HuntKinds>();
+  const queue = new InProcessDirectiveQueue();
   const runId = newId("run");
-  const ledger = await startHunt(state, runId, huntSpecFor(overrides));
-  return { ledger, state, runId, hypothesisIds: [...ledger.projection.hypotheses.keys()] };
+  const ledger = await startHunt(state, queue, runId, huntSpecFor(overrides));
+  return { ledger, state, queue, runId, hypothesisIds: [...ledger.projection.hypotheses.keys()] };
 }
 
 // What an operator answering a checkpoint hours later does: nothing of the
-// writing process carries over, the ledger is the whole state.
+// writing process carries over, the ledger is the whole state — and the queue is
+// re-read, so a directive queued while nobody held the ledger is still waiting.
 export async function reopen(started: Started, from?: Journal): Promise<Journal> {
   await (from ?? started.ledger).flush();
-  return Journal.open(started.state, started.runId);
+  return Journal.open(started.state, started.queue, started.runId);
 }
 
 export interface ControllerOptions {

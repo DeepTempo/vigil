@@ -117,17 +117,22 @@ export interface Entity {
 
 // Human input, and the one thing in the ledger that is direction rather than
 // data. Applied by the controller at an iteration boundary, never written as state.
-export type DirectiveKind =
-  | "note"
-  | "lead"
-  | "abort"
-  | "extend"
-  | "conclude"
-  | "approve"
-  | "reject"
-  | "benign"
-  | "gap"
-  | "boost";
+// An array rather than a bare union because another process queues these now, so
+// the vocabulary has to be checkable at runtime and not only by the compiler.
+export const DIRECTIVE_KINDS = [
+  "note",
+  "lead",
+  "abort",
+  "extend",
+  "conclude",
+  "approve",
+  "reject",
+  "benign",
+  "gap",
+  "boost",
+] as const;
+
+export type DirectiveKind = (typeof DIRECTIVE_KINDS)[number];
 
 // What an extend buys. Parsed from the operator's text when the directive is
 // queued, so the ledger records the ask as numbers rather than prose the drain

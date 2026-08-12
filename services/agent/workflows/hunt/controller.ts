@@ -18,7 +18,13 @@ import { buildDigest, focusOf, rankFrontier, suppressedEntities } from "./digest
 import { buildEntityGraph, entitiesOf, fromText, key } from "./entities.js";
 import { drain, grantOf, journalNote, peek } from "./inbox.js";
 import { Journal, type Projection } from "./journal.js";
-import type { DecisionProvider, DisconfirmationCritic, Enricher, WorkerDispatcher } from "./ports.js";
+import type {
+  DecisionProvider,
+  DirectiveQueue,
+  DisconfirmationCritic,
+  Enricher,
+  WorkerDispatcher,
+} from "./ports.js";
 import { buildReport, caseFilePath, renderCaseFile, renderReport, reportPath } from "./report.js";
 import { sanitize, sanitizeQuestion } from "./sanitize.js";
 import {
@@ -276,11 +282,16 @@ function withRejection(digest: Digest, reason: string): Digest {
   };
 }
 
-export async function startHunt(state: State<HuntKinds>, runId: string, spec: HuntSpec): Promise<Journal> {
+export async function startHunt(
+  state: State<HuntKinds>,
+  queue: DirectiveQueue,
+  runId: string,
+  spec: HuntSpec,
+): Promise<Journal> {
   const now = new Date().toISOString();
   const huntId = newId("hunt");
   const policy = (spec.checkpoints ?? DEFAULT_CHECKPOINTS).hypothesis_approval;
-  const ledger = await Journal.create(state, runId, {
+  const ledger = await Journal.create(state, queue, runId, {
     hunt_id: huntId,
     name: spec.name,
     spec,
@@ -359,8 +370,12 @@ export async function startHunt(state: State<HuntKinds>, runId: string, spec: Hu
 
 // The ledger is the resume point: the spec came with it, so nothing is re-read
 // from disk and a mid-run edit to an arch file cannot change a hunt in flight.
-export async function resumeHunt(state: State<HuntKinds>, runId: string): Promise<{ ledger: Journal; spec: HuntSpec }> {
-  const ledger = await Journal.open(state, runId);
+export async function resumeHunt(
+  state: State<HuntKinds>,
+  queue: DirectiveQueue,
+  runId: string,
+): Promise<{ ledger: Journal; spec: HuntSpec }> {
+  const ledger = await Journal.open(state, queue, runId);
   const { hunt } = ledger.projection;
   if (hunt.status === "terminal") throw new HuntAlreadyTerminal(`${hunt.hunt_id} already ended as ${hunt.outcome}`);
   return { ledger, spec: hunt.spec };
@@ -429,7 +444,7 @@ export class HuntController {
 
     // Human input is integrated at the boundary, before anything is decided on
     // it — and it is how a parked hunt is resolved, so it is drained first.
-    if (this.applyDirectives()) return this.halted();
+    if (await this.applyDirectives()) return this.halted();
 
     const suspended = this.ledger.projection.hunt;
     if (suspended.status === "parked" || suspended.status === "pending_approval") {
@@ -586,13 +601,13 @@ export class HuntController {
 
   // Returns true when the hunt ended here. A lead becomes a real lead; a note
   // only reaches the digest, so it steers without mutating anything; extend and
-  private applyDirectives(): boolean {
+  private async applyDirectives(): Promise<boolean> {
     let abort = false;
     let conclude = false;
 
     // Everything pending is journaled by the drain before any of it is applied,
     // so an operator's input is on the record even when an earlier directive in
-    for (const directive of drain(this.ledger)) {
+    for (const directive of await drain(this.ledger)) {
       if (this.ledger.projection.hunt.status === "terminal") break;
       switch (directive.kind) {
         case "abort":
@@ -1270,8 +1285,20 @@ export class HuntController {
     // One signal for the iteration, cancelled the moment an abort appears in the
     // inbox: a worker that has not started is skipped, and one already running is
     const halt = new AbortController();
+    // The check is a query now, so a slow one must not stack ticks behind it: at
+    // most one is in flight, and a tick that arrives while it is still running is
+    // dropped rather than queued.
+    let checking = false;
     const poll = setInterval(() => {
-      if (this.abortQueued()) halt.abort(new Error(CANCELLED_ON_ABORT));
+      if (checking) return;
+      checking = true;
+      void this.abortQueued()
+        .then((queued) => {
+          if (queued) halt.abort(new Error(CANCELLED_ON_ABORT));
+        })
+        .finally(() => {
+          checking = false;
+        });
     }, ABORT_POLL_MS);
     // The timer must not be what keeps the process alive once the work is done.
     poll.unref?.();
@@ -1281,7 +1308,7 @@ export class HuntController {
     const started: Promise<DispatchResult>[] = [];
     try {
       for (const request of requests) {
-        if (halt.signal.aborted || this.abortQueued()) {
+        if (halt.signal.aborted || (await this.abortQueued())) {
           started.push(
             Promise.resolve({
               dispatch_id: request.dispatch_id,
@@ -1323,8 +1350,8 @@ export class HuntController {
 
   // Only what an operator queued and the drain has not taken yet: a halt already
   // on the ledger has ended the hunt, and a controller note is not an abort.
-  private abortQueued(): boolean {
-    return peek(this.ledger).some((directive) => directive.kind === "abort");
+  private async abortQueued(): Promise<boolean> {
+    return (await peek(this.ledger)).some((directive) => directive.kind === "abort");
   }
 
   // The only call that can lead to proven. Runs before anything is written, so

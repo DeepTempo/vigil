@@ -1,0 +1,122 @@
+# Queue an operator's directive for a running agent. This is the one write Python
+# makes into agent-layer state, and it lands in agent_directives rather than
+# agent_events: enqueuing is open to any process, journaling is not. The run
+# holding the ledger is what turns a queued directive into a ledger event.
+
+from __future__ import annotations
+
+import json
+import logging
+import secrets
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
+
+# The vocabulary the TypeScript DIRECTIVE_KINDS declares. Duplicated across the
+# language boundary for the same reason RUN_KINDS is, and checked here so a typo
+# is a 4xx at the console rather than a directive the drain has to refuse.
+DIRECTIVE_KINDS = (
+    "note",
+    "lead",
+    "abort",
+    "extend",
+    "conclude",
+    "approve",
+    "reject",
+    "benign",
+    "gap",
+    "boost",
+)
+
+# What a directive may carry beyond its text. Anything outside this set is the
+# caller's mistake rather than something to persist and puzzle over later.
+DIRECTIVE_FIELDS = (
+    "checkpoint_id",
+    "entity_key",
+    "question_id",
+    "hypothesis_id",
+    "tenant",
+    "revoke",
+)
+
+
+class InvalidDirective(ValueError):
+    """The directive is malformed, so it is refused before it reaches the queue."""
+
+
+def new_directive_id() -> str:
+    return f"dir-{secrets.token_hex(4)}"
+
+
+def build_directive(
+    kind: str,
+    body: str,
+    actor: str,
+    fields: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if kind not in DIRECTIVE_KINDS:
+        raise InvalidDirective(f"unknown directive kind {kind}")
+    if not actor:
+        # Attribution is the point of the record: a directive nobody owns makes
+        # the ledger unable to say who steered the run.
+        raise InvalidDirective("a directive needs an actor")
+
+    extra = fields or {}
+    unknown = sorted(set(extra) - set(DIRECTIVE_FIELDS))
+    if unknown:
+        raise InvalidDirective(f"unknown directive fields: {', '.join(unknown)}")
+
+    return {
+        "directive_id": new_directive_id(),
+        "actor": actor,
+        "kind": kind,
+        "text": body,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "origin": "inbox",
+        **{name: value for name, value in extra.items() if value is not None},
+    }
+
+
+# Idempotent on directive_id, so a retried request is not a second directive. The
+# columns are the envelope every workflow shares; the payload carries the whole
+# directive, including the fields only the workflow reads.
+def enqueue_directive(
+    session: Session,
+    run_id: str,
+    kind: str,
+    body: str,
+    actor: str,
+    fields: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    try:
+        uuid.UUID(run_id)
+    except ValueError:
+        raise InvalidDirective(f"not a run id: {run_id}") from None
+
+    directive = build_directive(kind, body, actor, fields)
+    session.execute(
+        text(
+            "INSERT INTO agent_directives "
+            "(run_id, directive_id, kind, actor, created_at, payload) "
+            "VALUES (CAST(:run_id AS uuid), :directive_id, :kind, :actor, "
+            "CAST(:created_at AS timestamptz), CAST(:payload AS jsonb)) "
+            "ON CONFLICT (directive_id) DO NOTHING"
+        ),
+        {
+            "run_id": run_id,
+            "directive_id": directive["directive_id"],
+            "kind": directive["kind"],
+            "actor": directive["actor"],
+            "created_at": directive["created_at"],
+            "payload": json.dumps(directive),
+        },
+    )
+    logger.info(
+        "queued %s directive %s for run %s", kind, directive["directive_id"], run_id
+    )
+    return directive

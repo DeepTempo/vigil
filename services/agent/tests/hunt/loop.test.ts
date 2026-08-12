@@ -23,19 +23,19 @@ import { CONCLUDE, controllerFor, INVESTIGATE, newLedger, question } from "../su
 
 describe("ledger", () => {
   it("appends without rewriting, and reads back the same projection", async () => {
-    const { ledger, state, runId } = await newLedger();
-    const before = (await Journal.open(state, runId)).log.map((event) => [event.seq, event.kind]);
+    const { ledger, state, queue, runId } = await newLedger();
+    const before = (await Journal.open(state, queue, runId)).log.map((event) => [event.seq, event.kind]);
     question(ledger, "which host?");
     await ledger.flush();
 
     // Append-only: the prefix the earlier events occupied is untouched, and the
     // new event is appended past it rather than rewriting anything.
-    const after = (await Journal.open(state, runId)).log.map((event) => [event.seq, event.kind]);
+    const after = (await Journal.open(state, queue, runId)).log.map((event) => [event.seq, event.kind]);
     expect(after.slice(0, before.length)).toEqual(before);
     expect(after.length).toBe(before.length + 1);
 
     expect(ledger.projection.questions.size).toBe(1);
-    expect((await Journal.open(state, runId)).projection).toEqual(ledger.projection);
+    expect((await Journal.open(state, queue, runId)).projection).toEqual(ledger.projection);
   });
 
   it("applies patches to the projection", async () => {
@@ -61,8 +61,8 @@ describe("controller", () => {
   });
 
   it("coerces unresolved hypotheses to inconclusive, never disproven", async () => {
-    const { ledger, runId } = await newLedger({ hypotheses: ["h one", "h two"] });
-    steer(runId, "abort", "operator halted the hunt");
+    const { ledger, queue, runId } = await newLedger({ hypotheses: ["h one", "h two"] });
+    await steer(queue, runId, "abort", "operator halted the hunt");
     await controllerFor(ledger, [CONCLUDE]).advanceIteration();
 
     const statuses = [...ledger.projection.hypotheses.values()].map((h) => h.status);

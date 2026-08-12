@@ -220,7 +220,8 @@ jobs:
       - name: Apply agent-layer schema
         run: |
           PGPASSWORD=test psql -h localhost -p 5432 -U test -d agent_test \
-            -f infra/database/init/19_agent_ledger.sql
+            -f infra/database/init/19_agent_ledger.sql \
+            -f infra/database/init/20_agent_directives.sql
 
       - name: Typecheck
         working-directory: services/agent

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { hostname, userInfo } from "node:os";
+import { hostname } from "node:os";
+import { actorName } from "./actor.js";
 
 export const DEFAULT_LEASE_TTL_MS = 600_000;
 
@@ -12,10 +13,6 @@ interface LeaseFile {
   pid: number;
   acquired_at: string;
   expires_at: string;
-}
-
-export function actorName(): string {
-  return process.env["VIGIL_ACTOR"] || userInfo().username;
 }
 
 function leasePath(ledgerPath: string): string {

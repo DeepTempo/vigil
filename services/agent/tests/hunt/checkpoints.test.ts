@@ -10,7 +10,7 @@ import { HuntController, HuntParked, validateDecision } from "../../workflows/hu
 import { buildDigest, scoredFrontier, suppressedEntities } from "../../workflows/hunt/digest.js";
 import { steer } from "../../workflows/hunt/inbox.js";
 import type { Journal } from "../../workflows/hunt/journal.js";
-import type { Enricher, WorkerDispatcher } from "../../workflows/hunt/ports.js";
+import type { DirectiveQueue, Enricher, WorkerDispatcher } from "../../workflows/hunt/ports.js";
 import { renderReport } from "../../workflows/hunt/report.js";
 import {
   ScriptedDecisionProvider,
@@ -119,7 +119,7 @@ describe("verdict review", () => {
       "evidence_strength"
     ] as Record<string, unknown>;
 
-    steer(started.runId, "approve", "reviewed the payloads, this holds", { checkpoint_id: checkpointId });
+    await steer(started.queue, started.runId, "approve", "reviewed the payloads, this holds", { checkpoint_id: checkpointId });
     const resumed = await reopen(started);
     await controllerFor(resumed, [INVESTIGATE]).advanceIteration();
 
@@ -139,7 +139,7 @@ describe("verdict review", () => {
     evidenceOn(started.ledger, hypothesisId, { source: "okta" });
     expect(evidenceStrength(started.ledger.projection, hypothesisId).survived_disconfirmation).toBe(false);
 
-    steer(started.runId, "approve", "reviewed the payloads, this holds", { checkpoint_id: checkpointId });
+    await steer(started.queue, started.runId, "approve", "reviewed the payloads, this holds", { checkpoint_id: checkpointId });
     const resumed = await reopen(started);
     await controllerFor(resumed, [INVESTIGATE]).advanceIteration();
 
@@ -153,9 +153,9 @@ describe("verdict review", () => {
     // A reviewer says the hunt is blind somewhere and approves in the same breath.
     // The gap they just declared must not be the one thing the approval ignores.
     for (const blind of ["no EDR on that subnet", "no CloudTrail before August", "netflow sampled at 1:100"]) {
-      steer(started.runId, "gap", blind, { hypothesis_id: hypothesisId });
+      await steer(started.queue, started.runId, "gap", blind, { hypothesis_id: hypothesisId });
     }
-    steer(started.runId, "approve", "looks right to me", { checkpoint_id: checkpointId });
+    await steer(started.queue, started.runId, "approve", "looks right to me", { checkpoint_id: checkpointId });
 
     const resumed = await reopen(started);
     await controllerFor(resumed, [INVESTIGATE]).advanceIteration();
@@ -170,7 +170,7 @@ describe("verdict review", () => {
 
   it("leaves the hypothesis active on a rejection, with the reason in the next digest", async () => {
     const { started, hypothesisId, checkpointId } = await parkedOnVerdict();
-    steer(started.runId, "reject", "the second source is the same collector under another name", {
+    await steer(started.queue, started.runId, "reject", "the second source is the same collector under another name", {
       checkpoint_id: checkpointId,
     });
 
@@ -184,8 +184,8 @@ describe("verdict review", () => {
 
   it("answers a checkpoint by id, so a stale or duplicate answer changes nothing", async () => {
     const { started, hypothesisId, checkpointId } = await parkedOnVerdict();
-    steer(started.runId, "reject", "not yet", { checkpoint_id: checkpointId });
-    steer(started.runId, "approve", "changed my mind", { checkpoint_id: checkpointId });
+    await steer(started.queue, started.runId, "reject", "not yet", { checkpoint_id: checkpointId });
+    await steer(started.queue, started.runId, "approve", "changed my mind", { checkpoint_id: checkpointId });
 
     await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
@@ -207,7 +207,7 @@ describe("verdict review", () => {
     expect(started.ledger.projection.hunt.outcome).toBeNull();
 
     const checkpointId = pendingCheckpoints(started.ledger.projection)[0]!.checkpoint_id;
-    steer(started.runId, "approve", "agreed, we are done", { checkpoint_id: checkpointId });
+    await steer(started.queue, started.runId, "approve", "agreed, we are done", { checkpoint_id: checkpointId });
     const result = await controllerFor(started.ledger, []).advanceIteration();
 
     expect(result.hunt_outcome).toBe("completed");
@@ -225,7 +225,7 @@ describe("verdict review", () => {
     await controllerFor(started.ledger, [CONCLUDE]).advanceIteration();
 
     const checkpointId = pendingCheckpoints(started.ledger.projection)[0]!.checkpoint_id;
-    steer(started.runId, "reject", "check the second host first", { checkpoint_id: checkpointId });
+    await steer(started.queue, started.runId, "reject", "check the second host first", { checkpoint_id: checkpointId });
     const result = await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
     expect(result.hunt_status).toBe("active");
@@ -243,7 +243,7 @@ describe("the start approval", () => {
     await expect(controllerFor(started.ledger, [INVESTIGATE]).advanceIteration()).rejects.toThrow(HuntParked);
 
     const checkpointId = pendingCheckpoints(started.ledger.projection)[0]!.checkpoint_id;
-    steer(started.runId, "approve", "reviewed the hypotheses", { checkpoint_id: checkpointId });
+    await steer(started.queue, started.runId, "approve", "reviewed the hypotheses", { checkpoint_id: checkpointId });
     const result = await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
     expect(result.hunt_status).toBe("active");
@@ -253,7 +253,7 @@ describe("the start approval", () => {
   it("aborts a rejected start through terminate(), so it still finalizes", async () => {
     const started = await newLedger({ checkpoints: { hypothesis_approval: "ask" } });
     const checkpointId = pendingCheckpoints(started.ledger.projection)[0]!.checkpoint_id;
-    steer(started.runId, "reject", "wrong scope, start again", { checkpoint_id: checkpointId });
+    await steer(started.queue, started.runId, "reject", "wrong scope, start again", { checkpoint_id: checkpointId });
 
     const result = await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
@@ -280,7 +280,7 @@ describe("the soft directive set", () => {
   it("binds the Hunt Lead rather than only the digest", async () => {
     const started = await newLedger();
     evidenceOn(started.ledger, started.hypothesisIds[0]!, { source: "duckdb", entities: [SEED_IP] });
-    steer(started.runId, "benign", "our own scanner", { entity_key: SEED_KEY });
+    await steer(started.queue, started.runId, "benign", "our own scanner", { entity_key: SEED_KEY });
     await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
     // Dropping it from pivot candidates only makes the lead less likely to name
@@ -318,7 +318,7 @@ describe("the soft directive set", () => {
     });
     const before = started.ledger.projection.evidence.get(evidenceId)!;
 
-    steer(started.runId, "benign", "our own scanner", { entity_key: SEED_KEY });
+    await steer(started.queue, started.runId, "benign", "our own scanner", { entity_key: SEED_KEY });
     await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
     expect([...suppressedEntities(started.ledger.projection).keys()]).toEqual([SEED_KEY]);
@@ -330,7 +330,7 @@ describe("the soft directive set", () => {
     expect(digest.entities.find((entity) => entity.value === SEED_IP.value)!.suppressed).toBe(true);
     expect(digest.notes.join(" ")).toMatch(/known-benign/);
 
-    steer(started.runId, "benign", "put it back in play", { entity_key: SEED_KEY, revoke: true });
+    await steer(started.queue, started.runId, "benign", "put it back in play", { entity_key: SEED_KEY, revoke: true });
     await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
     expect(suppressedEntities(started.ledger.projection).size).toBe(0);
@@ -347,7 +347,7 @@ describe("the soft directive set", () => {
       return [];
     };
 
-    steer(started.runId, "benign", "our own scanner", { entity_key: SEED_KEY });
+    await steer(started.queue, started.runId, "benign", "our own scanner", { entity_key: SEED_KEY });
     await controllerFor(started.ledger, [INVESTIGATE], {
       enricher,
       dispatcher: new ScriptedWorkerDispatcher([
@@ -378,7 +378,7 @@ describe("the soft directive set", () => {
     const citations = provable(started.ledger, hypothesisId);
 
     for (const text of ["no EDR on the 10.30.0.0/16 subnet", "no DNS logging before 03:00", "no proxy logs at all"]) {
-      steer(started.runId, "gap", text, { hypothesis_id: hypothesisId });
+      await steer(started.queue, started.runId, "gap", text, { hypothesis_id: hypothesisId });
     }
     await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
@@ -403,7 +403,7 @@ describe("the soft directive set", () => {
 
     expect(scoredFrontier(started.ledger.projection, 1)[0]!.question.question_id).not.toBe(buried);
 
-    steer(started.runId, "boost", "look at this one next", { question_id: buried });
+    await steer(started.queue, started.runId, "boost", "look at this one next", { question_id: buried });
     await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
     const [top] = scoredFrontier(started.ledger.projection, 2);
@@ -416,7 +416,7 @@ describe("the soft directive set", () => {
 
   it("records a premise correction as the note it already is", async () => {
     const started = await newLedger();
-    steer(started.runId, "note", "the 03:00 spike is our backup window, not exfil");
+    await steer(started.queue, started.runId, "note", "the 03:00 spike is our backup window, not exfil");
 
     const provider = new ScriptedDecisionProvider([INVESTIGATE]);
     await controllerFor(started.ledger, [], { provider }).advanceIteration();
@@ -430,11 +430,14 @@ describe("a hard abort preempts the work in flight", () => {
   // operator hitting abort mid-iteration actually looks like.
   class AbortingDispatcher implements WorkerDispatcher {
     readonly seen: string[] = [];
-    constructor(private readonly runId: string) {}
+    constructor(
+      private readonly queue: DirectiveQueue,
+      private readonly runId: string,
+    ) {}
 
     async dispatch(request: DispatchRequest): Promise<DispatchResult> {
       this.seen.push(request.focus);
-      if (this.seen.length === 1) steer(this.runId, "abort", "operator halted the hunt");
+      if (this.seen.length === 1) await steer(this.queue, this.runId, "abort", "operator halted the hunt");
       return { dispatch_id: request.dispatch_id, evidence: [], failed: false, failure_reason: "", cost_usd: 0 };
     }
   }
@@ -443,7 +446,7 @@ describe("a hard abort preempts the work in flight", () => {
     const started = await newLedger();
     for (const text of ["check 10.0.0.1", "check 10.0.0.2", "check 10.0.0.3"]) question(started.ledger, text);
 
-    const dispatcher = new AbortingDispatcher(started.runId);
+    const dispatcher = new AbortingDispatcher(started.queue, started.runId);
     await controllerFor(started.ledger, [INVESTIGATE, INVESTIGATE], { dispatcher }).advanceIteration();
 
     // One worker ran; the other two never did, and the ledger says so rather
@@ -466,7 +469,7 @@ describe("a hard abort preempts the work in flight", () => {
 describe("scope", () => {
   it("refuses a cross-tenant lead outright rather than raising a checkpoint", async () => {
     const started = await newLedger({ checkpoints: { scope_extension: "ask" }, scope: { tenant: "frothly" } });
-    steer(started.runId, "lead", "check tenant:acme for the same key");
+    await steer(started.queue, started.runId, "lead", "check tenant:acme for the same key");
 
     const result = await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
@@ -483,7 +486,7 @@ describe("scope", () => {
       checkpoints: { scope_extension: "ask" },
       scope: { tenant: "frothly", entities: ["ip:10.0.0.5"] },
     });
-    steer(started.runId, "lead", `pull on ${SEED_IP.value} as well`);
+    await steer(started.queue, started.runId, "lead", `pull on ${SEED_IP.value} as well`);
 
     await expect(controllerFor(started.ledger, [INVESTIGATE]).advanceIteration()).rejects.toThrow(HuntParked);
     const checkpoint = pendingCheckpoints(started.ledger.projection)[0]!;
@@ -491,7 +494,7 @@ describe("scope", () => {
     expect(checkpoint.question).toMatch(new RegExp(SEED_KEY.replace(/\./g, "\\.")));
     expect([...started.ledger.projection.questions.values()]).toHaveLength(0);
 
-    steer(started.runId, "approve", "yes, it is ours", { checkpoint_id: checkpoint.checkpoint_id });
+    await steer(started.queue, started.runId, "approve", "yes, it is ours", { checkpoint_id: checkpoint.checkpoint_id });
     const result = await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
     expect(result.hunt_status).toBe("active");
@@ -503,7 +506,7 @@ describe("scope", () => {
 
   it("leaves a hunt that declared no scope free of scope checkpoints", async () => {
     const started = await newLedger({ checkpoints: { scope_extension: "ask" } });
-    steer(started.runId, "lead", `check ${SEED_IP.value}`);
+    await steer(started.queue, started.runId, "lead", `check ${SEED_IP.value}`);
 
     const result = await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
@@ -521,7 +524,7 @@ describe("scope", () => {
       checkpoints: { scope_extension: "ask" },
       scope: { entity: { type: "ip", value: "10.0.0.5" } },
     });
-    steer(started.runId, "lead", `check what else ${SEED_IP.value} talked to`);
+    await steer(started.queue, started.runId, "lead", `check what else ${SEED_IP.value} talked to`);
 
     const result = await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
 
@@ -613,7 +616,7 @@ describe("the CHECKPOINT verb", () => {
     expect(checkpoint.question).toMatch(/contradicts the premise/);
     expect(checkpoint.context!["raised_by"]).toBe("hunt_lead");
 
-    steer(started.runId, "approve", "noted, keep going", { checkpoint_id: checkpoint.checkpoint_id });
+    await steer(started.queue, started.runId, "approve", "noted, keep going", { checkpoint_id: checkpoint.checkpoint_id });
     const resumed = await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
     expect(resumed.hunt_status).toBe("active");
   });
@@ -640,7 +643,7 @@ describe("the CHECKPOINT verb", () => {
 describe("the report carries the supervision", () => {
   it("names every checkpoint, who answered it, and what is still suppressed", async () => {
     const started = await newLedger({ checkpoints: { verdict_review: "auto" } });
-    steer(started.runId, "benign", "our own scanner", { entity_key: SEED_KEY });
+    await steer(started.queue, started.runId, "benign", "our own scanner", { entity_key: SEED_KEY });
     started.ledger.patch("hypothesis", started.hypothesisIds[0]!, {
       status: "parked",
       resolution_reason: "dropped",
@@ -672,7 +675,7 @@ describe("a supervised hunt end to end", () => {
     const citations = provable(started.ledger, hypothesisId);
 
     const start = pendingCheckpoints(started.ledger.projection)[0]!;
-    steer(started.runId, "approve", "hypotheses look right", { checkpoint_id: start.checkpoint_id });
+    await steer(started.queue, started.runId, "approve", "hypotheses look right", { checkpoint_id: start.checkpoint_id });
 
     const decisions: ScriptedDecision[] = [
       validate(hypothesisId, citations),
@@ -694,14 +697,14 @@ describe("a supervised hunt end to end", () => {
     current = await reopen(started, current);
     const review = pendingCheckpoints(current.projection)[0]!;
     expect(review.checkpoint_class).toBe("verdict_review");
-    steer(started.runId, "approve", "checked the payloads", { checkpoint_id: review.checkpoint_id });
+    await steer(started.queue, started.runId, "approve", "checked the payloads", { checkpoint_id: review.checkpoint_id });
 
     expect((await leg(decisions.slice(1))).result.note).toMatch(/handed off to incident response/);
     expect((await leg(decisions.slice(2))).result.hunt_status).toBe("parked");
 
     current = await reopen(started, current);
     const final = pendingCheckpoints(current.projection)[0]!;
-    steer(started.runId, "approve", "ship it", { checkpoint_id: final.checkpoint_id });
+    await steer(started.queue, started.runId, "approve", "ship it", { checkpoint_id: final.checkpoint_id });
 
     expect((await leg([])).result.hunt_outcome).toBe("completed");
     const replayed = (await reopen(started, current)).projection;

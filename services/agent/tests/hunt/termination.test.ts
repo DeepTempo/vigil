@@ -9,6 +9,7 @@ import {
 } from "../../workflows/hunt/config.js";
 import { HuntParked } from "../../workflows/hunt/controller.js";
 import { steer } from "../../workflows/hunt/inbox.js";
+import type { DirectiveQueue } from "../../workflows/hunt/ports.js";
 import { ScriptedDecisionProvider } from "../../workflows/hunt/scripted.js";
 import type { Journal } from "../../workflows/hunt/journal.js";
 import { buildReport, renderReport } from "../../workflows/hunt/report.js";
@@ -192,8 +193,8 @@ describe("the budget checkpoint", () => {
   });
 
   it("un-parks on an extend that grants headroom", async () => {
-    const { ledger, runId } = await parkedHunt();
-    steer(runId, "extend", "+3 iterations");
+    const { ledger, queue, runId } = await parkedHunt();
+    await steer(queue, runId, "extend", "+3 iterations");
 
     const result = await controllerFor(ledger, [INVESTIGATE]).advanceIteration();
 
@@ -203,8 +204,8 @@ describe("the budget checkpoint", () => {
   });
 
   it("clamps an extend to the hard ceiling and says that it clamped", async () => {
-    const { ledger, runId } = await parkedHunt({ termination: { hard_max_calls: 3, hard_max_cost_usd: 12 } });
-    steer(runId, "extend", "+50 iterations and $500");
+    const { ledger, queue, runId } = await parkedHunt({ termination: { hard_max_calls: 3, hard_max_cost_usd: 12 } });
+    await steer(queue, runId, "extend", "+50 iterations and $500");
 
     await controllerFor(ledger, [INVESTIGATE]).advanceIteration();
 
@@ -216,16 +217,16 @@ describe("the budget checkpoint", () => {
   });
 
   it("stays parked when the clamp leaves no room to run", async () => {
-    const { ledger, runId } = await parkedHunt({ termination: { hard_max_calls: 1, hard_max_cost_usd: 10 } });
-    steer(runId, "extend", "+5 iterations");
+    const { ledger, queue, runId } = await parkedHunt({ termination: { hard_max_calls: 1, hard_max_cost_usd: 10 } });
+    await steer(queue, runId, "extend", "+5 iterations");
 
     await expect(controllerFor(ledger, [INVESTIGATE]).advanceIteration()).rejects.toThrow(HuntParked);
     expect(ledger.projection.directives.map((directive) => directive.text).join(" ")).toMatch(/stays parked/);
   });
 
   it("keeps the hunt parked when the grant cannot be read", async () => {
-    const { ledger, runId } = await parkedHunt();
-    steer(runId, "extend", "give it a bit more room");
+    const { ledger, queue, runId } = await parkedHunt();
+    await steer(queue, runId, "extend", "give it a bit more room");
 
     await expect(controllerFor(ledger, [INVESTIGATE]).advanceIteration()).rejects.toThrow(HuntParked);
     expect(ledger.projection.hunt.budgets.max_calls).toBe(1);
@@ -233,8 +234,8 @@ describe("the budget checkpoint", () => {
   });
 
   it("ends budget_terminated when the operator accepts the stop", async () => {
-    const { ledger, runId, hypothesisIds } = await parkedHunt();
-    steer(runId, "conclude", "we are done spending on this");
+    const { ledger, queue, runId, hypothesisIds } = await parkedHunt();
+    await steer(queue, runId, "conclude", "we are done spending on this");
 
     // Not completed: the predicate never passed, the money ran out.
     expect((await controllerFor(ledger, []).advanceIteration()).hunt_outcome).toBe("budget_terminated");
@@ -242,8 +243,8 @@ describe("the budget checkpoint", () => {
   });
 
   it("aborts from parked, not just from active", async () => {
-    const { ledger, runId } = await parkedHunt();
-    steer(runId, "abort", "operator halted the hunt");
+    const { ledger, queue, runId } = await parkedHunt();
+    await steer(queue, runId, "abort", "operator halted the hunt");
 
     expect((await controllerFor(ledger, []).advanceIteration()).hunt_outcome).toBe("aborted");
   });
@@ -310,7 +311,7 @@ describe("outcome precedence and coercion", () => {
 });
 
 describe("Finalize runs on every terminal path", () => {
-  const DRIVERS: [string, (ledger: Journal, ids: string[], runId: string) => Promise<void>][] = [
+  const DRIVERS: [string, (ledger: Journal, ids: string[], runId: string, queue: DirectiveQueue) => Promise<void>][] = [
     [
       "completed",
       async (ledger, ids) => {
@@ -327,15 +328,15 @@ describe("Finalize runs on every terminal path", () => {
     ],
     [
       "budget_terminated",
-      async (ledger, _ids, runId) => {
-        steer(runId, "conclude", "accepted");
+      async (ledger, _ids, runId, queue) => {
+        await steer(queue, runId, "conclude", "accepted");
         await controllerFor(ledger, []).advanceIteration();
       },
     ],
     [
       "aborted",
-      async (ledger, _ids, runId) => {
-        steer(runId, "abort", "halted");
+      async (ledger, _ids, runId, queue) => {
+        await steer(queue, runId, "abort", "halted");
         await controllerFor(ledger, []).advanceIteration();
       },
     ],
@@ -346,7 +347,7 @@ describe("Finalize runs on every terminal path", () => {
     if (outcome === "budget_terminated") {
       await controllerFor(started.ledger, [INVESTIGATE]).advanceIteration();
     }
-    await drive(started.ledger, started.hypothesisIds, started.runId);
+    await drive(started.ledger, started.hypothesisIds, started.runId, started.queue);
 
     expect(started.ledger.projection.hunt.outcome).toBe(outcome);
 
@@ -365,14 +366,14 @@ describe("Finalize runs on every terminal path", () => {
   });
 
   it("rebuilds the same report from the ledger alone", async () => {
-    const { ledger, state, runId, hypothesisIds } = await newLedger();
+    const { ledger, state, queue, runId, hypothesisIds } = await newLedger();
     await gapLock(ledger, hypothesisIds[0]!);
     await controllerFor(ledger, [CONCLUDE]).advanceIteration();
     await ledger.flush();
 
     // Replay-derived, so it works on any ledger rather than only on the writer's.
     const { Journal } = await import("../../workflows/hunt/journal.js");
-    const rebuilt = buildReport((await Journal.open(state, runId)).projection);
+    const rebuilt = buildReport((await Journal.open(state, queue, runId)).projection);
     expect(rebuilt).toEqual(finalized(ledger)[0]);
   });
 

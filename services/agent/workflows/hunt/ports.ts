@@ -1,6 +1,7 @@
 import type {
   Digest,
   DecisionResult,
+  Directive,
   DispatchRequest,
   DispatchResult,
   Entity,
@@ -8,6 +9,16 @@ import type {
   NullCheckResult,
   WorkerEvidence,
 } from "./types.js";
+
+// Where a directive waits before the run takes it. Any process may enqueue; the
+// run holding the ledger is the only one that drains, so this stays a store and
+// never decides anything. It does not delete on read — what has been journaled
+// is a fact about the ledger, so the caller passes it in rather than the queue
+// tracking it.
+export interface DirectiveQueue {
+  enqueue(runId: string, directive: Directive): Promise<void>;
+  pending(runId: string, journaled: readonly string[]): Promise<Directive[]>;
+}
 
 // The Hunt Lead: one digest in, exactly one typed decision out. Implementations
 // never touch the ledger — the controller applies, validates, and persists.

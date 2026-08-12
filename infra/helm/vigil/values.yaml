@@ -312,6 +312,7 @@ dbInit:
     - 17_loglm_setup.sql
     - 18_agent_decision_ids.sql
     - 19_agent_ledger.sql
+    - 20_agent_directives.sql
   resources:
     requests:
       cpu: 50m
