@@ -49,13 +49,13 @@ function loadArchOnly(body: string, handled: readonly string[] = ["EXAMINE", "CO
 }
 
 describe("the registry resolves a run kind to an arch", () => {
-  it("registers the three shipped arches and nothing else", () => {
-    expect(registeredKinds()).toEqual(["compose", "hunt", "investigate"]);
+  it("registers the four shipped arches and nothing else", () => {
+    expect(registeredKinds()).toEqual(["chat", "compose", "hunt", "investigate"]);
   });
 
   // A kind in the union with no arch behind it is the failure this prevents.
   it("refuses a run kind nothing is registered for", () => {
-    expect(() => archFor("chat")).toThrow(/no architecture is registered for run_kind chat/);
+    expect(() => archFor("tally")).toThrow(/no architecture is registered for run_kind tally/);
   });
 });
 

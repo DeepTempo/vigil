@@ -354,9 +354,10 @@ describe('SocConsole redesign', () => {
     // MCP status resolves from the mocked api (2 of 2 servers ok)
     expect(await screen.findByText('2/2')).toBeInTheDocument()
     expect(screen.getByText(/Context ~/)).toBeInTheDocument()
-    // extended-thinking switch + system-prompt override
-    expect(screen.getByRole('switch', { name: 'Extended thinking' })).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/Override default system prompt/)).toBeInTheDocument()
+    // Extended thinking went with the move to the harness: one provider schema
+    // through Bifrost has no thinking blocks, so the control would do nothing.
+    expect(screen.queryByRole('switch', { name: 'Extended thinking' })).toBeNull()
   })
 
   it('streams an assistant response through the chat SSE pipe', async () => {

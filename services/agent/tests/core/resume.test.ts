@@ -57,7 +57,7 @@ describe("resolving a run", () => {
 
   // Startup, not runtime: the kind is resolved before the ledger opens.
   it("refuses a run kind no arch is registered for", async () => {
-    await expect(resolveSpec(startJob("chat"))).rejects.toThrow(/no architecture is registered for run_kind chat/);
+    await expect(resolveSpec(startJob("tally"))).rejects.toThrow(/no architecture is registered for run_kind tally/);
   });
 
   it("lets an explicit arch path override the registry's default", async () => {

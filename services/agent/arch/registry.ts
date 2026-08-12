@@ -24,6 +24,9 @@ const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
   // No actions: nothing emits one. A step ends when its agent answers, and the run
   // ends when the list does, so there is no verb for a model to choose or to halt on.
   compose: { arch: packaged("compose.yaml"), actions: [], halts: [] },
+  // Nor here, and for a nearer reason: the lead answers in prose, so there is no
+  // emission to constrain and nothing for a vocabulary to name.
+  chat: { arch: packaged("chat.yaml"), actions: [], halts: [] },
 };
 
 // Resolved against the package rather than the cwd: the arch files ship with the
