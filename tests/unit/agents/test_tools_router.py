@@ -4,7 +4,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from core.agents import tools_router
+from core.agents import internal_auth, tools_router
 
 BOUNDS = {"max_rows": 2, "timeout_ms": 500}
 AUTH = {"Authorization": "Bearer shhh"}
@@ -12,7 +12,7 @@ AUTH = {"Authorization": "Bearer shhh"}
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(tools_router, "get_secret", lambda name: "shhh")
+    monkeypatch.setattr(internal_auth, "get_secret", lambda name: "shhh")
     app = FastAPI()
     app.include_router(tools_router.router, prefix=tools_router.ROUTER_META.prefix)
     return TestClient(app, client=("127.0.0.1", 50000))
@@ -47,11 +47,11 @@ class TestAuthorisation:
         )
 
     def test_refuses_when_no_secret_is_configured(self, client, monkeypatch):
-        monkeypatch.setattr(tools_router, "get_secret", lambda name: None)
+        monkeypatch.setattr(internal_auth, "get_secret", lambda name: None)
         assert _invoke(client).status_code == 401
 
     def test_refuses_a_caller_that_is_not_loopback(self, client, monkeypatch):
-        monkeypatch.setattr(tools_router, "_loopback", lambda request: False)
+        monkeypatch.setattr(internal_auth, "_loopback", lambda request: False)
         assert _invoke(client).status_code == 403
 
     def test_a_loopback_bearer_gets_through(self, client, monkeypatch):

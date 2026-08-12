@@ -1,10 +1,11 @@
 """Workflows API endpoints for SOC workflow management and execution."""
 
+import logging
 from typing import Any, Dict, List, Optional
 
-import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()
@@ -142,7 +143,8 @@ async def reload_workflows():
 async def list_custom_workflows(active_only: bool = True):
     """List database-backed custom workflows."""
     try:
-        from core.workflows.custom_workflow_service import get_custom_workflow_service
+        from core.workflows.custom_workflow_service import \
+            get_custom_workflow_service
 
         rows = get_custom_workflow_service().list(active_only=active_only)
         return {"workflows": rows, "count": len(rows)}
@@ -155,7 +157,8 @@ async def list_custom_workflows(active_only: bool = True):
 async def create_custom_workflow(payload: CustomWorkflowCreate):
     """Create a new custom workflow."""
     try:
-        from core.workflows.custom_workflow_service import get_custom_workflow_service
+        from core.workflows.custom_workflow_service import \
+            get_custom_workflow_service
 
         service = get_custom_workflow_service()
         created = service.create(payload.model_dump())
@@ -171,7 +174,8 @@ async def create_custom_workflow(payload: CustomWorkflowCreate):
 async def get_custom_workflow(workflow_id: str):
     """Fetch a single custom workflow."""
     try:
-        from core.workflows.custom_workflow_service import get_custom_workflow_service
+        from core.workflows.custom_workflow_service import \
+            get_custom_workflow_service
 
         wf = get_custom_workflow_service().get(workflow_id)
         if not wf:
@@ -191,7 +195,8 @@ async def get_custom_workflow(workflow_id: str):
 async def update_custom_workflow(workflow_id: str, payload: CustomWorkflowUpdate):
     """Update an existing custom workflow. Increments version."""
     try:
-        from core.workflows.custom_workflow_service import get_custom_workflow_service
+        from core.workflows.custom_workflow_service import \
+            get_custom_workflow_service
 
         service = get_custom_workflow_service()
         updates = {k: v for k, v in payload.model_dump().items() if v is not None}
@@ -215,7 +220,8 @@ async def update_custom_workflow(workflow_id: str, payload: CustomWorkflowUpdate
 async def delete_custom_workflow(workflow_id: str):
     """Soft-delete a custom workflow (sets is_active=False)."""
     try:
-        from core.workflows.custom_workflow_service import get_custom_workflow_service
+        from core.workflows.custom_workflow_service import \
+            get_custom_workflow_service
 
         ok = get_custom_workflow_service().delete(workflow_id)
         if not ok:
@@ -244,7 +250,8 @@ async def generate_workflow(payload: WorkflowGenerateRequest):
     Does NOT save. Frontend can tweak the draft and POST to /workflows/custom.
     """
     try:
-        from core.workflows.workflow_ai_generator import get_workflow_ai_generator
+        from core.workflows.workflow_ai_generator import \
+            get_workflow_ai_generator
 
         result = await get_workflow_ai_generator().generate(payload.description)
         if not result.get("success"):
@@ -374,12 +381,10 @@ async def resume_workflow_run(run_id: str, request: WorkflowRunResumeRequest):
     re-enters the phase loop. If there is no pending approval action
     linked to the run, returns 409.
     """
-    from core.response.approval_service import (
-        ActionStatus,
-        get_approval_service,
-    )
+    from core.response.approval_service import (ActionStatus,
+                                                get_approval_service)
+    from core.workflows.run_resume import resume_run
     from core.workflows.workflow_run_service import get_workflow_run_service
-    from core.workflows.workflows_service import get_workflows_service
 
     run_service = get_workflow_run_service()
     run = run_service.get_run(run_id)
@@ -392,24 +397,17 @@ async def resume_workflow_run(run_id: str, request: WorkflowRunResumeRequest):
         )
 
     approval_service = get_approval_service()
-    pending = [
-        a
-        for a in approval_service.list_actions(
-            status=ActionStatus.PENDING, workflow_run_id=run_id
-        )
-    ]
-    if pending:
-        approval_service.approve_action(
-            pending[0].action_id,
-            approved_by=request.approved_by or "analyst",
+    approved_by = request.approved_by or "analyst"
+    pending = approval_service.list_actions(
+        status=ActionStatus.PENDING, workflow_run_id=run_id
+    )
+    if not pending:
+        raise HTTPException(
+            status_code=409, detail=f"Run {run_id} has no pending approval"
         )
 
-    result = await get_workflows_service().resume_workflow(
-        run_id,
-        "approved",
-        approved_by=request.approved_by or "analyst",
-    )
-    return result
+    approval_service.approve_action(pending[0].action_id, approved_by=approved_by)
+    return await resume_run(run_id, pending[0].action_id, approved_by)
 
 
 @router.post("/workflows/runs/{run_id}/cancel")
@@ -419,12 +417,10 @@ async def cancel_workflow_run(run_id: str, request: WorkflowRunCancelRequest):
     Rejects any pending approval action on the run and finalises it
     as ``cancelled`` with the supplied reason.
     """
-    from core.response.approval_service import (
-        ActionStatus,
-        get_approval_service,
-    )
+    from core.response.approval_service import (ActionStatus,
+                                                get_approval_service)
+    from core.workflows.run_resume import resume_run
     from core.workflows.workflow_run_service import get_workflow_run_service
-    from core.workflows.workflows_service import get_workflows_service
 
     run_service = get_workflow_run_service()
     run = run_service.get_run(run_id)
@@ -432,27 +428,19 @@ async def cancel_workflow_run(run_id: str, request: WorkflowRunCancelRequest):
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
 
     approval_service = get_approval_service()
-    pending = [
-        a
-        for a in approval_service.list_actions(
-            status=ActionStatus.PENDING, workflow_run_id=run_id
-        )
-    ]
+    rejected_by = request.rejected_by or "analyst"
+    pending = approval_service.list_actions(
+        status=ActionStatus.PENDING, workflow_run_id=run_id
+    )
     for action in pending:
         approval_service.reject_action(
-            action.action_id,
-            reason=request.reason,
-            rejected_by=request.rejected_by or "analyst",
+            action.action_id, reason=request.reason, rejected_by=rejected_by
         )
 
-    if run.get("status") == "paused":
-        result = await get_workflows_service().resume_workflow(
-            run_id,
-            "rejected",
-            rejection_reason=request.reason,
-            approved_by=request.rejected_by or "analyst",
-        )
-        return result
+    # A rejection ends the run, but the agent layer is what ends it: this hands
+    # the decision over and that side journals it and stops.
+    if run.get("status") == "paused" and pending:
+        return await resume_run(run_id, pending[0].action_id, rejected_by)
 
     # Running-but-not-paused runs: we can't interrupt the in-flight
     # Claude call here, but we can mark the row cancelled so history

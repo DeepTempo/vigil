@@ -166,8 +166,8 @@ def test_gated_webhook_receivers_are_off_by_default(monkeypatch):
     describe the shipped default rather than whatever the ambient environment
     happens to be.
     """
-    from core.routing import Auth
     from core.config import get_settings
+    from core.routing import Auth
 
     for var in GATE_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
@@ -238,14 +238,14 @@ def test_required_auth_rejects_a_reason():
 
 
 def test_every_non_required_router_has_a_reason():
-    """The live tree, not just the validator: all 6 deviations are justified."""
+    """The live tree, not just the validator: all 8 deviations are justified."""
     from core.routing import Auth
 
     deviations = [
         (name, meta) for name, _r, meta in _specs() if meta.auth is not Auth.REQUIRED
     ]
-    assert len(deviations) == 6, (
-        f"expected 6 non-REQUIRED routers, found {len(deviations)}: "
+    assert len(deviations) == 8, (
+        f"expected 8 non-REQUIRED routers, found {len(deviations)}: "
         f"{sorted(n for n, _ in deviations)}. A new one needs review."
     )
     for name, meta in deviations:

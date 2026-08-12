@@ -11,12 +11,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from core.agents.queue import (
-    RUN_KINDS,
-    build_start_job,
-    enqueue_run,
-    new_run_id,
-)
+from core.agents.queue import (RUN_KINDS, build_start_job, enqueue_run,
+                               new_run_id)
 from core.routing import Auth, RouterMeta, UnitOfWorkSession
 
 router = APIRouter()
