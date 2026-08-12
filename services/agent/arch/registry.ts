@@ -18,7 +18,7 @@ const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
     arch: packaged("threathunt.yaml"),
     actions: ["INVESTIGATE", "EXPAND", "PIVOT", "DEEPEN", "ABANDON", "VALIDATE", "CHECKPOINT", "CONCLUDE", "HANDOFF_IR"],
     halts: ["CONCLUDE"],
-    owned: { playbook: ["hypotheses", "attack_techniques", "data_domains"], config: ["enrichment", "checkpoints", "termination"] },
+    owned: { playbook: ["hypotheses", "attack_techniques", "data_domains"], config: ["enrichment", "checkpoints"] },
   },
   investigate: { arch: packaged("investigate.yaml"), actions: ["EXAMINE", "CONCLUDE"], halts: ["CONCLUDE"] },
 };

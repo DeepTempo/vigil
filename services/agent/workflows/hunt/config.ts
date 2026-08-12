@@ -1,4 +1,4 @@
-import type { Counts, RunSpec } from "../../core/spec.js";
+import { SpecError, type Counts, type RunSpec } from "../../core/spec.js";
 import { DEFAULT_CHECKPOINTS, type Checkpoints } from "./checkpoints.js";
 
 // The core spec carries domain config as untyped numeric bags, so what a
@@ -60,6 +60,16 @@ function over<T extends object>(defaults: T, held: Counts): T {
   return merged as T;
 }
 
+// Checked against the union because verdicts and termination share one bag: a
+// threshold of zero locks or proves everything, and a misspelled key is silent.
+export function validateThresholds(held: Counts): void {
+  const known = { ...DEFAULT_VERDICTS, ...DEFAULT_TERMINATION } as Record<string, number>;
+  for (const [key, value] of Object.entries(held)) {
+    if (!(key in known)) throw new SpecError(`unknown thresholds key: ${key}`);
+    if (!Number.isFinite(value) || value <= 0) throw new SpecError(`thresholds.${key} must be a positive number`);
+  }
+}
+
 export function verdictsOf(spec: RunSpec): Verdicts {
   return over(DEFAULT_VERDICTS, spec.thresholds);
 }
@@ -100,6 +110,7 @@ export interface HuntSpec extends RunSpec {
 
 export function huntSpec(spec: RunSpec): HuntSpec {
   const held = spec.sections;
+  validateThresholds(spec.thresholds);
   return {
     ...spec,
     hypotheses: Array.isArray(held["hypotheses"]) ? (held["hypotheses"] as string[]) : [],
