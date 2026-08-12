@@ -115,9 +115,9 @@ class Settings(BaseSettings):
     # Host-run default: `bifrost` resolves only inside the compose network, and
     # compose, Helm and start.sh all inject the right hostname explicitly.
     bifrost_url: str = "http://localhost:8080"
-    # The one call that goes the other way: chat is synchronous, so it is served
-    # over HTTP by the agent worker rather than queued behind a durable run.
-    agent_chat_url: str = "http://localhost:6989/chat/stream"
+    # Where the agent worker listens. Two calls go this way rather than through
+    # the queue: a chat turn, which is synchronous, and a run's projection.
+    agent_url: str = "http://localhost:6989"
     anthropic_base_url: str = ""
     ollama_url: str = "http://localhost:11434"
     default_model: str = "claude-sonnet-4-6"

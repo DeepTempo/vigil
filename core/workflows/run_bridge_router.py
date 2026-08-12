@@ -11,6 +11,7 @@ from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel, Field
 
 from core.agents.internal_auth import authorise
+from core.response.checkpoints import raise_for_checkpoint
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()
@@ -154,34 +155,12 @@ def list_decisions(
 # Named by the checkpoint the agent layer raised, so the decision travels back
 # addressed to the step that is waiting and to no other.
 def _raise_approval(run_id: str, update: PhaseUpdate) -> None:
-    from core.response.approval_service import (ActionStatus, ActionType,
-                                                get_approval_service)
-
-    service = get_approval_service()
-    open_already = [
-        action
-        for action in service.list_actions(
-            status=ActionStatus.PENDING, workflow_run_id=run_id
-        )
-        if (action.parameters or {}).get("checkpoint_id") == update.checkpoint_id
-    ]
-    if open_already:
-        return
-
-    service.create_action(
-        action_type=ActionType.WORKFLOW_PHASE,
+    raise_for_checkpoint(
+        run_id=run_id,
+        checkpoint_id=str(update.checkpoint_id),
         title=update.question or f"Approve {update.name}",
         description=update.question or f"Phase {update.order}: {update.name}",
-        target=run_id,
-        confidence=0.0,
         reason="The playbook marks this phase approval_required",
-        evidence=[run_id],
-        created_by="agent",
-        parameters={
-            "checkpoint_id": update.checkpoint_id,
-            "phase_id": update.phase_id,
-            "agent_id": update.agent,
-        },
-        workflow_run_id=run_id,
-        workflow_phase_id=update.phase_id,
+        parameters={"phase_id": update.phase_id, "agent_id": update.agent},
+        phase_id=update.phase_id,
     )

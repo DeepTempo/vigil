@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
-from core.config import get_settings
+from core.agents.projections import agent_route
 from core.llm.chat_layers import chat_config, run_id_for
 from core.llm.defaults import DEFAULT_MODEL
 from core.llm.harness.claude import ClaudeService
@@ -408,7 +408,7 @@ async def _relay(
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream(
                 "POST",
-                get_settings().agent_chat_url,
+                agent_route("/chat/stream"),
                 json=payload,
                 headers=_internal_headers(),
             ) as upstream:

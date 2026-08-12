@@ -1,10 +1,10 @@
-"""Unit tests for AgentRunner._update_db_record.
+"""The investigation heartbeat, ported from AgentRunner._update_db_record.
 
-Regression coverage for the silent-heartbeat bug that caused
-auto-investigations to be stale-killed by the supervisor (issue #147
-follow-up). The fix: route every DB write through ``session_scope()``
-and surface failures at ``logger.error`` with a stack trace, instead of
-swallowing them at ``logger.debug``.
+Regression coverage for the silent-heartbeat bug that let the supervisor
+stale-kill healthy auto-investigations (issue #147 follow-up). The runner is
+gone (#629) and the write moved to ``Orchestrator._record_progress``, but the
+failure mode did not: swallow the error and ``last_activity_at`` stops moving
+while the run is fine.
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from services.daemon.agent_runner import AgentRunner
 from services.daemon.config import OrchestratorConfig
+from services.daemon.orchestrator import Orchestrator
 
 pytestmark = pytest.mark.unit
 
@@ -43,10 +43,11 @@ class _FakeSession:
         return self._row
 
 
-def _make_runner() -> AgentRunner:
-    config = OrchestratorConfig()
-    workdir = MagicMock()
-    return AgentRunner(config, workdir)
+def _make_orchestrator() -> Orchestrator:
+    orch = object.__new__(Orchestrator)
+    orch.config = OrchestratorConfig()
+    orch.workdir = MagicMock()
+    return orch
 
 
 def _patch_session_scope(row):
@@ -61,8 +62,8 @@ def _patch_session_scope(row):
     return db_manager
 
 
-def test_update_db_record_writes_fields_via_session_scope():
-    runner = _make_runner()
+def test_progress_writes_fields_via_session_scope():
+    orch = _make_orchestrator()
     row = MagicMock()
     row.iteration_count = 0
     row.cost_usd = 0.0
@@ -70,42 +71,49 @@ def test_update_db_record_writes_fields_via_session_scope():
     db_manager = _patch_session_scope(row)
     with patch("core.storage.connection.get_db_manager", return_value=db_manager):
         with patch("core.storage.models.Investigation"):
-            runner._update_db_record(
-                "inv-test-1",
-                {"iteration_count": 5, "cost_usd": 0.12},
-            )
+            orch._record_progress("inv-test-1", {"iterations": 5, "cost_usd": 0.12})
 
     assert row.iteration_count == 5
     assert row.cost_usd == 0.12
 
 
-def test_update_db_record_parses_iso_string_for_at_fields():
-    runner = _make_runner()
+def test_progress_stamps_the_heartbeat():
+    orch = _make_orchestrator()
     row = MagicMock()
     row.last_activity_at = None
 
     db_manager = _patch_session_scope(row)
-    iso = "2026-04-28T12:34:56"
     with patch("core.storage.connection.get_db_manager", return_value=db_manager):
         with patch("core.storage.models.Investigation"):
-            runner._update_db_record(
-                "inv-test-2",
-                {"last_activity_at": iso},
-            )
+            orch._record_progress("inv-test-2", {"iterations": 1})
 
+    # Stamped here rather than carried in the projection: it records when this
+    # side last heard from the run, which is what the stale check asks about.
     assert isinstance(row.last_activity_at, datetime)
-    assert row.last_activity_at == datetime.fromisoformat(iso)
 
 
-def test_update_db_record_logs_error_with_traceback_on_failure(caplog):
+def test_progress_leaves_cost_alone_when_the_gateway_priced_nothing():
+    orch = _make_orchestrator()
+    row = MagicMock()
+    row.cost_usd = 0.42
+
+    db_manager = _patch_session_scope(row)
+    with patch("core.storage.connection.get_db_manager", return_value=db_manager):
+        with patch("core.storage.models.Investigation"):
+            orch._record_progress("inv-test-cost", {"iterations": 2, "cost_usd": None})
+
+    # None is "nothing was priced", not "nothing was spent". Writing 0.0 here
+    # would reset a real spend and hand the run its budget back.
+    assert row.cost_usd == 0.42
+
+
+def test_progress_logs_error_with_traceback_on_failure(caplog):
     """A broken DB connection must log at ERROR with exc_info, not DEBUG.
 
-    The previous behaviour swallowed exceptions to ``logger.debug``, which
-    hid silent heartbeat failures and let the supervisor mark healthy
-    investigations as ``Stale: no activity``.
+    Swallowing it to ``logger.debug`` hides silent heartbeat failures and lets
+    the supervisor mark healthy investigations ``Stale: no activity``.
     """
-    runner = _make_runner()
-
+    orch = _make_orchestrator()
     db_manager = MagicMock()
 
     @contextmanager
@@ -116,25 +124,21 @@ def test_update_db_record_logs_error_with_traceback_on_failure(caplog):
     db_manager.session_scope = broken_scope
 
     with patch("core.storage.connection.get_db_manager", return_value=db_manager):
-        with caplog.at_level(logging.ERROR, logger="services.daemon.agent_runner"):
-            runner._update_db_record("inv-test-3", {"cost_usd": 1.0})
+        with caplog.at_level(logging.ERROR, logger="services.daemon.orchestrator"):
+            orch._record_progress("inv-test-3", {"iterations": 1})
 
     error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert any("DB update for inv-test-3 failed" in r.message for r in error_records)
-    # exc_info=True records exception info on the LogRecord
     assert any(r.exc_info is not None for r in error_records)
 
 
-def test_update_db_record_warns_when_row_missing():
-    runner = _make_runner()
-    db_manager = _patch_session_scope(row=None)  # query returns no row
+def test_progress_warns_when_row_missing():
+    orch = _make_orchestrator()
+    db_manager = _patch_session_scope(row=None)
 
     with patch("core.storage.connection.get_db_manager", return_value=db_manager):
         with patch("core.storage.models.Investigation"):
-            with patch.object(
-                __import__("services.daemon.agent_runner", fromlist=["logger"]).logger,
-                "warning",
-            ) as warn:
-                runner._update_db_record("inv-missing", {"cost_usd": 0.0})
+            with patch("services.daemon.orchestrator.logger.warning") as warn:
+                orch._record_progress("inv-missing", {"iterations": 0})
                 warn.assert_called_once()
                 assert "row not found" in warn.call_args[0][0]

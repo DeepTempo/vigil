@@ -106,11 +106,15 @@ def test_registry_exception_returns_zero(caplog):
 
 
 def test_sonnet_constants_are_gone():
-    """Guardrail against accidental reintroduction of the legacy fallback."""
-    from services.daemon import agent_runner
+    """Guardrail against accidental reintroduction of the legacy fallback.
 
-    assert not hasattr(agent_runner, "SONNET_INPUT_COST")
-    assert not hasattr(agent_runner, "SONNET_OUTPUT_COST")
+    The module that held them is gone with #629, which is the stronger form of
+    the same claim: there is nowhere for the constants to come back to.
+    """
+    import importlib
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("services.daemon.agent_runner")
 
 
 # ---------------------------------------------------------------------------

@@ -90,26 +90,11 @@ class TestAgentProfileThinkingBudget:
 # ---------------------------------------------------------------------------
 
 
-class TestDaemonDefaultThinkingBudget:
-    def test_default_value(self, monkeypatch):
-        monkeypatch.delenv("CLAUDE_THINKING_BUDGET", raising=False)
-        from services.daemon.agent_runner import _default_thinking_budget
-
-        assert _default_thinking_budget() == 10000
-
-    def test_env_override(self, monkeypatch):
-        monkeypatch.setenv("CLAUDE_THINKING_BUDGET", "4096")
-        from services.daemon.agent_runner import _default_thinking_budget
-
-        assert _default_thinking_budget() == 4096
-
-    def test_bad_env_falls_back_to_default(self, monkeypatch):
-        monkeypatch.setenv("CLAUDE_THINKING_BUDGET", "not-a-number")
-        from services.daemon.agent_runner import _default_thinking_budget
-
-        assert _default_thinking_budget() == 10000
-
-
+# TestDaemonDefaultThinkingBudget dropped with agent_runner (#629). The helper
+# was the runner's, and the run's ceilings are the budget seam's now. The
+# thinking_budget system_config row it read has no consumer left -- ADR 0011
+# carries no thinking blocks -- so retiring the setting belongs to #642.
+#
 # Dropped with the helpers these covered (#631), and where the guarantee moved:
 #
 # TestFilterToolsByName — a role sees what the arch granted it, deny by default,

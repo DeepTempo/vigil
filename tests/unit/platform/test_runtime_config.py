@@ -207,20 +207,13 @@ class TestConsumerIntegration:
     honor the DB-backed settings, not just env vars.
     """
 
-    def test_thinking_budget_respects_db(self):
-        from core.platform import runtime_config
-        from services.daemon.agent_runner import _default_thinking_budget
-
-        with patch.object(
-            runtime_config, "_fetch_db_config", return_value={"thinking_budget": 2048}
-        ):
-            assert _default_thinking_budget() == 2048
-
 
 # Three consumers dropped with the helpers they exercised (#631). The plumbing
 # they went through -- DB over env over default, coercion, caching -- is covered
 # above and unchanged; only these consumers moved:
 #
+#   thinking_budget      -> nobody. agent_runner held the only consumer and is
+#                           gone with #629; retiring the setting is #642.
 #   history_window       -> the fold in services/agent/core/context.ts, which
 #                           holds both edges instead of keeping a flat tail.
 #   prompt_cache_enabled -> nothing. ADR 0011 traded cache_control away: the

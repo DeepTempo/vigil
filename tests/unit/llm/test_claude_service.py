@@ -1,8 +1,6 @@
 """Unit tests for Claude service."""
 
-import asyncio
 import json
-import os
 import sys
 import tempfile
 from pathlib import Path
@@ -15,12 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from core.llm.harness.claude import ClaudeService
 from tests.fixtures.claude_responses import (MOCK_AUTH_ERROR,
-                                             MOCK_CHAT_RESPONSE,
                                              MOCK_CONVERSATION_HISTORY,
-                                             MOCK_INVALID_REQUEST_ERROR,
-                                             MOCK_RATE_LIMIT_ERROR,
-                                             MOCK_THINKING_RESPONSE,
-                                             MOCK_TOOL_USE_RESPONSE)
+                                             MOCK_RATE_LIMIT_ERROR)
 
 
 class TestClaudeServiceInitialization:
@@ -1018,37 +1012,6 @@ class TestExecuteBackendTool:
         assert "findings" in result
         assert result["total"] == 1
         mock_mcp.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_daemon_callsite_awaits_directly(self):
-        """Daemon _execute_tool awaits _execute_backend_tool directly (not via asyncio.to_thread)."""
-        service = self._make_service()
-        call_record = []
-
-        async def fake_backend_tool(tool_name, tool_input):
-            call_record.append((tool_name, tool_input))
-            return {"result": "ok"}
-
-        service._execute_backend_tool = fake_backend_tool
-
-        # Import AgentRunner and wire up a minimal instance
-        from services.daemon.agent_runner import AgentRunner
-
-        runner = object.__new__(AgentRunner)
-        runner._claude_service = service
-        runner._dry_run = False
-        runner.workdir = MagicMock()
-
-        # Patch module-level _get_tool_tier to return "auto" so it doesn't short-circuit
-        runner.config = MagicMock()
-        runner.config.dry_run = False
-        with patch("services.daemon.agent_runner._get_tool_tier", return_value="auto"):
-            result = await runner._execute_external_tool(
-                "inv1", "my_mcp_tool", {"key": "val"}
-            )
-
-        assert call_record == [("my_mcp_tool", {"key": "val"})]
-        assert result == '{"result": "ok"}'
 
 
 if __name__ == "__main__":
