@@ -58,31 +58,45 @@ Every workflow is a Markdown file. Here's what one looks like inside:
 ---
 name: phishing-triage
 description: "Triage and investigate phishing reports from user submissions."
-agents:
-  - triage
-  - investigator
-  - responder
-tools-used:
-  - get_finding
-  - list_findings
-  - nearest_neighbors
-  - create_approval_action
-use-case: "A user reports a suspicious email and the SOC needs to assess, investigate, and contain."
-trigger-examples:
+use_case: "A user reports a suspicious email and the SOC needs to assess, investigate, and contain."
+trigger_examples:
   - "Run phishing triage on finding f-20260401-abc123"
   - "Investigate this phishing report"
+objectives:
+  - "Decide whether the reported mail is malicious"
+  - "Contain it without waiting on a second report"
+phases:
+  - id: assess
+    agent: triage
+    name: "Assess the Report"
+    tools: [get_finding, list_findings]
+    instructions: |
+      Fetch the finding, extract sender/domain/URLs, score severity, check for
+      known-bad indicators. Hand on the verdict and the indicators you found.
+
+  - id: investigate
+    agent: investigator
+    name: "Investigate"
+    tools: [get_finding, nearest_neighbors, search_detections]
+    instructions: |
+      Use nearest_neighbors to find similar reports. Correlate with detection
+      rules. Build an evidence timeline. Hand on the timeline and related findings.
+
+  - id: contain
+    agent: responder
+    name: "Contain"
+    tools: [get_case, update_case]
+    approval_required: true
+    instructions: |
+      If confirmed malicious: block the sender domain, quarantine matching emails,
+      and plan remediation with confidence scores.
 ---
 
 # Phishing Triage Workflow
 
-## Phase 1: Assess the Report (Triage Agent)
-Fetch the finding, extract sender/domain/URLs, score severity, check for known-bad indicators.
-
-## Phase 2: Investigate (Investigator Agent)
-Use nearest_neighbors to find similar reports. Correlate with detection rules. Build an evidence timeline.
-
-## Phase 3: Contain (Responder Agent)
-If confirmed malicious: block sender domain, quarantine matching emails, submit approval actions with confidence scores.
+An overview for whoever reads this file. The `phases` above are what actually
+runs, in the order written — the agents and tools shown on the Workflows screen
+are read off them.
 ```
 
 Edit this file. That's it. No vendor ticket, no professional services, no YAML/JSON schema to learn.

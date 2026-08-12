@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { DispatchPayload, NewEvent, RunKind, RunOutcome } from "../../contracts/events.js";
 import { commitTurn, type Harness, type Outcome, type TurnConfig } from "../../core/loop.js";
 import { drain, streamTurn } from "../../core/stream.js";
-import type { RoleSpec, RunSpec } from "../../core/spec.js";
+import { SpecError, type RoleSpec, type RunSpec } from "../../core/spec.js";
 import { topologyFor, type Assignment, type Round } from "../../core/topology.js";
 
 // What every arch's lead emits. Everything past action is arch-specific and read
@@ -50,7 +50,7 @@ export interface LeadReport {
 export function grantsOf(spec: RunSpec): Record<string, readonly string[]> {
   const workers = Object.entries(spec.roles.workers).map(([id, role]) => [id, role.tools]);
   return {
-    lead: spec.roles.lead.tools,
+    ...(spec.roles.lead === undefined ? {} : { lead: spec.roles.lead.tools }),
     ...(spec.roles.critic === undefined ? {} : { critic: spec.roles.critic.tools }),
     ...Object.fromEntries(workers),
   };
@@ -60,12 +60,16 @@ export function grantsOf(spec: RunSpec): Record<string, readonly string[]> {
 // a worker turn when the decision names one, and an ending the model cannot force.
 export async function runLead(harness: Harness<LeadKinds>, options: LeadOptions): Promise<LeadReport> {
   const { run_id, spec } = options;
+  const lead = spec.roles.lead;
+  // Refused at the door rather than per iteration: a lead-less arch belongs to a
+  // workflow that sequences itself, and running it here would decide nothing.
+  if (lead === undefined) throw new SpecError(`arch ${spec.arch} declares no lead, so it cannot run a lead loop`);
   if ((await harness.state.latestSeq(run_id)) === null) await open(harness, options);
 
   const topology = topologyFor(spec.dispatch.topology);
   const rounds: Round[] = [];
   for (;;) {
-    const outcome = await drain(streamTurn<Decision, LeadKinds>(turnFor(options, "lead", spec.roles.lead, brief(spec)), harness));
+    const outcome = await drain(streamTurn<Decision, LeadKinds>(turnFor(options, "lead", lead, brief(spec)), harness));
     if (outcome.status === "waiting_approval") {
       await commitTurn(harness.state, run_id, outcome, []);
       return { ...(await report(harness, options)), status: "waiting_approval", reason: outcome.reason, pending: outcome.pending };

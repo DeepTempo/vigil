@@ -49,10 +49,31 @@ def build_start_job(
     }
 
 
-async def enqueue_run(job: Dict[str, Any]) -> str:
+# A resume carries no request: the ledger holds the spec, and what unblocks the
+# run is the decision the agent layer reads back, not anything said here.
+def build_resume_job(
+    run_id: str,
+    run_kind: str,
+    enqueued_by: str,
+    tenant_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    return {
+        "schema_version": JOB_SCHEMA_VERSION,
+        "run_id": run_id,
+        "run_kind": run_kind,
+        "tenant_id": tenant_id,
+        "enqueued_at": datetime.now(timezone.utc).isoformat(),
+        "enqueued_by": enqueued_by,
+        "reason": "resume",
+    }
+
+
+async def enqueue_run(job: Dict[str, Any], job_id: Optional[str] = None) -> str:
     queue = Queue(RUN_QUEUE, {"connection": _redis_url()})
     try:
-        enqueued = await queue.add("run", job, {"jobId": job["run_id"]})  # jobId is the run id, so a double POST dedupes inside BullMQ
+        # jobId is the run id for a start, so a double POST dedupes inside BullMQ;
+        # a resume passes its own, since one run is resumed more than once.
+        enqueued = await queue.add("run", job, {"jobId": job_id or job["run_id"]})
         logger.info("enqueued agent run %s (%s)", job["run_id"], job["run_kind"])
         return str(enqueued.id)
     finally:

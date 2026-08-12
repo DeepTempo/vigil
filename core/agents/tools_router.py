@@ -4,16 +4,15 @@
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel, Field
 
+from core.agents.internal_auth import authorise
 from core.agents.tool_registry import execute_backend_tool
 from core.routing import Auth, RouterMeta
-from core.secrets import get_secret
 
 router = APIRouter()
 
@@ -27,8 +26,6 @@ ROUTER_META = RouterMeta(
 )
 logger = logging.getLogger(__name__)
 
-TOKEN_SECRET = "AGENT_INTERNAL_TOKEN"
-
 SOURCE_SYSTEM = "vigil"
 
 
@@ -41,24 +38,6 @@ class InvokeRequest(BaseModel):
     tool: str
     args: Dict[str, Any] = Field(default_factory=dict)
     bounds: Bounds
-
-
-def _loopback(request: Request) -> bool:
-    host = request.client.host if request.client is not None else ""
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return False
-
-
-# Both checks or neither: a shared secret on a public bind is one leak from open,
-# and a loopback bind alone trusts every process on the box.
-def _authorise(request: Request, presented: Optional[str]) -> None:
-    if not _loopback(request):
-        raise HTTPException(status_code=403, detail="tool invocation is loopback only")
-    expected = get_secret(TOKEN_SECRET)
-    if not expected or presented != f"Bearer {expected}":
-        raise HTTPException(status_code=401, detail="bad or missing internal token")
 
 
 def _failure(kind: str, **detail: Any) -> Dict[str, Any]:
@@ -96,7 +75,7 @@ async def invoke(
     request: Request,
     authorization: Optional[str] = Header(default=None),
 ) -> Dict[str, Any]:
-    _authorise(request, authorization)
+    authorise(request, authorization, "tool invocation")
 
     try:
         result, handled = await _run(body)

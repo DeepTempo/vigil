@@ -12,6 +12,7 @@ ENV_EXAMPLE = Path(__file__).resolve().parents[3] / "env.example"
 NOT_SETTINGS = {
     # Credentials — the encrypted store owns these, read via get_secret so a
     # value saved in the UI wins over the environment.
+    "AGENT_INTERNAL_TOKEN",
     "ALIENVAULT_OTX_API_KEY",
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
@@ -89,6 +90,10 @@ NOT_SETTINGS = {
     "BIND_HOST",
     "GRAFANA_PASSWORD",
     "VITE_EXTENSION_ORIGIN_ALLOWLIST",
+    # Read by the TypeScript agent worker's own process, not by Settings.
+    "VIGIL_PLAYBOOKS_URL",
+    "VIGIL_RUNS_URL",
+    "VIGIL_TOOLS_URL",
     # Bootstrap for the secrets manager itself, which cannot depend on Settings.
     "ENABLE_KEYRING",
     "SECRETS_BACKEND",

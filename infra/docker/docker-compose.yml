@@ -60,6 +60,9 @@ services:
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - BIFROST_URL=${BIFROST_URL:-http://bifrost:8080}
       - REDIS_URL=redis://redis:6379/0
+      # Shared secret the agent worker presents on /internal. Unset means every
+      # such call answers 503, so no workflow can run.
+      - AGENT_INTERNAL_TOKEN=${AGENT_INTERNAL_TOKEN:-}
       - PYTHONUNBUFFERED=1
     ports:
       - "6987:6987"

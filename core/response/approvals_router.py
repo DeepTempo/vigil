@@ -148,7 +148,7 @@ async def approve_action(action_id: str, request: ApproveRequest):
     automatically and the resume result is included in the response.
     """
     from core.response.approval_service import get_approval_service
-    from core.workflows.workflows_service import get_workflows_service
+    from core.workflows.run_resume import resume_run
 
     service = get_approval_service()
     action = service.get_action(action_id)
@@ -166,12 +166,9 @@ async def approve_action(action_id: str, request: ApproveRequest):
     }
 
     if updated.workflow_run_id:
-        resume = await get_workflows_service().resume_workflow(
-            updated.workflow_run_id,
-            "approved",
-            approved_by=approved_by,
+        response["resume_result"] = await resume_run(
+            updated.workflow_run_id, action_id, approved_by
         )
-        response["resume_result"] = resume
 
     return response
 
@@ -184,7 +181,7 @@ async def reject_action(action_id: str, request: RejectRequest):
     cancelled with the supplied reason.
     """
     from core.response.approval_service import get_approval_service
-    from core.workflows.workflows_service import get_workflows_service
+    from core.workflows.run_resume import resume_run
 
     service = get_approval_service()
     action = service.get_action(action_id)
@@ -204,12 +201,8 @@ async def reject_action(action_id: str, request: RejectRequest):
     }
 
     if updated.workflow_run_id:
-        resume = await get_workflows_service().resume_workflow(
-            updated.workflow_run_id,
-            "rejected",
-            rejection_reason=request.reason,
-            approved_by=rejected_by,
+        response["resume_result"] = await resume_run(
+            updated.workflow_run_id, action_id, rejected_by
         )
-        response["resume_result"] = resume
 
     return response

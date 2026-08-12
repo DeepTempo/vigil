@@ -378,8 +378,8 @@ async def resume_workflow_run(run_id: str, request: WorkflowRunResumeRequest):
         ActionStatus,
         get_approval_service,
     )
+    from core.workflows.run_resume import resume_run
     from core.workflows.workflow_run_service import get_workflow_run_service
-    from core.workflows.workflows_service import get_workflows_service
 
     run_service = get_workflow_run_service()
     run = run_service.get_run(run_id)
@@ -392,24 +392,17 @@ async def resume_workflow_run(run_id: str, request: WorkflowRunResumeRequest):
         )
 
     approval_service = get_approval_service()
-    pending = [
-        a
-        for a in approval_service.list_actions(
-            status=ActionStatus.PENDING, workflow_run_id=run_id
-        )
-    ]
-    if pending:
-        approval_service.approve_action(
-            pending[0].action_id,
-            approved_by=request.approved_by or "analyst",
+    approved_by = request.approved_by or "analyst"
+    pending = approval_service.list_actions(
+        status=ActionStatus.PENDING, workflow_run_id=run_id
+    )
+    if not pending:
+        raise HTTPException(
+            status_code=409, detail=f"Run {run_id} has no pending approval"
         )
 
-    result = await get_workflows_service().resume_workflow(
-        run_id,
-        "approved",
-        approved_by=request.approved_by or "analyst",
-    )
-    return result
+    approval_service.approve_action(pending[0].action_id, approved_by=approved_by)
+    return await resume_run(run_id, pending[0].action_id, approved_by)
 
 
 @router.post("/workflows/runs/{run_id}/cancel")
@@ -423,8 +416,8 @@ async def cancel_workflow_run(run_id: str, request: WorkflowRunCancelRequest):
         ActionStatus,
         get_approval_service,
     )
+    from core.workflows.run_resume import resume_run
     from core.workflows.workflow_run_service import get_workflow_run_service
-    from core.workflows.workflows_service import get_workflows_service
 
     run_service = get_workflow_run_service()
     run = run_service.get_run(run_id)
@@ -432,27 +425,19 @@ async def cancel_workflow_run(run_id: str, request: WorkflowRunCancelRequest):
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
 
     approval_service = get_approval_service()
-    pending = [
-        a
-        for a in approval_service.list_actions(
-            status=ActionStatus.PENDING, workflow_run_id=run_id
-        )
-    ]
+    rejected_by = request.rejected_by or "analyst"
+    pending = approval_service.list_actions(
+        status=ActionStatus.PENDING, workflow_run_id=run_id
+    )
     for action in pending:
         approval_service.reject_action(
-            action.action_id,
-            reason=request.reason,
-            rejected_by=request.rejected_by or "analyst",
+            action.action_id, reason=request.reason, rejected_by=rejected_by
         )
 
-    if run.get("status") == "paused":
-        result = await get_workflows_service().resume_workflow(
-            run_id,
-            "rejected",
-            rejection_reason=request.reason,
-            approved_by=request.rejected_by or "analyst",
-        )
-        return result
+    # A rejection ends the run, but the agent layer is what ends it: this hands
+    # the decision over and that side journals it and stops.
+    if run.get("status") == "paused" and pending:
+        return await resume_run(run_id, pending[0].action_id, rejected_by)
 
     # Running-but-not-paused runs: we can't interrupt the in-flight
     # Claude call here, but we can mark the row cancelled so history

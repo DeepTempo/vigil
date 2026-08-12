@@ -412,6 +412,12 @@ secrets:
   #   python -c "import secrets; print(secrets.token_urlsafe(64))"
   jwtSecretKey: ""
 
+  # Shared secret the agent worker presents on the /internal endpoints. Required
+  # to run a workflow: without it every /internal call answers 503. The worker
+  # must be given the same value. Generate with:
+  #   python -c "import secrets; print(secrets.token_urlsafe(48))"
+  agentInternalToken: ""
+
   # Optional data-source integrations.
   splunkPassword: ""
   crowdstrikeClientId: ""

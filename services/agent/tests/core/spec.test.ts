@@ -49,8 +49,8 @@ function loadArchOnly(body: string, handled: readonly string[] = ["EXAMINE", "CO
 }
 
 describe("the registry resolves a run kind to an arch", () => {
-  it("registers the two shipped arches and nothing else", () => {
-    expect(registeredKinds()).toEqual(["hunt", "investigate"]);
+  it("registers the three shipped arches and nothing else", () => {
+    expect(registeredKinds()).toEqual(["compose", "hunt", "investigate"]);
   });
 
   // A kind in the union with no arch behind it is the failure this prevents.
@@ -76,26 +76,26 @@ describe("the shipped arches", () => {
     expect(spec.dispatch).toEqual({ topology: "single", mode: "serial", fan_out_over: "questions", max_workers: 1 });
     expect(spec.roles.workers).toEqual({});
     expect(spec.roles.critic).toBeUndefined();
-    expect(spec.roles.lead.tools).toEqual(["case_records"]);
+    expect(spec.roles.lead?.tools).toEqual(["case_records"]);
   });
 
   it("generates the roster from the worker registry and narrows worker_agent_id to it", () => {
     const spec = huntSpec();
-    const properties = spec.roles.lead.output_schema["properties"] as Record<string, { enum?: unknown[] }>;
-    expect(spec.roles.lead.prompt).toContain("- network_analyst — traffic shape");
+    const properties = spec.roles.lead?.output_schema["properties"] as Record<string, { enum?: unknown[] }>;
+    expect(spec.roles.lead?.prompt).toContain("- network_analyst — traffic shape");
     expect(properties["worker_agent_id"]?.enum).toEqual(["threat_hunter", "network_analyst", "threat_intel", null]);
   });
 
   // A single-lead arch has no roster to generate and nothing to narrow it to.
   it("leaves the lead schema alone when the arch declares no workers", () => {
     const spec = buildSpec(CASE, archFor("investigate").actions);
-    expect(spec.roles.lead.prompt).not.toContain("Workers you may dispatch");
-    expect(spec.roles.lead.output_schema["properties"]).not.toHaveProperty("worker_agent_id");
+    expect(spec.roles.lead?.prompt).not.toContain("Workers you may dispatch");
+    expect(spec.roles.lead?.output_schema["properties"]).not.toHaveProperty("worker_agent_id");
   });
 
   it("layers playbook directives onto the arch prompts rather than replacing them", () => {
     const spec = huntSpec();
-    expect(spec.roles.lead.prompt).toContain("You are the Hunt Lead");
+    expect(spec.roles.lead?.prompt).toContain("You are the Hunt Lead");
     expect(spec.roles.workers["threat_intel"]?.prompt).toContain("snapshotted on the first day");
     expect(spec.roles.workers["network_analyst"]?.prompt).toContain("seven-day export");
     expect(spec.name).toBe("beaconing on the finance segment");

@@ -1,29 +1,125 @@
 ---
 name: full-investigation
 description: "Comprehensive multi-agent investigation with MITRE ATT&CK mapping, cross-signal correlation, response planning, and detailed reporting."
-agents:
-  - investigator
-  - mitre_analyst
-  - correlator
-  - responder
-  - reporter
-tools-used:
-  - get_finding
-  - list_findings
-  - nearest_neighbors
-  - search_detections
-  - get_technique_rollup
-  - create_attack_layer
-  - create_case
-  - create_approval_action
-  - update_case
-  - get_case
-use-case: "Deep-dive investigation into suspicious findings or clusters, going beyond triage into full MITRE mapping, cross-signal correlation, and comprehensive response."
-trigger-examples:
+use_case: "Deep-dive investigation into suspicious findings or clusters, going beyond triage into full MITRE mapping, cross-signal correlation, and comprehensive response."
+trigger_examples:
   - "Fully investigate this finding and all related activity"
   - "Do a complete investigation of case CASE-20260215-xyz"
   - "Deep dive into these suspicious lateral movement findings"
   - "Run full investigation workflow on this cluster of alerts"
+objectives:
+  - "Collect every entity and artifact the finding touches"
+  - "Map the activity to ATT&CK and place it on the kill chain"
+  - "Correlate related signals into attack chains and campaigns"
+  - "Plan containment across the full correlated scope and report it"
+phases:
+  - id: evidence-gathering
+    agent: investigator
+    name: "Evidence Gathering"
+    tools: [get_finding, list_findings, nearest_neighbors, search_detections]
+    instructions: |
+      Retrieve finding details, collect surrounding context, reconstruct the
+      timeline and identify all entities.
+
+      1. Retrieve the target finding(s) via `get_finding`
+      2. Use `nearest_neighbors` to discover related findings via embedding
+         similarity
+      3. Search detection rules for matching patterns and coverage
+      4. Build an entity inventory: all IPs, hostnames, user accounts and file
+         hashes encountered
+      5. Reconstruct an initial timeline from available timestamps
+      6. Collect all evidence artifacts for the later steps
+
+      Hand on the entity inventory, the evidence collection, the initial
+      timeline and the related findings.
+
+  - id: attack-mapping
+    agent: mitre_analyst
+    name: "ATT&CK Mapping"
+    tools: [get_technique_rollup, create_attack_layer, get_finding]
+    instructions: |
+      Map all findings to MITRE ATT&CK techniques, assess kill chain progression
+      and identify detection gaps.
+
+      1. Extract all MITRE technique IDs from findings and related alerts
+      2. Map techniques to ATT&CK tactics (Recon -> Initial Access -> Execution
+         -> Persistence -> Privilege Escalation -> ... -> Impact)
+      3. Assess kill chain progression -- how far has the attacker advanced?
+      4. Identify gaps in the kill chain (missing visibility)
+      5. Evaluate adversary sophistication based on TTPs
+      6. Generate an ATT&CK Navigator layer visualisation
+      7. Recommend detection rules for coverage gaps
+
+      Hand on the technique IDs with confidence, the kill chain stage, the
+      Navigator layer, the coverage gaps and the sophistication profile. A gap
+      in visibility is a finding in its own right: say where you could not look.
+
+  - id: correlation
+    agent: correlator
+    name: "Cross-Signal Correlation"
+    tools: [list_findings, create_case, get_technique_rollup, nearest_neighbors]
+    instructions: |
+      Link related alerts across time, entity and technique dimensions. Identify
+      attack chains and campaigns.
+
+      1. Gather all findings from the earlier steps
+      2. Identify correlation signals:
+         - Time proximity (within minutes/hours): +0.2
+         - Entity overlap (shared IPs/hosts/users): +0.3
+         - MITRE technique chain (sequential tactics): +0.4
+      3. Score correlation strength for each alert pair
+      4. Build the attack chain narrative: what happened in what order
+      5. Identify campaign-level patterns (same actor across multiple incidents)
+      6. Group correlated alerts into cases via `create_case`
+
+      Hand on the correlated groups, the attack chain narrative, any campaign
+      identification, the correlation scores and the new case groupings.
+
+  - id: response-planning
+    agent: responder
+    name: "Response Planning"
+    tools: [create_approval_action, update_case, get_finding]
+    approval_required: true
+    instructions: |
+      Based on the full correlated scope, plan containment across all affected
+      entities.
+
+      1. Review the full attack scope from the correlation results
+      2. Prioritise containment by blast radius (most impacted systems first)
+      3. Plan containment actions with confidence scoring:
+         - 0.95-1.0: auto-approve (active C2, ransomware, confirmed compromise)
+         - 0.85-0.94: quick review (high-confidence threat indicators)
+         - 0.70-0.84: human approval required (suspicious but unconfirmed)
+      4. Submit actions via `create_approval_action`
+      5. Define the eradication and recovery timeline
+      6. Plan post-recovery monitoring
+
+      Hand on the prioritised containment plan, the approval requests with their
+      confidence, the remediation timeline and the recovery steps.
+
+  - id: report
+    agent: reporter
+    name: "Comprehensive Report"
+    tools: [get_case, list_findings, create_attack_layer]
+    instructions: |
+      Assemble the full investigation report from every artifact the earlier
+      steps produced.
+
+      1. Compile all step outputs into a structured narrative
+      2. Generate the final MITRE ATT&CK Navigator layer
+      3. Structure the report:
+         - **Executive Summary:** business impact, risk assessment
+         - **Investigation Timeline:** chronological reconstruction
+         - **MITRE ATT&CK Analysis:** techniques, tactics, kill chain
+         - **Correlation Results:** attack chains, campaigns
+         - **Affected Assets:** complete entity inventory with impact
+         - **Response Actions:** containment, eradication, recovery
+         - **Detection Gaps:** what we missed and how to fix it
+         - **Recommendations:** strategic and tactical improvements
+
+      Carry the detection gaps through rather than quietly dropping them: a
+      report that reads the same whether or not anyone could look is worse than
+      one that admits what was not covered.
 ---
 
 # Full Investigation Workflow
@@ -37,100 +133,6 @@ The most thorough investigation workflow available. Sequences five specialized a
 - Multiple related alerts need cross-correlation
 - A case requires comprehensive investigation before response
 - Post-triage escalation for high/critical findings
-
-## Agent Sequence
-
-### Phase 1: Evidence Gathering (Investigator Agent)
-
-**Purpose:** Retrieve finding details, collect surrounding context, reconstruct timeline, identify all entities.
-
-**Tools:** `get_finding`, `list_findings`, `nearest_neighbors`, `search_detections`
-
-**Steps:**
-1. Retrieve the target finding(s) via `get_finding`
-2. Use `nearest_neighbors` to discover related findings via embedding similarity
-3. Search detection rules for matching patterns and coverage
-4. Build entity inventory: all IPs, hostnames, user accounts, file hashes encountered
-5. Reconstruct initial timeline from available timestamps
-6. Collect all evidence artifacts for downstream phases
-
-**Output:** Entity inventory (IPs, hosts, users, hashes), evidence collection, initial timeline, related findings via embeddings
-
-### Phase 2: ATT&CK Mapping (MITRE Analyst Agent)
-
-**Purpose:** Map all findings to MITRE ATT&CK techniques, assess kill chain progression, identify detection gaps.
-
-**Tools:** `get_technique_rollup`, `create_attack_layer`, `get_finding`, detection coverage tools
-
-**Steps:**
-1. Extract all MITRE technique IDs from findings and related alerts
-2. Map techniques to ATT&CK framework tactics (Recon -> Initial Access -> Execution -> Persistence -> Privilege Escalation -> ... -> Impact)
-3. Assess kill chain progression -- how far has the attacker advanced?
-4. Identify gaps in the kill chain (missing visibility)
-5. Evaluate adversary sophistication based on TTPs
-6. Generate ATT&CK Navigator layer visualization
-7. Recommend detection rules for coverage gaps
-
-**Output:** Technique IDs with confidence, kill chain stage assessment, ATT&CK Navigator layer, detection coverage gaps, adversary sophistication profile
-
-### Phase 3: Cross-Signal Correlation (Correlator Agent)
-
-**Purpose:** Link related alerts across time, entity, and technique dimensions. Identify attack chains and campaigns.
-
-**Tools:** `list_findings`, `create_case`, `get_technique_rollup`, `nearest_neighbors`
-
-**Steps:**
-1. Gather all findings from Phases 1-2
-2. Identify correlation signals:
-   - Time proximity (within minutes/hours): +0.2
-   - Entity overlap (shared IPs/hosts/users): +0.3
-   - MITRE technique chain (sequential tactics): +0.4
-3. Score correlation strength for each alert pair
-4. Build attack chain narrative: what happened in what order
-5. Identify campaign-level patterns (same actor across multiple incidents)
-6. Group correlated alerts into cases via `create_case`
-
-**Output:** Correlated alert groups, attack chain narrative, campaign identification, correlation scores, new case groupings
-
-### Phase 4: Response Planning (Responder Agent)
-
-**Purpose:** Based on the full correlated scope, plan containment across all affected entities.
-
-**Tools:** `create_approval_action`, `update_case`, `get_finding`
-
-**Steps:**
-1. Review the full attack scope from correlation results
-2. Prioritize containment by blast radius (most impacted systems first)
-3. Plan containment actions with confidence scoring:
-   - 0.95-1.0: Auto-approve (active C2, ransomware, confirmed compromise)
-   - 0.85-0.94: Quick review (high-confidence threat indicators)
-   - 0.70-0.84: Human approval required (suspicious but unconfirmed)
-4. Submit actions via `create_approval_action`
-5. Define eradication and recovery timeline
-6. Plan post-recovery monitoring
-
-**Output:** Prioritized containment plan, approval requests with confidence, remediation timeline, recovery steps
-
-### Phase 5: Comprehensive Report (Reporter Agent)
-
-**Purpose:** Full investigation report assembling all artifacts from all prior phases.
-
-**Tools:** `get_case`, `list_findings`, `create_attack_layer`
-
-**Steps:**
-1. Compile all phase outputs into a structured narrative
-2. Generate final MITRE ATT&CK Navigator layer
-3. Structure the comprehensive report:
-   - **Executive Summary:** Business impact, risk assessment
-   - **Investigation Timeline:** Chronological reconstruction
-   - **MITRE ATT&CK Analysis:** Techniques, tactics, kill chain
-   - **Correlation Results:** Attack chains, campaigns
-   - **Affected Assets:** Complete entity inventory with impact
-   - **Response Actions:** Containment, eradication, recovery
-   - **Detection Gaps:** What we missed and how to fix it
-   - **Recommendations:** Strategic and tactical improvements
-
-**Output:** Full investigation report, ATT&CK visualization, timeline, correlated findings summary, recommendations
 
 ## Example Invocation
 
