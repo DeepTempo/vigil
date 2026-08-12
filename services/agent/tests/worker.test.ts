@@ -3,8 +3,10 @@ import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { LedgerRepository } from "../ledger/repository.js";
-import { advance } from "../worker.js";
+import { advance, resolveSpec } from "../worker.js";
 import type { RunJob } from "../contracts/job.js";
+import type { ScriptedTurn } from "./support/scripted-provider.js";
+import { scriptedHarness } from "./support/scripted-harness.js";
 
 const FIXTURES = join(import.meta.dirname, "fixtures");
 
@@ -54,20 +56,20 @@ function resumeJob(id: string): RunJob {
   };
 }
 
-describe("the walking skeleton run", () => {
-  it("opens the ledger and marks the run terminal", async () => {
-    await advance(ledger, startJob(runId));
+const CONCLUDE: ScriptedTurn[] = [{ calls: [] }, { emit: { action: "CONCLUDE", rationale: "nothing to pursue", evidence_citations: [] } }];
+
+describe("a run reaches its workflow", () => {
+  it("opens the ledger and drives the workflow to terminal", async () => {
+    await advance(ledger, startJob(runId), scriptedHarness(CONCLUDE));
 
     const events = await ledger.read(runId);
-    expect(events.map((event) => [event.seq, event.kind])).toEqual([
-      [0, "run"],
-      [1, "terminal"],
-    ]);
+    expect(events.at(0)?.kind).toBe("run");
+    expect(events.at(-1)?.kind).toBe("terminal");
     expect(await ledger.terminal(runId)).toMatchObject({ outcome: "completed" });
   });
 
   it("journals the resolved spec into the run event, so a resume needs no other state", async () => {
-    await advance(ledger, startJob(runId));
+    await advance(ledger, startJob(runId), scriptedHarness(CONCLUDE));
 
     const [first] = await ledger.read(runId);
     expect(first?.kind).toBe("run");
@@ -84,7 +86,7 @@ describe("the walking skeleton run", () => {
         kind: "run",
         payload: {
           run_kind: "hunt",
-          spec: job.request,
+          spec: await resolveSpec(job),
           budgets: { max_calls: 0, max_cost_usd: 0, max_wall_ms: 600_000 },
           seed: runId,
           tenant_id: null,
@@ -93,20 +95,24 @@ describe("the walking skeleton run", () => {
       },
     ]);
 
-    await advance(ledger, resumeJob(runId));
+    await advance(ledger, resumeJob(runId), scriptedHarness(CONCLUDE));
 
     const events = await ledger.read(runId);
-    expect(events.map((event) => event.kind)).toEqual(["run", "terminal"]);
+    expect(events.at(0)?.kind).toBe("run");
+    expect(events.at(-1)?.kind).toBe("terminal");
   });
 
   it("is idempotent when the run already reached terminal", async () => {
-    await advance(ledger, startJob(runId));
-    await advance(ledger, resumeJob(runId));
+    await advance(ledger, startJob(runId), scriptedHarness(CONCLUDE));
+    const settled = (await ledger.read(runId)).length;
 
-    expect(await ledger.read(runId)).toHaveLength(2);
+    // The second call must not reach the workflow at all: the script would run out.
+    await advance(ledger, resumeJob(runId), scriptedHarness([]));
+
+    expect(await ledger.read(runId)).toHaveLength(settled);
   });
 
   it("refuses to resume a run that has no ledger", async () => {
-    await expect(advance(ledger, resumeJob(runId))).rejects.toThrow(/has no ledger/);
+    await expect(advance(ledger, resumeJob(runId), scriptedHarness(CONCLUDE))).rejects.toThrow(/has no ledger/);
   });
 });

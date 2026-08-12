@@ -21,6 +21,9 @@ const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
     owned: { playbook: ["hypotheses", "attack_techniques", "data_domains"], config: ["enrichment", "checkpoints", "termination"] },
   },
   investigate: { arch: packaged("investigate.yaml"), actions: ["EXAMINE", "CONCLUDE"], halts: ["CONCLUDE"] },
+  // No actions: nothing emits one. A step ends when its agent answers, and the run
+  // ends when the list does, so there is no verb for a model to choose or to halt on.
+  compose: { arch: packaged("compose.yaml"), actions: [], halts: [] },
 };
 
 // Resolved against the package rather than the cwd: the arch files ship with the

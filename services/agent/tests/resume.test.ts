@@ -5,6 +5,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { RunJob } from "../contracts/job.js";
 import { InProcessState } from "../core/state.js";
 import { advance, resolveSpec, specOf } from "../worker.js";
+import { scriptedHarness } from "./support/scripted-harness.js";
+import type { ScriptedTurn } from "./support/scripted-provider.js";
+
+const CONCLUDE: ScriptedTurn[] = [{ calls: [] }, { emit: { action: "CONCLUDE", rationale: "done", evidence_citations: [] } }];
 
 const FIXTURES = join(import.meta.dirname, "fixtures");
 const RUN = "7d3c2d3e-0000-4000-8000-000000000619";
@@ -47,26 +51,26 @@ function rewriteBudget(iterations: number): void {
 }
 
 describe("resolving a run", () => {
-  it("routes the run kind through the registry to its arch file", () => {
-    expect(resolveSpec(startJob()).arch).toBe("threathunt");
+  it("routes the run kind through the registry to its arch file", async () => {
+    expect((await resolveSpec(startJob())).arch).toBe("threathunt");
   });
 
   // Startup, not runtime: the kind is resolved before the ledger opens.
-  it("refuses a run kind no arch is registered for", () => {
-    expect(() => resolveSpec(startJob("compose"))).toThrow(/no architecture is registered for run_kind compose/);
+  it("refuses a run kind no arch is registered for", async () => {
+    await expect(resolveSpec(startJob("chat"))).rejects.toThrow(/no architecture is registered for run_kind chat/);
   });
 
-  it("lets an explicit arch path override the registry's default", () => {
+  it("lets an explicit arch path override the registry's default", async () => {
     const job = startJob();
     job.request.arch = join(import.meta.dirname, "..", "arch", "threathunt.yaml");
-    expect(resolveSpec(job).dispatch.max_workers).toBe(4);
+    expect((await resolveSpec(job)).dispatch.max_workers).toBe(4);
   });
 });
 
 describe("the arch a run started under is journaled", () => {
   it("writes the resolved spec into the run event", async () => {
     const state = new InProcessState();
-    await advance(state, startJob());
+    await advance(state, startJob(), scriptedHarness(CONCLUDE));
 
     const opened = await specOf(state, RUN);
     expect(opened?.arch).toBe("threathunt");
@@ -76,16 +80,16 @@ describe("the arch a run started under is journaled", () => {
   // The whole point of journaling it: the file moved, the run did not.
   it("keeps a resumed run on the spec it opened with after the config is edited", async () => {
     const state = new InProcessState();
-    await advance(state, startJob());
+    await advance(state, startJob(), scriptedHarness(CONCLUDE));
 
     rewriteBudget(99);
-    expect(resolveSpec(startJob()).budgets.max_calls).toBe(99);
+    expect((await resolveSpec(startJob())).budgets.max_calls).toBe(99);
 
-    await advance(state, resumeJob());
+    await advance(state, resumeJob(), scriptedHarness(CONCLUDE));
     expect((await specOf(state, RUN))?.budgets.max_calls).toBe(12);
   });
 
   it("refuses to resume a run that has no ledger", async () => {
-    await expect(advance(new InProcessState(), resumeJob())).rejects.toThrow(/has no ledger/);
+    await expect(advance(new InProcessState(), resumeJob(), scriptedHarness(CONCLUDE))).rejects.toThrow(/has no ledger/);
   });
 });

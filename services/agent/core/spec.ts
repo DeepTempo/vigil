@@ -26,10 +26,10 @@ export interface RoleSpec {
   tools: string[];
 }
 
-// Worker keys are the ids the lead may name, so adding a specialist is a YAML
-// block rather than a change here. Both companions are optional.
+// Worker keys are the ids the lead may name. The lead is optional too: an arch
+// whose order is authored elsewhere has nothing for one to decide.
 export interface Roles {
-  lead: RoleSpec;
+  lead?: RoleSpec;
   workers: Record<string, RoleSpec>;
   critic?: RoleSpec;
 }
@@ -42,13 +42,35 @@ export interface ArchSpec {
   digest: Counts;
 }
 
+// One authored step: which agent runs it, what it is told, and whether it stops
+// for a human first. Order is the list's, so an agent may appear more than once.
+export interface PhaseSpec {
+  id: string;
+  agent: string;
+  name: string;
+  instructions: string;
+  approval_required: boolean;
+  // Authored: what this step may call, narrowed from what its agent holds.
+  tools: string[];
+  // Resolved, not authored: an agent's own prompt is rendered at run start, so a
+  // file leaves this empty and whoever resolves the reference fills it.
+  prompt: string;
+}
+
 // The uploadable layer: the scenario, and what an analyst should know. No schemas.
+// It is also the registry for it — the catalog reads these fields, never restates them.
 export interface Playbook {
   sections: Record<string, unknown>;
   name: string;
+  description: string;
+  use_case: string;
+  trigger_examples: string[];
   objectives: string[];
   scope: Record<string, unknown>;
   directives: Record<string, string>;
+  // Ordered, unlike directives: a Record keyed by role cannot say one role runs,
+  // then a second, then the first again with something else to do.
+  phases: PhaseSpec[];
   narrative: string;
 }
 
@@ -83,6 +105,9 @@ export interface RunSpec extends Config, Omit<Playbook, "directives"> {
   roles: Roles;
   dispatch: DispatchPolicy;
   digest: Counts;
+  // The job's, not a file's: the playbook says what this kind of run does and
+  // this says which one. Journalled with the spec, so a resume still knows.
+  prompt: string;
 }
 
 // Reserved directive key: prose every worker needs, such as what the data is.
@@ -102,7 +127,17 @@ export const DEFAULT_RUNTIME: Runtime = { max_turns: 8, result_cap: 20_000, reca
 // default, and there is no precedence chain to reason about.
 const LAYERS = {
   arch: ["name", "roles", "dispatch", "digest"],
-  playbook: ["name", "objectives", "scope", "directives", "narrative"],
+  playbook: [
+    "name",
+    "description",
+    "use_case",
+    "trigger_examples",
+    "objectives",
+    "scope",
+    "directives",
+    "phases",
+    "narrative",
+  ],
   config: ["model", "budgets", "runtime", "tools", "approvals", "thresholds"],
 } as const;
 
@@ -285,9 +320,14 @@ function parseRoles(raw: unknown, handled: readonly string[]): Roles {
     throw new SpecError(`unknown role group(s): ${stray.sort().join(", ")}; expected any of ${[...ROLE_GROUPS].sort().join(", ")}`);
   }
 
-  const lead = parseRole(record["lead"], "lead");
-  assertVocabulary(lead.output_schema, handled);
-  const roles: Roles = { lead, workers: parseWorkers(record[ALL_WORKERS], str(record["workers_preamble"]).trim()) };
+  const roles: Roles = { workers: parseWorkers(record[ALL_WORKERS], str(record["workers_preamble"]).trim()) };
+  // No lead is a declaration that the order is authored elsewhere, so there is no
+  // vocabulary to check: a workflow that sequences its own phases decides nothing.
+  if (record["lead"] !== undefined) {
+    const lead = parseRole(record["lead"], "lead");
+    assertVocabulary(lead.output_schema, handled);
+    roles.lead = lead;
+  }
   if (record["critic"] !== undefined) roles.critic = parseRole(record["critic"], "critic");
   return roles;
 }
@@ -303,6 +343,32 @@ export function parseArch(text: string, handled: readonly string[]): ArchSpec {
   };
 }
 
+// Ids are the playbook's, not generated: a resumed run finds its place by phase
+// id, so one that changed between enqueue and resume would restart the wrong step.
+function parsePhases(raw: unknown): PhaseSpec[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) throw new SpecError("phases must be a list");
+
+  const seen = new Set<string>();
+  return raw.map((entry, index) => {
+    const phase = asRecord(entry, `phases[${index}]`);
+    const id = str(phase["id"]).trim() || `phase-${index + 1}`;
+    const agent = str(phase["agent"]).trim();
+    if (agent === "") throw new SpecError(`phases[${index}] needs an agent`);
+    if (seen.has(id)) throw new SpecError(`phases declares the id ${id} twice; ids address a step, so they cannot repeat`);
+    seen.add(id);
+    return {
+      id,
+      agent,
+      name: str(phase["name"]).trim() || id,
+      instructions: str(phase["instructions"]),
+      approval_required: phase["approval_required"] === true,
+      prompt: str(phase["prompt"]),
+      tools: strings(phase["tools"], `phases[${index}].tools`),
+    };
+  });
+}
+
 // Role names are checked against the arch's registry in applyDirectives, not
 // here: a playbook is read without knowing which arch it will run under.
 export function parsePlaybook(text: string, owned: Owned = NONE): Playbook {
@@ -312,9 +378,13 @@ export function parsePlaybook(text: string, owned: Owned = NONE): Playbook {
   return {
     sections,
     name: str(front["name"]),
+    description: str(front["description"]),
+    use_case: str(front["use_case"]),
+    trigger_examples: strings(front["trigger_examples"], "trigger_examples"),
     objectives: strings(front["objectives"], "objectives"),
     scope: asRecord(front["scope"], "scope"),
     directives: Object.fromEntries(Object.entries(directives).map(([role, value]) => [role, String(value)])),
+    phases: parsePhases(front["phases"]),
     narrative: body || str(front["narrative"]),
   };
 }
@@ -376,10 +446,8 @@ function applyDirectives(roles: Roles, directives: Record<string, string>, decla
 
   const shared = directives[ALL_WORKERS];
   const workers = Object.entries(roles.workers).map(([id, role]) => [id, extend(role, id, [shared, directives[id]], declared)]);
-  const applied: Roles = {
-    lead: extend(roles.lead, "lead", [directives["lead"]], declared),
-    workers: Object.fromEntries(workers) as Record<string, RoleSpec>,
-  };
+  const applied: Roles = { workers: Object.fromEntries(workers) as Record<string, RoleSpec> };
+  if (roles.lead !== undefined) applied.lead = extend(roles.lead, "lead", [directives["lead"]], declared);
   if (roles.critic !== undefined) applied.critic = extend(roles.critic, "critic", [directives["critic"]], declared);
   return applied;
 }
@@ -410,34 +478,67 @@ export interface SpecPaths {
   config: string;
 }
 
-// The one place the three layers converge. handled is the workflow's action set,
-// which is what makes an arch declaring anything else a load error.
-export function buildSpec(paths: SpecPaths, handled: readonly string[], owned: Owned = NONE): RunSpec {
-  const arch = load(paths.arch, (text) => parseArch(text, handled), "arch");
-  const config = load(paths.config, (text) => parseConfig(text, owned), "config");
-  const playbook = load(paths.playbook, (text) => parsePlaybook(text, owned), "playbook");
+export interface SpecSources {
+  arch: ArchSpec;
+  playbook: Playbook;
+  config: Config;
+  prompt?: string;
+}
 
+// The one place the three layers converge, over parsed layers rather than files:
+// a playbook an operator never wrote to disk converges here on the same terms.
+export function assembleSpec(sources: SpecSources): RunSpec {
+  const { arch, playbook, config } = sources;
   const declared = new Set(config.tools.map((tool) => tool.id));
   const roles = applyDirectives(arch.roles, playbook.directives, declared);
   const staffed = Object.keys(roles.workers).length > 0;
+
+  // The roster and the worker-id constraint are the lead's alone. Without one
+  // there is nothing to dispatch from, because the phase list already said.
+  const led =
+    roles.lead === undefined
+      ? roles
+      : {
+          ...roles,
+          lead: {
+            ...roles.lead,
+            prompt: staffed ? `${roles.lead.prompt}\n\n${roster(roles.workers)}` : roles.lead.prompt,
+            output_schema: staffed ? constrainWorkerId(roles.lead.output_schema, roles.workers) : roles.lead.output_schema,
+          },
+        };
 
   return {
     ...config,
     sections: { ...config.sections, ...playbook.sections },
     arch: arch.name,
-    roles: {
-      ...roles,
-      lead: {
-        ...roles.lead,
-        prompt: staffed ? `${roles.lead.prompt}\n\n${roster(roles.workers)}` : roles.lead.prompt,
-        output_schema: staffed ? constrainWorkerId(roles.lead.output_schema, roles.workers) : roles.lead.output_schema,
-      },
-    },
+    roles: led,
     dispatch: arch.dispatch,
     digest: arch.digest,
     name: playbook.name || arch.name,
+    description: playbook.description,
+    use_case: playbook.use_case,
+    trigger_examples: playbook.trigger_examples,
     objectives: playbook.objectives,
     scope: playbook.scope,
+    phases: playbook.phases,
     narrative: playbook.narrative,
+    prompt: sources.prompt ?? "",
   };
+}
+
+// The arch is always a file: it is operator-authored and never uploaded, so
+// unlike a playbook it has no reference form for anyone to resolve.
+export function loadArch(path: string, handled: readonly string[]): ArchSpec {
+  return load(path, (text) => parseArch(text, handled), "arch");
+}
+
+// handled is the workflow's action set, which is what makes an arch declaring
+// anything else a load error; owned is the sections its workflow reads.
+export function buildSpec(paths: SpecPaths, handled: readonly string[], owned: Owned = NONE, prompt = ""): RunSpec {
+  return assembleSpec({
+    arch: loadArch(paths.arch, handled),
+    config: load(paths.config, (text) => parseConfig(text, owned), "config"),
+    playbook: load(paths.playbook, (text) => parsePlaybook(text, owned), "playbook"),
+    prompt,
+  });
 }
