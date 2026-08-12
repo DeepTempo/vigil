@@ -35,7 +35,7 @@ type PresetValues = Pick<
   | 'max_total_daily_cost'
 >
 
-const PRESETS: Record<PresetKey, { label: string; summary: string; values: PresetValues }> = {
+const PRESETS = {
   conservative: {
     label: 'Conservative',
     summary: 'Minimal spend · 2 agents · tight limits',
@@ -72,7 +72,7 @@ const PRESETS: Record<PresetKey, { label: string; summary: string; values: Prese
       max_total_daily_cost: 300.0,
     },
   },
-}
+} satisfies Record<PresetKey, { label: string; summary: string; values: PresetValues }>
 
 const matchesPreset = (cfg: OrchestratorConfig, key: PresetKey) =>
   (Object.entries(PRESETS[key].values) as [keyof PresetValues, number][]).every(

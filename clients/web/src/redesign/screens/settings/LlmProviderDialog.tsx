@@ -17,16 +17,16 @@ type ProviderType = 'anthropic' | 'openai' | 'ollama'
 
 const STEPS = ['Provider', 'Connection', 'Model & Save']
 
-const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
+const DEFAULT_BASE_URLS = {
   anthropic: '',
   openai: 'https://api.openai.com/v1',
   ollama: 'http://localhost:11434',
-}
-const DEFAULT_MODEL: Record<ProviderType, string> = {
+} satisfies Record<ProviderType, string>
+const DEFAULT_MODEL = {
   anthropic: 'claude-sonnet-4-5-20250929',
   openai: 'gpt-4o-mini',
   ollama: 'llama3.1:8b',
-}
+} satisfies Record<ProviderType, string>
 const TYPE_OPTIONS: { value: ProviderType; label: string; desc: string }[] = [
   { value: 'ollama', label: 'Ollama', desc: 'Local or remote Ollama server' },
   { value: 'openai', label: 'OpenAI', desc: 'OpenAI or OpenAI-compatible endpoint' },

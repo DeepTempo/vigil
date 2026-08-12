@@ -71,7 +71,7 @@ function ServersPanel({ notify }: SectionProps) {
   const grouped = useMemo(() => {
     const q = search.toLowerCase()
     const match = (n: string) =>
-      !q || n.toLowerCase().includes(q) || (SERVER_DESCRIPTIONS[n] || '').toLowerCase().includes(q)
+      !q || n.toLowerCase().includes(q) || (SERVER_DESCRIPTIONS.get(n) ?? '').toLowerCase().includes(q)
     const claimed = new Set<string>()
     const out: { label: string; servers: string[] }[] = []
     for (const cat of MCP_CATEGORIES) {
@@ -185,7 +185,7 @@ function ServersPanel({ notify }: SectionProps) {
                   <div key={name} className="card card-sq p-3.5 flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-[13px] font-semibold text-tx truncate flex-1">
-                        {SERVER_DISPLAY_NAMES[name] || prettyServerName(name)}
+                        {SERVER_DISPLAY_NAMES.get(name) ?? prettyServerName(name)}
                       </span>
                       {WIP_SERVERS.has(name) && (
                         <span className="chip" style={{ color: 'var(--high)', fontSize: 10 }}>WIP</span>
@@ -224,7 +224,7 @@ function ServersPanel({ notify }: SectionProps) {
                       )}
                     </div>
                     <p className="text-xs text-tx-3 leading-snug line-clamp-2 min-h-[2rem]">
-                      {SERVER_DESCRIPTIONS[name] || integration?.description || 'Custom MCP integration.'}
+                      {SERVER_DESCRIPTIONS.get(name) || integration?.description || 'Custom MCP integration.'}
                     </p>
                     <div className="flex items-center gap-1.5 mt-auto">
                       <span style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor }} />

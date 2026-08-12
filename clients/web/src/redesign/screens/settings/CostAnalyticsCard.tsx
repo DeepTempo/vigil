@@ -15,12 +15,12 @@ const RANGES: [CostTimeRange, string][] = [
   ['all', 'All'],
 ]
 
-const PRICING_LABEL: Record<CostModelRow['pricing_source'], { label: string; color: string }> = {
+const PRICING_LABEL = {
   exact: { label: 'exact', color: 'var(--ok)' },
   heuristic: { label: 'heuristic', color: 'var(--high)' },
   zero: { label: 'free', color: 'var(--med)' },
   unknown: { label: 'unknown', color: 'var(--crit)' },
-}
+} satisfies Record<CostModelRow['pricing_source'], { label: string; color: string }>
 
 const fmtTokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n))
 const fmtCost = (n: number) => `$${n.toFixed(2)}`
