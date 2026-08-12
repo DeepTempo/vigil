@@ -81,6 +81,13 @@ export async function newLedger(overrides: SpecOverrides = {}): Promise<Started>
   return { ledger, state, runId, hypothesisIds: [...ledger.projection.hypotheses.keys()] };
 }
 
+// What an operator answering a checkpoint hours later does: nothing of the
+// writing process carries over, the ledger is the whole state.
+export async function reopen(started: Started, from?: Journal): Promise<Journal> {
+  await (from ?? started.ledger).flush();
+  return Journal.open(started.state, started.runId);
+}
+
 export interface ControllerOptions {
   critic?: ScriptedDisconfirmationCritic;
   dispatcher?: WorkerDispatcher;

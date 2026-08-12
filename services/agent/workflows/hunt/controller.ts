@@ -48,6 +48,7 @@ import {
   OUTCOME_PRECEDENCE,
   type Budgets,
   type Decision,
+  type Handoff,
   type DecisionAction,
   type DecisionResult,
   type Digest,
@@ -297,7 +298,7 @@ export async function startHunt(state: State<HuntKinds>, runId: string, spec: Hu
   }
 
   // Raised whichever way the policy falls, so the approval is a ledger fact
-  // rather than something the CLI remembers: an approval that isn't on the
+  // rather than something a caller remembers. An ask with nothing pending deadlocks.
   const checkpoint = raiseCheckpoint(
     "hypothesis_approval",
     0,
@@ -311,6 +312,7 @@ export async function startHunt(state: State<HuntKinds>, runId: string, spec: Hu
       scope: spec.scope,
     },
   );
+  ledger.append({ kind: "checkpoint", payload: checkpoint });
   if (policy === "auto") {
     const resolution = resolveCheckpoint(checkpoint, "approve", AUTO_ACTOR, "checkpoint policy hypothesis_approval=auto");
     ledger.append({ kind: "resolution", payload: resolution });
@@ -1442,13 +1444,16 @@ export class HuntController {
     const caseId = newId("case", 4);
     this.ledger.patch("hypothesis", hypothesisId, { status: "handed_off", spawned_case_id: caseId });
 
-    const handoff = {
+    const handoff: Handoff = {
       case_id: caseId,
       hypothesis_id: hypothesisId,
       iteration,
       rationale: decision.rationale,
       created_at: new Date().toISOString(),
     };
+    // The deliverable, not a pointer to one: what IR is handed is the claim, the
+    // strength numbers, the cited records and what the hunt could not see.
+    handoff.case_markdown = renderCaseFile(this.ledger.projection, handoff);
     this.ledger.append({ kind: "handoff", payload: handoff });
     return `${hypothesisId} handed off to incident response as ${caseId}`;
   }

@@ -255,10 +255,8 @@ export function renderReport(report: HuntReport): string {
   if (report.handoffs.length > 0) {
     lines.push("## Escalated to incident response", "");
     for (const handoff of report.handoffs) {
-      lines.push(
-        `- ${handoff.case_id} (${handoff.hypothesis_id}, iteration ${handoff.iteration}) — ${handoff.rationale}`,
-        `  case file: ${handoff.case_file}`,
-      );
+      lines.push(`- ${handoff.case_id} (${handoff.hypothesis_id}, iteration ${handoff.iteration}) — ${handoff.rationale}`);
+      if (handoff.case_file) lines.push(`  case file: ${handoff.case_file}`);
     }
     lines.push("");
   }

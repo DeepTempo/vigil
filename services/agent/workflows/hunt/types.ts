@@ -208,7 +208,10 @@ export interface Handoff {
   hypothesis_id: string;
   iteration: number;
   rationale: string;
-  case_file: string;
+  // The rendered document is journaled rather than written beside a ledger that
+  // no longer has a path. case_file survives only on ledgers written before that.
+  case_markdown?: string;
+  case_file?: string;
   created_at: string;
 }
 
