@@ -1,3 +1,4 @@
+import type { BudgetLimits } from "../../contracts/budget.js";
 import { SpecError, type Counts, type RunSpec } from "../../core/spec.js";
 import { DEFAULT_CHECKPOINTS, type Checkpoints } from "./checkpoints.js";
 
@@ -108,9 +109,19 @@ export interface HuntSpec extends RunSpec {
   termination: Termination;
 }
 
+// A ceiling under the budget it caps would clamp every extension to less than
+// the hunt already had, so an operator could never buy headroom.
+function validateCeilings(termination: Termination, budgets: BudgetLimits): void {
+  if (termination.hard_max_calls < budgets.max_calls)
+    throw new SpecError(`thresholds.hard_max_calls is below budgets.max_calls (${budgets.max_calls})`);
+  if (termination.hard_max_cost_usd < budgets.max_cost_usd)
+    throw new SpecError(`thresholds.hard_max_cost_usd is below budgets.max_cost_usd (${budgets.max_cost_usd})`);
+}
+
 export function huntSpec(spec: RunSpec): HuntSpec {
   const held = spec.sections;
   validateThresholds(spec.thresholds);
+  validateCeilings(terminationOf(spec), spec.budgets);
   return {
     ...spec,
     hypotheses: Array.isArray(held["hypotheses"]) ? (held["hypotheses"] as string[]) : [],
