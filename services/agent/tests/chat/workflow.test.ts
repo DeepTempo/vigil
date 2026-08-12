@@ -5,12 +5,15 @@ import { defineTool, type RegisteredTool, type ToolResult } from "../../contract
 import { budgetOf, unmeteredQuota } from "../../core/budget.js";
 import { localDispatch } from "../../core/dispatch.js";
 import type { Harness } from "../../core/loop.js";
-import { nullMemory } from "../../core/memory.js";
+import { nullMemory, recalling } from "../../core/memory.js";
 import { registryOf } from "../../core/registry.js";
+import type { Memory } from "../../core/seams.js";
 import { assembleSpec, loadArch, parseConfig, parsePlaybook, SpecError, type RunSpec } from "../../core/spec.js";
 import { InProcessState } from "../../core/state.js";
 import type { StreamEvent } from "../../core/stream.js";
 import { conversationOf, grantsOf, runChat, type ChatReport, type Turn } from "../../workflows/chat/workflow.js";
+import { huntNotes } from "../../workflows/hunt/recall.js";
+import { newLedger, resolve } from "../support/hunt.js";
 import { scriptedProvider, type ScriptedProvider, type ScriptedTurn } from "../support/scripted-provider.js";
 
 const RUN = "5a2c2d3e-0000-4000-8000-000000000631";
@@ -48,13 +51,13 @@ function specOf(config = CONFIG): RunSpec {
   });
 }
 
-function harnessOf(script: readonly ScriptedTurn[], state = new InProcessState()): Harness {
+function harnessOf(script: readonly ScriptedTurn[], state = new InProcessState(), memory: Memory = nullMemory): Harness {
   return {
     provider: scriptedProvider(script),
     registry: registryOf([LOOKUP], grantsOf(specOf())),
     dispatch: localDispatch,
     budget: budgetOf({ max_calls: 6, max_cost_usd: 1, max_wall_ms: 600_000 }, unmeteredQuota, "scripted"),
-    memory: nullMemory,
+    memory,
     state,
   };
 }
@@ -140,6 +143,30 @@ describe("what the workflow refuses", () => {
   it("refuses a turn with nothing said in it", () => {
     const stream = runChat(harnessOf([]), { run_id: RUN, spec: specOf(), turns: [] });
     return expect(stream.next()).rejects.toThrow(/needs at least one message/);
+  });
+});
+
+describe("a follow-up to a hunt that already ran", () => {
+  it("opens with what the hunt concluded, so the question is asked against it", async () => {
+    const hunt = await newLedger({ hypotheses: ["the host is beaconing to external infrastructure"] });
+    resolve(hunt.ledger, hunt.hypothesisIds[0]!, "proven");
+    await hunt.ledger.flush();
+
+    const memory = recalling(huntNotes(hunt.state, hunt.runId));
+    const harness = harnessOf([{ content: "it was proven" }], new InProcessState(), memory);
+    await converse(harness, [{ role: "user", content: "what did we settle?" }]);
+
+    // In the opening turn, which is inside the prefix: recalled once and carried,
+    // never re-recalled per tool turn.
+    const opening = (harness.provider as ScriptedProvider).requests[0]!.messages[1]!;
+    expect(opening.content).toContain("the host is beaconing to external infrastructure");
+    expect(opening.content).toContain("what did we settle?");
+  });
+
+  it("opens with the question alone when there is no parent", async () => {
+    const harness = harnessOf([{ content: "no idea" }]);
+    await converse(harness);
+    expect((harness.provider as ScriptedProvider).requests[0]!.messages[1]!.content).toBe(ASKED[0]!.content);
   });
 });
 
