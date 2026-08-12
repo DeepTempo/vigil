@@ -21,7 +21,8 @@ beforeEach(() => {
 
 // The registry resolves the arch, so the request names only the two layers an
 // operator supplies per run.
-function startJob(run_kind: RunJob["run_kind"] = "hunt"): Extract<RunJob, { reason: "start" }> {
+function startJob(run_kind: RunJob["run_kind"] = "hunt", overrides?: Record<string, unknown>): Extract<RunJob, { reason: "start" }> {
+  const tighten = overrides === undefined ? {} : { overrides };
   return {
     schema_version: 1,
     run_id: RUN,
@@ -30,7 +31,7 @@ function startJob(run_kind: RunJob["run_kind"] = "hunt"): Extract<RunJob, { reas
     enqueued_at: new Date().toISOString(),
     enqueued_by: "test",
     reason: "start",
-    request: { arch: "", playbook: join(FIXTURES, "hunt.playbook.yaml"), config, prompt: "go" },
+    request: { arch: "", playbook: join(FIXTURES, "hunt.playbook.yaml"), config, prompt: "go", ...tighten },
   };
 }
 
@@ -91,5 +92,31 @@ describe("the arch a run started under is journaled", () => {
 
   it("refuses to resume a run that has no ledger", async () => {
     await expect(advance(new InProcessState(), resumeJob(), scriptedHarness(CONCLUDE))).rejects.toThrow(/has no ledger/);
+  });
+});
+
+describe("what the caller enqueuing a run may tighten", () => {
+  it("lowers a ceiling the config set", async () => {
+    const spec = await resolveSpec(startJob("hunt", { budgets: { max_cost_usd: 0.5 } }));
+    expect(spec.budgets.max_cost_usd).toBe(0.5);
+  });
+
+  it("leaves the ceilings it did not name", async () => {
+    const plain = await resolveSpec(startJob());
+    const tightened = await resolveSpec(startJob("hunt", { budgets: { max_cost_usd: 0.5 } }));
+    expect(tightened.budgets.max_calls).toBe(plain.budgets.max_calls);
+  });
+
+  it("refuses a ceiling of zero, which is a run that cannot start rather than one that cannot overspend", async () => {
+    await expect(resolveSpec(startJob("hunt", { budgets: { max_cost_usd: 0 } }))).rejects.toThrow(/must be a positive number/);
+  });
+
+  it("refuses an unknown budget key rather than accepting a knob nothing reads", async () => {
+    await expect(resolveSpec(startJob("hunt", { budgets: { max_dollars: 5 } }))).rejects.toThrow(/unknown overrides.budgets key/);
+  });
+
+  it("refuses to override anything but budgets and runtime", async () => {
+    // The deployment's ceilings are the deployment's; the arch is not negotiable.
+    await expect(resolveSpec(startJob("hunt", { roles: {} }))).rejects.toThrow(/may name budgets or runtime/);
   });
 });

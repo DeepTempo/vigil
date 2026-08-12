@@ -1,13 +1,14 @@
 import { Worker } from "bullmq";
 import pg from "pg";
 import { archFor } from "./arch/registry.js";
+import { httpAnswers, noAnswers, type Answers } from "./core/answers.js";
 import { harnessFor, internalToken, type HarnessFactory } from "./harness.js";
 import { chatPort, chatServer } from "./serve.js";
 import { RUN_QUEUE, type RunJob } from "./contracts/job.js";
 import type { RunKind, RunPayload } from "./contracts/events.js";
 import type { State } from "./core/seams.js";
 import { httpPlaybooks, isReference, type PlaybookResolver } from "./core/playbooks.js";
-import { assembleSpec, buildSpec, loadArch, parseConfig, parsePlaybook, SpecError, type RunSpec } from "./core/spec.js";
+import { assembleSpec, buildSpec, loadArch, parseConfig, parsePlaybook, SpecError, withOverrides, type RunSpec } from "./core/spec.js";
 import { LedgerRepository } from "./ledger/repository.js";
 import { httpMirror, nullMirror, type Mirror } from "./workflows/compose/mirror.js";
 import { runCompose } from "./workflows/compose/workflow.js";
@@ -21,8 +22,9 @@ type StartJob = Extract<RunJob, { reason: "start" }>;
 export async function resolveSpec(job: StartJob, resolve: PlaybookResolver = defaultResolver()): Promise<RunSpec> {
   const entry = archFor(job.run_kind);
   const arch = job.request.arch === "" ? entry.arch : job.request.arch;
+  const tighten = (spec: RunSpec): RunSpec => withOverrides(spec, job.request.overrides);
   if (!isReference(job.request.playbook)) {
-    return buildSpec({ arch, playbook: job.request.playbook, config: job.request.config }, entry.actions, entry.owned, job.request.prompt);
+    return tighten(buildSpec({ arch, playbook: job.request.playbook, config: job.request.config }, entry.actions, entry.owned, job.request.prompt));
   }
 
   // A reference answers with both layers, so a config path beside one is a second
@@ -31,12 +33,14 @@ export async function resolveSpec(job: StartJob, resolve: PlaybookResolver = def
     throw new SpecError(`${job.request.playbook} resolves its own config, so ${job.request.config} has nothing to say`);
   }
   const layers = await resolve(job.request.playbook);
-  return assembleSpec({
-    arch: loadArch(arch, entry.actions),
-    playbook: parsePlaybook(layers.playbook, entry.owned),
-    config: parseConfig(layers.config, entry.owned),
-    prompt: job.request.prompt,
-  });
+  return tighten(
+    assembleSpec({
+      arch: loadArch(arch, entry.actions),
+      playbook: parsePlaybook(layers.playbook, entry.owned),
+      config: parseConfig(layers.config, entry.owned),
+      prompt: job.request.prompt,
+    }),
+  );
 }
 
 // Off unless a deployment says where to mirror to: a run whose progress nobody
@@ -44,6 +48,13 @@ export async function resolveSpec(job: StartJob, resolve: PlaybookResolver = def
 function mirrorFor(): Mirror {
   const url = process.env["VIGIL_RUNS_URL"];
   return url === undefined || url === "" ? nullMirror : httpMirror({ url, token: internalToken() });
+}
+
+// The same endpoint the compose mirror answers from, read-only. Off unless a
+// deployment says where, so a run nobody can answer parks rather than proceeds.
+function answersFor(): Answers {
+  const url = process.env["VIGIL_RUNS_URL"];
+  return url === undefined || url === "" ? noAnswers : httpAnswers({ url, token: internalToken() });
 }
 
 function defaultResolver(): PlaybookResolver {
@@ -78,7 +89,7 @@ async function drive(state: State, job: RunJob, spec: RunSpec, build: HarnessFac
   if (kind === "hunt" || kind === "investigate") {
     const entry = archFor(kind);
     const harness = build(kind, spec, as<LeadKinds>(state));
-    await runLead(harness, { run_id, run_kind: kind, spec, actions: entry.actions, halts: entry.halts, started_by });
+    await runLead(harness, { run_id, run_kind: kind, spec, actions: entry.actions, halts: entry.halts, started_by, answers: answersFor() });
     return;
   }
   throw new SpecError(`no workflow is wired for run_kind ${kind}`);
