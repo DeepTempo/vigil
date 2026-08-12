@@ -1,4 +1,6 @@
 import { appendFileSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { actorName } from "./lease.js";
 import { newId } from "./ids.js";
 import type { Journal } from "./journal.js";
@@ -19,8 +21,8 @@ export function directiveActor(): string {
 
 // A second producer alongside the workers. Any process may append here; only the
 // lease holder drains it into the ledger, so the controller stays the sole mutator.
-export function inboxPath(ledgerPath: string): string {
-  return `${ledgerPath}.inbox.jsonl`;
+export function inboxPath(runId: string): string {
+  return join(process.env["VIGIL_INBOX_DIR"] || tmpdir(), `${runId}.inbox.jsonl`);
 }
 
 // What an extension buys, read out of the operator's own words: "+5 iterations",
