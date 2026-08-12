@@ -46,9 +46,12 @@ class TestAuthorisation:
             _invoke(client, headers={"Authorization": "Bearer nope"}).status_code == 401
         )
 
-    def test_refuses_when_no_secret_is_configured(self, client, monkeypatch):
+    def test_says_so_when_no_secret_is_configured(self, client, monkeypatch):
+        """A deployment that never set the token must not read as a bad caller."""
         monkeypatch.setattr(internal_auth, "get_secret", lambda name: None)
-        assert _invoke(client).status_code == 401
+        response = _invoke(client)
+        assert response.status_code == 503
+        assert "AGENT_INTERNAL_TOKEN" in response.json()["detail"]
 
     def test_refuses_a_caller_that_is_not_loopback(self, client, monkeypatch):
         monkeypatch.setattr(internal_auth, "_loopback", lambda request: False)

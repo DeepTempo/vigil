@@ -17,6 +17,9 @@ export interface PhaseUpdate {
 // decisions is the only inbound direction: a human answers over there, and this
 // side journals what comes back, so the ledger keeps its single writer.
 export interface Mirror {
+  // Whether a human can answer through this one. Losing progress does not change
+  // a run; a gate nobody can see or answer stops it for good.
+  readonly answerable: boolean;
   phase(runId: string, update: PhaseUpdate): Promise<void>;
   terminal(runId: string, outcome: RunOutcome, reason: string, summary: string): Promise<void>;
   decisions(runId: string): Promise<ResolutionPayload[]>;
@@ -25,6 +28,7 @@ export interface Mirror {
 // A run whose progress nobody is watching still runs. Used by tests and by any
 // deployment with no backend to mirror into.
 export const nullMirror: Mirror = {
+  answerable: false,
   phase: async () => {},
   terminal: async () => {},
   decisions: async () => [],
@@ -64,6 +68,7 @@ export function httpMirror(options: MirrorOptions): Mirror {
   };
 
   return {
+    answerable: true,
     phase: (runId, update) => post(`/${encodeURIComponent(runId)}/phases`, update),
     terminal: (runId, outcome, reason, summary) => post(`/${encodeURIComponent(runId)}/terminal`, { outcome, reason, summary }),
     // Unlike an update, this one throws: proceeding without an answer that exists

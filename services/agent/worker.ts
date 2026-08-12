@@ -46,17 +46,23 @@ export async function resolveSpec(job: StartJob, resolve: PlaybookResolver = def
   });
 }
 
+// One name for the shared secret on both sides of the boundary — Python reads it
+// as AGENT_INTERNAL_TOKEN. VIGIL_TOOLS_TOKEN is the older spelling, still read.
+function internalToken(): string {
+  return process.env["AGENT_INTERNAL_TOKEN"] ?? process.env["VIGIL_TOOLS_TOKEN"] ?? "";
+}
+
 // Off unless a deployment says where to mirror to: a run whose progress nobody
 // collects still runs, and the ledger is the record either way.
 function mirrorFor(): Mirror {
   const url = process.env["VIGIL_RUNS_URL"];
-  return url === undefined || url === "" ? nullMirror : httpMirror({ url, token: process.env["VIGIL_TOOLS_TOKEN"] ?? "" });
+  return url === undefined || url === "" ? nullMirror : httpMirror({ url, token: internalToken() });
 }
 
 function defaultResolver(): PlaybookResolver {
   return httpPlaybooks({
     url: process.env["VIGIL_PLAYBOOKS_URL"] ?? "http://localhost:6987/internal/playbooks",
-    token: process.env["VIGIL_TOOLS_TOKEN"] ?? "",
+    token: internalToken(),
   });
 }
 
@@ -87,7 +93,7 @@ export function harnessFor<K extends Record<string, unknown>>(kind: RunKind, spe
     registry: registryOf(toolsFrom(spec.tools), grantsFor(kind, spec)),
     dispatch: remoteDispatch({
       url: process.env["VIGIL_TOOLS_URL"] ?? "http://localhost:6987/internal/tools/invoke",
-      token: process.env["VIGIL_TOOLS_TOKEN"] ?? "",
+      token: internalToken(),
     }),
     budget: budgetOf(spec.budgets, unmeteredQuota, "bifrost"),
     memory: nullMemory,
@@ -128,13 +134,25 @@ async function drive(state: State, job: RunJob, spec: RunSpec, build: HarnessFac
 export async function advance(state: State, job: RunJob, build: HarnessFactory = harnessFor): Promise<void> {
   if ((await state.terminal(job.run_id)) !== null) return;
 
-  const latest = await state.latestSeq(job.run_id);
-  if (latest === null && job.reason !== "start") throw new Error(`cannot resume ${job.run_id}: it has no ledger`);
+  try {
+    const latest = await state.latestSeq(job.run_id);
+    if (latest === null && job.reason !== "start") throw new Error(`cannot resume ${job.run_id}: it has no ledger`);
 
-  const spec = latest === null ? await resolveSpec(job as StartJob) : await specOf(state, job.run_id);
-  if (spec === null) throw new Error(`cannot advance ${job.run_id}: its ledger holds no run event`);
+    const spec = latest === null ? await resolveSpec(job as StartJob) : await specOf(state, job.run_id);
+    if (spec === null) throw new Error(`cannot advance ${job.run_id}: its ledger holds no run event`);
 
-  await drive(state, job, spec, build);
+    await drive(state, job, spec, build);
+  } catch (error) {
+    await abandon(job, error);
+    throw error;
+  }
+}
+
+// A run that dies before it journals a terminal leaves its record open, and a
+// resolution failure dies before there is a ledger to journal one onto.
+async function abandon(job: RunJob, error: unknown): Promise<void> {
+  if (job.run_kind !== "compose") return;
+  await mirrorFor().terminal(job.run_id, "failed", error instanceof Error ? error.message : String(error), "");
 }
 
 function connectionUrl(): string {
