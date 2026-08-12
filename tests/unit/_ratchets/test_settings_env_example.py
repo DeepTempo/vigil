@@ -91,6 +91,7 @@ NOT_SETTINGS = {
     "GRAFANA_PASSWORD",
     "VITE_EXTENSION_ORIGIN_ALLOWLIST",
     # Read by the TypeScript agent worker's own process, not by Settings.
+    "AGENT_HTTP_PORT",
     "VIGIL_PLAYBOOKS_URL",
     "VIGIL_RUNS_URL",
     "VIGIL_TOOLS_URL",

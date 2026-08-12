@@ -1,25 +1,18 @@
 import { Worker } from "bullmq";
-import OpenAI from "openai";
 import pg from "pg";
 import { archFor } from "./arch/registry.js";
+import { harnessFor, internalToken, type HarnessFactory } from "./harness.js";
+import { chatPort, chatServer } from "./serve.js";
 import { RUN_QUEUE, type RunJob } from "./contracts/job.js";
 import type { RunKind, RunPayload } from "./contracts/events.js";
-import { budgetOf, unmeteredQuota } from "./core/budget.js";
-import { Limiter } from "./core/limiter.js";
-import type { Harness } from "./core/loop.js";
-import { nullMemory } from "./core/memory.js";
-import { registryOf } from "./core/registry.js";
-import { remoteDispatch } from "./core/remote.js";
 import type { State } from "./core/seams.js";
 import { httpPlaybooks, isReference, type PlaybookResolver } from "./core/playbooks.js";
 import { assembleSpec, buildSpec, loadArch, parseConfig, parsePlaybook, SpecError, type RunSpec } from "./core/spec.js";
-import { openAiSurface } from "./core/wire.js";
 import { LedgerRepository } from "./ledger/repository.js";
-import { toolsFrom } from "./tools/remote.js";
 import { httpMirror, nullMirror, type Mirror } from "./workflows/compose/mirror.js";
-import { grantsOf as composeGrants, runCompose } from "./workflows/compose/workflow.js";
+import { runCompose } from "./workflows/compose/workflow.js";
 import type { ComposeKinds } from "./workflows/compose/vocabulary.js";
-import { grantsOf as leadGrants, runLead, type LeadKinds } from "./workflows/lead/workflow.js";
+import { runLead, type LeadKinds } from "./workflows/lead/workflow.js";
 
 type StartJob = Extract<RunJob, { reason: "start" }>;
 
@@ -46,12 +39,6 @@ export async function resolveSpec(job: StartJob, resolve: PlaybookResolver = def
   });
 }
 
-// One name for the shared secret on both sides of the boundary — Python reads it
-// as AGENT_INTERNAL_TOKEN. VIGIL_TOOLS_TOKEN is the older spelling, still read.
-function internalToken(): string {
-  return process.env["AGENT_INTERNAL_TOKEN"] ?? process.env["VIGIL_TOOLS_TOKEN"] ?? "";
-}
-
 // Off unless a deployment says where to mirror to: a run whose progress nobody
 // collects still runs, and the ledger is the record either way.
 function mirrorFor(): Mirror {
@@ -72,38 +59,6 @@ export async function specOf(state: State, runId: string): Promise<RunSpec | nul
   const opened = (await state.read(runId)).find((event) => event.kind === "run");
   return opened === undefined ? null : ((opened.payload as RunPayload).spec as RunSpec);
 }
-
-// Which grants a run kind's roles hold. Compose grants per phase agent; every
-// lead-driven kind grants per arch role, so a new one is a case rather than a loop.
-function grantsFor(kind: RunKind, spec: RunSpec): Record<string, readonly string[]> {
-  return kind === "compose" ? composeGrants(spec) : leadGrants(spec);
-}
-
-// The six injected parts, assembled per run because the model, the grants and the
-// budget are all the spec's. Nothing here is shared between two runs.
-export function harnessFor<K extends Record<string, unknown>>(kind: RunKind, spec: RunSpec, state: State<K>): Harness<K> {
-  const client = new OpenAI({
-    baseURL: process.env["BIFROST_URL"] ?? "http://bifrost:8080",
-    apiKey: process.env["BIFROST_API_KEY"] ?? "unused",
-  });
-  const limiter = new Limiter({ rpm: 500, tpm: 400_000 }, 4);
-
-  return {
-    provider: openAiSurface(client, spec.model, limiter, "bifrost"),
-    registry: registryOf(toolsFrom(spec.tools), grantsFor(kind, spec)),
-    dispatch: remoteDispatch({
-      url: process.env["VIGIL_TOOLS_URL"] ?? "http://localhost:6987/internal/tools/invoke",
-      token: internalToken(),
-    }),
-    budget: budgetOf(spec.budgets, unmeteredQuota, "bifrost"),
-    memory: nullMemory,
-    state,
-  };
-}
-
-// Injected so a test drives a run without a provider behind it. The seam is the
-// harness itself, which is the only part of a run that reaches outside the process.
-export type HarnessFactory = <K extends Record<string, unknown>>(kind: RunKind, spec: RunSpec, state: State<K>) => Harness<K>;
 
 // A workflow's event kinds are its own and the repository is generic over them, so
 // the ledger is retyped per branch rather than every workflow sharing one union.
@@ -165,7 +120,16 @@ function redisUrl(): URL {
   return new URL(process.env["REDIS_URL"] ?? "redis://localhost:6379/0");
 }
 
-export function startWorker(): Worker<RunJob> {
+export interface Running {
+  worker: Worker<RunJob>;
+  ledger: LedgerRepository;
+  close: () => Promise<void>;
+}
+
+// The queue drains durable runs and the HTTP surface serves chat, which is
+// synchronous and would gain nothing from a queue hop but latency. One process,
+// one pool, two ways in.
+export function startWorker(): Running {
   const pool = new pg.Pool({ connectionString: connectionUrl() });
   const ledger = new LedgerRepository(pool);
   const url = redisUrl();
@@ -177,12 +141,19 @@ export function startWorker(): Worker<RunJob> {
       ...(url.password === "" ? {} : { password: url.password }),
     },
   });
-  worker.on("closed", () => void pool.end());
-  return worker;
+  return { worker, ledger, close: async () => {
+    await worker.close();
+    await pool.end();
+  } };
 }
 
 if (process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "")) {
-  const worker = startWorker();
-  process.on("SIGTERM", () => void worker.close());
-  process.on("SIGINT", () => void worker.close());
+  const running = startWorker();
+  const serving = chatServer(running.ledger).listen(chatPort());
+  const stop = () => {
+    serving.close();
+    void running.close();
+  };
+  process.on("SIGTERM", stop);
+  process.on("SIGINT", stop);
 }

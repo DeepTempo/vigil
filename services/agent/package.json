@@ -10,8 +10,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:unit": "vitest run tests/core tests/hunt",
-    "worker": "tsx worker.ts"
+    "test:unit": "vitest run tests/core tests/hunt tests/chat",
+    "worker": "tsx worker.ts",
+    "serve": "tsx serve.ts"
   },
   "dependencies": {
     "ajv": "^8.20.0",

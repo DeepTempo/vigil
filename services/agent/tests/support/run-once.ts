@@ -4,9 +4,9 @@ import { startWorker } from "../../worker.js";
 // owning a long-lived process. Not a deployment entrypoint; that is worker.ts.
 const DRAIN_TIMEOUT_MS = 30_000;
 
-const worker = startWorker();
+const { worker, close } = startWorker();
 const stop = async (code: number) => {
-  await worker.close();
+  await close();
   process.exit(code);
 };
 
