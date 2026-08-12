@@ -28,9 +28,11 @@ def test_cloud_incident_workflow_is_discovered():
         set(wf.agents)
     ), f"Expected agents {expected_agents}, got {wf.agents}"
 
-    # Basic tools should be declared in frontmatter
+    # Derived from the phases, and only tools a run can actually be granted:
+    # create_approval_action is named by the definition but is not a backend
+    # tool, so the resolver drops it and asserting it here would guard nothing.
     assert "get_finding" in wf.tools_used
-    assert "create_approval_action" in wf.tools_used
+    assert "update_case" in wf.tools_used
 
     # The cloud-specific guidance is the phases' now, not the body's: the body
     # keeps the overview and each step carries the instructions it is run with.

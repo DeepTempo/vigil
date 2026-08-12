@@ -166,8 +166,8 @@ def test_gated_webhook_receivers_are_off_by_default(monkeypatch):
     describe the shipped default rather than whatever the ambient environment
     happens to be.
     """
-    from core.config import get_settings
     from core.routing import Auth
+    from core.config import get_settings
 
     for var in GATE_ENV_VARS:
         monkeypatch.delenv(var, raising=False)

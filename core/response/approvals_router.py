@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()
@@ -95,8 +94,10 @@ async def list_approvals(
     limit: int = Query(default=100, ge=1, le=500),
 ):
     """List approval actions, newest first."""
-    from core.response.approval_service import (ActionStatus,
-                                                get_approval_service)
+    from core.response.approval_service import (
+        ActionStatus,
+        get_approval_service,
+    )
 
     status_enum: Optional[ActionStatus] = None
     if status:
