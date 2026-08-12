@@ -330,6 +330,13 @@ class WorkflowsService:
         workflow = self.get_workflow(workflow_id)
         if not workflow:
             return {"success": False, "error": f"Workflow not found: {workflow_id}"}
+        # Caught here as well as in the resolver, so a definition with nothing to
+        # run is refused before it leaves a run record behind.
+        if not workflow.phases:
+            return {
+                "success": False,
+                "error": f"Workflow declares no phases: {workflow_id}",
+            }
 
         workflow_dict = workflow.to_dict(include_body=False)
         run_service = get_workflow_run_service()
