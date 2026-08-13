@@ -15,7 +15,7 @@ function spend(counts: Partial<TokenCounts>, cost_usd: number | null = null): Sp
 }
 
 function pool(quota: Quota, max_calls = 100, max_cost_usd = 25) {
-  return budgetOf({ max_calls, max_cost_usd, max_wall_ms: 600_000 }, quota, "openai");
+  return budgetOf({ max_calls, max_cost_usd, max_wall_ms: 600_000, max_park_ms: 604_800_000 }, quota, "openai");
 }
 
 describe("calls are the harness's to count", () => {
@@ -92,7 +92,7 @@ describe("tokens are journaled exactly", () => {
 describe("the wall clock is a ceiling of its own", () => {
   function clocked(max_wall_ms: number) {
     let at = 0;
-    const budget = budgetOf({ max_calls: 100, max_cost_usd: 25, max_wall_ms }, unmeteredQuota, "openai", () => at);
+    const budget = budgetOf({ max_calls: 100, max_cost_usd: 25, max_wall_ms, max_park_ms: 604_800_000 }, unmeteredQuota, "openai", () => at);
     return { budget, tick: (ms: number) => (at += ms) };
   }
 
@@ -120,7 +120,7 @@ describe("the wall clock is a ceiling of its own", () => {
     let asked = 0;
     let at = 0;
     const quota = { spent: async () => { asked += 1; return null; } };
-    const budget = budgetOf({ max_calls: 100, max_cost_usd: 25, max_wall_ms: 10 }, quota, "openai", () => at);
+    const budget = budgetOf({ max_calls: 100, max_cost_usd: 25, max_wall_ms: 10, max_park_ms: 604_800_000 }, quota, "openai", () => at);
     at = 50;
     await budget.beginCall();
     expect(asked).toBe(0);

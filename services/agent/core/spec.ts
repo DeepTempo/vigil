@@ -1,7 +1,7 @@
 import { topologyFor, type TopologyId } from "./topology.js";
 import { readFileSync } from "node:fs";
 import { parse as parseYaml } from "yaml";
-import type { BudgetLimits } from "../contracts/budget.js";
+import { DEFAULT_PARK_MS, type BudgetLimits } from "../contracts/budget.js";
 
 export class SpecError extends Error {}
 
@@ -124,7 +124,12 @@ export const DEFAULT_DISPATCH: DispatchPolicy = { topology: "fan_out", mode: "se
 function defaultDispatch(workers: readonly string[]): DispatchPolicy {
   return { ...DEFAULT_DISPATCH, topology: workers.length === 0 ? "single" : "fan_out" };
 }
-export const DEFAULT_BUDGETS: BudgetLimits = { max_calls: 12, max_cost_usd: 5, max_wall_ms: 1_800_000 };
+export const DEFAULT_BUDGETS: BudgetLimits = {
+  max_calls: 12,
+  max_cost_usd: 5,
+  max_wall_ms: 1_800_000,
+  max_park_ms: DEFAULT_PARK_MS,
+};
 export const DEFAULT_RUNTIME: Runtime = { max_turns: 8, result_cap: 20_000, recall_limit: 3 };
 
 // Disjoint by design: a key in the wrong file is a load error rather than a silent

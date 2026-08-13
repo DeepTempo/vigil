@@ -48,24 +48,18 @@ export async function* runChat(harness: Harness, options: ChatOptions): AsyncGen
   const turn = turnFor(options, lead);
   if ((await harness.state.latestSeq(options.run_id)) === null) await open(harness, options);
 
+  // A reader who walks away mid-answer does not un-bill the calls already made.
+  // This workflow used to catch that in a finally and journal the spend itself;
+  // the loop now writes each spend before yielding it, so there is nothing left
+  // here to compensate for and no second copy to write.
   const stream = streamTurn<string>(turn, harness);
-  const spend: SpendPayload[] = [];
-  let settled = false;
-  try {
-    for (;;) {
-      const next = await stream.next();
-      if (next.done) {
-        await commitTurn(harness.state, options.run_id, next.value, []);
-        settled = true;
-        return reportOf(next.value);
-      }
-      if (next.value.type === "usage") spend.push(next.value.payload);
-      yield next.value;
+  for (;;) {
+    const next = await stream.next();
+    if (next.done) {
+      await commitTurn(harness.state, options.run_id, next.value, []);
+      return reportOf(next.value);
     }
-  } finally {
-    // A reader who walks away mid-answer does not un-bill the calls already made,
-    // so what the provider reported is journaled whether or not anyone read it.
-    if (!settled && spend.length > 0) await journal(harness, options, spend);
+    yield next.value;
   }
 }
 
@@ -112,14 +106,6 @@ function event(options: ChatOptions, kind: Event["kind"], payload: Event["payloa
   return { run_id: options.run_id, run_kind: KIND, kind, payload };
 }
 
-async function journal(harness: Harness, options: ChatOptions, spend: readonly SpendPayload[]): Promise<void> {
-  const from = ((await harness.state.latestSeq(options.run_id)) ?? -1) + 1;
-  await harness.state.append(
-    options.run_id,
-    from,
-    spend.map((payload) => event(options, "spend", payload)),
-  );
-}
 
 // A conversation is the run, so it opens once and stays open. Nothing writes a
 // terminal: the person may always say something else.

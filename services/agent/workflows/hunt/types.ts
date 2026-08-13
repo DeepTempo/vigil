@@ -1,4 +1,4 @@
-import type { BudgetLimits } from "../../contracts/budget.js";
+import { DEFAULT_PARK_MS, type BudgetLimits } from "../../contracts/budget.js";
 // Type-only, so the cycle with the spec loader is erased at compile time.
 import type { HuntSpec } from "./config.js";
 
@@ -91,7 +91,12 @@ export type LinkRelation = "supports" | "weakens" | "neither";
 // The harness's limits under the hunt's name, so a spec reads as one thing.
 export type Budgets = BudgetLimits;
 
-export const DEFAULT_BUDGETS: Budgets = { max_calls: 20, max_cost_usd: 25.0, max_wall_ms: 1_800_000 };
+export const DEFAULT_BUDGETS: Budgets = {
+  max_calls: 20,
+  max_cost_usd: 25.0,
+  max_wall_ms: 1_800_000,
+  max_park_ms: DEFAULT_PARK_MS,
+};
 
 // Closed, so a typo in an extraction key pattern cannot invent a type, and a
 // seed entity lands in the same namespace as everything the graph extracts.

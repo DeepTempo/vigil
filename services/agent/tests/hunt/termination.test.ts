@@ -31,7 +31,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const CAPPED: BudgetLimits = { max_calls: 1, max_cost_usd: 10, max_wall_ms: 1_800_000 };
+const CAPPED: BudgetLimits = { max_calls: 1, max_cost_usd: 10, max_wall_ms: 1_800_000, max_park_ms: 604_800_000 };
 
 describe("the predicate, not the recommendation", () => {
   it("refuses CONCLUDE while a hypothesis is active, without spending a re-prompt", async () => {
@@ -184,7 +184,7 @@ describe("the budget checkpoint", () => {
 
   it("takes the outcome from the predicate, not from having run out of money", async () => {
     const { ledger, hypothesisIds } = await newLedger({
-      budgets: { max_calls: 2, max_cost_usd: 10, max_wall_ms: 1_800_000 },
+      budgets: { max_calls: 2, max_cost_usd: 10, max_wall_ms: 1_800_000, max_park_ms: 604_800_000 },
     });
     await gapLock(ledger, hypothesisIds[0]!);
 
@@ -415,7 +415,7 @@ describe("termination is config", () => {
   });
 
   it("refuses a ceiling under the budget it is meant to cap", () => {
-    expect(() => specWith({ hard_max_calls: 10 }, { max_calls: 30, max_cost_usd: 5, max_wall_ms: 1 })).toThrow(
+    expect(() => specWith({ hard_max_calls: 10 }, { max_calls: 30, max_cost_usd: 5, max_wall_ms: 1, max_park_ms: 604_800_000 })).toThrow(
       /below budgets.max_calls/,
     );
     expect(() => specWith({ priority_floor: 0 })).toThrow(/must be a positive number/);

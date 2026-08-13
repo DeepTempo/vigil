@@ -39,6 +39,9 @@ export interface LeadOptions {
   // Where an answer to a parked call comes from. Defaults to nobody, so a run
   // with no source parks and stays parked rather than proceeding unapproved.
   answers?: Answers;
+  // Aborted when this worker loses its lease. The provider request carries it, so
+  // a worker that has been declared dead stops paying for a call nobody records.
+  signal?: AbortSignal;
 }
 
 export interface LeadReport {
@@ -70,13 +73,14 @@ export async function runLead(harness: Harness<LeadKinds>, options: LeadOptions)
   if (lead === undefined) throw new SpecError(`arch ${spec.arch} declares no lead, so it cannot run a lead loop`);
   if ((await harness.state.latestSeq(run_id)) === null) await open(harness, options);
 
-  // Before the first turn, because the loop reads the ledger to decide whether it
-  // is still parked: an answer journaled after that check waits a whole resume.
-  await journalAnswers(harness.state, run_id, options.run_kind, options.answers ?? noAnswers);
-
   const topology = topologyFor(spec.dispatch.topology);
   const rounds: Round[] = [];
   for (;;) {
+    // Per iteration, not once per resume. The loop reads the ledger to decide
+    // whether it is still parked, so an answer journaled after that check used to
+    // wait for a whole resume; now it waits for one iteration boundary.
+    await journalAnswers(harness.state, run_id, options.run_kind, options.answers ?? noAnswers);
+
     const outcome = await drain(streamTurn<Decision, LeadKinds>(turnFor(options, "lead", lead, brief(spec)), harness));
     if (outcome.status === "waiting_approval") {
       await commitTurn(harness.state, run_id, outcome, []);
@@ -145,6 +149,7 @@ function turnFor(options: LeadOptions, role: string, spec: RoleSpec, task: strin
     verbs: options.actions,
     result_cap: runtime.result_cap,
     recall_limit: runtime.recall_limit,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
 }
 

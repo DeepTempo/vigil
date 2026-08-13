@@ -10,11 +10,25 @@ export interface TokenCounts {
 
 // Calls, not decisions: one workflow decision costs several model calls, so a
 // deployment meaning decisions must say so where decisions are counted.
+//
+// max_park_ms is the one the pool does not enforce: how long a run may *wait* is
+// the sweeper's to hold, where the other three are the pool's. It lives here
+// because it is a ceiling on the run, journaled with the rest into the run event,
+// and tightened per run through the same overrides path.
 export interface BudgetLimits {
   max_calls: number;
   max_cost_usd: number;
   max_wall_ms: number;
+  max_park_ms: number;
 }
+
+// Seven days to answer a checkpoint. Long, because abandoning a run journals a
+// terminal and no answer reaches it afterwards -- but not unbounded, because a
+// checkpoint answered three weeks late resumes a run whose transcript describes
+// a world that has moved on. Required rather than optional so that a deployment
+// abandoning runs after a week is something a config said, not something it
+// inherited without being asked.
+export const DEFAULT_PARK_MS = 604_800_000;
 
 export interface Spend {
   calls: number;

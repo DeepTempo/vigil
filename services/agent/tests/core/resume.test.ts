@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RunJob } from "../../contracts/job.js";
+import { InProcessLeases } from "../../core/leases.js";
 import { InProcessState } from "../../core/state.js";
 import { advance, resolveSpec, specOf } from "../../worker.js";
 import { scriptedHarness } from "../support/scripted-harness.js";
@@ -14,7 +15,9 @@ const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 const RUN = "7d3c2d3e-0000-4000-8000-000000000619";
 
 let config: string;
+let leases: InProcessLeases;
 beforeEach(() => {
+  leases = new InProcessLeases();
   config = join(mkdtempSync(join(tmpdir(), "vigil-resume-")), "vigil.config.yaml");
   copyFileSync(join(FIXTURES, "hunt.config.yaml"), config);
 });
@@ -71,27 +74,27 @@ describe("resolving a run", () => {
 describe("the arch a run started under is journaled", () => {
   it("writes the resolved spec into the run event", async () => {
     const state = new InProcessState();
-    await advance(state, startJob(), scriptedHarness(CONCLUDE));
+    await advance(state, leases, startJob(), scriptedHarness(CONCLUDE));
 
     const opened = await specOf(state, RUN);
     expect(opened?.arch).toBe("threathunt");
-    expect(opened?.budgets).toEqual({ max_calls: 12, max_cost_usd: 5, max_wall_ms: 1_800_000 });
+    expect(opened?.budgets).toEqual({ max_calls: 12, max_cost_usd: 5, max_wall_ms: 1_800_000, max_park_ms: 604_800_000 });
   });
 
   // The whole point of journaling it: the file moved, the run did not.
   it("keeps a resumed run on the spec it opened with after the config is edited", async () => {
     const state = new InProcessState();
-    await advance(state, startJob(), scriptedHarness(CONCLUDE));
+    await advance(state, leases, startJob(), scriptedHarness(CONCLUDE));
 
     rewriteBudget(99);
     expect((await resolveSpec(startJob())).budgets.max_calls).toBe(99);
 
-    await advance(state, resumeJob(), scriptedHarness(CONCLUDE));
+    await advance(state, leases, resumeJob(), scriptedHarness(CONCLUDE));
     expect((await specOf(state, RUN))?.budgets.max_calls).toBe(12);
   });
 
   it("refuses to resume a run that has no ledger", async () => {
-    await expect(advance(new InProcessState(), resumeJob(), scriptedHarness(CONCLUDE))).rejects.toThrow(/has no ledger/);
+    await expect(advance(new InProcessState(), leases, resumeJob(), scriptedHarness(CONCLUDE))).rejects.toThrow(/has no ledger/);
   });
 });
 

@@ -15,7 +15,7 @@ type New = NewEvent<LeadKinds>;
 const event = (kind: New["kind"], payload: New["payload"]): New => ({ run_id: RUN, run_kind: "investigate", kind, payload });
 
 const opened = (): New =>
-  event("run", { run_kind: "investigate", spec: {}, budgets: { max_calls: 8, max_cost_usd: 5, max_wall_ms: 600_000 }, seed: RUN, tenant_id: null, started_by: "daemon" });
+  event("run", { run_kind: "investigate", spec: {}, budgets: { max_calls: 8, max_cost_usd: 5, max_wall_ms: 600_000, max_park_ms: 604_800_000 }, seed: RUN, tenant_id: null, started_by: "daemon" });
 const decided = (action: string, rationale = "because"): New => event("decision", { action, rationale, worker: null });
 const found = (answer: unknown): New => event("finding", { agent_id: "lead", answer });
 const spent = (cost_usd: number | null): New =>

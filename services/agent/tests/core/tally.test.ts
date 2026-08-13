@@ -25,7 +25,7 @@ interface Wiring {
 }
 
 function harnessOf(script: readonly ScriptedTurn[], wiring: Wiring = {}): Harness<TallyKinds> {
-  const limits = { max_calls: wiring.max_calls ?? 10, max_cost_usd: 100, max_wall_ms: 600_000 };
+  const limits = { max_calls: wiring.max_calls ?? 10, max_cost_usd: 100, max_wall_ms: 600_000, max_park_ms: 604_800_000 };
   return {
     provider: scriptedProvider(script),
     registry: registryOf([bumpTool()], { counter: ["bump"] }),
@@ -201,7 +201,7 @@ const remote: ToolDispatch = {
 
 function broke(): Budget {
   return {
-    limits: { max_calls: 0, max_cost_usd: 0, max_wall_ms: 600_000 },
+    limits: { max_calls: 0, max_cost_usd: 0, max_wall_ms: 600_000, max_park_ms: 604_800_000 },
     spent: { calls: 0, cost_usd: 0, tokens: { input: 0, output: 0, cache_read: 0, cache_write: 0 } },
     beginCall: async () => ({ reason: "calls_exhausted", used: 0, limit: 0 }),
     record: () => {},

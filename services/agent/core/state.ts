@@ -7,6 +7,11 @@ import type { State } from "./seams.js";
 export class InProcessState<Kinds extends Record<string, unknown> = Record<never, never>> implements State<Kinds> {
   private readonly runs = new Map<string, AgentEvent<Kinds>[]>();
 
+  // The store's clock, injectable for the same reason the lease's is: a run parked
+  // past its TTL is behaviour that only exists in the past, and no caller may
+  // supply a ts, so a test has to move the store's clock to reach it.
+  constructor(private readonly now: () => number = Date.now) {}
+
   private log(runId: string): AgentEvent<Kinds>[] {
     const existing = this.runs.get(runId);
     if (existing !== undefined) return existing;
@@ -30,7 +35,7 @@ export class InProcessState<Kinds extends Record<string, unknown> = Record<never
     const end = from + events.length;
     if (log.some((event) => event.seq >= from && event.seq < end)) throw new SeqConflict(runId, from);
 
-    const ts = new Date().toISOString();
+    const ts = new Date(this.now()).toISOString();
     let seq = from;
     for (const event of events) {
       log.push({ ...event, seq: seq++, ts, schema_version: EVENT_SCHEMA_VERSION } as AgentEvent<Kinds>);

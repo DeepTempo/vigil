@@ -95,7 +95,7 @@ describe("controller", () => {
   });
 
   it("parks at the budget checkpoint rather than ending the hunt itself", async () => {
-    const { ledger } = await newLedger({ budgets: { max_calls: 1, max_cost_usd: 10, max_wall_ms: 1_800_000 } });
+    const { ledger } = await newLedger({ budgets: { max_calls: 1, max_cost_usd: 10, max_wall_ms: 1_800_000, max_park_ms: 604_800_000 } });
     const result = await controllerFor(ledger, [INVESTIGATE]).advanceIteration();
 
     // Running out of money is a question for an operator, not a verdict.
