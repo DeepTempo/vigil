@@ -1,3 +1,7 @@
+import functools
+import logging
+
+
 class SOCError(Exception):
     """Base for expected domain failures.
 
@@ -17,3 +21,26 @@ class SOCError(Exception):
 class DatabaseError(SOCError):
     def __init__(self, message: str):
         super().__init__(message, "DATABASE_ERROR")
+
+
+def default_on_error(default):
+    """Log and return ``default`` if the wrapped function raises.
+
+    For service methods whose callers read a falsy result as "unavailable".
+    Pass a factory (``list``, ``dict``) for mutable defaults so callers cannot
+    mutate a shared instance. Do not use where the caller needs to tell failure
+    apart from a legitimately empty result — raise a `SOCError` there instead.
+    """
+
+    def decorate(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except Exception:
+                logging.getLogger(fn.__module__).exception("%s failed", fn.__qualname__)
+                return default() if callable(default) else default
+
+        return wrapper
+
+    return decorate

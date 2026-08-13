@@ -14,6 +14,7 @@ from core.storage.models import (
     Case, CaseTemplate, CaseTask
 )
 from core.storage.unit_of_work import unit_of_work
+from core.exceptions import default_on_error
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class CaseWorkflowService:
     def __init__(self):
         """Initialize the workflow service."""
     
+    @default_on_error(None)
     def create_template(
         self,
         name: str,
@@ -57,36 +59,32 @@ class CaseWorkflowService:
         Returns:
             Created CaseTemplate or None
         """
-        try:
-            with unit_of_work(session) as session:
-                # Generate template ID
-                timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-                template_id = f"template-{template_type}-{timestamp}"
+        with unit_of_work(session) as session:
+            # Generate template ID
+            timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+            template_id = f"template-{template_type}-{timestamp}"
 
-                template = CaseTemplate(
-                    template_id=template_id,
-                    name=name,
-                    description=description,
-                    template_type=template_type,
-                    default_priority=default_priority,
-                    default_status=default_status,
-                    default_sla_policy_id=default_sla_policy_id,
-                    task_templates=task_templates or [],
-                    playbook_steps=playbook_steps or [],
-                    applicable_mitre_techniques=applicable_mitre_techniques or [],
-                    tags=tags or [],
-                    is_active=True,
-                    usage_count=0
-                )
+            template = CaseTemplate(
+                template_id=template_id,
+                name=name,
+                description=description,
+                template_type=template_type,
+                default_priority=default_priority,
+                default_status=default_status,
+                default_sla_policy_id=default_sla_policy_id,
+                task_templates=task_templates or [],
+                playbook_steps=playbook_steps or [],
+                applicable_mitre_techniques=applicable_mitre_techniques or [],
+                tags=tags or [],
+                is_active=True,
+                usage_count=0
+            )
 
-                session.add(template)
+            session.add(template)
 
-                logger.info(f"Created case template: {template_id}")
-                return template
+            logger.info(f"Created case template: {template_id}")
+            return template
 
-        except Exception as e:
-            logger.error(f"Error creating template: {e}")
-            return None
     
     def get_template(
         self,
@@ -136,6 +134,7 @@ class CaseWorkflowService:
 
             return query.order_by(CaseTemplate.usage_count.desc()).all()
     
+    @default_on_error(None)
     def create_case_from_template(
         self,
         template_id: str,
@@ -161,91 +160,88 @@ class CaseWorkflowService:
         Returns:
             Created Case or None
         """
-        try:
-            with unit_of_work(session) as session:
-                # Get template
-                template = session.query(CaseTemplate).filter(
-                    CaseTemplate.template_id == template_id
-                ).first()
+        with unit_of_work(session) as session:
+            # Get template
+            template = session.query(CaseTemplate).filter(
+                CaseTemplate.template_id == template_id
+            ).first()
 
-                if not template or not template.is_active:
-                    logger.error(f"Template {template_id} not found or inactive")
-                    return None
+            if not template or not template.is_active:
+                logger.error(f"Template {template_id} not found or inactive")
+                return None
 
-                # Generate case ID
-                timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-                case_id = f"case-{timestamp}"
+            # Generate case ID
+            timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+            case_id = f"case-{timestamp}"
 
-                # Create case
-                case = Case(
-                    case_id=case_id,
-                    title=title,
-                    description=description or template.description or '',
-                    priority=override_priority or template.default_priority,
-                    status=template.default_status,
-                    assignee=assignee,
-                    tags=template.tags.copy() if template.tags else [],
-                    mitre_techniques=(
-                        template.applicable_mitre_techniques.copy()
-                        if template.applicable_mitre_techniques else []
-                    ),
-                    notes=[],
-                    timeline=[{
-                        'timestamp': datetime.utcnow().isoformat(),
-                        'event': f'Case created from template: {template.name}'
-                    }],
-                    activities=[],
-                    resolution_steps=[]
+            # Create case
+            case = Case(
+                case_id=case_id,
+                title=title,
+                description=description or template.description or '',
+                priority=override_priority or template.default_priority,
+                status=template.default_status,
+                assignee=assignee,
+                tags=template.tags.copy() if template.tags else [],
+                mitre_techniques=(
+                    template.applicable_mitre_techniques.copy()
+                    if template.applicable_mitre_techniques else []
+                ),
+                notes=[],
+                timeline=[{
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'event': f'Case created from template: {template.name}'
+                }],
+                activities=[],
+                resolution_steps=[]
+            )
+
+            session.add(case)
+            session.flush()  # Flush to get case_id
+
+            # Create tasks from template
+            if template.task_templates:
+                for task_tmpl in template.task_templates:
+                    task = CaseTask(
+                        case_id=case.case_id,
+                        title=task_tmpl.get('title', ''),
+                        description=task_tmpl.get('description', ''),
+                        priority=task_tmpl.get('priority', 'medium'),
+                        status='pending',
+                        task_order=task_tmpl.get('order', 0),
+                        checklist_items=task_tmpl.get('checklist_items', [])
+                    )
+                    session.add(task)
+
+            # Assign SLA if template has one
+            if template.default_sla_policy_id:
+                from core.cases.case_sla_service import CaseSLAService
+                sla_service = CaseSLAService()
+                sla_service.assign_sla_to_case(
+                    case.case_id,
+                    template.default_sla_policy_id,
+                    session
                 )
 
-                session.add(case)
-                session.flush()  # Flush to get case_id
+            # Increment template usage
+            template.usage_count += 1
 
-                # Create tasks from template
-                if template.task_templates:
-                    for task_tmpl in template.task_templates:
-                        task = CaseTask(
-                            case_id=case.case_id,
-                            title=task_tmpl.get('title', ''),
-                            description=task_tmpl.get('description', ''),
-                            priority=task_tmpl.get('priority', 'medium'),
-                            status='pending',
-                            task_order=task_tmpl.get('order', 0),
-                            checklist_items=task_tmpl.get('checklist_items', [])
-                        )
-                        session.add(task)
+            # Attach findings if provided
+            if finding_ids:
+                from core.storage.models import Finding
+                for finding_id in finding_ids:
+                    finding = session.query(Finding).filter(
+                        Finding.finding_id == finding_id
+                    ).first()
+                    if finding:
+                        case.findings.append(finding)
 
-                # Assign SLA if template has one
-                if template.default_sla_policy_id:
-                    from core.cases.case_sla_service import CaseSLAService
-                    sla_service = CaseSLAService()
-                    sla_service.assign_sla_to_case(
-                        case.case_id,
-                        template.default_sla_policy_id,
-                        session
-                    )
+            logger.info(f"Created case {case_id} from template {template_id}")
+            return case
 
-                # Increment template usage
-                template.usage_count += 1
-
-                # Attach findings if provided
-                if finding_ids:
-                    from core.storage.models import Finding
-                    for finding_id in finding_ids:
-                        finding = session.query(Finding).filter(
-                            Finding.finding_id == finding_id
-                        ).first()
-                        if finding:
-                            case.findings.append(finding)
-
-                logger.info(f"Created case {case_id} from template {template_id}")
-                return case
-
-        except Exception as e:
-            logger.error(f"Error creating case from template: {e}")
-            return None
     
     
+    @default_on_error(False)
     def escalate_case(
         self,
         case_id: str,
@@ -269,40 +265,37 @@ class CaseWorkflowService:
         Returns:
             True if successful
         """
-        try:
-            with unit_of_work(session) as session:
-                from core.storage.models import CaseEscalation
+        with unit_of_work(session) as session:
+            from core.storage.models import CaseEscalation
 
-                case = session.query(Case).filter(Case.case_id == case_id).first()
-                if not case:
-                    logger.error(f"Case {case_id} not found")
-                    return False
+            case = session.query(Case).filter(Case.case_id == case_id).first()
+            if not case:
+                logger.error(f"Case {case_id} not found")
+                return False
 
-                # Create escalation record
-                escalation = CaseEscalation(
-                    case_id=case_id,
-                    escalated_from=escalated_from,
-                    escalated_to=escalated_to,
-                    reason=reason,
-                    urgency_level=urgency_level,
-                    status='pending'
-                )
-                session.add(escalation)
+            # Create escalation record
+            escalation = CaseEscalation(
+                case_id=case_id,
+                escalated_from=escalated_from,
+                escalated_to=escalated_to,
+                reason=reason,
+                urgency_level=urgency_level,
+                status='pending'
+            )
+            session.add(escalation)
 
-                # Update case
-                case.assignee = escalated_to
-                case.timeline.append({
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'event': f'Escalated to {escalated_to}: {reason}'
-                })
+            # Update case
+            case.assignee = escalated_to
+            case.timeline.append({
+                'timestamp': datetime.utcnow().isoformat(),
+                'event': f'Escalated to {escalated_to}: {reason}'
+            })
 
-                logger.info(f"Escalated case {case_id} to {escalated_to}")
-                return True
+            logger.info(f"Escalated case {case_id} to {escalated_to}")
+            return True
 
-        except Exception as e:
-            logger.error(f"Error escalating case {case_id}: {e}")
-            return False
     
+    @default_on_error(False)
     def update_template(
         self,
         template_id: str,
@@ -320,34 +313,31 @@ class CaseWorkflowService:
         Returns:
             True if successful
         """
-        try:
-            with unit_of_work(session) as session:
-                template = session.query(CaseTemplate).filter(
-                    CaseTemplate.template_id == template_id
-                ).first()
+        with unit_of_work(session) as session:
+            template = session.query(CaseTemplate).filter(
+                CaseTemplate.template_id == template_id
+            ).first()
 
-                if not template:
-                    logger.error(f"Template {template_id} not found")
-                    return False
+            if not template:
+                logger.error(f"Template {template_id} not found")
+                return False
 
-                # Update allowed fields
-                allowed_fields = [
-                    'name', 'description', 'default_priority', 'default_status',
-                    'default_sla_policy_id', 'task_templates', 'playbook_steps',
-                    'applicable_mitre_techniques', 'tags', 'is_active'
-                ]
+            # Update allowed fields
+            allowed_fields = [
+                'name', 'description', 'default_priority', 'default_status',
+                'default_sla_policy_id', 'task_templates', 'playbook_steps',
+                'applicable_mitre_techniques', 'tags', 'is_active'
+            ]
 
-                for field, value in updates.items():
-                    if field in allowed_fields and hasattr(template, field):
-                        setattr(template, field, value)
+            for field, value in updates.items():
+                if field in allowed_fields and hasattr(template, field):
+                    setattr(template, field, value)
 
-                logger.info(f"Updated template {template_id}")
-                return True
+            logger.info(f"Updated template {template_id}")
+            return True
 
-        except Exception as e:
-            logger.error(f"Error updating template {template_id}: {e}")
-            return False
     
+    @default_on_error(False)
     def delete_template(
         self,
         template_id: str,
@@ -363,23 +353,19 @@ class CaseWorkflowService:
         Returns:
             True if successful
         """
-        try:
-            with unit_of_work(session) as session:
-                template = session.query(CaseTemplate).filter(
-                    CaseTemplate.template_id == template_id
-                ).first()
+        with unit_of_work(session) as session:
+            template = session.query(CaseTemplate).filter(
+                CaseTemplate.template_id == template_id
+            ).first()
 
-                if not template:
-                    logger.error(f"Template {template_id} not found")
-                    return False
+            if not template:
+                logger.error(f"Template {template_id} not found")
+                return False
 
-                # Soft delete by deactivating
-                template.is_active = False
+            # Soft delete by deactivating
+            template.is_active = False
 
-                logger.info(f"Deactivated template {template_id}")
-                return True
+            logger.info(f"Deactivated template {template_id}")
+            return True
 
-        except Exception as e:
-            logger.error(f"Error deleting template {template_id}: {e}")
-            return False
 

@@ -1,19 +1,19 @@
-"""Tests for the `_default_on_error` decorator in core/storage/service.py.
+"""Tests for the `default_on_error` decorator in core/exceptions.py.
 
-It replaces 19 identical try/except bodies, so the behaviour it centralises —
-swallow, log, return the default — has to hold, and mutable defaults must not
-be shared between calls.
+It replaces 53 identical try/except bodies across eight modules, so the
+behaviour it centralises — swallow, log, return the default — has to hold, and
+mutable defaults must not be shared between calls.
 """
 
 import pytest
 
-from core.storage.service import _default_on_error
+from core.exceptions import default_on_error
 
 pytestmark = pytest.mark.unit
 
 
 def test_returns_value_when_no_error():
-    @_default_on_error(None)
+    @default_on_error(None)
     def ok(a, b=2):
         return a + b
 
@@ -23,7 +23,7 @@ def test_returns_value_when_no_error():
 
 @pytest.mark.parametrize("default", [None, False, 0])
 def test_returns_scalar_default_on_error(default):
-    @_default_on_error(default)
+    @default_on_error(default)
     def boom():
         raise RuntimeError("nope")
 
@@ -33,7 +33,7 @@ def test_returns_scalar_default_on_error(default):
 def test_factory_default_is_not_shared_between_calls():
     """The reason mutable defaults are passed as `list`/`dict`, not [] / {}."""
 
-    @_default_on_error(list)
+    @default_on_error(list)
     def boom():
         raise RuntimeError("nope")
 
@@ -44,7 +44,7 @@ def test_factory_default_is_not_shared_between_calls():
 
 
 def test_dict_factory_default():
-    @_default_on_error(dict)
+    @default_on_error(dict)
     def boom():
         raise RuntimeError("nope")
 
@@ -52,7 +52,7 @@ def test_dict_factory_default():
 
 
 def test_error_is_logged_with_traceback(caplog):
-    @_default_on_error(None)
+    @default_on_error(None)
     def boom():
         raise RuntimeError("the real cause")
 
@@ -64,7 +64,7 @@ def test_error_is_logged_with_traceback(caplog):
 
 
 def test_metadata_is_preserved():
-    @_default_on_error(None)
+    @default_on_error(None)
     def documented(x):
         """A docstring."""
         return x
@@ -76,7 +76,7 @@ def test_metadata_is_preserved():
 def test_does_not_swallow_keyboard_interrupt():
     """BaseException must still propagate — only Exception is caught."""
 
-    @_default_on_error(None)
+    @default_on_error(None)
     def interrupted():
         raise KeyboardInterrupt
 

@@ -4,12 +4,12 @@ Database service layer for Vigil SOC.
 Provides high-level database operations for cases, findings, and related entities.
 """
 
-import functools
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy import select, func, or_, and_
 
+from core.exceptions import default_on_error
 from core.storage.models import (
     Case,
     Finding,
@@ -36,29 +36,6 @@ def _normalize_embedding(embedding: Optional[List[float]]) -> List[float]:
     return vec
 
 
-def _default_on_error(default):
-    """Log and return ``default`` if the wrapped method raises.
-
-    Every method here reports failure the same way — callers read a falsy
-    result as "unavailable" — so the handler belongs in one place. Pass a
-    factory (``list``, ``dict``) for mutable defaults so callers cannot mutate
-    a shared instance.
-    """
-
-    def decorate(fn):
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs):
-            try:
-                return fn(*args, **kwargs)
-            except Exception:
-                logger.exception("%s failed", fn.__name__)
-                return default() if callable(default) else default
-
-        return wrapper
-
-    return decorate
-
-
 class DatabaseService:
     """Service layer for database operations."""
     
@@ -68,7 +45,7 @@ class DatabaseService:
     
     # ========== Finding Operations ==========
     
-    @_default_on_error(None)
+    @default_on_error(None)
     def create_finding(
         self,
         finding_id: str,
@@ -155,7 +132,7 @@ class DatabaseService:
             logger.error(f"Error bulk-creating findings: {e}")
             return {'imported': 0, 'skipped': 0, 'errors': len(rows)}
 
-    @_default_on_error(None)
+    @default_on_error(None)
     def get_finding(self, finding_id: str) -> Optional[Finding]:
         """
         Get a finding by ID.
@@ -173,7 +150,7 @@ class DatabaseService:
                 session.expunge(finding)
             return finding
     
-    @_default_on_error(list)
+    @default_on_error(list)
     def get_findings(
         self,
         severity: Optional[str] = None,
@@ -254,7 +231,7 @@ class DatabaseService:
             
             return findings
     
-    @_default_on_error(None)
+    @default_on_error(None)
     def find_similar_findings(
         self,
         finding_id: str,
@@ -296,7 +273,7 @@ class DatabaseService:
                 )
             return neighbors
 
-    @_default_on_error(list)
+    @default_on_error(list)
     def get_findings_missing_enrichment(
         self, limit: int = 100, max_age_hours: Optional[int] = None
     ) -> List[Dict[str, Any]]:
@@ -312,7 +289,7 @@ class DatabaseService:
             query = query.order_by(Finding.timestamp.asc()).limit(limit)
             return FindingSchema.dump_many(session.execute(query).scalars().all())
 
-    @_default_on_error(0)
+    @default_on_error(0)
     def count_findings(
         self,
         severity: Optional[str] = None,
@@ -354,7 +331,7 @@ class DatabaseService:
 
             return session.execute(query).scalar() or 0
 
-    @_default_on_error(False)
+    @default_on_error(False)
     def update_finding(self, finding_id: str, **updates) -> bool:
         """
         Update a finding.
@@ -382,7 +359,7 @@ class DatabaseService:
             logger.info(f"Updated finding: {finding_id}")
             return True
     
-    @_default_on_error(False)
+    @default_on_error(False)
     def delete_finding(self, finding_id: str) -> bool:
         """
         Delete a finding.
@@ -405,7 +382,7 @@ class DatabaseService:
     
     # ========== Case Operations ==========
     
-    @_default_on_error(None)
+    @default_on_error(None)
     def create_case(
         self,
         case_id: str,
@@ -457,7 +434,7 @@ class DatabaseService:
             logger.info(f"Created case: {case_id} with {len(finding_ids)} findings")
             return case
     
-    @_default_on_error(None)
+    @default_on_error(None)
     def get_case(self, case_id: str, include_findings: bool = False) -> Optional[Case]:
         """
         Get a case by ID.
@@ -478,7 +455,7 @@ class DatabaseService:
                 session.expunge(case)
             return case
     
-    @_default_on_error(list)
+    @default_on_error(list)
     def get_cases(
         self,
         status: Optional[str] = None,
@@ -516,7 +493,7 @@ class DatabaseService:
 
             return cases
     
-    @_default_on_error(False)
+    @default_on_error(False)
     def update_case(self, case_id: str, **updates) -> bool:
         """
         Update a case.
@@ -551,7 +528,7 @@ class DatabaseService:
             logger.info(f"Updated case: {case_id}")
             return True
     
-    @_default_on_error(False)
+    @default_on_error(False)
     def delete_case(self, case_id: str) -> bool:
         """
         Delete a case.
@@ -572,7 +549,7 @@ class DatabaseService:
             logger.info(f"Deleted case: {case_id}")
             return True
     
-    @_default_on_error(False)
+    @default_on_error(False)
     def add_finding_to_case(self, case_id: str, finding_id: str) -> bool:
         """
         Add a finding to a case.
@@ -600,7 +577,7 @@ class DatabaseService:
             
             return True
     
-    @_default_on_error(False)
+    @default_on_error(False)
     def remove_finding_from_case(self, case_id: str, finding_id: str) -> bool:
         """
         Remove a finding from a case.
@@ -634,7 +611,7 @@ class DatabaseService:
     
     # ========== AI Decision Log Operations ==========
     
-    @_default_on_error(None)
+    @default_on_error(None)
     def create_ai_decision(
         self,
         decision_id: str,
@@ -687,7 +664,7 @@ class DatabaseService:
             logger.info(f"Created AI decision log: {decision_id} by {agent_id}")
             return decision
     
-    @_default_on_error(None)
+    @default_on_error(None)
     def submit_ai_decision_feedback(
         self,
         decision_id: str,
@@ -742,7 +719,7 @@ class DatabaseService:
             logger.info(f"Updated AI decision feedback: {decision_id} by {human_reviewer}")
             return decision
     
-    @_default_on_error(None)
+    @default_on_error(None)
     def get_ai_decision(self, decision_id: str) -> Optional[AIDecisionLog]:
         """
         Get an AI decision by ID.
@@ -758,7 +735,7 @@ class DatabaseService:
                 AIDecisionLog.decision_id == decision_id
             ).first()
     
-    @_default_on_error(list)
+    @default_on_error(list)
     def list_ai_decisions(
         self,
         agent_id: Optional[str] = None,
