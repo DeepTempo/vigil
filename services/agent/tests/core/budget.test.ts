@@ -11,11 +11,11 @@ function reporting(used_usd: number, limit_usd: number): Quota {
 }
 
 function spend(counts: Partial<TokenCounts>, cost_usd: number | null = null): SpendPayload {
-  return { model_id: "openai/gpt-4o", provider_type: "openai", role: "lead", tokens: tokens(counts), cost_usd };
+  return { model_id: "openai/gpt-4o", provider_type: "openai", role: "lead", tokens: tokens(counts), cost_usd, pricing_source: null };
 }
 
 function pool(quota: Quota, max_calls = 100, max_cost_usd = 25) {
-  return budgetOf({ max_calls, max_cost_usd, max_wall_ms: 600_000 }, quota, "openai");
+  return budgetOf({ max_calls, max_cost_usd, max_wall_ms: 600_000, max_park_ms: 604_800_000 }, quota);
 }
 
 describe("calls are the harness's to count", () => {
@@ -92,7 +92,7 @@ describe("tokens are journaled exactly", () => {
 describe("the wall clock is a ceiling of its own", () => {
   function clocked(max_wall_ms: number) {
     let at = 0;
-    const budget = budgetOf({ max_calls: 100, max_cost_usd: 25, max_wall_ms }, unmeteredQuota, "openai", () => at);
+    const budget = budgetOf({ max_calls: 100, max_cost_usd: 25, max_wall_ms, max_park_ms: 604_800_000 }, unmeteredQuota, () => at);
     return { budget, tick: (ms: number) => (at += ms) };
   }
 
@@ -120,9 +120,61 @@ describe("the wall clock is a ceiling of its own", () => {
     let asked = 0;
     let at = 0;
     const quota = { spent: async () => { asked += 1; return null; } };
-    const budget = budgetOf({ max_calls: 100, max_cost_usd: 25, max_wall_ms: 10 }, quota, "openai", () => at);
+    const budget = budgetOf({ max_calls: 100, max_cost_usd: 25, max_wall_ms: 10, max_park_ms: 604_800_000 }, quota, () => at);
     at = 50;
     await budget.beginCall();
     expect(asked).toBe(0);
+  });
+});
+
+// What made max_cost_usd mean something. It had one reader, overspent(), which
+// compared a total that nothing ever added to -- every call wrote cost_usd: null,
+// so the sum was zero and the ceiling refused nothing in any deployment.
+describe("a call is priced from the backend's rates", () => {
+  const RATES = { input: 3e-6, output: 15e-6, cache_read: 3e-7, cache_write: 3.75e-6, source: "exact" };
+
+  function priced(rates = RATES, max_cost_usd = 25) {
+    return budgetOf(
+      { max_calls: 100, max_cost_usd, max_wall_ms: 600_000, max_park_ms: 604_800_000 },
+      unmeteredQuota,
+      Date.now,
+      undefined,
+      async () => rates,
+    );
+  }
+
+  it("multiplies every token class by its own rate", async () => {
+    const at = await priced().priceOf("m", "anthropic", tokens({ input: 1000, output: 100, cache_read: 10_000, cache_write: 200 }));
+
+    // Cache is not input: read at a tenth, written at a quarter more, which is the
+    // difference between billing a cached prompt right and billing it tenfold.
+    expect(at.cost_usd).toBeCloseTo(0.003 + 0.0015 + 0.003 + 0.00075, 10);
+    expect(at.source).toBe("exact");
+  });
+
+  // A $0.00 nobody could price and a $0.00 from a real entry are the same number
+  // and nothing alike, so an unreachable pricer says null rather than free.
+  it("says null rather than zero when nothing answered", async () => {
+    const budget = budgetOf(
+      { max_calls: 100, max_cost_usd: 25, max_wall_ms: 600_000, max_park_ms: 604_800_000 },
+      unmeteredQuota,
+      Date.now,
+      undefined,
+      async () => null,
+    );
+
+    expect(await budget.priceOf("m", "anthropic", tokens({ input: 1000 }))).toEqual({ cost_usd: null, source: null });
+  });
+
+  // The ceiling with no gateway behind it, which is every deployment: unmeteredQuota
+  // is what harness.ts wires, so the local total is the only thing holding the line.
+  it("refuses a further call once the priced total passes the ceiling", async () => {
+    const budget = priced(RATES, 0.01);
+    expect(await budget.beginCall()).toBeNull();
+
+    budget.record(spend({ input: 10_000 }, (await budget.priceOf("m", "anthropic", tokens({ input: 10_000 }))).cost_usd));
+
+    expect(budget.spent.cost_usd).toBeCloseTo(0.03, 10);
+    expect(await budget.beginCall()).toEqual({ reason: "cost_exhausted", used_usd: budget.spent.cost_usd, limit_usd: 0.01 });
   });
 });

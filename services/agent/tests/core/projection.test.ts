@@ -15,11 +15,11 @@ type New = NewEvent<LeadKinds>;
 const event = (kind: New["kind"], payload: New["payload"]): New => ({ run_id: RUN, run_kind: "investigate", kind, payload });
 
 const opened = (): New =>
-  event("run", { run_kind: "investigate", spec: {}, budgets: { max_calls: 8, max_cost_usd: 5, max_wall_ms: 600_000 }, seed: RUN, tenant_id: null, started_by: "daemon" });
+  event("run", { run_kind: "investigate", spec: {}, budgets: { max_calls: 8, max_cost_usd: 5, max_wall_ms: 600_000, max_park_ms: 604_800_000 }, seed: RUN, tenant_id: null, started_by: "daemon" });
 const decided = (action: string, rationale = "because"): New => event("decision", { action, rationale, worker: null });
 const found = (answer: unknown): New => event("finding", { agent_id: "lead", answer });
 const spent = (cost_usd: number | null): New =>
-  event("spend", { model_id: "m", provider_type: "bifrost", role: "lead", tokens: { input: 1, output: 1, cache_read: 0, cache_write: 0 }, cost_usd });
+  event("spend", { model_id: "m", provider_type: "bifrost", role: "lead", tokens: { input: 1, output: 1, cache_read: 0, cache_write: 0 }, cost_usd, pricing_source: null });
 const parked = (checkpoint_id = CHECKPOINT): New =>
   event("checkpoint", { checkpoint_id, checkpoint_class: TOOL_APPROVAL, question: "isolate the host?", raised_at: "2026-08-12T00:00:00Z" });
 const answered = (answer: "approve" | "reject", checkpoint_id = CHECKPOINT): New =>

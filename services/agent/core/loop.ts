@@ -81,25 +81,22 @@ export interface Outcome<T> {
   calls: Attempt[];
   turns: number;
   rejected: string[];
-  // The harness's own events for this turn. A workflow appends them with its own
-  // so one iteration is one transaction; commitTurn does exactly that.
-  events: NewEvent<Record<never, never>>[];
+  // Where the workflow's own events go. The harness has already written its own
+  // by the time a turn ends, so this is the position after them.
   from: number;
   reason: string;
 }
 
-// Harness events then the workflow's, in one append: a spend precedes what the
-// workflow concluded from it, and a partly written iteration never lands.
+// The workflow's events for this turn. The harness no longer hands its own over
+// to be written -- it appends them as it burns them, so a process killed
+// mid-turn cannot leave spend off the ledger, and a workflow cannot drop it.
 export async function commitTurn<Kinds extends Record<string, unknown>>(
   state: State<Kinds>,
   runId: string,
-  outcome: Pick<Outcome<unknown>, "events" | "from">,
+  outcome: Pick<Outcome<unknown>, "from">,
   own: readonly NewEvent<Kinds>[],
 ): Promise<number> {
-  // Domain-free kinds are in every workflow's ledger by construction, but Omit
-  // does not distribute over a union, so the compiler cannot see the overlap.
-  const harness = outcome.events as readonly unknown[] as readonly NewEvent<Kinds>[];
-  return state.append(runId, outcome.from, [...harness, ...own]);
+  return state.append(runId, outcome.from, own);
 }
 
 // Derived from the call rather than generated, so a resumed run recognises the

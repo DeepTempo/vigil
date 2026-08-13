@@ -38,9 +38,8 @@ function harnessOf(script: readonly ScriptedTurn[], options: Options = {}): Harn
     registry: registryOf(options.tools ?? [BUMP], options.grants ?? { counter: ["bump"] }),
     dispatch: options.dispatch ?? localDispatch,
     budget: budgetOf(
-      { max_calls: options.max_calls ?? 10, max_cost_usd: options.max_cost_usd ?? 100, max_wall_ms: 600_000 },
+      { max_calls: options.max_calls ?? 10, max_cost_usd: options.max_cost_usd ?? 100, max_wall_ms: 600_000, max_park_ms: 604_800_000 },
       unmeteredQuota,
-      "scripted",
     ),
     memory: options.memory ?? nullMemory,
     state: options.state ?? new InProcessState(),
@@ -199,7 +198,9 @@ describe("the budget gate", () => {
     ]);
     const outcome = await outcomeOf(config(), harness);
 
-    const spends = outcome.events.filter((event) => event.kind === "spend");
+    // Read back off the ledger rather than off the outcome: the loop writes its
+    // own spend now, so what it burned is durable before a workflow sees it.
+    const spends = (await harness.state.read(RUN)).filter((event) => event.kind === "spend");
     expect(spends).toHaveLength(3);
     expect((spends[0]!.payload as SpendPayload).tokens.input).toBe(1_000);
     expect((spends[0]!.payload as SpendPayload).role).toBe("counter");
@@ -245,7 +246,7 @@ describe("the approval gate", () => {
     expect(dispatched).toBe(0);
     expect(outcome.pending).toEqual({ checkpoint_id: approvalId(RUN, "bump", "{}"), tool: "bump", args: "{}" });
 
-    const checkpoint = outcome.events.find((event) => event.kind === "checkpoint");
+    const checkpoint = (await harness.state.read(RUN)).find((event) => event.kind === "checkpoint");
     expect((checkpoint?.payload as CheckpointPayload).checkpoint_class).toBe(TOOL_APPROVAL);
     // The run parks and the generator returns: no done, no further model call.
     expect(seen.at(-1)).toEqual({ type: "approval_required", pending: outcome.pending });
@@ -428,8 +429,38 @@ describe("the status the store holds", () => {
   });
 });
 
+// The loop used to return its events for a workflow to append, so a workflow that
+// dropped them dropped the record of what the run had already spent -- invisible
+// on a resume, and a ledger that under-reports its own spend lets a resumed run
+// spend the same allowance twice.
+describe("a workflow cannot discard what the harness burned", () => {
+  it("has the spend on the ledger before the workflow is handed anything", async () => {
+    const state = new InProcessState();
+    const harness = harnessOf([{ calls: [] }, HALT], { state });
+
+    // Drained and then abandoned: no commitTurn, which is a workflow discarding
+    // the turn as completely as it can.
+    await outcomeOf(config(), harness);
+
+    const spends = (await state.read(RUN)).filter((event) => event.kind === "spend");
+    expect(spends).toHaveLength(2);
+  });
+
+  it("has the checkpoint on the ledger when a gated call parks the run", async () => {
+    const state = new InProcessState();
+    const harness = harnessOf([{ calls: [{ tool: "bump", args: "{}" }] }], { state });
+
+    await outcomeOf(config({ approvals: new Set(["bump"]) }), harness);
+
+    const kinds = (await state.read(RUN)).map((event) => event.kind);
+    expect(kinds).toContain("checkpoint");
+  });
+});
+
 describe("commitTurn", () => {
-  it("appends the harness's events ahead of the workflow's, in one transaction", async () => {
+  // Not one transaction any more: the harness wrote its spend as it burned it, so
+  // this appends only the workflow's, after what is already there.
+  it("appends the workflow's events after the harness's", async () => {
     const state = new InProcessState();
     const harness = harnessOf([{ calls: [] }, HALT], { state });
     const outcome = await outcomeOf(config(), harness);
@@ -444,13 +475,15 @@ describe("commitTurn", () => {
     expect(next).toBe(3);
   });
 
-  it("starts from the position the ledger was already at", async () => {
+  // The harness's own events are already on the ledger by the time a turn ends,
+  // so from is the position after them rather than where the turn began.
+  it("starts after what the harness already wrote", async () => {
     const state = new InProcessState();
     await seed(state, resolution("approve", "apr-unrelated"));
     const harness = harnessOf([{ calls: [] }, HALT], { state });
     const outcome = await outcomeOf(config(), harness);
 
-    expect(outcome.from).toBe(1);
+    expect(outcome.from).toBe(3);
     await commitTurn(state, RUN, outcome, []);
     expect((await state.read(RUN)).map((event) => event.seq)).toEqual([0, 1, 2]);
   });

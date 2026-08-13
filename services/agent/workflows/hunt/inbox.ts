@@ -1,4 +1,4 @@
-import { actorName } from "./actor.js";
+import { userInfo } from "node:os";
 import { newId } from "./ids.js";
 import type { Journal } from "./journal.js";
 import type { DirectiveQueue } from "./ports.js";
@@ -11,6 +11,13 @@ export const CONTROLLER_ACTOR = "controller";
 // The stub operator a DEV_MODE deployment attributes to, so the attribution path
 // is exercised with auth off rather than skipped. Read here rather than in
 export const DEV_ACTOR = "dev-admin";
+
+// Who this process is, for attribution. A directive's actor is a person -- who
+// steered the run -- which is a different thing from the lease's owner, which is
+// a process. They were one helper while the lease was a file beside the ledger.
+function actorName(): string {
+  return process.env["VIGIL_ACTOR"] || userInfo().username;
+}
 
 // Only meaningful for a directive queued from this process — a console answer
 // carries the operator its own auth resolved, and passes it explicitly.

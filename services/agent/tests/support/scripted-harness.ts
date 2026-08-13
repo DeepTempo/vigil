@@ -1,5 +1,5 @@
 import type { RunKind } from "../../contracts/events.js";
-import { budgetOf, unmeteredQuota } from "../../core/budget.js";
+import { budgetOf, FRESH, unmeteredQuota, type Seed } from "../../core/budget.js";
 import { localDispatch } from "../../core/dispatch.js";
 import type { Harness } from "../../core/loop.js";
 import { nullMemory } from "../../core/memory.js";
@@ -12,13 +12,22 @@ import { scriptedProvider, type ScriptedTurn } from "./scripted-provider.js";
 // The model is the only part of a run that reaches outside the process, so it is the
 // only part stood in for: the budget, dispatch and ledger a test drives are all real.
 export function scriptedHarness(script: readonly ScriptedTurn[]): HarnessFactory {
-  return <K extends Record<string, unknown>>(_kind: RunKind, spec: RunSpec, state: State<K>, memory: Memory = nullMemory): Harness<K> => ({
+  return <K extends Record<string, unknown>>(
+    _kind: RunKind,
+    spec: RunSpec,
+    state: State<K>,
+    memory: Memory = nullMemory,
+    // Honoured rather than ignored: seeding the pool from the ledger is what stops
+    // a resumed run spending its cap again, so a double that dropped it would make
+    // that untestable through this path.
+    seed: Seed = FRESH,
+  ): Harness<K> => ({
     provider: scriptedProvider(script),
     // Empty on purpose: a test of the wiring grants nothing, so a run that tried to
     // call a tool fails loudly rather than reaching a stand-in nobody declared.
     registry: registryOf([], {}),
     dispatch: localDispatch,
-    budget: budgetOf(spec.budgets, unmeteredQuota, "scripted"),
+    budget: budgetOf(spec.budgets, unmeteredQuota, Date.now, seed),
     memory,
     state,
   });

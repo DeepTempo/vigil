@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { RunKind } from "./contracts/events.js";
-import { budgetOf, unmeteredQuota } from "./core/budget.js";
+import { budgetOf, FRESH, unmeteredQuota, type Seed } from "./core/budget.js";
+import { httpPrices } from "./core/prices.js";
 import { Limiter } from "./core/limiter.js";
 import type { Harness } from "./core/loop.js";
 import { nullMemory } from "./core/memory.js";
@@ -35,6 +36,7 @@ export function harnessFor<K extends Record<string, unknown>>(
   spec: RunSpec,
   state: State<K>,
   memory: Memory = nullMemory,
+  seed: Seed = FRESH,
 ): Harness<K> {
   const client = new OpenAI({
     baseURL: process.env["BIFROST_URL"] ?? "http://bifrost:8080",
@@ -49,7 +51,10 @@ export function harnessFor<K extends Record<string, unknown>>(
       url: process.env["VIGIL_TOOLS_URL"] ?? "http://localhost:6987/internal/tools/invoke",
       token: internalToken(),
     }),
-    budget: budgetOf(spec.budgets, unmeteredQuota, "bifrost"),
+    budget: budgetOf(spec.budgets, unmeteredQuota, Date.now, seed, httpPrices({
+      url: process.env["VIGIL_PRICING_URL"] ?? "http://localhost:6987/internal/pricing",
+      token: internalToken(),
+    })),
     memory,
     state,
   };
@@ -62,4 +67,5 @@ export type HarnessFactory = <K extends Record<string, unknown>>(
   spec: RunSpec,
   state: State<K>,
   memory?: Memory,
+  seed?: Seed,
 ) => Harness<K>;

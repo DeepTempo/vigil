@@ -51,7 +51,6 @@ export async function drain<T>(stream: TurnStream<T>): Promise<Outcome<T>> {
 class Run<T, Kinds extends Record<string, unknown>> {
   private readonly scan: ReturnType<typeof scannerFor>;
   private readonly tools: readonly RegisteredTool[];
-  private readonly events: NewEvent<Record<never, never>>[] = [];
   private readonly calls: Attempt[] = [];
   private readonly rejected: string[] = [];
   private readonly transcript: Message[] = [];
@@ -116,7 +115,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
           continue;
         }
         const gate = this.gate(tool, call.args, fold.answered);
-        if (gate.kind === "park") return this.park(gate.checkpoint_id, tool.id, call.args);
+        if (gate.kind === "park") return await this.park(gate.checkpoint_id, tool.id, call.args);
         if (gate.kind === "rejected") {
           yield* this.record(call, refused("a reviewer rejected this call"));
           continue;
@@ -228,43 +227,60 @@ class Run<T, Kinds extends Record<string, unknown>> {
           yield event;
         } else {
           billed = true;
-          yield { type: "usage", payload: this.settle(event.tokens) };
+          yield { type: "usage", payload: await this.settle(event.tokens) };
         }
       }
     } catch (error) {
       // Only when the provider died without reporting: it carries what it burned
       // precisely so a failure before the usage event is not spend the pool loses.
-      if (!billed) this.settle(error instanceof ProviderError ? error.tokens : ZERO_TOKENS);
+      if (!billed) await this.settle(error instanceof ProviderError ? error.tokens : ZERO_TOKENS);
       throw error;
     }
 
     return { content, tool_calls };
   }
 
-  // Cost is the gateway's to report, so it is null until it does.
-  private settle(tokens: TokenCounts): SpendPayload {
+  // Priced before it is recorded, so the ledger's spend fold is in dollars and the
+  // pool has something to hold against max_cost_usd. Null when nothing could price
+  // it: the tokens are exact either way, and a call that could not be priced is not
+  // a call that was free.
+  private async settle(tokens: TokenCounts): Promise<SpendPayload> {
+    const model_id = this.harness.provider.model;
+    const provider_type = this.harness.provider.provider_type;
+    const priced = await this.harness.budget.priceOf(model_id, provider_type, tokens);
     const payload: SpendPayload = {
-      model_id: this.harness.provider.model,
-      provider_type: this.harness.provider.provider_type,
+      model_id,
+      provider_type,
       role: this.cfg.role,
       tokens,
-      cost_usd: null,
+      cost_usd: priced.cost_usd,
+      pricing_source: priced.source,
     };
     this.harness.budget.record(payload);
-    this.events.push({ run_id: this.cfg.run_id, run_kind: this.cfg.run_kind, kind: "spend", payload });
+    await this.write({ run_id: this.cfg.run_id, run_kind: this.cfg.run_kind, kind: "spend", payload });
     return payload;
   }
 
-  private park(checkpoint_id: string, tool: string, args: string): Outcome<T> {
+  private async park(checkpoint_id: string, tool: string, args: string): Promise<Outcome<T>> {
     const payload: CheckpointPayload = {
       checkpoint_id,
       checkpoint_class: TOOL_APPROVAL,
       question: `${this.cfg.role} wants to call ${tool} with ${args}. Approve?`,
       raised_at: new Date().toISOString(),
     };
-    this.events.push({ run_id: this.cfg.run_id, run_kind: this.cfg.run_kind, kind: "checkpoint", payload });
+    await this.write({ run_id: this.cfg.run_id, run_kind: this.cfg.run_kind, kind: "checkpoint", payload });
     const outcome = this.done("waiting_approval", null, `parked on approval for ${tool}`);
     return { ...outcome, pending: { checkpoint_id, tool, args } };
+  }
+
+  // Written as it happens rather than returned to be written: a workflow cannot
+  // discard what is already on the ledger, and a process killed between the call
+  // and the workflow's conclusion has still recorded what it spent. A second
+  // writer on this run is discovered here, before the next call is paid for.
+  private async write(event: NewEvent<Record<never, never>>): Promise<void> {
+    this.from = await this.harness.state.append(this.cfg.run_id, this.from, [
+      event as unknown as NewEvent<Kinds>,
+    ]);
   }
 
   private exhausted(refusal: Refusal): Outcome<T> {
@@ -283,7 +299,6 @@ class Run<T, Kinds extends Record<string, unknown>> {
       calls: this.calls,
       turns: this.turns,
       rejected: this.rejected,
-      events: this.events,
       from: this.from,
       reason,
     };

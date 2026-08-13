@@ -20,7 +20,7 @@ function nameOf(event: ChatEvent): string {
 }
 
 const outcome = (reason: string): Outcome<string> =>
-  ({ status: "failed", value: null, reason, refusal: null, pending: null, capped: false, transcript: [], calls: [], turns: 1, rejected: [], events: [], from: 0 });
+  ({ status: "failed", value: null, reason, refusal: null, pending: null, capped: false, transcript: [], calls: [], turns: 1, rejected: [], from: 0 });
 
 const EVERY: StreamEvent<string>[] = [
   { type: "text_delta", text: "hello" },
@@ -76,7 +76,7 @@ describe("what the harness says, in the console's words", () => {
   it("says nothing about what the ledger carries and the reader does not", () => {
     const usage: StreamEvent<string> = {
       type: "usage",
-      payload: { model_id: "m", provider_type: "bifrost", role: "lead", tokens: { input: 1, output: 1, cache_read: 0, cache_write: 0 }, cost_usd: null },
+      payload: { model_id: "m", provider_type: "bifrost", role: "lead", tokens: { input: 1, output: 1, cache_read: 0, cache_write: 0 }, cost_usd: null, pricing_source: null },
     };
     expect(chatEvents(usage)).toEqual([]);
   });

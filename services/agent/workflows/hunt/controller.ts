@@ -1052,16 +1052,20 @@ export class HuntController {
       return;
     }
 
+    // An extension buys iterations and dollars. Wall time and how long the hunt
+    // may sit parked are not on offer, so both carry over untouched.
     const asked: Budgets = {
       max_calls: hunt.budgets.max_calls + grant.iterations,
       max_cost_usd: Number((hunt.budgets.max_cost_usd + grant.cost_usd).toFixed(6)),
       max_wall_ms: hunt.budgets.max_wall_ms,
+      max_park_ms: hunt.budgets.max_park_ms,
     };
     const { hard_max_calls, hard_max_cost_usd } = this.termination;
     const budgets: Budgets = {
       max_calls: Math.min(asked.max_calls, hard_max_calls),
       max_wall_ms: hunt.budgets.max_wall_ms,
       max_cost_usd: Math.min(asked.max_cost_usd, hard_max_cost_usd),
+      max_park_ms: hunt.budgets.max_park_ms,
     };
     this.ledger.patch("hunt", hunt.hunt_id, { budgets });
 

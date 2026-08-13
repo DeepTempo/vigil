@@ -56,7 +56,7 @@ function harnessOf(script: readonly ScriptedTurn[], state = new InProcessState()
     provider: scriptedProvider(script),
     registry: registryOf([LOOKUP], grantsOf(specOf())),
     dispatch: localDispatch,
-    budget: budgetOf({ max_calls: 6, max_cost_usd: 1, max_wall_ms: 600_000 }, unmeteredQuota, "scripted"),
+    budget: budgetOf({ max_calls: 6, max_cost_usd: 1, max_wall_ms: 600_000, max_park_ms: 604_800_000 }, unmeteredQuota),
     memory,
     state,
   };

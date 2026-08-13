@@ -35,7 +35,16 @@ export type RunJob =
   | (JobBase & { reason: "resume" });
 
 // jobId = run_id for a start, so a double POST dedupes in BullMQ rather than in
-// application code; a resume is per ledger position for the same reason.
-export function jobIdFor(job: RunJob, seq?: number): string {
-  return job.reason === "start" ? job.run_id : `${job.run_id}:${seq ?? 0}`;
+// application code.
+//
+// A resume takes a distinct id every time, and deliberately does not dedupe. A
+// parked run's seq never advances -- nothing is appended while it waits -- so an
+// id derived from the ledger position would be identical on every check, and the
+// queue would drop all of them after the first: the run would be looked at once
+// and then wait forever, which is the bug the sweeper exists to fix. Nor can
+// retention be leaned on, because one *failed* resume would then hold that id and
+// wedge the run permanently. Run-level exclusion is the lease's, held in the same
+// statement that discovers the run is due, which is a stronger place for it.
+export function jobIdFor(job: RunJob, attempt: string): string {
+  return job.reason === "start" ? job.run_id : `${job.run_id}:${attempt}`;
 }

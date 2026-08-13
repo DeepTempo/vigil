@@ -107,6 +107,23 @@ def _refuse_unless_running(session: Session, run_id: str) -> None:
         raise RunAlreadyEnded(f"run {run_id} has already ended")
 
 
+# The parked run's own due date, pulled forward so the watchdog picks it up on its
+# next sweep rather than after the park interval. This is the second and last table
+# Python writes in the agent layer, and like agent_directives it is not the ledger:
+# enqueuing and nudging are open to any process, journaling is not.
+#
+# Only a run nobody holds. Moving a live worker's deadline back would declare it
+# dead, which is the one thing a nudge must never do.
+def _wake(session: Session, run_id: str) -> None:
+    session.execute(
+        text(
+            "UPDATE agent_run_leases SET claim_until = now() "
+            "WHERE run_id = CAST(:run_id AS uuid) AND owner IS NULL"
+        ),
+        {"run_id": run_id},
+    )
+
+
 # Idempotent on directive_id, so a retried request is not a second directive. The
 # columns are the envelope every workflow shares; the payload carries the whole
 # directive, including the fields only the workflow reads.
@@ -128,6 +145,7 @@ def enqueue_directive(
     _refuse_unless_running(session, run_id)
 
     directive = build_directive(kind, body, actor, fields)
+    _wake(session, run_id)
     session.execute(
         text(
             "INSERT INTO agent_directives "
