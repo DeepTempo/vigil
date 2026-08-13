@@ -1,10 +1,8 @@
 """
 API-contract integration tests for auth endpoints.
 
-These tests replace tests/broken_tests/integration/test_auth_api.py, which
-expected fixtures (test_client, sample_user, sample_role, auth_headers)
-that never existed. Full DB-backed fixtures are out of scope for this
-pass — see tests/integration/conftest.py TODO.
+Full DB-backed fixtures are out of scope for this pass — see
+tests/integration/conftest.py.
 
 What's covered here: endpoint wiring + contract (what each endpoint
 accepts and the shape of the errors it returns). Behaviors that require

@@ -20,7 +20,7 @@ you. Run one explicitly when the service it exercises is available.
 ## Running
 
 ```bash
-node scripts/mcp-smoke/<file>.js
+node tests/smoke/mcp/<file>.js
 ```
 
 Each script launches a Chromium browser via Playwright and writes screenshots
