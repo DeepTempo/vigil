@@ -129,7 +129,7 @@ Vigil uses the [Model Context Protocol](https://modelcontextprotocol.io/) to con
 
 **Coming soon:** AWS Security Hub, Azure Sentinel, GCP Security, Okta, Microsoft Defender, SentinelOne, Carbon Black, PagerDuty.
 
-MCP servers live in `mcp-servers/` and are configured via the Settings UI or `mcp_config.json`. Add a new integration by dropping an MCP server into the `tools/` directory — or use the built-in Custom Integration Builder to generate one from API docs.  If you build an integration that you find useful, chances are someone else will as well.  Please contribute!
+MCP servers live in `tools/` and are configured via the Settings UI or `mcp_config.json`. Add a new integration by dropping an MCP server into the `tools/` directory — or use the built-in Custom Integration Builder to generate one from API docs.  If you build an integration that you find useful, chances are someone else will as well.  Please contribute!
 
 ---
 
@@ -369,7 +369,6 @@ vigil/
 │                      #   autonomous SOC), worker (ARQ llm-worker)
 ├── clients/web/       # React + Tailwind frontend
 ├── contrib/           # Community tools: auto-contributor, benchmarking
-├── mcp-servers/       # MCP server implementations (30+)
 ├── tools/             # Additional tool implementations
 ├── infra/             # Docker Compose, Helm chart, DB init SQL
 ├── docs/              # Documentation

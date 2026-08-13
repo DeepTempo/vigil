@@ -330,8 +330,9 @@ class MCPService:
         Stdio servers: All others (designed for advanced MCP integration)
         """
         for arg in args:
-            # Check both old tools/ and new mcp-servers/servers/ paths
-            if ("." in arg and arg.startswith("tools")) or "mcp-servers/servers/" in arg:
+            # Every in-repo server lives under tools/ (#632 vendored the four
+            # that were a submodule into tools/mcp/).
+            if "." in arg and arg.startswith("tools"):
                 fastmcp_tools = ["deeptempo_findings"]
                 for fastmcp in fastmcp_tools:
                     if fastmcp in arg:

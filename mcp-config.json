@@ -29,25 +29,25 @@
 
     "deeptempo-findings": {
       "command": "python3",
-      "args": ["mcp-servers/servers/deeptempo_findings.py"],
+      "args": ["tools/mcp/deeptempo_findings.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "tempo-flow": {
       "command": "python3",
-      "args": ["mcp-servers/servers/tempo_flow.py"],
+      "args": ["tools/mcp/tempo_flow.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "approval": {
       "command": "python3",
-      "args": ["mcp-servers/servers/approval.py"],
+      "args": ["tools/mcp/approval.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "attack-layer": {
       "command": "python3",
-      "args": ["mcp-servers/servers/attack_layer.py"],
+      "args": ["tools/mcp/attack_layer.py"],
       "cwd": "${workspaceFolder}"
     },
 

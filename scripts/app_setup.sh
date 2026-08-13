@@ -13,8 +13,8 @@ source "$(dirname "$0")/lib.sh"
 step() { echo "STEP $1 $2"; }
 
 step submodules start
-if [ -d "$REPO_ROOT/.git" ] && [ ! -f "$REPO_ROOT/deeptempo-core/pyproject.toml" ] \
-    && [ ! -f "$REPO_ROOT/deeptempo-core/setup.py" ]; then
+if [ -d "$REPO_ROOT/.git" ] && [ ! -f "$REPO_ROOT/mempalace/pyproject.toml" ] \
+    && [ ! -f "$REPO_ROOT/mempalace/setup.py" ]; then
     (cd "$REPO_ROOT" && git submodule update --init --recursive) >&2 \
         || echo "Warning: submodule init failed." >&2
 fi
