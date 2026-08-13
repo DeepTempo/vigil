@@ -47,8 +47,8 @@ class TestAuthorisation:
             _invoke(client, headers={"Authorization": "Bearer nope"}).status_code == 401
         )
 
+    # A deployment that never set the token must not read as a bad caller.
     def test_says_so_when_no_secret_is_configured(self, client, monkeypatch):
-        """A deployment that never set the token must not read as a bad caller."""
         monkeypatch.setattr(internal_auth, "get_secret", lambda name: None)
         response = _invoke(client)
         assert response.status_code == 503
@@ -97,13 +97,21 @@ class TestFailureKinds:
         body = _invoke(client, tool="no_such_tool").json()
         assert body["failure"]["kind"] == "refused"
 
-    def test_an_in_band_error_is_read_back_out_as_refused(self, client, monkeypatch):
-        _answers(monkeypatch, {"error": "Unknown tool: list_findings"})
-        assert _invoke(client).json()["failure"]["kind"] == "refused"
+    # backend_error, not refused: the tool ran and could not answer, which is a
+    # different thing from a name nothing implements.
+    def test_an_in_band_error_is_a_backend_error(self, client, monkeypatch):
+        _answers(monkeypatch, {"error": "the index is rebuilding"})
+        assert _invoke(client).json()["failure"]["kind"] == "backend_error"
 
     def test_bad_arguments_are_invalid_args(self, client, monkeypatch):
         _raises(monkeypatch, TypeError("unexpected keyword argument 'nope'"))
         assert _invoke(client).json()["failure"]["kind"] == "invalid_args"
+
+    # A TypeError from inside a tool is not a bad call. Reported as invalid_args it
+    # tells the model to retry with different arguments, which it does until the cap.
+    def test_a_typeerror_from_inside_the_tool_is_a_backend_error(self, client, monkeypatch):
+        _raises(monkeypatch, TypeError("unsupported operand type(s) for +: 'int' and 'str'"))
+        assert _invoke(client).json()["failure"]["kind"] == "backend_error"
 
     def test_anything_else_is_a_backend_error(self, client, monkeypatch):
         _raises(monkeypatch, RuntimeError("the database went away"))
@@ -114,3 +122,29 @@ class TestFailureKinds:
             _invoke(client, bounds={"max_rows": 0, "timeout_ms": 500}).status_code
             == 422
         )
+
+
+class TestBoundsReachTheTool:
+    # Sliced after the fact the cap never reaches the source: the tool still fetches
+    # everything and is billed for it. Anything paging on limit gets it up front.
+    def test_the_row_cap_is_pushed_into_the_call(self, client, monkeypatch):
+        seen: dict = {}
+
+        async def _capture(tool, args):
+            seen.update(args)
+            return [], True
+
+        monkeypatch.setattr("core.agents.tools_router.execute_backend_tool", _capture)
+        _invoke(client, args={"query": "x"})
+        assert seen["limit"] == BOUNDS["max_rows"]
+
+    def test_a_tighter_limit_the_caller_asked_for_is_left_alone(self, client, monkeypatch):
+        seen: dict = {}
+
+        async def _capture(tool, args):
+            seen.update(args)
+            return [], True
+
+        monkeypatch.setattr("core.agents.tools_router.execute_backend_tool", _capture)
+        _invoke(client, args={"limit": 1})
+        assert seen["limit"] == 1

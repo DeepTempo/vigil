@@ -84,6 +84,14 @@ function requestsOf(harness: Harness): number {
 
 const HALT: ScriptedTurn = { emit: { verb: "HALT" } };
 
+// Fails the test rather than the call: nothing should reach a dispatch when the
+// ledger already holds what the call returned.
+const refusing: ToolDispatch = {
+  invoke: async () => {
+    throw new Error("the tool was invoked again after it had already run");
+  },
+};
+
 describe("the tool loop", () => {
   it("runs tools and then answers against the schema", async () => {
     const harness = harnessOf([{ calls: [{ tool: "bump", args: "{}" }] }, { calls: [] }, HALT]);
@@ -262,6 +270,41 @@ describe("the approval gate", () => {
 
     expect(outcome.status).toBe("completed");
     expect(outcome.calls[0]?.wrapped.failure).toBeNull();
+  });
+
+  // The bug this closes: on a resume the transcript is empty, so the model asks for
+  // the approved call again and it goes through again -- twice, for a tool that acts.
+  it("makes an approved call once, however many times the run resumes", async () => {
+    const state = new InProcessState();
+    await seed(state, resolution("approve", approvalId(RUN, "bump", "{}")));
+    let dispatched = 0;
+    const counting: ToolDispatch = {
+      invoke: async (tool, args) => {
+        dispatched += 1;
+        return localDispatch.invoke(tool, args);
+      },
+    };
+    const script: ScriptedTurn[] = [{ calls: [{ tool: "bump", args: "{}" }] }, { calls: [] }, HALT];
+
+    for (const attempt of [1, 2, 3]) {
+      const outcome = await outcomeOf(gated, harnessOf(script, { state, dispatch: counting }));
+      expect(outcome.status).toBe("completed");
+      expect(dispatched, `attempt ${attempt} ran the tool again`).toBe(1);
+    }
+  });
+
+  // Served from the ledger, not fabricated: the model reads what the call actually
+  // returned the first time, so its reasoning is over the same rows.
+  it("serves the journaled result back to the model on a resume", async () => {
+    const state = new InProcessState();
+    await seed(state, resolution("approve", approvalId(RUN, "bump", "{}")));
+    const script: ScriptedTurn[] = [{ calls: [{ tool: "bump", args: "{}" }] }, { calls: [] }, HALT];
+
+    await outcomeOf(gated, harnessOf(script, { state }));
+    const replayed = await outcomeOf(gated, harnessOf(script, { state, dispatch: refusing }));
+
+    expect(replayed.calls[0]?.result).toEqual({ ok: true, rows: [{ n: 1 }], rowCount: 1, capped: false, sourceSystem: "test" });
+    expect(replayed.status).toBe("completed");
   });
 
   it("treats a rejection as a refused call rather than as a park or a crash", async () => {

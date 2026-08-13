@@ -31,8 +31,11 @@ function resultOf(body: unknown): ToolResult {
 export function remoteDispatch(options: RemoteOptions): ToolDispatch {
   const call = options.fetch ?? globalThis.fetch;
   return {
-    invoke: async (tool: RegisteredTool, args: Record<string, unknown>): Promise<ToolResult> => {
-      const timer = AbortSignal.timeout(tool.bounds.timeoutMs);
+    invoke: async (tool: RegisteredTool, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> => {
+      // The tool's timeout and the run's abort both end this call, so whichever
+      // fires first does: a lost lease must not wait out a 30s tool.
+      const timeout = AbortSignal.timeout(tool.bounds.timeoutMs);
+      const timer = signal === undefined ? timeout : AbortSignal.any([timeout, signal]);
       let response: Response;
       try {
         response = await call(options.url, {
@@ -49,6 +52,8 @@ export function remoteDispatch(options: RemoteOptions): ToolDispatch {
         // The far side never answered, so nothing is known about the tool itself.
         const timedOut = error instanceof Error && error.name === "TimeoutError";
         if (timedOut) return { ok: false, failure: { kind: "timeout", timeoutMs: tool.bounds.timeoutMs } };
+        // An aborted run is not a tool that failed, so it is not recorded as one.
+        if (signal?.aborted === true) return unavailable("the run was aborted");
         return unavailable(error instanceof Error ? error.message : String(error));
       }
 

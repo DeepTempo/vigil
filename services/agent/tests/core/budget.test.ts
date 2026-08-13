@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addTokens, budgetOf, unmeteredQuota } from "../../core/budget.js";
-import type { Quota, SpendPayload, TokenCounts } from "../../contracts/budget.js";
+import { addTokens, budgetOf, FRESH, unmeteredQuota } from "../../core/budget.js";
+import { UNPRICED_TOLERANCE, ZERO_TOKENS, type Quota, type SpendPayload, type TokenCounts } from "../../contracts/budget.js";
+import { noPrices } from "../../core/prices.js";
 
 function tokens(counts: Partial<TokenCounts>): TokenCounts {
   return { input: 0, output: 0, cache_read: 0, cache_write: 0, ...counts };
@@ -175,5 +176,49 @@ describe("a call is priced from the backend's rates", () => {
 
     expect(budget.spent.cost_usd).toBeCloseTo(0.03, 10);
     expect(await budget.beginCall()).toEqual({ reason: "cost_exhausted", used_usd: budget.spent.cost_usd, limit_usd: 0.01 });
+  });
+});
+
+// Every deployment wires unmeteredQuota, so cost is the local total -- and it grows
+// only when something priced the call. Unreachable pricing refused nothing at all.
+describe("a dollar ceiling with nothing pricing the calls", () => {
+  const limits = { max_calls: 100, max_cost_usd: 5, max_wall_ms: 600_000, max_park_ms: 604_800_000 };
+  const unpriced = { model_id: "m", provider_type: "p", role: "lead", tokens: ZERO_TOKENS, cost_usd: null, pricing_source: null };
+
+  // A source that is wired and answering null, which is pricing failing rather
+  // than pricing nobody asked for.
+  const failing = async () => null;
+
+  it("stops the run rather than spending on uncounted", async () => {
+    const pool = budgetOf(limits, unmeteredQuota, Date.now, FRESH, failing);
+    for (let call = 0; call < UNPRICED_TOLERANCE; call += 1) {
+      expect(await pool.beginCall()).toBeNull();
+      pool.record(unpriced);
+    }
+    expect(await pool.beginCall()).toEqual({ reason: "unpriced", calls: UNPRICED_TOLERANCE });
+  });
+
+  // A blip is not an outage: the price memo already rides one out, and refusing
+  // on the first would park runs the catalog would have answered a second later.
+  it("rides out fewer unpriced calls than the tolerance", async () => {
+    const pool = budgetOf(limits, unmeteredQuota, Date.now, FRESH, failing);
+    pool.record(unpriced);
+    expect(await pool.beginCall()).toBeNull();
+  });
+
+  // Without a dollar ceiling there is nothing to fail to measure, so a run priced
+  // by nobody is exactly as legitimate as it was before.
+  it("says nothing when the run declares no cost ceiling", async () => {
+    const pool = budgetOf({ ...limits, max_cost_usd: Infinity }, unmeteredQuota, Date.now, FRESH, failing);
+    for (let call = 0; call < UNPRICED_TOLERANCE + 2; call += 1) pool.record(unpriced);
+    expect(await pool.beginCall()).toBeNull();
+  });
+
+  // noPrices is the deliberate "nobody to ask" -- a deployment running without the
+  // backend reachable, which core/prices.ts supports on purpose. It is not the dark.
+  it("says nothing when the deployment asked for no pricing at all", async () => {
+    const pool = budgetOf(limits, unmeteredQuota, Date.now, FRESH, noPrices);
+    for (let call = 0; call < UNPRICED_TOLERANCE + 2; call += 1) pool.record(unpriced);
+    expect(await pool.beginCall()).toBeNull();
   });
 });

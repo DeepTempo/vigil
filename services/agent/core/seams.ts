@@ -28,8 +28,8 @@ export interface State<Kinds extends Record<string, unknown> = Record<never, nev
   terminal(runId: string): Promise<TerminalPayload | null>;
 }
 
-// How a call reaches its adapter, nothing more. It never scans or renders, so no
-// implementation of this port can opt a result out of being scanned.
+// How a call reaches its adapter, nothing more; it never scans or renders. The
+// signal is the run's: a worker that lost its lease drops the calls in flight.
 export interface ToolDispatch {
-  invoke(tool: RegisteredTool, args: Record<string, unknown>): Promise<ToolResult>;
+  invoke(tool: RegisteredTool, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult>;
 }

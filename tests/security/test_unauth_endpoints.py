@@ -129,14 +129,6 @@ PROTECTED_ROUTES = [
     # the shared secret, and answers the same way when it is not presented.
     ("POST", "/api/agent-runs", {"run_kind": "hunt", "playbook": "p", "config": "c"}),
     ("GET", "/api/agent-runs/9c1c2d3e-0000-4000-8000-000000000592", None),
-    ("GET", "/internal/runs/run-auth-gate/decisions", None),
-    ("POST", "/internal/runs/run-auth-gate/terminal", {"outcome": "failed"}),
-    (
-        "POST",
-        "/internal/tools/invoke",
-        {"tool": "noop", "args": {}, "bounds": {"max_rows": 1, "timeout_ms": 1000}},
-    ),
-    ("GET", "/internal/pricing/rates?model_id=m&provider_type=p", None),
     # Routes that were on bare `router` (no auth) — fixed in issue #286.
     ("POST", "/api/integrations/vstrike/network-graph", {"network_id": "test"}),
     ("POST", "/api/integrations/vstrike/ui/legend-apply", {"legend_run_id": "test"}),
@@ -161,6 +153,44 @@ def test_unauthenticated_request_is_rejected(app, method, path, body):
         f"{method} {path} returned {response.status_code} "
         f"(body: {response.text[:200]})"
     )
+
+
+# The agent layer's /internal surfaces. Their gate is the shared secret rather than
+# a session, so the secret has to exist for the refusal to be about the caller: with
+# none configured every call answers 503, which is a different fact.
+INTERNAL_ROUTES = [
+    ("GET", "/internal/runs/run-auth-gate/decisions", None),
+    ("POST", "/internal/runs/run-auth-gate/terminal", {"outcome": "failed"}),
+    (
+        "POST",
+        "/internal/tools/invoke",
+        {"tool": "noop", "args": {}, "bounds": {"max_rows": 1, "timeout_ms": 1000}},
+    ),
+    ("GET", "/internal/pricing/rates?model_id=m&provider_type=p", None),
+]
+
+
+@pytest.mark.parametrize("method,path,body", INTERNAL_ROUTES)
+def test_internal_route_without_the_shared_secret_is_rejected(
+    app, monkeypatch, method, path, body
+):
+    from core.agents import internal_auth
+
+    monkeypatch.setattr(internal_auth, "get_secret", lambda name: "configured-secret")
+    response = app.request(method, path, json=body)
+    assert response.status_code == 401, (
+        f"{method} {path} returned {response.status_code} (body: {response.text[:200]})"
+    )
+
+
+@pytest.mark.parametrize("method,path,body", INTERNAL_ROUTES)
+def test_internal_route_says_so_when_no_secret_is_configured(
+    app, monkeypatch, method, path, body
+):
+    from core.agents import internal_auth
+
+    monkeypatch.setattr(internal_auth, "get_secret", lambda name: None)
+    assert app.request(method, path, json=body).status_code == 503
 
 
 def test_unauthenticated_claude_upload_file_is_rejected(app):

@@ -55,17 +55,40 @@ def _rows(result: Any) -> List[Any]:
     return [result]
 
 
-# The ladder reports an unknown name in-band rather than raising, so that shape has
-# to be read back out as the defect it is.
+# The ladder reports a failure in-band rather than raising, so that shape is read
+# back out here.
 def _errored(result: Any) -> Optional[str]:
     if isinstance(result, dict) and isinstance(result.get("error"), str):
         return result["error"]
     return None
 
 
+# Python's wording for a call that did not fit its signature. A TypeError from
+# inside a tool is not one, and invalid_args tells the model to retry until the cap.
+_SIGNATURE_MISMATCH = (
+    "unexpected keyword argument",
+    "required positional argument",
+    "required keyword-only argument",
+    "positional argument",
+)
+
+
+def _is_bad_arguments(exc: TypeError) -> bool:
+    return any(phrase in str(exc) for phrase in _SIGNATURE_MISMATCH)
+
+
+# The cap reaches the tool rather than only its answer, for anything paging on limit.
+# What ignores it is still truncated below: a bound an adapter drops is not a bound.
+def _bounded(args: Dict[str, Any], max_rows: int) -> Dict[str, Any]:
+    requested = args.get("limit")
+    if isinstance(requested, int) and requested <= max_rows:
+        return args
+    return {**args, "limit": max_rows}
+
+
 async def _run(body: InvokeRequest) -> Tuple[Any, bool]:
     return await asyncio.wait_for(
-        execute_backend_tool(body.tool, body.args),
+        execute_backend_tool(body.tool, _bounded(body.args, body.bounds.max_rows)),
         timeout=body.bounds.timeout_ms / 1000,
     )
 
@@ -82,16 +105,21 @@ async def invoke(
     except asyncio.TimeoutError:
         return _failure("timeout", timeoutMs=body.bounds.timeout_ms)
     except TypeError as exc:
-        return _failure("invalid_args", detail=str(exc))
+        if _is_bad_arguments(exc):
+            return _failure("invalid_args", detail=str(exc))
+        logger.exception("tool %s failed", body.tool)
+        return _failure("backend_error", detail=str(exc))
     except Exception as exc:  # noqa: BLE001
         logger.exception("tool %s failed", body.tool)
         return _failure("backend_error", detail=str(exc))
 
+    # refused is for a name nothing implements. A tool that ran and could not
+    # answer is a backend_error: the contract keeps the two apart deliberately.
     if not handled:
         return _failure("refused", detail=f"no such tool: {body.tool}")
     errored = _errored(result)
     if errored is not None:
-        return _failure("refused", detail=errored)
+        return _failure("backend_error", detail=errored)
 
     rows = _rows(result)
     capped = len(rows) > body.bounds.max_rows

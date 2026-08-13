@@ -55,6 +55,9 @@ export interface DispatchPayload {
   target_hypothesis_id?: string | null;
   cost_usd?: number;
   calls?: unknown[];
+  // What a gated call returned. Written by the harness and by nothing else, and
+  // what makes an approved call run once however many times the run resumes.
+  result?: unknown;
 }
 
 // checkpoint_class and directive kind are workflow vocabulary, so they stay

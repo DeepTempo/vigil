@@ -11,6 +11,9 @@ export interface ComposeOptions {
   spec: RunSpec;
   started_by?: string;
   mirror?: Mirror;
+  // Aborted when this worker loses its lease: a run another worker has taken over
+  // must stop writing, and stop paying for calls nobody will record.
+  signal?: AbortSignal;
 }
 
 export interface ComposeReport {
@@ -216,6 +219,7 @@ function turnFor(options: ComposeOptions, phase: PhaseSpec, context: string): Tu
     verbs: [],
     result_cap: runtime.result_cap,
     recall_limit: runtime.recall_limit,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
 }
 

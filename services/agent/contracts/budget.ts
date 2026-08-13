@@ -41,10 +41,16 @@ export interface SpendPayload {
 }
 
 // A value, never a throw: the exhaustiveness argument applies here or nowhere.
+// unpriced is a ceiling that cannot be measured rather than one that was reached.
 export type Refusal =
   | { reason: "calls_exhausted"; used: number; limit: number }
   | { reason: "cost_exhausted"; used_usd: number; limit_usd: number }
-  | { reason: "wall_exhausted"; used_ms: number; limit_ms: number };
+  | { reason: "wall_exhausted"; used_ms: number; limit_ms: number }
+  | { reason: "unpriced"; calls: number };
+
+// How many calls may go unpriced before a run holding a dollar ceiling stops.
+// Not one: a single blip is what the price memo already rides out.
+export const UNPRICED_TOLERANCE = 3;
 
 // What the gateway says has been spent against this run's key. Returning null
 // means it could not be read, which is not a refusal: the gateway still caps.

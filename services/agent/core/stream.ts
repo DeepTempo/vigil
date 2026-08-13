@@ -3,7 +3,7 @@
 // exists in both, so this one line satisfies `bundler` and NodeNext alike.
 import { Ajv, type ValidateFunction } from "ajv";
 import { ZERO_TOKENS, type Refusal, type SpendPayload, type TokenCounts } from "../contracts/budget.js";
-import type { CheckpointPayload, NewEvent, ResolutionPayload, TerminalPayload } from "../contracts/events.js";
+import type { CheckpointPayload, DispatchPayload, NewEvent, ResolutionPayload, TerminalPayload } from "../contracts/events.js";
 import type { RegisteredTool, ToolResult } from "../contracts/tool.js";
 import {
   approvalId,
@@ -114,13 +114,19 @@ class Run<T, Kinds extends Record<string, unknown>> {
           yield* this.record(call, refused(`${call.tool} is not granted to ${this.cfg.role}`));
           continue;
         }
-        const gate = this.gate(tool, call.args, fold.answered);
+        const gate = this.gate(tool, call.args, fold);
         if (gate.kind === "park") return await this.park(gate.checkpoint_id, tool.id, call.args);
         if (gate.kind === "rejected") {
           yield* this.record(call, refused("a reviewer rejected this call"));
           continue;
         }
-        yield* this.record(call, await this.invoke(tool, call.args));
+        // Served from the ledger rather than run again: a resume replays the turn
+        // from an empty transcript, and a gated call that acts would act twice.
+        if (gate.kind === "served") {
+          yield* this.record(call, gate.result, gate.checkpoint_id);
+          continue;
+        }
+        yield* this.record(call, await this.invoke(tool, call.args), gate.checkpoint_id);
       }
     }
 
@@ -142,33 +148,48 @@ class Run<T, Kinds extends Record<string, unknown>> {
     return { ...outcome, pending: { checkpoint_id: fold.open, tool: null, args: null } };
   }
 
-  private gate(
-    tool: RegisteredTool,
-    args: string,
-    answered: ReadonlyMap<string, ResolutionPayload["answer"]>,
-  ): { kind: "allowed" } | { kind: "rejected" } | { kind: "park"; checkpoint_id: string } {
+  // An approval says a call may go through; the executed record says it already
+  // has. Only the second stops a resume making the same call a second time.
+  private gate(tool: RegisteredTool, args: string, fold: Fold): Gate {
     if (!this.cfg.approvals.has(tool.id)) return { kind: "allowed" };
     const checkpoint_id = approvalId(this.cfg.run_id, tool.id, args);
-    const answer = answered.get(checkpoint_id);
+    const served = fold.executed.get(checkpoint_id);
+    if (served !== undefined) return { kind: "served", checkpoint_id, result: served };
+    const answer = fold.answered.get(checkpoint_id);
     if (answer === undefined) return { kind: "park", checkpoint_id };
-    return answer === "approve" ? { kind: "allowed" } : { kind: "rejected" };
+    return answer === "approve" ? { kind: "allowed", checkpoint_id } : { kind: "rejected" };
   }
 
   private async invoke(tool: RegisteredTool, rawArgs: string): Promise<ToolResult> {
     const args = parseArgs(rawArgs);
     if (args === null) return { ok: false, failure: { kind: "invalid_args", detail: "arguments were not valid JSON" } };
-    return this.harness.dispatch.invoke(tool, args);
+    return this.harness.dispatch.invoke(tool, args, this.cfg.signal);
   }
 
-  // The one path a result takes. Wrap scans it, so nothing reaches the transcript
-  // or the stream unscanned whatever the dispatch implementation handed back.
-  private async *record(call: ToolCall, result: ToolResult): AsyncGenerator<StreamEvent<T>, void> {
+  // The one path a result takes, and where wrap scans it. A gated call is journaled
+  // with its outcome, so a later attempt is served from the ledger instead of run.
+  private async *record(call: ToolCall, result: ToolResult, gated?: string): AsyncGenerator<StreamEvent<T>, void> {
     yield { type: "tool_call", call };
     const wrapped = wrap(call.tool, result, this.scan, this.cfg.result_cap);
     const attempt: Attempt = { tool: call.tool, args: call.args, result, wrapped };
     this.calls.push(attempt);
     this.transcript.push({ role: "tool", call_id: call.id, content: wrapped.text });
+    if (gated !== undefined) await this.journalExecuted(gated, call.tool, result);
     yield { type: "tool_result", call, attempt };
+  }
+
+  // The dispatch event's own id is the checkpoint's, so the next pass finds it by
+  // the same derivation that raised the approval.
+  private async journalExecuted(checkpointId: string, tool: string, result: ToolResult): Promise<void> {
+    const payload: DispatchPayload = {
+      dispatch_id: checkpointId,
+      agent_id: this.cfg.role,
+      status: result.ok ? "complete" : "failed",
+      question_id: null,
+      failure_reason: result.ok ? null : result.failure.kind,
+      result,
+    };
+    await this.write({ run_id: this.cfg.run_id, run_kind: this.cfg.run_kind, kind: "dispatch", payload });
   }
 
   private async *emit(schema: Record<string, unknown>): AsyncGenerator<StreamEvent<T>, Outcome<T>> {
@@ -305,8 +326,16 @@ async function* announce<T>(outcome: Outcome<T>): TurnStream<T> {
   return outcome;
 }
 
+type Gate =
+  | { kind: "allowed"; checkpoint_id?: string }
+  | { kind: "rejected" }
+  | { kind: "park"; checkpoint_id: string }
+  | { kind: "served"; checkpoint_id: string; result: ToolResult };
+
 interface Fold {
   answered: ReadonlyMap<string, ResolutionPayload["answer"]>;
+  // Gated calls this run has already made, by the checkpoint that approved them.
+  executed: ReadonlyMap<string, ToolResult>;
   // A checkpoint with no approving or rejecting resolution, which is what keeps
   // a run parked whether or not this harness is the one that raised it.
   open: string | null;
@@ -316,6 +345,7 @@ interface Fold {
 // One read answering the three questions the loop asks of the store each pass.
 async function foldRun<Kinds extends Record<string, unknown>>(state: State<Kinds>, runId: string): Promise<Fold> {
   const answered = new Map<string, ResolutionPayload["answer"]>();
+  const executed = new Map<string, ToolResult>();
   const raised: string[] = [];
   let terminal: TerminalPayload | null = null;
 
@@ -325,10 +355,14 @@ async function foldRun<Kinds extends Record<string, unknown>>(state: State<Kinds
       answered.set(payload.checkpoint_id, payload.answer);
     }
     if (event.kind === "checkpoint") raised.push((event.payload as CheckpointPayload).checkpoint_id);
+    if (event.kind === "dispatch") {
+      const payload = event.payload as DispatchPayload;
+      if (payload.result !== undefined) executed.set(payload.dispatch_id, payload.result as ToolResult);
+    }
     if (event.kind === "terminal") terminal = event.payload as TerminalPayload;
   }
 
-  return { answered, open: raised.find((id) => !answered.has(id)) ?? null, terminal };
+  return { answered, executed, open: raised.find((id) => !answered.has(id)) ?? null, terminal };
 }
 
 // Names what was dropped rather than reproducing it: a summary that quotes the

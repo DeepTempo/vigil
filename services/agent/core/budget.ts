@@ -1,4 +1,5 @@
 import {
+  UNPRICED_TOLERANCE,
   ZERO_TOKENS,
   type Budget,
   type BudgetLimits,
@@ -120,7 +121,11 @@ class Pool implements Budget {
   private calls: number;
   private cost: number;
   private tokens: TokenCounts;
+  private unpriced = 0;
   private readonly started: number;
+  // Whether anything was meant to price these calls. noPrices is the deliberate
+  // "nobody to ask", and a run that asked for no pricing is not a run in the dark.
+  private readonly priced: boolean;
 
   constructor(
     readonly limits: BudgetLimits,
@@ -135,6 +140,7 @@ class Pool implements Budget {
     // The run's own start, not this process's: a resume that restarted the clock
     // would hand a killed run a fresh wall-time allowance on every attempt.
     this.started = seed.started === 0 ? now() : seed.started;
+    this.priced = prices !== noPrices;
   }
 
   get spent(): Spend {
@@ -161,7 +167,8 @@ class Pool implements Budget {
 
   record(payload: SpendPayload): void {
     this.tokens = addTokens(this.tokens, payload.tokens);
-    if (payload.cost_usd !== null) this.cost += payload.cost_usd;
+    if (payload.cost_usd === null) this.unpriced += 1;
+    else this.cost += payload.cost_usd;
   }
 
   // The backend catalog's rates, never a second copy of it. Null rather than zero
@@ -177,6 +184,11 @@ class Pool implements Budget {
     const reported = await this.quota.spent();
     if (reported === null) {
       const limit_usd = this.limits.max_cost_usd;
+      // A ceiling nothing can measure is not one: cost never grows, so the comparison
+      // below refuses nothing. Only where pricing was wired and is failing.
+      if (this.priced && Number.isFinite(limit_usd) && this.unpriced >= UNPRICED_TOLERANCE) {
+        return { reason: "unpriced", calls: this.unpriced };
+      }
       if (this.cost < limit_usd) return null;
       return { reason: "cost_exhausted", used_usd: this.cost, limit_usd };
     }

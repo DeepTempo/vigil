@@ -114,7 +114,7 @@ async function drive(
   const seed = seedFrom(await state.read(run_id));
 
   if (kind === "compose") {
-    await runCompose(build(kind, spec, as<ComposeKinds>(state), undefined, seed), { run_id, spec, started_by, mirror: mirrorFor() });
+    await runCompose(build(kind, spec, as<ComposeKinds>(state), undefined, seed), { run_id, spec, started_by, mirror: mirrorFor(), signal });
     return;
   }
   if (kind === "hunt" || kind === "investigate") {
