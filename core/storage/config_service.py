@@ -268,17 +268,14 @@ class ConfigService:
                 
     
 
+    @default_on_error(set)
     def get_disabled_integration_ids(self) -> Set[str]:
         """Registered-but-disabled integration IDs. Sources with no config row
         (webhook, flow) are never disabled. On DB error return empty (fail open)
         so a lookup blip can't silently drop ingestion."""
-        try:
-            with get_session() as session:
-                integrations = session.query(IntegrationConfig).filter_by(enabled=False).all()
-                return {i.integration_id for i in integrations}
-        except Exception as e:
-            logger.error(f"Error getting disabled integrations: {e}")
-            return set()
+        with get_session() as session:
+            integrations = session.query(IntegrationConfig).filter_by(enabled=False).all()
+            return {i.integration_id for i in integrations}
     
     # =========================================================================
     # Audit Methods
@@ -294,20 +291,23 @@ class ConfigService:
         new_value: Optional[Dict[str, Any]],
         change_reason: Optional[str] = None
     ):
-        """Create an audit log entry."""
-        try:
-            audit_entry = ConfigAuditLog(
+        """Create an audit log entry.
+
+        Deliberately unguarded: the entry joins the caller's transaction, so a
+        failure here rolls the config change back with it. Swallowing it would
+        let a config change commit with no audit record.
+        """
+        session.add(
+            ConfigAuditLog(
                 config_type=config_type,
                 config_key=config_key,
                 action=action,
                 old_value=old_value,
                 new_value=new_value,
                 changed_by=self.user_id,
-                change_reason=change_reason
+                change_reason=change_reason,
             )
-            session.add(audit_entry)
-        except Exception as e:
-            logger.error(f"Error creating audit log: {e}")
+        )
     
     def record_audit(
         self,
