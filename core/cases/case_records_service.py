@@ -5,6 +5,7 @@ work does — and nothing raises ``HTTPException``. Absence is ``None`` so the
 router owns the status code.
 """
 
+import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -31,6 +32,8 @@ from core.storage.models import (
     SketchMapping,
     case_findings,
 )
+
+logger = logging.getLogger(__name__)
 
 # Purged wholesale by :func:`purge_all_cases`; order matters only in that
 # child rows go before ``Case`` itself.
@@ -99,6 +102,7 @@ def list_tasks(case_id: str) -> List[CaseTask]:
         with unit_of_work() as session:
             return session.query(CaseTask).filter(CaseTask.case_id == case_id).all()
     except Exception:
+        logger.exception("Listing tasks for case %s failed; reporting none", case_id)
         return []
 
 

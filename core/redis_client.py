@@ -3,6 +3,11 @@
 Redis is optional: when the driver is missing the caller degrades instead of
 failing, so the factory returns ``None`` and names the feature that switched
 off in the warning.
+
+The client is cached process-wide, and a ``redis.asyncio`` client binds to the
+event loop it is first used on. Both callers live in the API process on one
+uvicorn loop, so that holds; a second event loop in the same process would get
+"attached to a different loop" and needs a loop-keyed cache instead.
 """
 
 import logging

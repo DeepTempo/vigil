@@ -1,4 +1,5 @@
 import functools
+import inspect
 import logging
 
 
@@ -30,9 +31,15 @@ def default_on_error(default):
     Pass a factory (``list``, ``dict``) for mutable defaults so callers cannot
     mutate a shared instance. Do not use where the caller needs to tell failure
     apart from a legitimately empty result — raise a `SOCError` there instead.
+
+    Sync functions only: the wrapper cannot await, so decorating a coroutine
+    would catch nothing. That raises at decoration time rather than silently.
     """
 
     def decorate(fn):
+        if inspect.iscoroutinefunction(fn):
+            raise TypeError(f"{fn.__qualname__}: default_on_error is sync-only")
+
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             try:

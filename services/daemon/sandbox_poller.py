@@ -204,7 +204,6 @@ class SandboxPoller:
         return None
 
     async def _fetch_hybrid(self, task_id: str) -> Optional[Dict[str, Any]]:
-
         cfg = get_integration_config("hybrid_analysis") or {}
         api_key = cfg.get("api_key") or get_secret("HYBRID_ANALYSIS_API_KEY") or ""
         if not api_key:
@@ -224,7 +223,6 @@ class SandboxPoller:
         return None
 
     async def _fetch_anyrun(self, task_id: str) -> Optional[Dict[str, Any]]:
-
         cfg = get_integration_config("anyrun") or {}
         api_key = cfg.get("api_key") or get_secret("ANYRUN_API_KEY") or ""
         if not api_key:

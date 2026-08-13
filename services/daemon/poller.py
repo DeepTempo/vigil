@@ -610,11 +610,7 @@ class DataPoller:
         self.stats[f"{source}_polls"] += 1
         logger.debug("Polling %s for new %s...", label, noun)
 
-        try:
-            result = service.ingest_alerts(limit=100)
-        except Exception as e:
-            logger.error(f"Error polling {label}: {e}")
-            raise
+        result = service.ingest_alerts(limit=100)
 
         if result.get("success"):
             ingested = result.get("ingested", 0)
@@ -644,7 +640,6 @@ class DataPoller:
                 break  # Shutdown requested
             except asyncio.TimeoutError:
                 pass  # Continue polling
-
 
     async def _poll_elastic_loop(self, shutdown_event: asyncio.Event):
         """Poll Elastic Security for new detection alerts on interval."""
