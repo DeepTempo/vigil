@@ -201,20 +201,11 @@ class DataPoller:
                 self._poll_crowdstrike_loop(shutdown_event)
             ))
         
-        if self._azure_sentinel_service:
-            tasks.append(asyncio.create_task(
-                self._poll_azure_sentinel_loop(shutdown_event)
-            ))
-        
-        if self._aws_security_hub_service:
-            tasks.append(asyncio.create_task(
-                self._poll_aws_security_hub_loop(shutdown_event)
-            ))
-        
-        if self._microsoft_defender_service:
-            tasks.append(asyncio.create_task(
-                self._poll_microsoft_defender_loop(shutdown_event)
-            ))
+        for source in self._INGESTION_SOURCES:
+            if getattr(self, f"_{source}_service"):
+                tasks.append(asyncio.create_task(
+                    self._poll_ingestion_loop(source, shutdown_event)
+                ))
 
         if self._elastic_service:
             tasks.append(asyncio.create_task(
@@ -601,137 +592,59 @@ class DataPoller:
             )
             return False
     
-    async def _poll_azure_sentinel_loop(self, shutdown_event: asyncio.Event):
-        """Poll Azure Sentinel for new incidents on interval."""
+    # Sources that ingest through their own service's ingest_alerts(limit=...).
+    # (attribute/stat/federation key -> display label, what it calls a record)
+    _INGESTION_SOURCES = {
+        "azure_sentinel": ("Azure Sentinel", "incidents"),
+        "aws_security_hub": ("AWS Security Hub", "findings"),
+        "microsoft_defender": ("Microsoft Defender", "alerts"),
+    }
+
+    async def _poll_ingestion_source(self, source: str):
+        """Poll one ingestion-service source. Raises so the loop counts it."""
+        label, noun = self._INGESTION_SOURCES[source]
+        service = getattr(self, f"_{source}_service")
+        if not service or self._federation.is_active_for(source):
+            return
+
+        self.stats[f"{source}_polls"] += 1
+        logger.debug("Polling %s for new %s...", label, noun)
+
+        try:
+            result = service.ingest_alerts(limit=100)
+        except Exception as e:
+            logger.error(f"Error polling {label}: {e}")
+            raise
+
+        if result.get("success"):
+            ingested = result.get("ingested", 0)
+            self.stats[f"{source}_findings"] += ingested
+            logger.info("%s: ingested %d %s", label, ingested, noun)
+        else:
+            logger.error("%s ingestion failed: %s", label, result.get("errors"))
+
+    async def _poll_ingestion_loop(self, source: str, shutdown_event: asyncio.Event):
+        """Poll an ingestion-service source on interval until shutdown."""
+        label, _ = self._INGESTION_SOURCES[source]
+        state = getattr(self, f"_{source}_state")
         interval = self.config.splunk_interval  # Use same interval as Splunk
-        logger.info(f"Azure Sentinel polling loop started (interval: {interval}s)")
-        
+        logger.info(f"{label} polling loop started (interval: {interval}s)")
+
         while not shutdown_event.is_set():
             try:
-                await self._poll_azure_sentinel()
-                self._azure_sentinel_state.last_poll_time = datetime.utcnow()
+                await self._poll_ingestion_source(source)
+                state.last_poll_time = datetime.utcnow()
             except Exception as e:
-                logger.error(f"Azure Sentinel polling error: {e}")
+                logger.error(f"{label} polling error: {e}")
                 self.stats["errors"] += 1
-            
+
             # Wait for interval or shutdown
             try:
                 await asyncio.wait_for(shutdown_event.wait(), timeout=interval)
                 break  # Shutdown requested
             except asyncio.TimeoutError:
                 pass  # Continue polling
-    
-    async def _poll_azure_sentinel(self):
-        """Poll Azure Sentinel for new incidents."""
-        if not self._azure_sentinel_service:
-            return
-        if self._federation.is_active_for("azure_sentinel"):
-            return
-        
-        self.stats["azure_sentinel_polls"] += 1
-        logger.debug("Polling Azure Sentinel for new incidents...")
-        
-        try:
-            # Use ingestion service
-            result = self._azure_sentinel_service.ingest_alerts(limit=100)
-            
-            if result.get("success"):
-                ingested = result.get("ingested", 0)
-                self.stats["azure_sentinel_findings"] += ingested
-                logger.info(f"Azure Sentinel: ingested {ingested} incidents")
-            else:
-                logger.error(f"Azure Sentinel ingestion failed: {result.get('errors')}")
-        except Exception as e:
-            logger.error(f"Error polling Azure Sentinel: {e}")
-            raise
-    
-    async def _poll_aws_security_hub_loop(self, shutdown_event: asyncio.Event):
-        """Poll AWS Security Hub for new findings on interval."""
-        interval = self.config.splunk_interval  # Use same interval as Splunk
-        logger.info(f"AWS Security Hub polling loop started (interval: {interval}s)")
-        
-        while not shutdown_event.is_set():
-            try:
-                await self._poll_aws_security_hub()
-                self._aws_security_hub_state.last_poll_time = datetime.utcnow()
-            except Exception as e:
-                logger.error(f"AWS Security Hub polling error: {e}")
-                self.stats["errors"] += 1
-            
-            # Wait for interval or shutdown
-            try:
-                await asyncio.wait_for(shutdown_event.wait(), timeout=interval)
-                break  # Shutdown requested
-            except asyncio.TimeoutError:
-                pass  # Continue polling
-    
-    async def _poll_aws_security_hub(self):
-        """Poll AWS Security Hub for new findings."""
-        if not self._aws_security_hub_service:
-            return
-        if self._federation.is_active_for("aws_security_hub"):
-            return
-        
-        self.stats["aws_security_hub_polls"] += 1
-        logger.debug("Polling AWS Security Hub for new findings...")
-        
-        try:
-            # Use ingestion service
-            result = self._aws_security_hub_service.ingest_alerts(limit=100)
-            
-            if result.get("success"):
-                ingested = result.get("ingested", 0)
-                self.stats["aws_security_hub_findings"] += ingested
-                logger.info(f"AWS Security Hub: ingested {ingested} findings")
-            else:
-                logger.error(f"AWS Security Hub ingestion failed: {result.get('errors')}")
-        except Exception as e:
-            logger.error(f"Error polling AWS Security Hub: {e}")
-            raise
-    
-    async def _poll_microsoft_defender_loop(self, shutdown_event: asyncio.Event):
-        """Poll Microsoft Defender for new alerts on interval."""
-        interval = self.config.splunk_interval  # Use same interval as Splunk
-        logger.info(f"Microsoft Defender polling loop started (interval: {interval}s)")
-        
-        while not shutdown_event.is_set():
-            try:
-                await self._poll_microsoft_defender()
-                self._microsoft_defender_state.last_poll_time = datetime.utcnow()
-            except Exception as e:
-                logger.error(f"Microsoft Defender polling error: {e}")
-                self.stats["errors"] += 1
-            
-            # Wait for interval or shutdown
-            try:
-                await asyncio.wait_for(shutdown_event.wait(), timeout=interval)
-                break  # Shutdown requested
-            except asyncio.TimeoutError:
-                pass  # Continue polling
-    
-    async def _poll_microsoft_defender(self):
-        """Poll Microsoft Defender for new alerts."""
-        if not self._microsoft_defender_service:
-            return
-        if self._federation.is_active_for("microsoft_defender"):
-            return
-        
-        self.stats["microsoft_defender_polls"] += 1
-        logger.debug("Polling Microsoft Defender for new alerts...")
-        
-        try:
-            # Use ingestion service
-            result = self._microsoft_defender_service.ingest_alerts(limit=100)
-            
-            if result.get("success"):
-                ingested = result.get("ingested", 0)
-                self.stats["microsoft_defender_findings"] += ingested
-                logger.info(f"Microsoft Defender: ingested {ingested} alerts")
-            else:
-                logger.error(f"Microsoft Defender ingestion failed: {result.get('errors')}")
-        except Exception as e:
-            logger.error(f"Error polling Microsoft Defender: {e}")
-            raise
+
 
     async def _poll_elastic_loop(self, shutdown_event: asyncio.Event):
         """Poll Elastic Security for new detection alerts on interval."""

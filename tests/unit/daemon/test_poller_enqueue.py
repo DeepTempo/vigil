@@ -100,11 +100,37 @@ async def test_stored_finding_is_marked(poller):
 @pytest.mark.parametrize(
     "source", ["azure_sentinel", "aws_security_hub", "microsoft_defender"]
 )
-async def test_cloud_pollers_propagate_so_the_loop_counts_the_error(poller, source):
+async def test_ingestion_pollers_propagate_so_the_loop_counts_the_error(poller, source):
     """Swallowing here let the loop record a successful last_poll_time."""
     service = MagicMock()
     service.ingest_alerts.side_effect = RuntimeError("api down")
     setattr(poller, f"_{source}_service", service)
 
     with pytest.raises(RuntimeError):
-        await getattr(poller, f"_poll_{source}")()
+        await poller._poll_ingestion_source(source)
+
+
+@pytest.mark.parametrize(
+    "source", ["azure_sentinel", "aws_security_hub", "microsoft_defender"]
+)
+async def test_ingestion_poller_records_its_own_stats(poller, source):
+    """The shared method must still key stats per source, not share a counter."""
+    service = MagicMock()
+    service.ingest_alerts.return_value = {"success": True, "ingested": 3}
+    setattr(poller, f"_{source}_service", service)
+
+    await poller._poll_ingestion_source(source)
+
+    assert poller.stats[f"{source}_polls"] == 1
+    assert poller.stats[f"{source}_findings"] == 3
+
+
+async def test_ingestion_poller_skips_when_federation_owns_the_source(poller):
+    service = MagicMock()
+    poller._azure_sentinel_service = service
+    poller._federation.is_active_for.return_value = True
+
+    await poller._poll_ingestion_source("azure_sentinel")
+
+    service.ingest_alerts.assert_not_called()
+    assert poller.stats["azure_sentinel_polls"] == 0
