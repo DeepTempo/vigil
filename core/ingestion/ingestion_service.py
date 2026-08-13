@@ -86,6 +86,38 @@ def row_identity_key(row: Dict[str, Any], columns: tuple) -> str:
     return '|'.join(parts)
 
 
+def _coerce_optional_verdict(value: Any, field_name: str) -> Optional[bool]:
+    """Normalize an optional boolean verdict and reject ambiguous values."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "malicious", "attack"}:
+        return True
+    if normalized in {"false", "0", "no", "benign", "normal", "clean"}:
+        return False
+    raise ValueError(f"Invalid {field_name} verdict: {value!r}")
+
+
+def _label_verdict(value: Any) -> Optional[bool]:
+    """Map recognized source labels to an attack/benign verdict."""
+    if value is None:
+        return None
+    normalized = str(value).strip().lower().replace("_", "-")
+    if normalized in {
+        "malicious", "attack", "anomalous", "threat", "1", "true"
+    }:
+        return True
+    if normalized in {
+        "benign", "normal", "clean", "non-malicious", "0", "false"
+    }:
+        return False
+    return None
+
+
 class IngestionService:
     """Service for ingesting data from various formats into the database."""
     
@@ -1090,8 +1122,51 @@ class IngestionService:
             'dst_ip': row.get('engaged_ip'),
             'incident_pred': incident_pred,
             'confidence_score': anomaly_score,
+            'prediction_confidence': (
+                float(confidence) if confidence is not None else 0.85
+            ),
+            'verdict': 'attack' if is_attack else 'benign',
             'sequence_id': sequence_id,
         }
+
+        # ``malicious`` and ``label`` are source ground truth, not aliases for
+        # the model's ``incident_pred``. Keep them separate so false positives
+        # and false negatives remain visible in downstream evidence views.
+        malicious_verdict = _coerce_optional_verdict(
+            row.get('malicious'), 'malicious'
+        )
+        label_verdict = _label_verdict(row.get('label'))
+        if (
+            malicious_verdict is not None
+            and label_verdict is not None
+            and malicious_verdict != label_verdict
+        ):
+            raise ValueError(
+                "Contradictory ground truth: malicious and label disagree"
+            )
+        ground_truth_verdict = (
+            malicious_verdict
+            if malicious_verdict is not None
+            else label_verdict
+        )
+        if ground_truth_verdict is not None:
+            entity_context.update({
+                'ground_truth_malicious': ground_truth_verdict,
+                'ground_truth_verdict': (
+                    'attack' if ground_truth_verdict else 'benign'
+                ),
+                'ground_truth_source': (
+                    'malicious'
+                    if malicious_verdict is not None
+                    else 'label'
+                ),
+                'prediction_matches_ground_truth': (
+                    ground_truth_verdict == is_attack
+                ),
+            })
+        for source_field in ('malicious', 'label'):
+            if row.get(source_field) is not None:
+                entity_context[source_field] = row[source_field]
 
         if row.get('event_start_time') is not None:
             entity_context['event_start_time'] = int(row['event_start_time'])
