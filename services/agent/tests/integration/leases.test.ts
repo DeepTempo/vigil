@@ -96,7 +96,7 @@ describe("the sweeper claims in the same statement it discovers by", () => {
     await workerA.claim(runId, "hunt", "a", 0);
     await overdue();
 
-    const swept = await Promise.all([workerA.sweep("s1", 60_000, 10), workerB.sweep("s2", 60_000, 10)]);
+    const swept = await Promise.all([workerA.sweep(60_000, 10), workerB.sweep(60_000, 10)]);
     const mine = swept.flat().filter((claim) => claim.run_id === runId);
 
     expect(mine).toHaveLength(1);
@@ -106,7 +106,7 @@ describe("the sweeper claims in the same statement it discovers by", () => {
   it("does not offer a run whose claim is still live", async () => {
     await workerA.claim(runId, "hunt", "a", 60_000);
 
-    const swept = await workerB.sweep("s1", 60_000, 50);
+    const swept = await workerB.sweep(60_000, 50);
 
     expect(swept.map((claim) => claim.run_id)).not.toContain(runId);
   });
@@ -117,9 +117,31 @@ describe("the sweeper claims in the same statement it discovers by", () => {
     await workerA.claim(runId, "hunt", "a", 0);
     await workerA.finish(runId);
 
-    const swept = await workerB.sweep("s1", 60_000, 50);
+    const swept = await workerB.sweep(60_000, 50);
 
     expect(swept.map((claim) => claim.run_id)).not.toContain(runId);
+  });
+
+  // The join between the two halves, and the one that makes the watchdog work at
+  // all: a sweeper reserves the row and the worker on the far side of the queue has
+  // to be able to take it. A reservation stamped with the sweeper's own name would
+  // be refused by claim's own filter, and every resume would be a no-op.
+  it("lets the worker that picks the job up claim a reserved run", async () => {
+    await workerA.claim(runId, "hunt", "a", 0);
+    await overdue();
+    expect((await workerA.sweep(60_000, 50)).map((claim) => claim.run_id)).toContain(runId);
+
+    expect(await workerB.claim(runId, "hunt", "b", 60_000)).toBe(true);
+  });
+
+  // A parked run is the same state -- nobody driving it -- so an answer that
+  // enqueues a resume takes effect now rather than waiting out an interval nobody
+  // is using.
+  it("lets a worker claim a parked run before its interval passes", async () => {
+    await workerA.claim(runId, "hunt", "a", 60_000);
+    await workerA.release(runId, "a", 60_000);
+
+    expect(await workerB.claim(runId, "hunt", "b", 60_000)).toBe(true);
   });
 
   // A parked run keeps its row: it is unfinished, so the sweeper comes back to it
@@ -128,7 +150,7 @@ describe("the sweeper claims in the same statement it discovers by", () => {
     await workerA.claim(runId, "hunt", "a", 60_000);
     await workerA.release(runId, "a", 60_000);
 
-    expect((await workerB.sweep("s1", 60_000, 50)).map((claim) => claim.run_id)).not.toContain(runId);
+    expect((await workerB.sweep(60_000, 50)).map((claim) => claim.run_id)).not.toContain(runId);
   });
 
   // What the console does when an answer arrives: the run stops waiting out its

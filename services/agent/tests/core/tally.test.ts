@@ -30,7 +30,7 @@ function harnessOf(script: readonly ScriptedTurn[], wiring: Wiring = {}): Harnes
     provider: scriptedProvider(script),
     registry: registryOf([bumpTool()], { counter: ["bump"] }),
     dispatch: wiring.dispatch ?? localDispatch,
-    budget: wiring.budget ?? budgetOf(limits, unmeteredQuota, "scripted"),
+    budget: wiring.budget ?? budgetOf(limits, unmeteredQuota),
     memory: wiring.memory ?? nullMemory,
     state: wiring.state ?? new InProcessState<TallyKinds>(),
   };
@@ -205,5 +205,6 @@ function broke(): Budget {
     spent: { calls: 0, cost_usd: 0, tokens: { input: 0, output: 0, cache_read: 0, cache_write: 0 } },
     beginCall: async () => ({ reason: "calls_exhausted", used: 0, limit: 0 }),
     record: () => {},
+    priceOf: async () => ({ cost_usd: null, source: null }),
   };
 }

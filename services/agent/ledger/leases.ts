@@ -8,16 +8,24 @@ import type { RunKind } from "../contracts/events.js";
 export class LeaseRepository implements Leases {
   constructor(private readonly pool: Pool) {}
 
-  // Insert on a first start, steal on a lapsed claim, and nothing at all while
-  // someone else holds it -- the ON CONFLICT filter is what refuses the second
-  // worker, so no two processes drive one run.
+  // Insert on a first start, take over from anyone who is not driving the run, and
+  // nothing at all while someone else is -- the ON CONFLICT filter is what refuses
+  // the second worker, so no two processes drive one run.
+  //
+  // A null owner is nobody driving it, whatever claim_until says. Three things
+  // write that state and all three mean the same: the sweeper reserving a run for
+  // the queue, release() parking one, and a run that has never been claimed. The
+  // deadline on such a row is when to *look* again, not a licence to wait -- so a
+  // worker holding that run's job takes it now rather than sitting out an interval
+  // nobody is using. Without this arm the sweeper's own reservation locks out the
+  // very worker it queued the job for, and no run is ever resumed.
   async claim(runId: string, runKind: RunKind, owner: string, ttlMs: number): Promise<boolean> {
     const result = await this.pool.query(
       `INSERT INTO agent_run_leases (run_id, run_kind, owner, claim_until)
        VALUES ($1, $2, $3, now() + make_interval(secs => $4::double precision))
        ON CONFLICT (run_id) DO UPDATE
          SET owner = $3, run_kind = $2, claim_until = now() + make_interval(secs => $4::double precision)
-         WHERE agent_run_leases.claim_until < now()
+         WHERE agent_run_leases.claim_until < now() OR agent_run_leases.owner IS NULL
        RETURNING run_id`,
       [runId, runKind, owner, ttlMs / 1000],
     );
@@ -64,21 +72,26 @@ export class LeaseRepository implements Leases {
     await this.pool.query("DELETE FROM agent_run_leases WHERE run_id = $1", [runId]);
   }
 
-  // Discovery and the claim are one statement, so only the sweeper that won a row
-  // enqueues it. SKIP LOCKED means a second sweeper moves on to other runs rather
-  // than waiting behind the first, which is what makes N replicas harmless.
-  async sweep(owner: string, ttlMs: number, limit: number): Promise<Claim[]> {
+  // Discovery and the reservation are one statement, so only the sweeper that won a
+  // row enqueues it. SKIP LOCKED means a second sweeper moves on to other runs
+  // rather than waiting behind the first, which is what makes N replicas harmless.
+  //
+  // owner stays NULL: the sweeper queues the run, it does not drive it, and a row
+  // it stamped with its own name would lock out the worker that picks the job up.
+  // The deadline it writes is how long to wait for that worker before offering the
+  // run again, so it budgets queue latency rather than work.
+  async sweep(ttlMs: number, limit: number): Promise<Claim[]> {
     const result = await this.pool.query<Claim>(
-      `UPDATE agent_run_leases SET owner = $1, claim_until = now() + make_interval(secs => $2::double precision)
+      `UPDATE agent_run_leases SET owner = NULL, claim_until = now() + make_interval(secs => $1::double precision)
        WHERE run_id IN (
          SELECT run_id FROM agent_run_leases
          WHERE claim_until < now()
          ORDER BY claim_until
-         LIMIT $3
+         LIMIT $2
          FOR UPDATE SKIP LOCKED
        )
        RETURNING run_id, run_kind`,
-      [owner, ttlMs / 1000, limit],
+      [ttlMs / 1000, limit],
     );
     return result.rows;
   }

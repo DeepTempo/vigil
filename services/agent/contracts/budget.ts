@@ -36,14 +36,21 @@ export interface Spend {
   tokens: TokenCounts;
 }
 
-// One model call, journaled. Tokens come from the provider and are exact here;
-// cost is null until the gateway reports it, because the gateway prices, not us.
+// One model call, journaled. Tokens come from the provider and are exact here; cost
+// is the backend catalog's rates applied to them, and null when nothing could be
+// asked -- an unpriced call is still a call, and losing the tokens to a pricing
+// outage would be worse than not knowing the dollars.
 export interface SpendPayload {
   model_id: string;
   provider_type: string;
   role: string;
   tokens: TokenCounts;
   cost_usd: number | null;
+  // How the rates resolved -- "exact", "heuristic", "zero", "unknown" -- or null
+  // when nothing priced it. A $0.00 from a real catalog entry and a $0.00 nobody
+  // could price are the same number and nothing alike, and a record of money should
+  // say which it is holding.
+  pricing_source: string | null;
 }
 
 // A value, never a throw: the exhaustiveness argument applies here or nowhere.
@@ -65,6 +72,17 @@ export interface Budget {
   readonly spent: Spend;
   beginCall(): Promise<Refusal | null>;
   record(payload: SpendPayload): void;
+  // What a call cost, so the loop can journal it and the pool can hold it against
+  // max_cost_usd. Here rather than on the harness because money is the budget's:
+  // this is the object that already owns the ceiling and the running total.
+  priceOf(modelId: string, providerType: string, tokens: TokenCounts): Promise<Priced>;
+}
+
+// Null cost means nothing could price it, which is not zero. The two are told apart
+// everywhere downstream, so they are told apart here first.
+export interface Priced {
+  cost_usd: number | null;
+  source: string | null;
 }
 
 export const ZERO_TOKENS: TokenCounts = { input: 0, output: 0, cache_read: 0, cache_write: 0 };

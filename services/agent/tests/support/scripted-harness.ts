@@ -27,7 +27,7 @@ export function scriptedHarness(script: readonly ScriptedTurn[]): HarnessFactory
     // call a tool fails loudly rather than reaching a stand-in nobody declared.
     registry: registryOf([], {}),
     dispatch: localDispatch,
-    budget: budgetOf(spec.budgets, unmeteredQuota, "scripted", Date.now, seed),
+    budget: budgetOf(spec.budgets, unmeteredQuota, Date.now, seed),
     memory,
     state,
   });

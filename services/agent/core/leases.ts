@@ -25,7 +25,7 @@ export const RENEW_EVERY_MS = ms("VIGIL_LEASE_RENEW_MS", 15_000);
 export const SWEEP_EVERY_MS = ms("VIGIL_SWEEP_MS", 30_000);
 export const PARK_EVERY_MS = ms("VIGIL_PARK_POLL_MS", 60_000);
 
-// A run the sweeper claimed and must now hand to the queue. run_kind is here
+// A run the sweeper reserved and must now hand to the queue. run_kind is here
 // because a resume job needs it and the ledger read would be a second query.
 export interface Claim {
   run_id: string;
@@ -33,8 +33,11 @@ export interface Claim {
 }
 
 export interface Leases {
-  // False when someone else holds the run. Not a failure: the caller returns
-  // rather than throwing, because a run already being driven is the good case.
+  // False when someone else is *driving* the run. A null owner is nobody driving
+  // it -- a run the sweeper reserved, or one parked waiting for an answer -- and
+  // the worker holding its job may take it. Refusal is not a failure: the caller
+  // returns rather than throwing, because a run already being driven is the good
+  // case.
   claim(runId: string, runKind: RunKind, owner: string, ttlMs: number): Promise<boolean>;
   // False when the claim was stolen, which tells the holder it has been declared
   // dead and should stop paying for work nobody will record.
@@ -48,9 +51,12 @@ export interface Leases {
   wake(runId: string): Promise<void>;
   // The run journaled its terminal, so it is nobody's work now.
   finish(runId: string): Promise<void>;
-  // Discovery and claiming in one step, so N sweepers cannot enqueue one run
-  // twice. Whoever wins the claim is the only one that gets the row back.
-  sweep(owner: string, ttlMs: number, limit: number): Promise<Claim[]>;
+  // Discovery and reservation in one step, so N sweepers cannot enqueue one run
+  // twice. The sweeper takes no ownership -- it is not going to drive the run,
+  // only queue it -- so the row keeps a null owner and the worker that dequeues
+  // the job is the one that claims it. ttlMs is how long the reservation holds
+  // the run off the next sweep, which is the queue latency being budgeted for.
+  sweep(ttlMs: number, limit: number): Promise<Claim[]>;
 }
 
 interface Held {
@@ -69,7 +75,8 @@ export class InProcessLeases implements Leases {
 
   async claim(runId: string, runKind: RunKind, owner: string, ttlMs: number): Promise<boolean> {
     const held = this.runs.get(runId);
-    if (held !== undefined && held.claim_until > this.now()) return false;
+    const driven = held !== undefined && held.owner !== null && held.claim_until > this.now();
+    if (driven) return false;
     this.runs.set(runId, { run_kind: runKind, owner, claim_until: this.now() + ttlMs });
     return true;
   }
@@ -99,14 +106,18 @@ export class InProcessLeases implements Leases {
     this.runs.delete(runId);
   }
 
-  async sweep(owner: string, ttlMs: number, limit: number): Promise<Claim[]> {
+  // Due at or before now, not strictly before: Postgres gets the same answer from
+  // a strict < because now() is the transaction's, and a later transaction's is
+  // later. There is no transaction here, so a wake() that set the deadline to this
+  // instant would be invisible to a sweep in the same millisecond.
+  async sweep(ttlMs: number, limit: number): Promise<Claim[]> {
     const due = [...this.runs.entries()]
-      .filter(([, held]) => held.claim_until < this.now())
+      .filter(([, held]) => held.claim_until <= this.now())
       .sort((left, right) => left[1].claim_until - right[1].claim_until)
       .slice(0, limit);
 
     for (const [runId, held] of due) {
-      this.runs.set(runId, { ...held, owner, claim_until: this.now() + ttlMs });
+      this.runs.set(runId, { ...held, owner: null, claim_until: this.now() + ttlMs });
     }
     return due.map(([run_id, held]) => ({ run_id, run_kind: held.run_kind }));
   }

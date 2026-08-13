@@ -17,7 +17,7 @@ COMMENT ON COLUMN agent_run_leases.claim_until IS
     'Written and compared with the database clock only, so a worker whose clock runs fast cannot hold an unkillable lease.';
 
 COMMENT ON COLUMN agent_run_leases.owner IS
-    'Which worker holds the run, for the console to report. Never read to decide anything.';
+    'Which worker is driving the run, or NULL when nobody is -- reserved for the queue, parked on an answer, or never started. Whether it is null decides who may claim; which worker it names is only for the console to report.';
 
 -- The sweeper's only query, and it claims in the same statement it discovers by.
 CREATE INDEX IF NOT EXISTS idx_agent_run_leases_due

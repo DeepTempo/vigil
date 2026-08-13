@@ -43,7 +43,7 @@ function harnessOf(spec: RunSpec, script: readonly ScriptedTurn[], state: InProc
     provider: scriptedProvider(script),
     registry: registryOf(tools, grants),
     dispatch: localDispatch,
-    budget: budgetOf(spec.budgets, unmeteredQuota, "scripted"),
+    budget: budgetOf(spec.budgets, unmeteredQuota),
     memory: nullMemory,
     state,
   };

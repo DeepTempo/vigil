@@ -54,7 +54,7 @@ function spend(): Parameters<InProcessState["append"]>[2][number] {
     run_id: RUN,
     run_kind: "hunt",
     kind: "spend",
-    payload: { model_id: "m", provider_type: "scripted", role: "lead", tokens: { input: 10, output: 1, cache_read: 0, cache_write: 0 }, cost_usd: null },
+    payload: { model_id: "m", provider_type: "scripted", role: "lead", tokens: { input: 10, output: 1, cache_read: 0, cache_write: 0 }, cost_usd: null, pricing_source: null },
   };
 }
 
@@ -173,7 +173,7 @@ describe("a run parked past its TTL is abandoned rather than left parked", () =>
     expect(terminal?.reason).toBe("parked 8.0 days without an answer");
     // Reaped: a finished run is nobody's work, so nothing sweeps it again.
     clock += LEASE_TTL_MS + 1;
-    expect(await leases.sweep("sweeper", LEASE_TTL_MS, 10)).toEqual([]);
+    expect(await leases.sweep(LEASE_TTL_MS, 10)).toEqual([]);
   });
 
   // The clock only runs while the answer is outstanding, so a checkpoint raised
@@ -239,6 +239,63 @@ describe("a run nobody is working on is put back on the queue", () => {
 
     expect(queue.ids).toHaveLength(2);
     expect(queue.ids[0]).not.toBe(queue.ids[1]);
+  });
+
+  // The join the other tests in this file leave out, and the one that matters: a
+  // sweep that enqueues is worth nothing unless the worker on the far side of the
+  // queue can take the run. A sweeper that stamped its own name on the row would
+  // be refused by its own reservation here, and every resume would be a no-op --
+  // the exact bug the watchdog exists to fix, reintroduced by the watchdog.
+  it("drives the run when the worker picks the queued resume up", async () => {
+    await opened(undefined);
+    await leases.claim(RUN, "hunt", "dead-worker", LEASE_TTL_MS);
+    clock += LEASE_TTL_MS + 1;
+
+    const queue = recorder();
+    expect(await sweepOnce(leases, queue)).toBe(1);
+    await advance(state, leases, queue.jobs[0] as RunJob, scriptedHarness(CONCLUDE));
+
+    expect((await state.terminal(RUN))?.outcome).toBe("completed");
+  });
+
+  // A run that failed before it opened a ledger cannot be resumed and cannot
+  // journal a terminal, so a row left behind for it is swept forever and throws
+  // every time. Nothing else would ever drop it.
+  it("leaves no lease behind for a start that never opened a ledger", async () => {
+    const missing = { ...startJob(), request: { arch: "", playbook: "/nowhere.yaml", config: "/nowhere.yaml", prompt: "go" } };
+    await expect(advance(state, leases, missing, scriptedHarness([]))).rejects.toThrow();
+
+    clock += LEASE_TTL_MS + 1;
+    expect(await sweepOnce(leases, recorder())).toBe(0);
+  });
+});
+
+// max_wall_ms is a ceiling on work, and waiting for a person is not work. If the
+// pool's clock ran while a run was parked, the two ceilings would contradict each
+// other -- a seven-day park TTL behind a thirty-minute wall budget -- and every
+// checkpoint answered late would resume straight into wall_exhausted.
+describe("a run does not spend wall time while it is parked", () => {
+  it("still has its allowance when the answer comes long after it parked", async () => {
+    clock -= 2 * 3_600_000;
+    await opened(undefined, checkpoint("apr-late"));
+    clock += 2 * 3_600_000;
+    await state.append(RUN, (await state.latestSeq(RUN) ?? -1) + 1, [resolution("apr-late")]);
+
+    await advance(state, leases, resumeJob(), scriptedHarness(CONCLUDE));
+
+    expect((await state.terminal(RUN))?.outcome).toBe("completed");
+  });
+
+  // Only waiting is excused. A worker that died and was reclaimed spent the hours
+  // it spent, which is what stops a crash loop buying a fresh clock every time.
+  it("counts the time a run was running but nobody was asked anything", async () => {
+    clock -= 2 * 3_600_000;
+    await opened(undefined, spend());
+    clock += 2 * 3_600_000;
+
+    await advance(state, leases, resumeJob(), scriptedHarness(CONCLUDE));
+
+    expect((await state.terminal(RUN))?.outcome).toBe("budget_exhausted");
   });
 });
 

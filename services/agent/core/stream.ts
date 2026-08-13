@@ -240,14 +240,21 @@ class Run<T, Kinds extends Record<string, unknown>> {
     return { content, tool_calls };
   }
 
-  // Cost is the gateway's to report, so it is null until it does.
+  // Priced before it is recorded, so the ledger's spend fold is in dollars and the
+  // pool has something to hold against max_cost_usd. Null when nothing could price
+  // it: the tokens are exact either way, and a call that could not be priced is not
+  // a call that was free.
   private async settle(tokens: TokenCounts): Promise<SpendPayload> {
+    const model_id = this.harness.provider.model;
+    const provider_type = this.harness.provider.provider_type;
+    const priced = await this.harness.budget.priceOf(model_id, provider_type, tokens);
     const payload: SpendPayload = {
-      model_id: this.harness.provider.model,
-      provider_type: this.harness.provider.provider_type,
+      model_id,
+      provider_type,
       role: this.cfg.role,
       tokens,
-      cost_usd: null,
+      cost_usd: priced.cost_usd,
+      pricing_source: priced.source,
     };
     this.harness.budget.record(payload);
     await this.write({ run_id: this.cfg.run_id, run_kind: this.cfg.run_kind, kind: "spend", payload });

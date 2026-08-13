@@ -1,4 +1,3 @@
-import type { SpendPayload } from "../../contracts/budget.js";
 import type { NewEvent } from "../../contracts/events.js";
 import { commitTurn, type Harness, type Outcome, type TurnConfig } from "../../core/loop.js";
 import type { Message } from "../../core/provider.js";
@@ -105,7 +104,6 @@ type Event = NewEvent<Record<never, never>>;
 function event(options: ChatOptions, kind: Event["kind"], payload: Event["payload"]): Event {
   return { run_id: options.run_id, run_kind: KIND, kind, payload };
 }
-
 
 // A conversation is the run, so it opens once and stays open. Nothing writes a
 // terminal: the person may always say something else.

@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { archFor } from "./arch/registry.js";
-import { httpAnswers, noAnswers, type Answers } from "./core/answers.js";
+import { httpAnswers, journalAnswers, noAnswers, type Answers } from "./core/answers.js";
 import { harnessFor, internalToken, type HarnessFactory } from "./harness.js";
 import { chatPort, chatServer } from "./serve.js";
 import { jobIdFor, RUN_QUEUE, JOB_SCHEMA_VERSION, type RunJob } from "./contracts/job.js";
@@ -19,7 +19,7 @@ import { LeaseRepository } from "./ledger/leases.js";
 import { seedFrom } from "./core/budget.js";
 import type { State } from "./core/seams.js";
 import { httpPlaybooks, isReference, type PlaybookResolver } from "./core/playbooks.js";
-import { assembleSpec, buildSpec, loadArch, parseConfig, parsePlaybook, SpecError, withOverrides, type RunSpec } from "./core/spec.js";
+import { assembleSpec, buildSpec, DEFAULT_BUDGETS, loadArch, parseConfig, parsePlaybook, SpecError, withOverrides, type RunSpec } from "./core/spec.js";
 import { LedgerRepository } from "./ledger/repository.js";
 import { httpMirror, nullMirror, type Mirror } from "./workflows/compose/mirror.js";
 import { runCompose } from "./workflows/compose/workflow.js";
@@ -77,9 +77,18 @@ function defaultResolver(): PlaybookResolver {
 
 // The spec a run started under, read off the ledger. A resume re-reads no file,
 // so an edited arch or config cannot reach a run already in flight.
+//
+// Budgets are backfilled from the defaults for keys the journaled spec predates.
+// A run in flight when a new ceiling ships has never heard of it, and the arithmetic
+// downstream is not defensive: Math.min against an undefined limit is NaN, which
+// reaches Postgres as an interval it refuses, and the run then fails every sweep
+// forever. Backfilling also keeps the promise above intact -- what a resume must not
+// do is re-read the *file*, not decline to know a default.
 export async function specOf(state: State, runId: string): Promise<RunSpec | null> {
   const opened = (await state.read(runId)).find((event) => event.kind === "run");
-  return opened === undefined ? null : ((opened.payload as RunPayload).spec as RunSpec);
+  if (opened === undefined) return null;
+  const spec = (opened.payload as RunPayload).spec as RunSpec;
+  return { ...spec, budgets: { ...DEFAULT_BUDGETS, ...spec.budgets } };
 }
 
 // A workflow's event kinds are its own and the repository is generic over them, so
@@ -158,15 +167,33 @@ export async function advance(
     const spec = latest === null ? await resolveSpec(job as StartJob) : await specOf(state, job.run_id);
     if (spec === null) throw new Error(`cannot advance ${job.run_id}: its ledger holds no run event`);
 
+    // Before the park check, not after it: abandoning is irreversible, and a run
+    // whose answer is sitting at the endpoint unjournaled has been answered. The
+    // workflow journals again on every iteration; this is idempotent against what
+    // the ledger already holds, so the second call appends nothing.
+    await journalAnswers(state, job.run_id, job.run_kind, answersFor());
+
     if (await abandonIfParkedOut(state, leases, job, spec)) return;
     await drive(state, job, spec, build, halt.signal);
     await settle(state, leases, job, spec, owner);
   } catch (error) {
     await abandon(job, error);
+    await forget(state, leases, job.run_id);
     throw error;
   } finally {
     clearInterval(renewing);
   }
+}
+
+// A run that failed before it opened a ledger is not a run: no terminal can be
+// journaled for it and no resume can read it back, so its lease row would sit there
+// being swept forever, throwing on every attempt. Dropped here because this is the
+// only place that knows the ledger stayed empty.
+//
+// A failure with a ledger behind it keeps its row: that run is real and unfinished,
+// and the sweeper reclaiming it is exactly right.
+async function forget(state: State, leases: Leases, runId: string): Promise<void> {
+  if ((await state.latestSeq(runId)) === null) await leases.finish(runId);
 }
 
 export const LOST_LEASE = "the lease was reclaimed by another worker";
@@ -270,8 +297,12 @@ export interface Enqueue {
   add(name: string, job: RunJob, options: { jobId: string }): Promise<unknown>;
 }
 
+// The reservation lasts a lease TTL because that is the order of magnitude a job
+// spends between being queued and being picked up. It is not ownership: the row
+// keeps a null owner, so the worker that dequeues the job can claim it, and if no
+// worker ever does the run is offered again once the reservation lapses.
 export async function sweepOnce(leases: Leases, queue: Enqueue, limit = 50): Promise<number> {
-  const due = await leases.sweep(workerName(), LEASE_TTL_MS, limit);
+  const due = await leases.sweep(LEASE_TTL_MS, limit);
   for (const claim of due) {
     const job: RunJob = {
       schema_version: JOB_SCHEMA_VERSION,

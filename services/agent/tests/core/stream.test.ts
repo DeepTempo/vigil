@@ -40,7 +40,6 @@ function harnessOf(script: readonly ScriptedTurn[], options: Options = {}): Harn
     budget: budgetOf(
       { max_calls: options.max_calls ?? 10, max_cost_usd: options.max_cost_usd ?? 100, max_wall_ms: 600_000, max_park_ms: 604_800_000 },
       unmeteredQuota,
-      "scripted",
     ),
     memory: options.memory ?? nullMemory,
     state: options.state ?? new InProcessState(),
