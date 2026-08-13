@@ -13,6 +13,8 @@ from services.api.middleware.auth import get_current_active_user, require_settin
 from core.storage.models import User
 from core.routing import Auth, RouterMeta
 
+from core.storage.connection import get_db_manager
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -179,7 +181,6 @@ def reconnect_database(current_user: User = Depends(get_current_active_user)):
     """
     require_settings_admin(current_user)
 
-    from core.storage.connection import get_db_manager
 
     with _RETARGET_LOCK:
         db_manager = get_db_manager()
@@ -295,7 +296,6 @@ def init_schema(current_user: User = Depends(get_current_active_user)):
     """
     require_settings_admin(current_user)
 
-    from core.storage.connection import get_db_manager
 
     db_manager = get_db_manager()
     before = db_manager.schema_report()

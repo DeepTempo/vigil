@@ -23,6 +23,8 @@ from core.reporting.ai_insights_service import AIInsightsService
 from core.threat_intel.mitre_lookup import get_time_range, resolve_technique  # noqa: F401
 from core.routing import Auth, RouterMeta, UnitOfWorkSession
 
+from core.llm.providers.registry import get_registry, infer_provider_type
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -919,10 +921,6 @@ def _cost_group_by_model(db: Session, base_filter) -> List[Dict[str, Any]]:
     # tier-regex pricing (or $0 for unknown) and need to be visually
     # distinguishable from "exact" rows. Provider is inferred from the
     # model id since LLMInteractionLog doesn't carry provider_type.
-    from core.llm.providers.registry import (
-        get_registry,
-        infer_provider_type,
-    )
 
     registry = get_registry()
     return [
@@ -1022,7 +1020,6 @@ async def estimate_cost_endpoint(payload: EstimateCostRequest) -> Dict[str, Any]
     is typically much closer to ``low_usd`` for cache-friendly workloads.
     """
     from core.llm.cost.estimator import estimate_cost
-    from core.llm.providers.registry import get_registry, infer_provider_type
 
     # The chat composer can't reliably know which provider serves a given
     # model (the bare model id it picked routes to the active default on the

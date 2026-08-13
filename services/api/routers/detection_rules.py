@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from core.routing import Auth, RouterMeta
 
+from core.detections.detection_rules_service import get_detection_rules_service
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -36,7 +38,6 @@ async def list_sources():
     Returns:
         List of sources with metadata (name, format, rule count, status, etc.)
     """
-    from core.detections.detection_rules_service import get_detection_rules_service
     service = get_detection_rules_service()
     sources = service.list_sources()
     return {"sources": sources, "count": len(sources)}
@@ -53,7 +54,6 @@ async def get_source(source_id: str):
     Returns:
         Source details
     """
-    from core.detections.detection_rules_service import get_detection_rules_service
     service = get_detection_rules_service()
     source = service.get_source(source_id)
     if not source:
@@ -104,7 +104,6 @@ async def remove_source(source_id: str, delete_files: bool = False):
     Returns:
         Success status
     """
-    from core.detections.detection_rules_service import get_detection_rules_service
     service = get_detection_rules_service()
     success = service.remove_source(source_id, delete_files=delete_files)
     if not success:
@@ -147,7 +146,6 @@ async def update_all_sources():
     Returns:
         Results for each source update
     """
-    from core.detections.detection_rules_service import get_detection_rules_service
     service = get_detection_rules_service()
     results = service.update_all()
     
@@ -165,7 +163,6 @@ async def get_stats():
     Returns:
         Statistics including total rules, breakdown by format, and per-source counts
     """
-    from core.detections.detection_rules_service import get_detection_rules_service
     service = get_detection_rules_service()
     stats = service.get_stats()
     return stats
@@ -179,7 +176,6 @@ async def get_mcp_env():
     Returns:
         Dictionary of environment variable names to their values
     """
-    from core.detections.detection_rules_service import get_detection_rules_service
     service = get_detection_rules_service()
     env_vars = service.get_mcp_env_vars()
     return {"env_vars": env_vars}
@@ -194,7 +190,6 @@ async def reload_service():
     Returns:
         Success status with updated stats
     """
-    from core.detections.detection_rules_service import get_detection_rules_service
     service = get_detection_rules_service()
     
     # Re-read config

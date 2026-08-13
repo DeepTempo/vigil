@@ -15,6 +15,9 @@ from core.llm.defaults import DEFAULT_MODEL
 from core.integrations.integration_secrets import redact_secrets, secret_fields_for, split_secrets
 from core.config import get_settings, vigil_path
 
+from core.integrations.integration_bridge_service import get_integration_bridge
+from core.secrets_manager import get_secrets_manager
+
 router = APIRouter()
 
 ROUTER_META = RouterMeta(
@@ -816,8 +819,6 @@ async def get_integrations_status():
     Returns:
         Status information for all integrations
     """
-    # Import here to avoid circular dependencies
-    from core.integrations.integration_bridge_service import get_integration_bridge
 
     bridge = get_integration_bridge()
     statuses = bridge.get_all_integration_statuses()
@@ -836,8 +837,6 @@ async def test_integration(integration_id: str):
     Returns:
         Test result with success/failure and message
     """
-    # Import here to avoid circular dependencies
-    from core.integrations.integration_bridge_service import get_integration_bridge
 
     bridge = get_integration_bridge()
     status = bridge.get_integration_status(integration_id)
@@ -1486,7 +1485,6 @@ async def secrets_status() -> Dict[str, Any]:
     write backend, what was expected per ``SECRETS_BACKEND`` env, whether
     cryptography imported, and where each backend lives on disk.
     """
-    from core.secrets_manager import get_secrets_manager
 
     mgr = get_secrets_manager()
     return mgr.get_backend_status()
@@ -1508,7 +1506,6 @@ async def secrets_reinit(
     just edited ``.env`` to switch from dotenv to encrypted but haven't
     bounced the process.
     """
-    from core.secrets_manager import get_secrets_manager
 
     write_backend = request.write_backend if request else None
     mgr = get_secrets_manager(write_backend=write_backend, force_reload=True)
@@ -1532,7 +1529,6 @@ async def secrets_migrate_to_encrypted(
     subset, or ``{"remove_from_dotenv": false}`` for a dry-copy that
     leaves the source file alone.
     """
-    from core.secrets_manager import get_secrets_manager
 
     mgr = get_secrets_manager()
     keys = request.keys if request else None

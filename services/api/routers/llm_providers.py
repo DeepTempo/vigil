@@ -25,7 +25,8 @@ from services.api.middleware.auth import get_current_active_user
 from core.auth.auth_service import AuthService
 from core.storage.models import AIModelConfig, LLMProviderConfig, User
 from core.storage.schemas import LLMProviderConfigSchema
-from core.llm.bifrost.admin import push_provider_key
+from core.llm.bifrost.admin import push_provider_key, sync_all_provider_models
+
 from core.platform.url_safety import (
     UrlSafetyError,
     validate_provider_url,
@@ -47,7 +48,7 @@ _SLUG_RE = re.compile(r"[^a-z0-9-]+")
 # ``core.llm.providers.discovery``; the fallback tuple here is the
 # cold-boot list used only when the live call fails (e.g. no API key
 # was provided at /discover-models time).
-from core.llm.providers.registry import _FALLBACK_MODELS_BY_PROVIDER  # noqa: E402
+from core.llm.providers.registry import _FALLBACK_MODELS_BY_PROVIDER, fetch_provider_models, invalidate_model_cache
 
 ANTHROPIC_FALLBACK_MODELS = list(_FALLBACK_MODELS_BY_PROVIDER["anthropic"])
 
@@ -232,8 +233,6 @@ def _schedule_catalog_resync(reason: str) -> None:
     """
     import asyncio
 
-    from core.llm.bifrost.admin import sync_all_provider_models
-    from core.llm.providers.registry import invalidate_model_cache
 
     invalidate_model_cache()
     try:
@@ -721,7 +720,6 @@ async def list_models(
     if row is None:
         raise HTTPException(status_code=404, detail="provider not found")
 
-    from core.llm.providers.registry import fetch_provider_models
 
     # ``fetch_provider_models`` delegates to the discovery module and
     # falls back to the cold-boot list on any error, so callers always
@@ -748,15 +746,12 @@ async def refresh_provider_models(
     if row is None:
         raise HTTPException(status_code=404, detail="provider not found")
 
-    from core.llm.bifrost.admin import sync_all_provider_models
-    from core.llm.providers.registry import invalidate_model_cache
 
     invalidate_model_cache()
     # Run the same union-of-same-type sync used at startup so Bifrost
     # sees the new state too, not just the backend's cache.
     sync_results = await sync_all_provider_models()
 
-    from core.llm.providers.registry import fetch_provider_models
 
     try:
         models = await fetch_provider_models(row)
@@ -779,8 +774,6 @@ async def refresh_all_provider_models(
     provider or rotating keys in bulk.
     """
     _require_settings_admin(current_user)
-    from core.llm.bifrost.admin import sync_all_provider_models
-    from core.llm.providers.registry import invalidate_model_cache
 
     invalidate_model_cache()
     sync_results = await sync_all_provider_models()

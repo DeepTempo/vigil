@@ -8,7 +8,8 @@ from pathlib import Path
 
 from services.api.middleware.auth import get_current_user
 from core.auth.auth_service import AuthService
-from core.storage.models import User
+from core.storage.models import AIDecisionLog, AttackLayer, Case, CaseAttachment, CaseAuditLog, CaseClosureInfo, CaseComment, CaseEscalation, CaseEvidence, CaseIOC, CaseMetrics, CaseNotification, CaseRelationship, CaseSLA, CaseTask, CaseWatcher, Investigation, SketchMapping, User, case_findings
+
 from core.storage.schemas import (
     CaseClosureInfoSchema,
     CaseCommentSchema,
@@ -23,6 +24,11 @@ from core.storage.schemas import (
 from core.storage.database_data_service import DatabaseDataService
 from core.reporting.report_service import ReportService, REPORTLAB_AVAILABLE
 from core.routing import Auth, RouterMeta, UnitOfWorkSession
+
+from core.cases.case_collaboration_service import CaseCollaborationService
+from core.cases.case_evidence_service import CaseEvidenceService
+from core.cases.case_ioc_service import CaseIOCService
+from core.cases.case_sla_service import CaseSLAService
 
 router = APIRouter()
 
@@ -108,27 +114,6 @@ async def clear_all_cases(
         raise HTTPException(
             status_code=403, detail="Permission denied: cases.delete required"
         )
-    from core.storage.models import (
-        AIDecisionLog,
-        AttackLayer,
-        Case,
-        CaseAttachment,
-        CaseAuditLog,
-        CaseClosureInfo,
-        CaseComment,
-        CaseEscalation,
-        CaseEvidence,
-        CaseIOC,
-        CaseMetrics,
-        CaseNotification,
-        CaseRelationship,
-        CaseSLA,
-        CaseTask,
-        CaseWatcher,
-        Investigation,
-        SketchMapping,
-        case_findings,
-    )
 
     count = session.query(Case).count()
 
@@ -565,7 +550,6 @@ class SLAAssign(BaseModel):
 @router.post("/{case_id}/sla")
 async def assign_sla(case_id: str, data: SLAAssign):
     """Assign SLA policy to case."""
-    from core.cases.case_sla_service import CaseSLAService
     sla_service = CaseSLAService()
     result = sla_service.assign_sla_to_case(case_id, data.sla_policy_id)
     if not result:
@@ -576,7 +560,6 @@ async def assign_sla(case_id: str, data: SLAAssign):
 @router.get("/{case_id}/sla")
 async def get_case_sla(case_id: str):
     """Get SLA status for case."""
-    from core.cases.case_sla_service import CaseSLAService
     sla_service = CaseSLAService()
     status = sla_service.get_sla_status(case_id)
     if not status:
@@ -587,7 +570,6 @@ async def get_case_sla(case_id: str):
 @router.post("/{case_id}/sla/pause")
 async def pause_sla(case_id: str):
     """Pause SLA timer."""
-    from core.cases.case_sla_service import CaseSLAService
     sla_service = CaseSLAService()
     success = sla_service.pause_sla(case_id)
     if not success:
@@ -598,7 +580,6 @@ async def pause_sla(case_id: str):
 @router.post("/{case_id}/sla/resume")
 async def resume_sla(case_id: str):
     """Resume SLA timer."""
-    from core.cases.case_sla_service import CaseSLAService
     sla_service = CaseSLAService()
     success = sla_service.resume_sla(case_id)
     if not success:
@@ -617,7 +598,6 @@ class CommentAdd(BaseModel):
 @router.get("/{case_id}/comments")
 async def get_comments(case_id: str):
     """Get all comments for case."""
-    from core.cases.case_collaboration_service import CaseCollaborationService
     collab_service = CaseCollaborationService()
     comments = collab_service.get_case_comments(case_id)
     return {"comments": CaseCommentSchema.dump_many(comments)}
@@ -626,7 +606,6 @@ async def get_comments(case_id: str):
 @router.post("/{case_id}/comments")
 async def add_comment(case_id: str, data: CommentAdd):
     """Add comment to case."""
-    from core.cases.case_collaboration_service import CaseCollaborationService
     collab_service = CaseCollaborationService()
     comment = collab_service.add_comment(
         case_id, data.author, data.content, data.parent_comment_id
@@ -644,7 +623,6 @@ class CommentUpdate(BaseModel):
 @router.put("/{case_id}/comments/{comment_id}")
 async def update_comment(case_id: str, comment_id: int, data: CommentUpdate):
     """Update comment."""
-    from core.cases.case_collaboration_service import CaseCollaborationService
     collab_service = CaseCollaborationService()
     success = collab_service.update_comment(comment_id, data.content)
     if not success:
@@ -655,7 +633,6 @@ async def update_comment(case_id: str, comment_id: int, data: CommentUpdate):
 @router.delete("/{case_id}/comments/{comment_id}")
 async def delete_comment(case_id: str, comment_id: int):
     """Delete comment."""
-    from core.cases.case_collaboration_service import CaseCollaborationService
     collab_service = CaseCollaborationService()
     success = collab_service.delete_comment(comment_id)
     if not success:
@@ -673,7 +650,6 @@ class WatcherAdd(BaseModel):
 @router.post("/{case_id}/watchers")
 async def add_watcher(case_id: str, data: WatcherAdd):
     """Add watcher to case."""
-    from core.cases.case_collaboration_service import CaseCollaborationService
     collab_service = CaseCollaborationService()
     watcher = collab_service.add_watcher(
         case_id, data.user_id, data.notification_preferences
@@ -686,7 +662,6 @@ async def add_watcher(case_id: str, data: WatcherAdd):
 @router.delete("/{case_id}/watchers/{user_id}")
 async def remove_watcher(case_id: str, user_id: str):
     """Remove watcher from case."""
-    from core.cases.case_collaboration_service import CaseCollaborationService
     collab_service = CaseCollaborationService()
     success = collab_service.remove_watcher(case_id, user_id)
     if not success:
@@ -697,7 +672,6 @@ async def remove_watcher(case_id: str, user_id: str):
 @router.get("/{case_id}/watchers")
 async def get_watchers(case_id: str):
     """Get all watchers for case."""
-    from core.cases.case_collaboration_service import CaseCollaborationService
     collab_service = CaseCollaborationService()
     watchers = collab_service.get_case_watchers(case_id)
     return {"watchers": CaseWatcherSchema.dump_many(watchers)}
@@ -718,7 +692,6 @@ class EvidenceAdd(BaseModel):
 @router.post("/{case_id}/evidence")
 async def add_evidence(case_id: str, data: EvidenceAdd):
     """Add evidence to case."""
-    from core.cases.case_evidence_service import CaseEvidenceService
     evidence_service = CaseEvidenceService()
     evidence = evidence_service.add_evidence(
         case_id=case_id,
@@ -738,7 +711,6 @@ async def add_evidence(case_id: str, data: EvidenceAdd):
 @router.get("/{case_id}/evidence")
 async def get_evidence(case_id: str, evidence_type: Optional[str] = None):
     """Get all evidence for case."""
-    from core.cases.case_evidence_service import CaseEvidenceService
     evidence_service = CaseEvidenceService()
     evidence_list = evidence_service.get_case_evidence(case_id, evidence_type)
     return {"evidence": CaseEvidenceSchema.dump_many(evidence_list)}
@@ -754,7 +726,6 @@ class ChainOfCustodyAdd(BaseModel):
 @router.post("/{case_id}/evidence/{evidence_id}/chain-of-custody")
 async def add_custody_entry(case_id: str, evidence_id: int, data: ChainOfCustodyAdd):
     """Add chain of custody entry."""
-    from core.cases.case_evidence_service import CaseEvidenceService
     evidence_service = CaseEvidenceService()
     success = evidence_service.add_chain_of_custody_entry(
         evidence_id, data.action, data.user, data.notes
@@ -779,7 +750,6 @@ class IOCAdd(BaseModel):
 @router.post("/{case_id}/iocs")
 async def add_ioc(case_id: str, data: IOCAdd):
     """Add IOC to case."""
-    from core.cases.case_ioc_service import CaseIOCService
     ioc_service = CaseIOCService()
     ioc = ioc_service.add_ioc(
         case_id=case_id,
@@ -799,7 +769,6 @@ async def add_ioc(case_id: str, data: IOCAdd):
 @router.get("/{case_id}/iocs")
 async def get_iocs(case_id: str, ioc_type: Optional[str] = None):
     """Get all IOCs for case."""
-    from core.cases.case_ioc_service import CaseIOCService
     ioc_service = CaseIOCService()
     iocs = ioc_service.get_case_iocs(case_id, ioc_type)
     return {"iocs": CaseIOCSchema.dump_many(iocs)}
@@ -813,7 +782,6 @@ class IOCBulkAdd(BaseModel):
 @router.post("/{case_id}/iocs/bulk")
 async def bulk_add_iocs(case_id: str, data: IOCBulkAdd):
     """Bulk add IOCs to case."""
-    from core.cases.case_ioc_service import CaseIOCService
     ioc_service = CaseIOCService()
     count = ioc_service.bulk_add_iocs(case_id, data.iocs)
     return {"added": count}
@@ -822,7 +790,6 @@ async def bulk_add_iocs(case_id: str, data: IOCBulkAdd):
 @router.get("/{case_id}/iocs/export")
 async def export_iocs(case_id: str, format: str = "json"):
     """Export IOCs (json, csv, or stix)."""
-    from core.cases.case_ioc_service import CaseIOCService
     ioc_service = CaseIOCService()
     
     if format == "csv":
@@ -850,7 +817,6 @@ class TaskAdd(BaseModel):
 @router.post("/{case_id}/tasks")
 async def add_task(case_id: str, data: TaskAdd, session: UnitOfWorkSession):
     """Add task to case."""
-    from core.storage.models import CaseTask
 
     task = CaseTask(
         case_id=case_id,
@@ -872,7 +838,6 @@ async def add_task(case_id: str, data: TaskAdd, session: UnitOfWorkSession):
 @router.get("/{case_id}/tasks")
 async def get_tasks(case_id: str):
     """Get all tasks for case."""
-    from core.storage.models import CaseTask
     from core.storage.unit_of_work import unit_of_work
 
     try:
@@ -903,7 +868,6 @@ async def update_task(
     case_id: str, task_id: int, data: TaskUpdate, session: UnitOfWorkSession
 ):
     """Update task."""
-    from core.storage.models import CaseTask
 
     task = session.query(CaseTask).filter(CaseTask.task_id == task_id).first()
     if not task:
@@ -946,7 +910,6 @@ async def add_relationship(
     case_id: str, data: RelationshipAdd, session: UnitOfWorkSession
 ):
     """Link related case."""
-    from core.storage.models import CaseRelationship
 
     rel = CaseRelationship(
         case_id=case_id,
@@ -965,7 +928,6 @@ async def add_relationship(
 @router.get("/{case_id}/relationships")
 async def get_relationships(case_id: str, session: UnitOfWorkSession):
     """Get related cases."""
-    from core.storage.models import CaseRelationship
 
     rels = (
         session.query(CaseRelationship)
@@ -989,7 +951,6 @@ class ClosureInfo(BaseModel):
 @router.post("/{case_id}/close")
 async def close_case(case_id: str, data: ClosureInfo, session: UnitOfWorkSession):
     """Close case with closure metadata."""
-    from core.storage.models import CaseClosureInfo, Case
 
     # Update case status
     case = session.query(Case).filter(Case.case_id == case_id).first()
@@ -1011,7 +972,6 @@ async def close_case(case_id: str, data: ClosureInfo, session: UnitOfWorkSession
     session.add(closure)
     
     # Mark SLA resolution complete
-    from core.cases.case_sla_service import CaseSLAService
     sla_service = CaseSLAService()
     sla_service.mark_resolution_complete(case_id, session)
     
@@ -1047,7 +1007,6 @@ async def escalate_case(case_id: str, data: EscalationAdd):
 @router.get("/{case_id}/escalations")
 async def get_escalations(case_id: str, session: UnitOfWorkSession):
     """Get escalation history."""
-    from core.storage.models import CaseEscalation
 
     escalations = (
         session.query(CaseEscalation).filter(CaseEscalation.case_id == case_id).all()
@@ -1074,9 +1033,6 @@ async def merge_cases(case_id: str, data: MergeRequest):
         raise HTTPException(status_code=400, detail="Cannot merge a case into itself")
 
     from core.storage.connection import get_db_manager
-    from core.storage.models import (
-        Case, case_findings, CaseRelationship,
-    )
 
     with get_db_manager().session_scope() as session:
         target = session.query(Case).filter_by(case_id=case_id).first()

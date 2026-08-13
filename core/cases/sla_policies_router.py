@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
 
-from core.storage.models import SLAPolicy
+from core.storage.models import Case, CaseSLA, SLAPolicy
+
 from core.storage.schemas import CaseSchema, SLAPolicySchema
 from core.routing import Auth, RouterMeta, UnitOfWorkSession
 
@@ -293,7 +294,6 @@ async def delete_sla_policy(
         raise HTTPException(status_code=404, detail="SLA policy not found")
     
     # Check if policy is in use
-    from core.storage.models import CaseSLA
     
     in_use = session.query(CaseSLA).filter(
         CaseSLA.sla_policy_id == policy_id
@@ -367,7 +367,6 @@ async def get_policy_usage(policy_id: str, session: UnitOfWorkSession):
     if not policy:
         raise HTTPException(status_code=404, detail="SLA policy not found")
 
-    from core.storage.models import CaseSLA, Case
     from sqlalchemy import func
 
     # Total cases using this policy
@@ -430,7 +429,6 @@ async def get_policy_cases(
     if not policy:
         raise HTTPException(status_code=404, detail="SLA policy not found")
 
-    from core.storage.models import CaseSLA, Case
 
     query = session.query(Case).join(CaseSLA).filter(
         CaseSLA.sla_policy_id == policy_id

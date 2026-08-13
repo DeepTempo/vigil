@@ -7,6 +7,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from core.routing import Auth, RouterMeta
 
+from core.response.approval_service import ActionStatus, get_approval_service
+from core.workflows.custom_workflow_service import get_custom_workflow_service
+from core.workflows.workflow_run_service import get_workflow_run_service
+from core.workflows.workflows_service import get_workflows_service
+
 router = APIRouter()
 
 ROUTER_META = RouterMeta(
@@ -96,7 +101,6 @@ async def list_workflows():
     Returns:
         { workflows: [...], count: int }
     """
-    from core.workflows.workflows_service import get_workflows_service
 
     service = get_workflows_service()
     workflows = service.list_workflows()
@@ -112,7 +116,6 @@ async def reload_workflows():
 
     Does not affect database-backed custom workflows.
     """
-    from core.workflows.workflows_service import get_workflows_service
 
     service = get_workflows_service()
     service.reload()
@@ -133,7 +136,6 @@ async def reload_workflows():
 @router.get("/workflows/custom")
 async def list_custom_workflows(active_only: bool = True):
     """List database-backed custom workflows."""
-    from core.workflows.custom_workflow_service import get_custom_workflow_service
 
     rows = get_custom_workflow_service().list(active_only=active_only)
     return {"workflows": rows, "count": len(rows)}
@@ -158,7 +160,6 @@ async def create_custom_workflow(payload: CustomWorkflowCreate):
 @router.get("/workflows/custom/{workflow_id}")
 async def get_custom_workflow(workflow_id: str):
     """Fetch a single custom workflow."""
-    from core.workflows.custom_workflow_service import get_custom_workflow_service
 
     wf = get_custom_workflow_service().get(workflow_id)
     if not wf:
@@ -196,7 +197,6 @@ async def update_custom_workflow(workflow_id: str, payload: CustomWorkflowUpdate
 @router.delete("/workflows/custom/{workflow_id}")
 async def delete_custom_workflow(workflow_id: str):
     """Soft-delete a custom workflow (sets is_active=False)."""
-    from core.workflows.custom_workflow_service import get_custom_workflow_service
 
     ok = get_custom_workflow_service().delete(workflow_id)
     if not ok:
@@ -241,7 +241,6 @@ async def get_workflow(workflow_id: str):
     """
     Get full details for a specific workflow (custom or file-based).
     """
-    from core.workflows.workflows_service import get_workflows_service
 
     service = get_workflows_service()
     workflow = service.get_workflow_dict(workflow_id, include_body=True)
@@ -320,7 +319,6 @@ async def get_workflow_run(run_id: str):
     (#128). For one-shot runs with no phase rows, ``phases`` is just
     an empty list.
     """
-    from core.workflows.workflow_run_service import get_workflow_run_service
 
     run_service = get_workflow_run_service()
     row = run_service.get_run(run_id)
@@ -338,12 +336,6 @@ async def resume_workflow_run(run_id: str, request: WorkflowRunResumeRequest):
     re-enters the phase loop. If there is no pending approval action
     linked to the run, returns 409.
     """
-    from core.response.approval_service import (
-        ActionStatus,
-        get_approval_service,
-    )
-    from core.workflows.workflow_run_service import get_workflow_run_service
-    from core.workflows.workflows_service import get_workflows_service
 
     run_service = get_workflow_run_service()
     run = run_service.get_run(run_id)
@@ -383,12 +375,6 @@ async def cancel_workflow_run(run_id: str, request: WorkflowRunCancelRequest):
     Rejects any pending approval action on the run and finalises it
     as ``cancelled`` with the supplied reason.
     """
-    from core.response.approval_service import (
-        ActionStatus,
-        get_approval_service,
-    )
-    from core.workflows.workflow_run_service import get_workflow_run_service
-    from core.workflows.workflows_service import get_workflows_service
 
     run_service = get_workflow_run_service()
     run = run_service.get_run(run_id)
@@ -447,7 +433,6 @@ async def list_workflow_runs(
     Omits ``result_summary`` from each entry so the listing stays
     light; use GET /workflows/runs/{run_id} for the full detail.
     """
-    from core.workflows.workflow_run_service import get_workflow_run_service
 
     # Light-touch bounds so a buggy caller can't ask for 10k rows.
     limit = max(1, min(limit, 200))

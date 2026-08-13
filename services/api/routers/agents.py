@@ -10,6 +10,8 @@ from core.agents.builtins import DEFAULT_AGENT_ID
 from core.agents.manager import AgentManager, CUSTOM_AGENT_ID_PREFIX
 from core.routing import Auth, RouterMeta
 
+from core.storage.database_data_service import DatabaseDataService
+
 router = APIRouter()
 
 ROUTER_META = RouterMeta(
@@ -124,7 +126,6 @@ async def start_investigation(request: InvestigationRequest):
     Returns:
         Investigation prompt and agent details
     """
-    from core.storage.database_data_service import DatabaseDataService
     
     try:
         # Get the finding
@@ -199,7 +200,6 @@ async def run_agent(request: AgentRunRequest):
     Returns:
         Agent execution result with tool calls and analysis
     """
-    from core.storage.database_data_service import DatabaseDataService
     from core.llm.harness.claude import ClaudeService
     
     try:
