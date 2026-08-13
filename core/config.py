@@ -34,18 +34,14 @@ def vigil_path(*parts: str, write: bool = False) -> Path:
     return target
 
 
-def get_config_dir() -> Path:
-    return vigil_path(write=True)
-
-
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
     # Anchored to the repo so the same .env loads regardless of working directory.
     # Real env vars still win, keeping container and Helm injection authoritative.
     model_config = SettingsConfigDict(
-        env_file=_REPO_ROOT / ".env",
+        env_file=REPO_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -289,11 +285,6 @@ def get_integration_config(integration_id: str) -> dict[str, Any]:
 def is_integration_enabled(integration_id: str) -> bool:
     data = _load_json_config(vigil_path('integrations_config.json'))
     return integration_id in data.get('enabled_integrations', [])
-
-
-def get_enabled_integrations() -> list[str]:
-    data = _load_json_config(vigil_path('integrations_config.json'))
-    return data.get('enabled_integrations', [])
 
 
 def get_general_config(key: str, default: Any = None) -> Any:

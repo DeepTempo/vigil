@@ -12,15 +12,15 @@ import logging
 import argparse
 import json
 import requests
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime
 import urllib3
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.connection import get_db_manager
-from database.models import Finding, Case
+from core.storage.connection import get_db_manager
+from core.storage.models import Finding, Case
 from sqlalchemy import func
 
 # Disable SSL warnings for self-signed certificates
@@ -133,7 +133,6 @@ class PostgresToSplunkExporter:
             Dictionary formatted for Splunk HEC
         """
         # Get the finding as dict
-        finding_dict = finding.to_dict()
         
         # Create event for Splunk
         event = {
@@ -189,7 +188,6 @@ class PostgresToSplunkExporter:
             Dictionary formatted for Splunk HEC
         """
         # Get the case as dict
-        case_dict = case.to_dict(include_findings=False)
         
         # Create event for Splunk
         event = {

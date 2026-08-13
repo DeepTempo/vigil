@@ -19,6 +19,11 @@ ijson>=3.2.0
 anthropic>=0.45.0
 claude-agent-sdk>=0.1.0
 openai>=1.40.0
+# HTTP client for every integration client. Arrives transitively via
+# anthropic/openai; pinned so we don't rely on someone else's graph.
+httpx>=0.27.0
+# No longer used by any integration client — still needed by scripts/,
+# tests, and the MCP servers under tools/.
 requests>=2.31.0
 urllib3>=2.0.0
 boto3>=1.34.0
@@ -30,7 +35,9 @@ pydantic-settings>=2.0.0
 PyYAML>=6.0.0
 
 # Web Backend
-fastapi>=0.109.0
+# 0.129.0 is the first release with Depends(scope=...), which the per-request
+# unit-of-work boundary needs — see core/routing.py.
+fastapi>=0.129.0
 uvicorn[standard]>=0.27.0
 python-multipart>=0.0.6
 email-validator>=2.0.0
@@ -43,10 +50,12 @@ pgvector>=0.3.0  # pgvector column type + <=> ANN for finding embeddings
 # Optional proxy hops in front of the metadata DB and DB-shaped
 # integrations (Settings → System → Database, plus per-integration
 # proxy block). sshtunnel only loaded when the operator picks an SSH
-# tunnel; pysocks gives requests/urllib SOCKS5 support for
-# integrations whose clients pick up HTTPS_PROXY / ALL_PROXY.
+# tunnel. SOCKS5 via HTTPS_PROXY / ALL_PROXY needs a per-library backend:
+# httpx cannot use pysocks, so both are required — socksio for the
+# integration clients, pysocks for the requests callers in scripts/tools.
 sshtunnel>=0.4.0
 pysocks>=1.7.1
+socksio>=1.0.0
 
 # MCP SDK (for MCP tools)
 # Install with: pip install mcp
@@ -90,7 +99,7 @@ taxii2-client>=2.3.0
 stix2>=3.0.1
 
 # PDF report generation (chat reports, case reports). The feature ships in
-# backend/api/claude.py → /generate-chat-report; without this dep the endpoint
+# services/api/routers/claude.py → /generate-chat-report; without this dep the endpoint
 # returns 503 even though the feature is wired into the UI.
 reportlab>=4.0.0
 
