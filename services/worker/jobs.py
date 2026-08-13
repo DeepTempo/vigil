@@ -141,22 +141,6 @@ async def llm_call(
         return {"content": "", "type": "error", "error": error_msg}
 
 
-def _is_default_anthropic_spec(spec) -> bool:
-    # Only the seeded row is safe for the shared ClaudeService, which resolves its
-    # key from these env names. Any other row has its own ref and needs the router.
-    if spec.provider_type != "anthropic":
-        return False
-    ref = spec.api_key_ref
-    if ref is None:
-        return True
-    return ref in {
-        "CLAUDE_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "claude_api_key",
-        "anthropic_api_key",
-    }
-
-
 async def _maybe_dispatch_via_router(
     ctx: Dict[str, Any],
     *,
@@ -194,16 +178,9 @@ async def _maybe_dispatch_via_router(
         )
         return None
 
-    # All traffic now routes through Bifrost (GH #84 PR-B). We still hand off
-    # default-anthropic-with-thinking calls to the shared ClaudeService so
-    # they get its full tool-use loop, context reduction, and session
-    # management — that logic lives in ClaudeService, not here. Non-default
-    # Anthropic providers have their own api_key_ref and must dispatch through
-    # the router so _dispatch_anthropic resolves that per-provider secret
-    # (not CLAUDE_API_KEY).
-    if enable_thinking and _is_default_anthropic_spec(spec):
-        return None
-
+    # The fallback this used to take was ClaudeService's tool loop, context
+    # reduction and session management. None of the three exist (#629, #631,
+    # #632), so every provider dispatches the one way.
     rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
     await rate_limiter.acquire()
     try:

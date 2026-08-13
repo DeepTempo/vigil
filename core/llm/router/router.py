@@ -89,14 +89,6 @@ def _block_on_injection() -> bool:
     return get_settings().prompt_injection_block
 
 
-def select_path(
-    provider: ProviderSpec, *, enable_thinking: bool = False
-) -> DispatchPath:
-    """All traffic goes through Bifrost; kept for backwards-compatible callers."""
-    del provider, enable_thinking
-    return "bifrost"
-
-
 def _normalize_openai_tool_calls(tool_calls: Any) -> Optional[List[Dict[str, Any]]]:
     if not tool_calls:
         return None
@@ -259,12 +251,6 @@ class LLMRouter:
 
     # ---- path selection --------------------------------------------------
 
-    @staticmethod
-    def select_path(
-        provider: ProviderSpec, *, enable_thinking: bool = False
-    ) -> DispatchPath:
-        return select_path(provider, enable_thinking=enable_thinking)
-
     # ---- dispatch --------------------------------------------------------
 
     async def dispatch(
@@ -303,20 +289,9 @@ class LLMRouter:
         extra_headers_or_none: Optional[Dict[str, str]] = (
             extra_headers if extra_headers else None
         )
-        if provider.provider_type == "anthropic":
-            return await _wrap_budget_errors(
-                self._dispatch_anthropic(
-                    provider=provider,
-                    messages=messages,
-                    system_prompt=system_prompt,
-                    model=model,
-                    max_tokens=max_tokens,
-                    tools=tools,
-                    enable_thinking=enable_thinking,
-                    thinking_budget=thinking_budget,
-                    extra_headers=extra_headers_or_none,
-                )
-            )
+        # One schema out (ADR 0011). Anthropic used to take Bifrost's /anthropic
+        # passthrough to keep extended thinking and cache_control; both were
+        # traded away, and by #632 nothing asked for either.
         return await _wrap_budget_errors(
             self._dispatch_bifrost_openai(
                 provider=provider,
@@ -346,10 +321,8 @@ class LLMRouter:
     ) -> Dict[str, Any]:
         from openai import AsyncOpenAI  # lazy — avoids hard dep for tests
 
-        from core.llm.router.format import (
-            anthropic_messages_to_openai,
-            anthropic_tools_to_openai,
-        )
+        from core.llm.router.format import (anthropic_messages_to_openai,
+                                            anthropic_tools_to_openai)
 
         # Callers (the daemon tool loop, workflows) build conversations in
         # Anthropic shape — assistant tool_use blocks, user tool_result blocks,
@@ -433,10 +406,8 @@ class LLMRouter:
         usage) for non-Anthropic Bifrost providers."""
         from openai import AsyncOpenAI
 
-        from core.llm.router.format import (
-            anthropic_messages_to_openai,
-            anthropic_tools_to_openai,
-        )
+        from core.llm.router.format import (anthropic_messages_to_openai,
+                                            anthropic_tools_to_openai)
 
         messages, system_prompt = _pre_dispatch_sanitize(messages, system_prompt)
         model = model or provider.default_model
@@ -507,96 +478,6 @@ class LLMRouter:
             content = getattr(chunk.choices[0].delta, "content", None)
             if content:
                 yield {"type": "text", "content": content}
-
-    async def _dispatch_anthropic(
-        self,
-        *,
-        provider: ProviderSpec,
-        messages: List[Dict[str, Any]],
-        system_prompt: Optional[str],
-        model: str,
-        max_tokens: int,
-        tools: Optional[List[Dict[str, Any]]],
-        enable_thinking: bool,
-        thinking_budget: int,
-        extra_headers: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
-        from core.llm.providers.clients import create_async_anthropic_client
-        from core.llm.defaults import build_thinking_kwargs
-
-        api_key: Optional[str] = None
-        if provider.api_key_ref:
-            api_key = get_secret(provider.api_key_ref)
-        if not api_key:
-            # Fall back to the common key names so local dev still works.
-            api_key = get_secret("ANTHROPIC_API_KEY") or get_secret("CLAUDE_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                f"Anthropic provider '{provider.provider_id}' has no resolvable API key"
-            )
-
-        # Anthropic traffic routes through Bifrost's /anthropic passthrough,
-        # which preserves extended thinking + cache_control. See
-        # scripts/bifrost_capability_probe.py for the merge-blocking verification.
-        client = create_async_anthropic_client(api_key, timeout=1800.0)
-        kwargs: Dict[str, Any] = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": messages,
-        }
-        if system_prompt:
-            kwargs["system"] = system_prompt
-        if tools:
-            kwargs["tools"] = tools
-        if enable_thinking:
-            # Model-aware: newer Anthropic models reject the budget_tokens
-            # shape and require adaptive thinking + output_config.effort.
-            kwargs.update(build_thinking_kwargs(model, thinking_budget))
-        if extra_headers:
-            kwargs["extra_headers"] = extra_headers
-
-        try:
-            resp = await client.messages.create(**kwargs)
-            # Anthropic returns a list of content blocks (text, thinking, tool_use).
-            text_parts: List[str] = []
-            thinking_parts: List[str] = []
-            tool_uses: List[Dict[str, Any]] = []
-            for block in resp.content:
-                btype = getattr(block, "type", None)
-                if btype == "text":
-                    text_parts.append(getattr(block, "text", ""))
-                elif btype == "thinking":
-                    thinking_parts.append(getattr(block, "thinking", ""))
-                elif btype == "tool_use":
-                    tool_uses.append(
-                        {
-                            "id": getattr(block, "id", None),
-                            "name": getattr(block, "name", None),
-                            "input": getattr(block, "input", None),
-                        }
-                    )
-
-            usage = getattr(resp, "usage", None)
-            return {
-                "content": "".join(text_parts),
-                "thinking": "".join(thinking_parts) or None,
-                "tool_calls": tool_uses or None,
-                "model": resp.model,
-                "input_tokens": getattr(usage, "input_tokens", 0) if usage else 0,
-                "output_tokens": getattr(usage, "output_tokens", 0) if usage else 0,
-                "cache_read_tokens": (
-                    getattr(usage, "cache_read_input_tokens", 0) if usage else 0
-                ),
-                "cache_creation_tokens": (
-                    getattr(usage, "cache_creation_input_tokens", 0) if usage else 0
-                ),
-                "provider": provider.provider_type,
-                "path": "bifrost",
-            }
-        finally:
-            # The async Anthropic client also holds an httpx connection pool;
-            # close it so connections don't leak per non-streaming call.
-            await client.close()
 
 
 # ---------------------------------------------------------------------------
