@@ -349,7 +349,15 @@ class DatabaseService:
                 logger.warning(f"Finding not found: {finding_id}")
                 return False
             
-            # Update allowed fields
+            # Unknown keys are skipped rather than rejected: the S3 sync path
+            # passes whole external finding dicts. Say which, or a typo'd column
+            # name is a silent no-op that still reports success.
+            dropped = [k for k in updates if not hasattr(finding, k)]
+            if dropped:
+                logger.warning(
+                    "update_finding(%s): ignoring unknown field(s) %s",
+                    finding_id, ", ".join(sorted(dropped)),
+                )
             for key, value in updates.items():
                 if hasattr(finding, key):
                     setattr(finding, key, value)
