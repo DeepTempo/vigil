@@ -1,11 +1,12 @@
-import { Queue, Worker } from "bullmq";
+import { Queue, UnrecoverableError, Worker } from "bullmq";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { archFor } from "./arch/registry.js";
 import { httpAnswers, journalAnswers, noAnswers, type Answers } from "./core/answers.js";
 import { harnessFor, internalToken, type HarnessFactory } from "./harness.js";
-import { chatPort, chatServer } from "./serve.js";
+import { poolConfig } from "./core/db.js";
+import { healthPort, healthServer } from "./core/health.js";
 import { jobIdFor, RUN_QUEUE, JOB_SCHEMA_VERSION, type RunJob } from "./contracts/job.js";
 import type { AgentEvent, CheckpointPayload, ResolutionPayload, RunKind, RunPayload } from "./contracts/events.js";
 import {
@@ -273,12 +274,6 @@ async function reap(leases: Leases, runId: string): Promise<void> {
   await leases.finish(runId);
 }
 
-function connectionUrl(): string {
-  const url = process.env["DATABASE_URL"];
-  if (url === undefined || url === "") throw new Error("DATABASE_URL is not set");
-  return url;
-}
-
 function redisUrl(): URL {
   return new URL(process.env["REDIS_URL"] ?? "redis://localhost:6379/0");
 }
@@ -294,7 +289,27 @@ function redisUrl(): URL {
 // Structurally what the sweeper needs of a queue, so it is drivable without a
 // Redis. BullMQ's Queue satisfies it as it stands.
 export interface Enqueue {
-  add(name: string, job: RunJob, options: { jobId: string }): Promise<unknown>;
+  add(name: string, job: RunJob, options: JobOptions): Promise<unknown>;
+}
+
+// What every enqueue of a run carries, wherever it is enqueued from -- here, or
+// core/agents/queue.py, which sets the same two.
+//
+// BullMQ defaults to one attempt, so a job that throws is permanently failed and
+// nothing rescues it: the sweeper below sweeps lapsed lease rows, and a job that
+// died on its way into leases.claim never wrote one. Transient Postgres and Redis
+// failures are rare on a dev box and routine under Kubernetes.
+//
+// Retrying is safe rather than merely tolerable: advance() checks terminal first
+// and leases.claim is a conditional UPDATE, so a second attempt takes exactly the
+// path a sweeper resume takes.
+export const RUN_ATTEMPTS = 3;
+export const RUN_BACKOFF = { type: "exponential", delay: 5_000 } as const;
+
+interface JobOptions {
+  jobId: string;
+  attempts: number;
+  backoff: { type: string; delay: number };
 }
 
 // The reservation lasts a lease TTL because that is the order of magnitude a job
@@ -313,9 +328,27 @@ export async function sweepOnce(leases: Leases, queue: Enqueue, limit = 50): Pro
       enqueued_by: "watchdog",
       reason: "resume",
     };
-    await queue.add(RUN_QUEUE, job, { jobId: jobIdFor(job, randomUUID()) });
+    await queue.add(RUN_QUEUE, job, { jobId: jobIdFor(job, randomUUID()), attempts: RUN_ATTEMPTS, backoff: { ...RUN_BACKOFF } });
   }
   return due.length;
+}
+
+// advance(), with the one distinction the retry policy above needs to be told
+// about: a spec that does not parse parses no better on the third attempt. Retries
+// exist for the infrastructure going away mid-run, not for a malformed playbook, and
+// UnrecoverableError is how BullMQ is told which is which -- the job fails on
+// attempt 1 and the console sees the real message rather than the same one thrice,
+// fifteen seconds apart.
+//
+// Only here, not inside advance(): what a failure means to the queue is the queue's
+// business, and advance() is driven without one by the tests and by run-once.ts.
+async function handle(state: State, leases: Leases, job: RunJob): Promise<void> {
+  try {
+    await advance(state, leases, job);
+  } catch (error) {
+    if (error instanceof SpecError) throw new UnrecoverableError(error.message);
+    throw error;
+  }
 }
 
 export interface Running {
@@ -329,7 +362,7 @@ export interface Running {
 // synchronous and would gain nothing from a queue hop but latency. One process,
 // one pool, two ways in.
 export function startWorker(): Running {
-  const pool = new pg.Pool({ connectionString: connectionUrl() });
+  const pool = new pg.Pool(poolConfig());
   const ledger = new LedgerRepository(pool);
   const leases = new LeaseRepository(pool);
   const url = redisUrl();
@@ -344,7 +377,7 @@ export function startWorker(): Running {
   // disagreed with it would either double-process a run or wedge one. BullMQ's
   // stalled sweep still retires a dead worker's job eventually, and the lease
   // refuses it if it comes back around.
-  const worker = new Worker<RunJob>(RUN_QUEUE, (job) => advance(ledger, leases, job.data), {
+  const worker = new Worker<RunJob>(RUN_QUEUE, (job) => handle(ledger, leases, job.data), {
     connection,
     lockDuration: LEASE_TTL_MS * 10,
   });
@@ -372,11 +405,39 @@ export function startWorker(): Running {
   } };
 }
 
+// Whether this worker is worth sending work to. `status` rather than a ping:
+// ioredis queues commands while it is offline, so a ping against a dropped
+// connection would sit in that queue until the probe timed out -- reporting a hang
+// where the connection state already says "not ready" for free.
+export function workerReady(worker: Worker<RunJob>): () => Promise<boolean> {
+  return async () => {
+    if (!worker.isRunning()) return false;
+    return (await worker.client).status === "ready";
+  };
+}
+
+// Both the mirror and the answers endpoint hang off this one variable, and both go
+// quietly inert when it is unset: runs still succeed, no phase progress ever reaches
+// the console, and a run that stops for a human parks until it is abandoned because
+// nothing can carry the decision back. Said once at startup, because nothing later
+// in the run says it -- a silently-off mirror looks exactly like a quiet one.
+function warnIfUnmirrored(): void {
+  const url = process.env["VIGIL_RUNS_URL"];
+  if (url !== undefined && url !== "") return;
+  console.warn(
+    "VIGIL_RUNS_URL is unset: run progress will not be mirrored to the backend and checkpoints cannot be answered",
+  );
+}
+
 if (process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "")) {
+  warnIfUnmirrored();
   const running = startWorker();
-  const serving = chatServer(running.ledger).listen(chatPort());
+  // Probes only. Chat moved to serve.ts when #635 split the two into Deployments
+  // that scale on different things -- a queue's depth and an open connection count
+  // have nothing to say to each other.
+  const probes = healthServer(workerReady(running.worker)).listen(healthPort());
   const stop = () => {
-    serving.close();
+    probes.close();
     void running.close();
   };
   process.on("SIGTERM", stop);

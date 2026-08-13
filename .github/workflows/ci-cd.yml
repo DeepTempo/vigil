@@ -104,6 +104,75 @@ jobs:
           ignore: DL3008,DL3009
         continue-on-error: true
 
+      # Not continue-on-error, and no ignores: the agent image is clean today
+      # (#635) and installs no apt packages, so the two rules waived above have
+      # nothing to say about it. Advisory here would only let it rot.
+      - name: Run hadolint (agent)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: infra/docker/Dockerfile.agent
+
+  # ============================================================================
+  # Agent Image — build, scan, smoke test
+  # ============================================================================
+  # Separate from build-images below, which pushes to a registry and is disabled.
+  # This one builds locally and throws the image away, so it can run on every PR
+  # and answer the three questions #635 asks of the image: does it build, is it
+  # clean, does it start.
+  build-agent-image:
+    name: Agent Image
+    if: github.repository == 'Vigil-SOC/vigil'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build agent image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.agent
+          push: false
+          load: true            # into the runner's docker, for the steps below
+          tags: vigil-agent:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy — report HIGH and CRITICAL
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: vigil-agent:ci
+          format: table
+          severity: HIGH,CRITICAL
+
+      # The gate is narrower than the report on purpose. An unfixed CVE in the
+      # base image is not something this repo can act on, and failing every PR
+      # on one teaches people to ignore the job.
+      - name: Trivy — fail on fixable CRITICAL
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: vigil-agent:ci
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      # Loads both entry points without running either: the main blocks guard on
+      # process.argv[1], which --eval leaves undefined. That is the whole point --
+      # it proves every import resolves inside the image (the failure mode that
+      # typecheck cannot see, since tsc reads .ts and node runs the emitted .js)
+      # without needing a Postgres or a Redis to connect to.
+      - name: Smoke test — both entry points load
+        run: |
+          docker run --rm vigil-agent:ci \
+            node --input-type=module -e "
+              await import('/app/dist/worker.js');
+              await import('/app/dist/serve.js');
+              console.log('agent ok');
+            "
+
   # ============================================================================
   # Unit Tests
   # ============================================================================

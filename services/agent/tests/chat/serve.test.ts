@@ -28,7 +28,9 @@ let stop: () => void;
 
 async function listen(script: readonly ScriptedTurn[]): Promise<void> {
   state = new InProcessState();
-  const server = chatServer(state, scriptedHarness(script));
+  // Ready by construction: the ledger here is in-process, so there is no Postgres
+  // for readiness to be reporting on.
+  const server = chatServer(state, async () => true, scriptedHarness(script));
   await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   stop = () => server.close();

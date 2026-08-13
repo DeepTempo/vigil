@@ -165,7 +165,7 @@ async function turn(harness: Harness<LeadKinds>, options: LeadOptions, assignmen
 // is what a serial round wants: one turn, committed where it started.
 async function write(harness: Harness<LeadKinds>, options: LeadOptions, result: Dispatched, at?: number): Promise<number> {
   const from = at ?? result.outcome.from;
-  return commitTurn(harness.state, options.run_id, { events: result.outcome.events, from }, result.own);
+  return commitTurn(harness.state, options.run_id, { from }, result.own);
 }
 
 function turnFor(options: LeadOptions, role: string, spec: RoleSpec, task: string): TurnConfig {

@@ -1,0 +1,70 @@
+# infra/docker/Dockerfile.agent
+# =============================================================================
+# Agent layer — one image, two commands
+#
+#   node dist/worker.js   drains the BullMQ `agent-runs` queue   (default CMD)
+#   node dist/serve.js    answers the agent HTTP surface
+#
+# One image because they share every dependency and differ only in how work
+# arrives; two Deployments because a queue's depth and a count of open SSE
+# connections have nothing to say to each other about when to scale (#635). The
+# chart overrides `command` for serve; compose names it per service.
+#
+# Both listen. The worker serves /healthz and /readyz only — a queue consumer
+# needs no traffic port, but an exec probe would pay Node's startup every ten
+# seconds per replica to learn what an already-open connection knows for free.
+# Serve answers those two on its own port alongside chat, deliberately: a health
+# check on the port that serves traffic is the one that notices it wedging.
+#
+# No HEALTHCHECK here. It would have to name a port, and which port is right
+# depends on the command — 6990 for the worker, 6989 for serve. Compose declares
+# it per service, where the command is known; Kubernetes uses the chart's probes
+# and ignores HEALTHCHECK entirely.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: install dependencies and compile TypeScript to JavaScript
+# ---------------------------------------------------------------------------
+FROM node:20-slim AS build
+
+WORKDIR /build
+
+# Manifests before sources, so editing a .ts file does not reinstall the tree.
+COPY services/agent/package.json services/agent/package-lock.json ./
+RUN npm ci
+
+COPY services/agent/ ./
+# tsconfig.json is noEmit so typecheck and vitest keep working untouched;
+# tsconfig.build.json is the emit config and exists only for this step.
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+# Stage 2: runtime image
+# ---------------------------------------------------------------------------
+FROM node:20-slim AS runtime
+
+ARG VIGIL_VERSION=dev
+LABEL org.opencontainers.image.version="${VIGIL_VERSION}"
+
+WORKDIR /app
+
+# No apt layer: bullmq and pg are pure JavaScript. The Python images need
+# libpq5 only because psycopg is a C extension.
+COPY services/agent/package.json services/agent/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+COPY --from=build /build/dist ./dist
+
+RUN echo "${VIGIL_VERSION}" > /app/VERSION
+
+# 6989 serve: chat, run projections, and its own probes.
+# 6990 worker: probes only.
+EXPOSE 6989 6990
+
+# node:20-slim already ships uid 1000 as `node`, so no useradd layer is needed.
+# Numeric to match the chart's podSecurityContext runAsUser literally.
+USER 1000:1000
+
+ENV NODE_ENV=production
+
+CMD ["node", "dist/worker.js"]

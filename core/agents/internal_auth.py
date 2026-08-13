@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import ipaddress
 import logging
 from typing import Optional
 
@@ -16,19 +15,15 @@ logger = logging.getLogger(__name__)
 TOKEN_SECRET = "AGENT_INTERNAL_TOKEN"
 
 
-def _loopback(request: Request) -> bool:
-    host = request.client.host if request.client is not None else ""
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return False
-
-
-# Both checks or neither: a shared secret on a public bind is one leak from open,
-# and a loopback bind alone trusts every process on the box.
+# The token alone, since ADR 0014. This paired with a loopback check until #635
+# made the agent layer its own Deployments, at which point every legitimate caller
+# arrives from a pod address and the check refused all of them. What replaces it is
+# the chart's NetworkPolicy, which names the pods that may connect rather than
+# asserting "same box" -- a stronger statement, and one Kubernetes enforces.
+#
+# Which makes the refusal below load-bearing rather than defensive: it is now the
+# only thing between a reachable pod and an open endpoint.
 def authorise(request: Request, presented: Optional[str], what: str) -> None:
-    if not _loopback(request):
-        raise HTTPException(status_code=403, detail=f"{what} is loopback only")
     expected = get_secret(TOKEN_SECRET)
     # Told apart deliberately: a deployment that never set the secret reads exactly
     # like a caller with the wrong one, and the fix for each is nothing alike.

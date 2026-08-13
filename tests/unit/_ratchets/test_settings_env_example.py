@@ -90,7 +90,8 @@ NOT_SETTINGS = {
     "BIND_HOST",
     "GRAFANA_PASSWORD",
     "VITE_EXTENSION_ORIGIN_ALLOWLIST",
-    # Read by the TypeScript agent worker's own process, not by Settings.
+    # Read by the TypeScript agent processes themselves, not by Settings.
+    "AGENT_HEALTH_PORT",
     "AGENT_HTTP_PORT",
     "VIGIL_PLAYBOOKS_URL",
     "VIGIL_PRICING_URL",

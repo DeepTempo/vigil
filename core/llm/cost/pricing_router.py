@@ -24,7 +24,8 @@ ROUTER_META = RouterMeta(
     tags=["internal-pricing"],
     auth=Auth.ROUTER_MANAGED,
     reason=(
-        "Loopback plus a shared secret: the caller is the agent layer, not a session."
+        "A shared secret: the caller is the agent layer, not a session. Reachability\n"
+        "is the NetworkPolicy's job since ADR 0014, not a loopback check."
     ),
 )
 logger = logging.getLogger(__name__)

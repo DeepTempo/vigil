@@ -65,6 +65,14 @@ Per-component names and labels.
 {{- printf "%s-llm-worker" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "vigil.agentWorker.fullname" -}}
+{{- printf "%s-agent-worker" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "vigil.agentServe.fullname" -}}
+{{- printf "%s-agent-serve" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 {{- define "vigil.postgres.fullname" -}}
 {{- printf "%s-postgres" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
@@ -153,6 +161,12 @@ The "llmWorker" component always reuses the backend image.
   {{- if eq $comp "daemon" -}}{{- $suffix = "daemon" -}}{{- end -}}
   {{- if eq $comp "backend" -}}{{- $suffix = "backend" -}}{{- end -}}
   {{- if eq $comp "llmWorker" -}}{{- $suffix = "backend" -}}{{- end -}}
+  {{- /* The agent layer is Node, not Python — it cannot reuse the backend
+         image the way llm-worker does, and the default above would silently
+         hand it one. Both components share the one image and differ only in
+         which command the Deployment runs (infra/docker/Dockerfile.agent). */ -}}
+  {{- if eq $comp "agentWorker" -}}{{- $suffix = "agent" -}}{{- end -}}
+  {{- if eq $comp "agentServe" -}}{{- $suffix = "agent" -}}{{- end -}}
   {{- $repo = printf "%s/%s-%s" $registry $ns $suffix -}}
 {{- end -}}
 {{- if eq $tag "" -}}

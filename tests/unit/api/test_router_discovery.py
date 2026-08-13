@@ -241,8 +241,10 @@ def test_every_non_required_router_has_a_reason():
     """The live tree, not just the validator: all 9 deviations are justified.
 
     ``pricing`` is the fourth of the agent layer's internal endpoints, on the
-    same terms as ``tools``, ``playbooks`` and ``run_bridge``: loopback plus the
-    shared secret, because the caller is the worker rather than a session.
+    same terms as ``tools``, ``playbooks`` and ``run_bridge``: the shared secret,
+    because the caller is the worker rather than a session. Reachability is the
+    NetworkPolicy's job since ADR 0014 -- these were loopback-gated until the
+    agent layer became its own Deployments.
     """
     from core.routing import Auth
 

@@ -24,6 +24,20 @@ DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 
 RUN_KINDS = ("hunt", "investigate", "compose", "chat")
 
+# BullMQ defaults to one attempt, so a job that throws is permanently failed and
+# nothing rescues it: the watchdog sweeps lapsed lease rows, and a job that died on
+# its way into leases.claim never wrote one. On a dev box a transient Postgres or
+# Redis failure is rare; under Kubernetes -- rolling upgrades, evictions, failover --
+# it is routine, and the run would be lost with nothing reaching the console.
+#
+# Retrying is safe rather than merely tolerable: advance() checks terminal first and
+# leases.claim is a conditional UPDATE, so a second attempt takes exactly the path a
+# watchdog resume takes.
+#
+# The consumer reads these off the job, so the Node worker honours what is set here.
+RUN_ATTEMPTS = 3
+RUN_BACKOFF = {"type": "exponential", "delay": 5000}
+
 
 def _redis_url() -> str:
     return get_settings().redis_url or DEFAULT_REDIS_URL
@@ -80,7 +94,13 @@ async def enqueue_run(job: Dict[str, Any], job_id: Optional[str] = None) -> str:
         # forever, which is the thing a resume exists to prevent. Run-level exclusion
         # is the lease's, in agent_run_leases, and it is stronger than a job id.
         enqueued = await queue.add(
-            "run", job, {"jobId": job_id or _default_job_id(job)}
+            "run",
+            job,
+            {
+                "jobId": job_id or _default_job_id(job),
+                "attempts": RUN_ATTEMPTS,
+                "backoff": RUN_BACKOFF,
+            },
         )
         logger.info("enqueued agent run %s (%s)", job["run_id"], job["run_kind"])
         return str(enqueued.id)

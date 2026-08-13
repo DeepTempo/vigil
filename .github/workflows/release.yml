@@ -1,13 +1,15 @@
 # .github/workflows/release.yml
 #
 # Triggered when release-please merges a release PR and pushes a vX.Y.Z tag.
-# Builds and publishes two OCI images to ghcr.io:
+# Builds and publishes three OCI images to ghcr.io:
 #
 #   ghcr.io/vigil-soc/vigil-backend:<tag>   (FastAPI API + bundled SPA)
 #   ghcr.io/vigil-soc/vigil-daemon:<tag>    (headless SOC daemon)
+#   ghcr.io/vigil-soc/vigil-agent:<tag>     (TypeScript agent: worker + serve)
 #
-# The llm-worker Deployment reuses the backend image (different command),
-# so no third image is needed.
+# The llm-worker Deployment reuses the backend image (different command), and
+# agent-worker/agent-serve are the same arrangement over the agent image: one
+# artifact, two commands, two Deployments that scale independently (#635).
 #
 # Prerequisites (one-time, per RELEASING.md):
 #   • GitHub App installed with id=vars.RELEASE_PLEASE_APP_ID
@@ -175,13 +177,74 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
   # ---------------------------------------------------------------------------
+  # Build + push: agent (worker and serve run the same image)
+  # ---------------------------------------------------------------------------
+  build-agent:
+    name: Build agent image
+    if: github.repository == 'Vigil-SOC/vigil'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      # No submodules: the agent layer is TypeScript under services/agent and
+      # the build context copies nothing else.
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/vigil-soc/vigil-agent
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=vigil-agent
+            org.opencontainers.image.description=Vigil SOC — TypeScript agent layer (queue worker + chat/projection server)
+            org.opencontainers.image.vendor=Vigil-SOC
+            org.opencontainers.image.source=https://github.com/Vigil-SOC/vigil
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push agent
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.agent
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/vigil-soc/vigil-agent:buildcache
+          cache-to:   type=registry,ref=ghcr.io/vigil-soc/vigil-agent:buildcache,mode=max
+          build-args: |
+            VIGIL_VERSION=${{ github.ref_name }}
+          platforms: linux/amd64,linux/arm64
+
+  # ---------------------------------------------------------------------------
   # Smoke-test: pull the images and verify they start
   # ---------------------------------------------------------------------------
   smoke-test:
     name: Smoke test images
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
-    needs: [version, build-backend, build-daemon]
+    needs: [version, build-backend, build-daemon, build-agent]
     permissions:
       packages: read
 
@@ -200,7 +263,7 @@ jobs:
             -e DATABASE_URL=postgresql://x:x@localhost/x \
             -e REDIS_URL=redis://localhost:6379 \
             ghcr.io/vigil-soc/vigil-backend:${{ needs.version.outputs.version }} \
-            python -c "import backend; print('backend version:', backend.__version__)"
+            python -c "import core, services.api; print('backend ok')"
 
       - name: Backend — SPA present
         run: |
@@ -214,7 +277,21 @@ jobs:
           docker run --rm \
             -e DEV_MODE=true \
             ghcr.io/vigil-soc/vigil-daemon:${{ needs.version.outputs.version }} \
-            python -c "import daemon; print('daemon ok')"
+            python -c "import services.daemon; print('daemon ok')"
+
+      # Both commands the chart runs, loaded but not started: the main blocks
+      # guard on process.argv[1], which --eval leaves undefined. Proves the
+      # emitted JavaScript resolves its imports inside the image — the one thing
+      # typecheck cannot tell us, since tsc reads .ts and node runs .js.
+      - name: Agent — entry points load
+        run: |
+          docker run --rm \
+            ghcr.io/vigil-soc/vigil-agent:${{ needs.version.outputs.version }} \
+            node --input-type=module -e "
+              await import('/app/dist/worker.js');
+              await import('/app/dist/serve.js');
+              console.log('agent ok');
+            "
 
   # ---------------------------------------------------------------------------
   # Attach image digests to the GitHub Release
@@ -243,8 +320,11 @@ jobs:
             | python3 -c "import sys,json; m=json.load(sys.stdin); print(m.get('config',{}).get('digest','unknown'))")
           DAEMON=$(docker manifest inspect ghcr.io/vigil-soc/vigil-daemon:${{ needs.version.outputs.version }} \
             | python3 -c "import sys,json; m=json.load(sys.stdin); print(m.get('config',{}).get('digest','unknown'))")
+          AGENT=$(docker manifest inspect ghcr.io/vigil-soc/vigil-agent:${{ needs.version.outputs.version }} \
+            | python3 -c "import sys,json; m=json.load(sys.stdin); print(m.get('config',{}).get('digest','unknown'))")
           echo "backend=$BACKEND" >> "$GITHUB_OUTPUT"
           echo "daemon=$DAEMON"   >> "$GITHUB_OUTPUT"
+          echo "agent=$AGENT"     >> "$GITHUB_OUTPUT"
 
       - name: Append image refs to release notes
         uses: softprops/action-gh-release@v2
@@ -259,9 +339,11 @@ jobs:
             |-------|-----|--------|
             | `ghcr.io/vigil-soc/vigil-backend` | `${{ needs.version.outputs.version }}` | `${{ steps.digests.outputs.backend }}` |
             | `ghcr.io/vigil-soc/vigil-daemon`  | `${{ needs.version.outputs.version }}` | `${{ steps.digests.outputs.daemon }}`  |
+            | `ghcr.io/vigil-soc/vigil-agent`   | `${{ needs.version.outputs.version }}` | `${{ steps.digests.outputs.agent }}`   |
 
             ```bash
             # Pull by tag
             docker pull ghcr.io/vigil-soc/vigil-backend:${{ needs.version.outputs.version }}
             docker pull ghcr.io/vigil-soc/vigil-daemon:${{ needs.version.outputs.version }}
+            docker pull ghcr.io/vigil-soc/vigil-agent:${{ needs.version.outputs.version }}
             ```

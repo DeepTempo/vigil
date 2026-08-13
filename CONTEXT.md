@@ -123,6 +123,12 @@ setting, is `platform`; knowing what the setting *means* is the domain's.
 - The **LLM gateway** (`core/llm/gateway`) enqueues LLM jobs onto the `arq:llm`
   queue; the **worker** (`services/worker`) is the sole consumer that executes
   them — the enqueue/execute seam between `core/` and the `services/` deployables
+- The agent layer has exactly **two ways in**, and they are what it splits along
+  rather than by protocol: the **run queue** (`agent-runs`, enqueued by
+  `core/agents/queue.py`) and the **agent HTTP surface** (chat and run
+  projections). **Agent Worker** drains the first, **Agent Serve** answers the
+  second; every HTTP route the layer exposes is request-driven, so projections
+  ride with chat rather than earning a third deployable
 - A **Workflow** is authored as exactly one **Playbook** and executed by
   **Compose**; a Playbook holds one or more ordered **Phases**, and a **Phase**
   names exactly one agent

@@ -46,12 +46,11 @@ LICENSE
 # requirements.txt is needed by Dockerfile.backend + Dockerfile.daemon;
 # the wildcard above would otherwise exclude it.
 !requirements.txt
-# The submodule packages are pip-installed during the image build, and their
-# build backends read README.md for metadata (mempalace's pyproject declares
-# `readme = "README.md"`, which hard-fails if the file is absent). The `*.md`
-# wildcard above would otherwise strip them from the build context.
-!deeptempo-core/README.md
-!mcp-servers/README.md
+# mempalace is pip-installed during the image build and its build backend reads
+# README.md for metadata (its pyproject declares `readme = "README.md"`, which
+# hard-fails if the file is absent). The `*.md` wildcard above would otherwise
+# strip it from the build context. deeptempo-core and mcp-servers were here too
+# until #654 dropped those submodules.
 !mempalace/README.md
 
 # Logs
@@ -63,6 +62,13 @@ logs/
 clients/web/node_modules/
 clients/web/build/
 clients/web/dist/
+
+# Agent layer. The Python images COPY services/ wholesale, so without these an
+# installed node_modules would land in vigil-backend and vigil-daemon. The
+# agent image installs its own deps and compiles inside the build, so a host
+# tree here would only make that build unreproducible.
+services/agent/node_modules/
+services/agent/dist/
 
 # Database
 *.db

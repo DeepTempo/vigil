@@ -1,5 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import pg from "pg";
 import { archFor, registeredKinds } from "./arch/registry.js";
+import { handleHealth, type Ready } from "./core/health.js";
+import { LedgerRepository } from "./ledger/repository.js";
+import { poolConfig } from "./core/db.js";
 import type { RunKind } from "./contracts/events.js";
 import { nullMemory, recalling } from "./core/memory.js";
 import type { Memory, State } from "./core/seams.js";
@@ -79,12 +83,14 @@ export async function streamChat(state: State, request: ChatRequest, res: Server
   res.end();
 }
 
-// Both checks or neither, the same trade Python's authorise makes: a shared secret
-// on a public bind is one leak from open, a loopback bind alone trusts every
-// process on the box.
+// The token alone, since ADR 0014, and the same trade Python's authorise makes --
+// see core/agents/internal_auth.py. Both sides paired this with a loopback check
+// until #635 made this process its own Deployment: the API then calls it from a pod
+// address, which the check refused. The chart's NetworkPolicy names who may connect
+// instead, which is what "same box" was standing in for.
+//
+// An unset token refuses everything, and that is now the only gate in the process.
 function authorised(req: IncomingMessage): boolean {
-  const host = req.socket.remoteAddress ?? "";
-  if (!(host === "127.0.0.1" || host === "::1" || host === "::ffff:127.0.0.1")) return false;
   const expected = process.env["AGENT_INTERNAL_TOKEN"] ?? process.env["VIGIL_TOOLS_TOKEN"] ?? "";
   return expected !== "" && req.headers.authorization === `Bearer ${expected}`;
 }
@@ -137,12 +143,16 @@ async function openChat(state: State, req: IncomingMessage, res: ServerResponse,
   await streamChat(state, request, res, build);
 }
 
-export function chatServer(state: State, build: HarnessFactory = harnessFor): Server {
+export function chatServer(state: State, ready: Ready, build: HarnessFactory = harnessFor): Server {
   return createServer((req, res) => {
     void (async () => {
+      // Before the auth check, because the kubelet has no token. These say only
+      // whether the process can work, which is not knowledge worth withholding.
+      if (await handleHealth(req, res, ready)) return;
+
       // Before the route, not per route: an unauthorised caller learns nothing
       // about which routes exist.
-      if (!authorised(req)) return refuse(res, 401, "loopback and a valid internal token, or neither");
+      if (!authorised(req)) return refuse(res, 401, "a valid internal token");
 
       const url = req.url ?? "";
       if (req.method === "POST" && url === CHAT) return openChat(state, req, res, build);
@@ -157,4 +167,28 @@ export function chatServer(state: State, build: HarnessFactory = harnessFor): Se
 
 export function chatPort(): number {
   return Number(process.env["AGENT_HTTP_PORT"] ?? 6989);
+}
+
+// Whether this process can answer. Postgres and not Redis: serve reads and writes
+// the ledger and never touches the queue, so queue connectivity would be reporting
+// on something it does not use.
+export function serveReady(pool: pg.Pool): Ready {
+  return async () => {
+    await pool.query("SELECT 1");
+    return true;
+  };
+}
+
+// The entry point `npm run serve` has always named and never had, so until #635 it
+// loaded this module and exited. Its own pool: serve is a separate Deployment from
+// the worker now, and a pool cannot be shared across processes.
+if (process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "")) {
+  const pool = new pg.Pool(poolConfig());
+  const serving = chatServer(new LedgerRepository(pool), serveReady(pool)).listen(chatPort());
+  const stop = () => {
+    serving.close();
+    void pool.end();
+  };
+  process.on("SIGTERM", stop);
+  process.on("SIGINT", stop);
 }

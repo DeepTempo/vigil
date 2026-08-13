@@ -47,10 +47,14 @@ export function httpPlaybooks(options: ResolverOptions): PlaybookResolver {
     try {
       response = await call(url, { headers: { authorization: `Bearer ${options.token}` } });
     } catch (error) {
-      throw new SpecError(`could not resolve ${reference}: ${error instanceof Error ? error.message : String(error)}`);
+      // Not a SpecError: the spec is fine and the endpoint is unreachable, which is
+      // what a rolling upgrade looks like from here. The worker retires a SpecError
+      // on the first attempt, so calling this one would spend the retry policy on
+      // exactly the failure it was added for.
+      throw new Error(`could not resolve ${reference}: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (response.status === 404) throw new SpecError(`no such workflow: ${idOf(reference)}`);
-    if (!response.ok) throw new SpecError(`could not resolve ${reference}: the endpoint answered ${response.status}`);
+    if (!response.ok) throw new Error(`could not resolve ${reference}: the endpoint answered ${response.status}`);
     return layersOf(await response.json(), reference);
   };
 }

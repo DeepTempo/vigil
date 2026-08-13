@@ -1,4 +1,7 @@
-import Ajv, { type ValidateFunction } from "ajv";
+// Named rather than default: ajv is CJS, so under the image build's NodeNext
+// resolution a default import lands on module.exports.default. The named export
+// exists in both, so this one line satisfies `bundler` and NodeNext alike.
+import { Ajv, type ValidateFunction } from "ajv";
 import { ZERO_TOKENS, type Refusal, type SpendPayload, type TokenCounts } from "../contracts/budget.js";
 import type { CheckpointPayload, NewEvent, ResolutionPayload, TerminalPayload } from "../contracts/events.js";
 import type { RegisteredTool, ToolResult } from "../contracts/tool.js";

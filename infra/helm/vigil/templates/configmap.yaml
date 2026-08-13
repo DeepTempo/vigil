@@ -15,6 +15,32 @@ data:
          alias fullname) on port 4317 (gRPC). */ -}}
   {{- $_ := set $computed "OTEL_EXPORTER_OTLP_ENDPOINT" (printf "http://%s-opentelemetry-collector:4317" .Release.Name) }}
   {{- end }}
+  {{- if .Values.agentServe.enabled }}
+  {{- /* core/config.py defaults agent_url to http://localhost:6989, which was
+         right while the agent layer ran in the backend's own process. It is its
+         own Deployment now, so the backend has to be told where. */ -}}
+  {{- $_ := set $computed "AGENT_URL" (printf "http://%s:%v" (include "vigil.agentServe.fullname" .) .Values.agentServe.service.port) }}
+  {{- end }}
+  {{- if or .Values.agentWorker.enabled .Values.agentServe.enabled }}
+  {{- /* The return leg, and the same localhost problem in the other direction:
+         the agent layer's four /internal URLs all default to
+         http://localhost:6987, which was the backend when it shared a process
+         and is nothing at all inside an agent pod. Unset is not a safe default
+         here -- an unreachable playbook endpoint fails a run before its first
+         model call, and an unset VIGIL_RUNS_URL silently drops progress and
+         parks any run that needs an approval.
+
+         Rendered into the shared ConfigMap rather than the agent Deployments
+         because AGENT_URL above already establishes that seam addresses are
+         computed in one place. Python ignores them (Settings is extra="ignore",
+         and _ratchets/test_settings_env_example.py records them as belonging to
+         the TypeScript process). Override via extraConfig, which renders last. */ -}}
+  {{- $backend := printf "http://%s:%v" (include "vigil.backend.fullname" .) .Values.backend.service.port }}
+  {{- $_ := set $computed "VIGIL_PLAYBOOKS_URL" (printf "%s/internal/playbooks" $backend) }}
+  {{- $_ := set $computed "VIGIL_PRICING_URL" (printf "%s/internal/pricing" $backend) }}
+  {{- $_ := set $computed "VIGIL_RUNS_URL" (printf "%s/internal/runs" $backend) }}
+  {{- $_ := set $computed "VIGIL_TOOLS_URL" (printf "%s/internal/tools/invoke" $backend) }}
+  {{- end }}
   {{- range $k, $v := .Values.config }}
   {{- if not (hasKey $computed $k) }}
   {{ $k }}: {{ $v | quote }}

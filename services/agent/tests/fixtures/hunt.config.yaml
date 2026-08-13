@@ -12,20 +12,53 @@ runtime:
   result_cap: 20000
   recall_limit: 3
 
+# Every tool is remote, because remote is the only kind any adapter implements --
+# the demolition collapsed them all onto the Python bridge. A generated config says
+# the same thing: playbook_resolver.py emits id, kind, description and parameters
+# and nothing else, so these fixtures are shaped like what a deployment produces.
 tools:
   - id: duckdb_query
-    kind: duckdb
-    database: ./fixtures/records.duckdb
+    kind: remote
+    description: Run a read-only SQL query against the records warehouse.
+    parameters:
+      type: object
+      properties:
+        sql:
+          type: string
+          description: The SELECT statement to run.
+      required: [sql]
     max_rows: 200
     timeout_ms: 30000
   - id: expand
-    kind: expand
+    kind: remote
+    description: Expand an entity into the entities it is related to.
+    parameters:
+      type: object
+      properties:
+        entity:
+          type: string
+          description: The entity to expand.
+      required: [entity]
   - id: intel_lookup
-    kind: threatfox
-    feed: https://threatfox.abuse.ch/export/json/recent/
+    kind: remote
+    description: Look an indicator up in the threat intelligence feeds.
+    parameters:
+      type: object
+      properties:
+        indicator:
+          type: string
+          description: The IP, domain or hash to look up.
+      required: [indicator]
   - id: web_intel
-    kind: firecrawl
-    limit: 3
+    kind: remote
+    description: Search the open web for reporting on an indicator or campaign.
+    parameters:
+      type: object
+      properties:
+        query:
+          type: string
+          description: What to search the web for.
+      required: [query]
 
 approvals: []
 

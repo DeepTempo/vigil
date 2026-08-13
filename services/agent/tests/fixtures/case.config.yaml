@@ -12,10 +12,18 @@ runtime:
   result_cap: 8000
   recall_limit: 2
 
+# remote, for the reason hunt.config.yaml gives at more length.
 tools:
   - id: case_records
-    kind: duckdb
-    database: ./fixtures/records.duckdb
+    kind: remote
+    description: Read the case records held for an investigation.
+    parameters:
+      type: object
+      properties:
+        case_id:
+          type: string
+          description: The case whose records to read.
+      required: [case_id]
     max_rows: 100
     timeout_ms: 15000
 
