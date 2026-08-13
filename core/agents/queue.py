@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from weakref import WeakKeyDictionary
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -83,24 +85,25 @@ def build_resume_job(
     }
 
 
-_queue: Optional[Queue] = None
+_queues: "WeakKeyDictionary[asyncio.AbstractEventLoop, Queue]" = WeakKeyDictionary()
 
 
-# One per process. A Queue per enqueue opens and closes a Redis connection for one
-# job, which is a round trip of setup on the request path.
+# One per event loop, not per call: a Queue per enqueue costs a Redis connection.
+# Keyed by loop because its connection is bound to the one that made it.
 def _run_queue() -> Queue:
-    global _queue
-    if _queue is None:
-        _queue = Queue(RUN_QUEUE, {"connection": _redis_url()})
-    return _queue
+    loop = asyncio.get_running_loop()
+    queue = _queues.get(loop)
+    if queue is None:
+        queue = Queue(RUN_QUEUE, {"connection": _redis_url()})
+        _queues[loop] = queue
+    return queue
 
 
-# Called on shutdown, so the connection does not outlive the process that made it.
+# Called on shutdown, so the connection does not outlive the loop that made it.
 async def close_run_queue() -> None:
-    global _queue
-    if _queue is not None:
-        await _queue.close()
-        _queue = None
+    queue = _queues.pop(asyncio.get_running_loop(), None)
+    if queue is not None:
+        await queue.close()
 
 
 async def enqueue_run(job: Dict[str, Any], job_id: Optional[str] = None) -> str:

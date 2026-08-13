@@ -35,7 +35,18 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
   // Resume when the ledger already holds one, so an edited arch cannot reach a
   // hunt in flight and the hypotheses are not re-opened on every attempt.
   const opened = (await harness.state.latestSeq(run_id)) !== null;
-  const ledger = opened ? (await resumeHunt(harness.state, queue, run_id)).ledger : await startHunt(harness.state, queue, run_id, spec, options.started_by ?? "worker");
+  let ledger;
+  try {
+    ledger = opened ? (await resumeHunt(harness.state, queue, run_id)).ledger : await startHunt(harness.state, queue, run_id, spec, options.started_by ?? "worker");
+  } catch (error) {
+    // Its own projection ended but the domain-free terminal is missing, so the
+    // run is over for the hunt and not for anyone else. Settle rather than throw.
+    if (!(error instanceof HuntAlreadyTerminal)) throw error;
+    await harness.state.append(run_id, [
+      { run_id, run_kind: "hunt", kind: "terminal", payload: { outcome: "completed", reason: error.message } } as never,
+    ]);
+    return { status: "completed", reason: error.message, iterations: 0 };
+  }
 
   const ports = { harness, spec: options.spec, run_id, actions: options.actions, ...(options.signal === undefined ? {} : { signal: options.signal }) };
   const controller = new HuntController(

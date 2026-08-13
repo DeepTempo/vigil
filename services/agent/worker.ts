@@ -366,9 +366,9 @@ export async function sweepOnce(leases: Leases, queue: Enqueue, limit = 50): Pro
 //
 // Only here, not inside advance(): what a failure means to the queue is the queue's
 // business, and advance() is driven without one by the tests and by run-once.ts.
-async function handle(state: State, leases: Leases, job: RunJob, directives: DirectiveQueue): Promise<void> {
+async function handle(state: State, leases: Leases, job: RunJob, directives: DirectiveQueue, build: HarnessFactory = harnessFor): Promise<void> {
   try {
-    await advance(state, leases, job, harnessFor, directives);
+    await advance(state, leases, job, build, directives);
   } catch (error) {
     if (error instanceof SpecError) throw new UnrecoverableError(error.message);
     throw error;
@@ -385,7 +385,9 @@ export interface Running {
 // The queue drains durable runs and the HTTP surface serves chat, which is
 // synchronous and would gain nothing from a queue hop but latency. One process,
 // one pool, two ways in.
-export function startWorker(): Running {
+// The factory is a parameter so a test can stand the model in and leave the
+// queue, the ledger and the leases real, which is what the seam is made of.
+export function startWorker(build: HarnessFactory = harnessFor): Running {
   const pool = new pg.Pool(poolConfig());
   const ledger = new LedgerRepository(pool);
   const leases = new LeaseRepository(pool);
@@ -396,7 +398,7 @@ export function startWorker(): Running {
   // stalled sweep still retires a dead worker's job eventually, and the lease
   // refuses it if it comes back around.
   const directives = new DirectiveRepository(pool);
-  const worker = new Worker<RunJob>(RUN_QUEUE, (job) => handle(ledger, leases, job.data, directives), {
+  const worker = new Worker<RunJob>(RUN_QUEUE, (job) => handle(ledger, leases, job.data, directives, build), {
     connection,
     lockDuration: LEASE_TTL_MS * 10,
   });
