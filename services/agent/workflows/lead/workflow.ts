@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import pLimit from "p-limit";
 import type { DispatchPayload, NewEvent, RunKind, RunOutcome } from "../../contracts/events.js";
 import { journalAnswers, noAnswers, type Answers } from "../../core/answers.js";
 import { commitTurn, type Harness, type Outcome, type TurnConfig } from "../../core/loop.js";
@@ -94,7 +95,7 @@ export async function runLead(harness: Harness<LeadKinds>, options: LeadOptions)
       event(options, "decision", { action: decision.action, rationale: decision.rationale, worker: selection.worker }),
     ]);
 
-    for (const assignment of assignments) await dispatch(harness, options, assignment);
+    await dispatchAll(harness, options, assignments);
     rounds.push({ assigned: assignments.length });
 
     // Termination is the arch's, not the model's: an action outside the halting
@@ -113,7 +114,32 @@ function named(spec: RunSpec, decision: Decision): string | null {
   return typeof id === "string" && id in spec.roles.workers ? id : null;
 }
 
-async function dispatch(harness: Harness<LeadKinds>, options: LeadOptions, assignment: Assignment): Promise<void> {
+// The model turns may overlap; the ledger may not. A parallel round runs its
+// turns together, then writes them one after another from a single position, so
+// the run is still the only writer and a second one still collides.
+async function dispatchAll(harness: Harness<LeadKinds>, options: LeadOptions, assignments: readonly Assignment[]): Promise<void> {
+  if (assignments.length === 0) return;
+  if (options.spec.dispatch.mode === "serial") {
+    for (const assignment of assignments) await write(harness, options, await turn(harness, options, assignment));
+    return;
+  }
+
+  // Capped at what the arch allows to run at once, not at how many were assigned.
+  const gate = pLimit(options.spec.dispatch.max_workers);
+  const done = await Promise.all(assignments.map((assignment) => gate(() => turn(harness, options, assignment))));
+
+  // One read for the batch: a writer that moved the ledger between the round
+  // starting and this line collides here, which is the guard doing its job.
+  let at = ((await harness.state.latestSeq(options.run_id)) ?? -1) + 1;
+  for (const result of done) at = await write(harness, options, result, at);
+}
+
+interface Dispatched {
+  outcome: Outcome<unknown>;
+  own: Event[];
+}
+
+async function turn(harness: Harness<LeadKinds>, options: LeadOptions, assignment: Assignment): Promise<Dispatched> {
   const { role: worker, task: intent } = assignment;
   const role = options.spec.roles.workers[worker] as RoleSpec;
   const outcome = await drain(streamTurn<unknown, LeadKinds>(turnFor(options, worker, role, intent), harness));
@@ -128,7 +154,14 @@ async function dispatch(harness: Harness<LeadKinds>, options: LeadOptions, assig
   };
   const own: Event[] = [event(options, "dispatch", payload)];
   if (outcome.value !== null) own.push(event(options, "finding", { agent_id: worker, answer: outcome.value }));
-  await commitTurn(harness.state, options.run_id, outcome, own);
+  return { outcome, own };
+}
+
+// at is the position this write claims. Absent, the outcome's own is used, which
+// is what a serial round wants: one turn, committed where it started.
+async function write(harness: Harness<LeadKinds>, options: LeadOptions, result: Dispatched, at?: number): Promise<number> {
+  const from = at ?? result.outcome.from;
+  return commitTurn(harness.state, options.run_id, { events: result.outcome.events, from }, result.own);
 }
 
 function turnFor(options: LeadOptions, role: string, spec: RoleSpec, task: string): TurnConfig {

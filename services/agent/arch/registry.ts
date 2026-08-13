@@ -10,8 +10,13 @@ import type { LeadKinds } from "../workflows/lead/workflow.js";
 
 // What a run kind runs, and what its workflow can act on. Adding an agent type is
 // an arch file plus an entry here, never a change to the loop.
+// Which loop drives this kind. Named here rather than switched on in the worker,
+// so adding an agent type is an arch file and an entry, never a new branch.
+export type WorkflowId = "lead" | "compose";
+
 export interface ArchEntry {
   arch: string;
+  workflow: WorkflowId;
   actions: readonly string[];
   halts: readonly string[];
   // Sections of the playbook and config this workflow reads. The loader accepts
@@ -28,6 +33,7 @@ export interface ArchEntry {
 const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
   hunt: {
     arch: packaged("threathunt.yaml"),
+    workflow: "lead",
     actions: ["INVESTIGATE", "EXPAND", "PIVOT", "DEEPEN", "ABANDON", "VALIDATE", "CHECKPOINT", "CONCLUDE", "HANDOFF_IR"],
     halts: ["CONCLUDE"],
     owned: { playbook: ["hypotheses", "attack_techniques", "data_domains"], config: ["enrichment", "checkpoints", "hypothesis_loop"] },
@@ -37,16 +43,19 @@ const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
   },
   investigate: {
     arch: packaged("investigate.yaml"),
+    workflow: "lead",
     actions: ["EXAMINE", "CONCLUDE"],
     halts: ["CONCLUDE"],
     projection: (runId, events) => leadProjection(runId, events as readonly AgentEvent<LeadKinds>[]),
   },
   // No actions: nothing emits one. A step ends when its agent answers, and the run
   // ends when the list does, so there is no verb for a model to choose or to halt on.
-  compose: { arch: packaged("compose.yaml"), actions: [], halts: [] },
+  compose: { arch: packaged("compose.yaml"), workflow: "compose", actions: [], halts: [] },
   // Nor here, and for a nearer reason: the lead answers in prose, so there is no
   // emission to constrain and nothing for a vocabulary to name.
-  chat: { arch: packaged("chat.yaml"), actions: [], halts: [] },
+  // Served over SSE by serve.ts rather than driven from the queue, so drive()
+  // never sees it; the field is declared because every entry declares it.
+  chat: { arch: packaged("chat.yaml"), workflow: "lead", actions: [], halts: [] },
 };
 
 // Resolved against the package rather than the cwd: the arch files ship with the

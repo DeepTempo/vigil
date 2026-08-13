@@ -77,22 +77,19 @@ function as<K extends Record<string, unknown>>(state: State): State<K> {
   return state as unknown as State<K>;
 }
 
-// The one place a run kind becomes a loop. A kind with no workflow throws here,
-// before the ledger opens, rather than journalling a run nothing will ever advance.
+// The one place a run kind becomes a loop, and it reads the registry rather than
+// naming kinds: a new agent type is an arch file and an entry, not a branch here.
 async function drive(state: State, job: RunJob, spec: RunSpec, build: HarnessFactory): Promise<void> {
   const { run_kind: kind, run_id, enqueued_by: started_by } = job;
+  const entry = archFor(kind);
 
-  if (kind === "compose") {
+  if (entry.workflow === "compose") {
     await runCompose(build(kind, spec, as<ComposeKinds>(state)), { run_id, spec, started_by, mirror: mirrorFor() });
     return;
   }
-  if (kind === "hunt" || kind === "investigate") {
-    const entry = archFor(kind);
-    const harness = build(kind, spec, as<LeadKinds>(state));
-    await runLead(harness, { run_id, run_kind: kind, spec, actions: entry.actions, halts: entry.halts, started_by, answers: answersFor() });
-    return;
-  }
-  throw new SpecError(`no workflow is wired for run_kind ${kind}`);
+
+  const harness = build(kind, spec, as<LeadKinds>(state));
+  await runLead(harness, { run_id, run_kind: kind, spec, actions: entry.actions, halts: entry.halts, started_by, answers: answersFor() });
 }
 
 // Resolves the spec on a start and reads it back off the ledger on a resume, so an

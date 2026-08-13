@@ -12,6 +12,7 @@ import { buildSpec, type RunSpec } from "../../core/spec.js";
 import { InProcessState } from "../../core/state.js";
 import type { Answers } from "../../core/answers.js";
 import { grantsOf, runLead, type LeadKinds, type LeadOptions } from "../../workflows/lead/workflow.js";
+import { isLead, respondingProvider } from "../support/responding-provider.js";
 import { scriptedProvider, type ScriptedTurn } from "../support/scripted-provider.js";
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
@@ -182,6 +183,64 @@ describe("an arch drives the loop", () => {
     // call was refused and decides again over what it does have.
     const done = await runLead(harnessOf(spec, SINGLE, state), options("investigate", spec, rejected));
     expect(done.status).toBe("completed");
+  });
+
+  // A swarm assigns every peer, so it is where mode actually shows.
+  function swarmSpec(mode: "serial" | "parallel"): RunSpec {
+    const spec = specFor("hunt", "hunt.playbook.yaml", "hunt.config.yaml");
+    return { ...spec, dispatch: { ...spec.dispatch, topology: "swarm", mode, max_workers: 3 } };
+  }
+
+  // One round: a swarm assigns its peers before the halting action is read, so
+  // concluding immediately still dispatches everyone exactly once.
+  function peers(mode: "serial" | "parallel") {
+    const spec = swarmSpec(mode);
+    const provider = respondingProvider({
+      emit: (schema) =>
+        isLead(schema)
+          ? { action: "CONCLUDE", rationale: "characterised", evidence_citations: [] }
+          : { results: [] },
+    });
+    const state = new InProcessState<LeadKinds>();
+    const harness = { ...harnessOf(spec, [], state), provider };
+    return { spec, state, provider, harness };
+  }
+
+  it("runs a parallel round together", async () => {
+    const { spec, provider, harness } = peers("parallel");
+    const report = await runLead(harness, options("hunt", spec));
+
+    expect(report.dispatched).toBe(3);
+    // The point of the mode: more than one turn was in flight at once.
+    expect(provider.peak()).toBeGreaterThan(1);
+  });
+
+  it("runs a serial round one at a time, whatever the topology assigned", async () => {
+    const { spec, provider, harness } = peers("serial");
+    const report = await runLead(harness, options("hunt", spec));
+
+    expect(report.dispatched).toBe(3);
+    expect(provider.peak()).toBe(1);
+  });
+
+  it("keeps every dispatch and finding a parallel round produced", async () => {
+    const { spec, state, harness } = peers("parallel");
+    await runLead(harness, options("hunt", spec));
+
+    // The failure this guards is silent: three turns claiming one ledger
+    // position means two collide, and a round that lost two findings still
+    // reads as a round that ran three.
+    const events = await state.read(RUN);
+    expect(events.filter((event) => event.kind === "dispatch")).toHaveLength(3);
+    expect(events.filter((event) => event.kind === "finding")).toHaveLength(3);
+  });
+
+  it("writes a parallel round in one contiguous stretch", async () => {
+    const { spec, state, harness } = peers("parallel");
+    await runLead(harness, options("hunt", spec));
+
+    const seqs = (await state.read(RUN)).map((event) => event.seq);
+    expect(seqs).toEqual(seqs.map((_, at) => at));
   });
 
   // The two arches grant different tools to different roles, and the registry is

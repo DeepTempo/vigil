@@ -53,6 +53,14 @@ describe("the registry resolves a run kind to an arch", () => {
     expect(registeredKinds()).toEqual(["chat", "compose", "hunt", "investigate"]);
   });
 
+  // Adding an agent type is an arch file and an entry. Nothing in the worker
+  // names a kind, so a new one reaches its loop without a branch being added.
+  it("names the loop that drives each kind, rather than leaving the worker to switch", () => {
+    expect(archFor("hunt").workflow).toBe("lead");
+    expect(archFor("investigate").workflow).toBe("lead");
+    expect(archFor("compose").workflow).toBe("compose");
+  });
+
   // A kind in the union with no arch behind it is the failure this prevents.
   it("refuses a run kind nothing is registered for", () => {
     expect(() => archFor("tally")).toThrow(/no architecture is registered for run_kind tally/);
