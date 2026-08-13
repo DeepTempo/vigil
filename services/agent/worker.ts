@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { archFor } from "./arch/registry.js";
 import { httpAnswers, journalAnswers, noAnswers, type Answers } from "./core/answers.js";
+import { httpAnnounce, noAnnounce, type Announce } from "./core/checkpoints.js";
 import { harnessFor, internalToken, type HarnessFactory } from "./harness.js";
 import { poolConfig, redisConfig } from "./core/db.js";
 import { healthPort, healthServer } from "./core/health.js";
@@ -69,6 +70,13 @@ function answersFor(): Answers {
   return url === undefined || url === "" ? noAnswers : httpAnswers({ url, token: internalToken() });
 }
 
+// Where a parked run's question goes. The same endpoint the answer comes back
+// from, so a deployment that can answer is one that can be told there is one.
+function announceFor(): Announce {
+  const url = process.env["VIGIL_RUNS_URL"];
+  return url === undefined || url === "" ? noAnnounce : httpAnnounce({ url, token: internalToken() });
+}
+
 function defaultResolver(): PlaybookResolver {
   return httpPlaybooks({
     url: process.env["VIGIL_PLAYBOOKS_URL"] ?? "http://localhost:6987/internal/playbooks",
@@ -120,7 +128,7 @@ async function drive(
   if (kind === "hunt" || kind === "investigate") {
     const entry = archFor(kind);
     const harness = build(kind, spec, as<LeadKinds>(state), undefined, seed);
-    await runLead(harness, { run_id, run_kind: kind, spec, actions: entry.actions, halts: entry.halts, started_by, answers: answersFor(), signal });
+    await runLead(harness, { run_id, run_kind: kind, spec, actions: entry.actions, halts: entry.halts, started_by, answers: answersFor(), announce: announceFor(), signal });
     return;
   }
   throw new SpecError(`no workflow is wired for run_kind ${kind}`);

@@ -129,6 +129,11 @@ PROTECTED_ROUTES = [
     # the shared secret, and answers the same way when it is not presented.
     ("POST", "/api/agent-runs", {"run_kind": "hunt", "playbook": "p", "config": "c"}),
     ("GET", "/api/agent-runs/9c1c2d3e-0000-4000-8000-000000000592", None),
+    (
+        "POST",
+        "/api/agent-runs/9c1c2d3e-0000-4000-8000-000000000592/directives",
+        {"kind": "note", "text": "auth gate test"},
+    ),
     # Routes that were on bare `router` (no auth) — fixed in issue #286.
     ("POST", "/api/integrations/vstrike/network-graph", {"network_id": "test"}),
     ("POST", "/api/integrations/vstrike/ui/legend-apply", {"legend_run_id": "test"}),
@@ -161,6 +166,11 @@ def test_unauthenticated_request_is_rejected(app, method, path, body):
 INTERNAL_ROUTES = [
     ("GET", "/internal/runs/run-auth-gate/decisions", None),
     ("POST", "/internal/runs/run-auth-gate/terminal", {"outcome": "failed"}),
+    (
+        "POST",
+        "/internal/runs/run-auth-gate/checkpoints",
+        {"checkpoint_id": "apr-1", "checkpoint_class": "tool_approval", "question": "Approve?"},
+    ),
     (
         "POST",
         "/internal/tools/invoke",

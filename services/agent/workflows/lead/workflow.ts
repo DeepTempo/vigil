@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import pLimit from "p-limit";
 import type { DispatchPayload, NewEvent, RunKind, RunOutcome } from "../../contracts/events.js";
 import { journalAnswers, noAnswers, type Answers } from "../../core/answers.js";
+import { announceOpen, noAnnounce, type Announce } from "../../core/checkpoints.js";
 import { commitTurn, type Harness, type Outcome, type TurnConfig } from "../../core/loop.js";
 import { drain, streamTurn } from "../../core/stream.js";
 import { SpecError, type RoleSpec, type RunSpec } from "../../core/spec.js";
@@ -40,6 +41,9 @@ export interface LeadOptions {
   // Where an answer to a parked call comes from. Defaults to nobody, so a run
   // with no source parks and stays parked rather than proceeding unapproved.
   answers?: Answers;
+  // How a human is told a run has parked. Defaults to nobody, and a checkpoint
+  // nobody is told about is one nobody answers.
+  announce?: Announce;
   // Aborted when this worker loses its lease. The provider request carries it, so
   // a worker that has been declared dead stops paying for a call nobody records.
   signal?: AbortSignal;
@@ -83,6 +87,11 @@ export async function runLead(harness: Harness<LeadKinds>, options: LeadOptions)
 
     const outcome = await drain(streamTurn<Decision, LeadKinds>(turnFor(options, "lead", lead, brief(spec)), harness));
     if (outcome.status === "waiting_approval") {
+      // Announced every time the run is looked at, not only when it first parks:
+      // the far side is idempotent, and a notice lost to a restart is re-sent.
+      if (outcome.pending !== null) {
+        await announceOpen(harness.state, run_id, options.run_kind, outcome.pending.checkpoint_id, options.announce ?? noAnnounce);
+      }
       return { ...(await report(harness, options)), status: "waiting_approval", reason: outcome.reason, pending: outcome.pending };
     }
     if (outcome.status === "failed" || outcome.value === null) {

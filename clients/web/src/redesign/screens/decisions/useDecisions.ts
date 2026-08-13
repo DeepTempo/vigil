@@ -184,6 +184,11 @@ export interface ApprovalAction {
   workflow_phase_id?: string
   reason?: string
   created_at?: string
+  /**
+   * What the agent layer stamped on the approval when it raised it — the
+   * checkpoint id and its class. A compose phase carries neither.
+   */
+  parameters?: Record<string, unknown>
 }
 
 export function usePendingApprovals() {

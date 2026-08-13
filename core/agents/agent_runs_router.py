@@ -11,6 +11,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
+from core.agents.directives import (
+    DIRECTIVE_FIELDS,
+    DIRECTIVE_KINDS,
+    InvalidDirective,
+    RunAlreadyEnded,
+    UnknownRun,
+    enqueue_directive,
+)
 from core.agents.queue import (
     RUN_KINDS,
     build_start_job,
@@ -117,4 +125,46 @@ def get_run(run_id: str, session: UnitOfWorkSession) -> RunStatusResponse:
         events=events,
         outcome=payload.get("outcome"),
         reason=payload.get("reason"),
+    )
+
+
+class DirectiveRequest(BaseModel):
+    kind: str = Field(..., description=f"One of {', '.join(DIRECTIVE_KINDS)}.")
+    text: str = Field(default="", description="What the operator is telling the run.")
+    actor: Optional[str] = Field(default=None, description="Who is steering. Defaults to the session user.")
+    fields: Optional[Dict[str, Any]] = Field(default=None, description=f"Any of {', '.join(DIRECTIVE_FIELDS)}.")
+
+
+class DirectiveResponse(BaseModel):
+    directive_id: str
+    kind: str
+    created_at: str
+
+
+# Steer a run that is already going. It queues rather than journals: the run
+# holding the ledger is what turns a directive into a ledger event.
+@router.post("/{run_id}/directives", response_model=DirectiveResponse, status_code=202)
+def queue_directive(
+    run_id: str, body: DirectiveRequest, session: UnitOfWorkSession
+) -> DirectiveResponse:
+    try:
+        directive = enqueue_directive(
+            session,
+            run_id=run_id,
+            kind=body.kind,
+            body=body.text,
+            actor=body.actor or "analyst",
+            fields=body.fields,
+        )
+    except UnknownRun as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    except RunAlreadyEnded as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except InvalidDirective as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+    return DirectiveResponse(
+        directive_id=directive["directive_id"],
+        kind=directive["kind"],
+        created_at=directive["created_at"],
     )

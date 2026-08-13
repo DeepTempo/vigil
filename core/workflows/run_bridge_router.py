@@ -53,6 +53,15 @@ class TerminalUpdate(BaseModel):
     summary: str = ""
 
 
+class CheckpointRaised(BaseModel):
+    checkpoint_id: str
+    checkpoint_class: str
+    question: str
+    raised_at: str = ""
+    run_kind: str = ""
+    context: Optional[Dict[str, Any]] = None
+
+
 class Decision(BaseModel):
     checkpoint_id: str
     actor: str
@@ -113,6 +122,33 @@ def record_terminal(
         status="completed" if update.outcome == "completed" else "failed",
         result_summary=update.summary or None,
         error=None if update.outcome == "completed" else update.reason,
+    )
+
+
+# A run parked on a checkpoint, as a question in the approvals inbox. Only the
+# compose path raised these before, so a hunt parked where nobody could see it.
+@router.post("/{run_id}/checkpoints", status_code=204)
+def record_checkpoint(
+    run_id: str,
+    raised: CheckpointRaised,
+    request: Request,
+    authorization: Optional[str] = Header(default=None),
+) -> None:
+    authorise(request, authorization, "run checkpoint")
+
+    # Idempotent per checkpoint inside raise_for_checkpoint, because a parked run
+    # is announced on every sweep and would otherwise queue the question each time.
+    raise_for_checkpoint(
+        run_id=run_id,
+        checkpoint_id=raised.checkpoint_id,
+        title=raised.question[:120] or raised.checkpoint_class,
+        description=raised.question,
+        reason=f"The run parked on a {raised.checkpoint_class} checkpoint",
+        parameters={
+            "checkpoint_class": raised.checkpoint_class,
+            "run_kind": raised.run_kind,
+            **(raised.context or {}),
+        },
     )
 
 
