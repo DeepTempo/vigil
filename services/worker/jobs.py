@@ -47,7 +47,7 @@ async def llm_call(
 ) -> Dict[str, Any]:
     # The primary job: session load, dispatch, session save. provider_id=None
     # keeps the pre-#88 ClaudeService.chat() path exactly.
-    rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
+    in_flight: asyncio.Semaphore = ctx["in_flight"]
     claude_service = ctx["claude_service"]
     session_store: RedisSessionStore = ctx["session_store"]
 
@@ -95,7 +95,7 @@ async def llm_call(
         if router_result is not None:
             result = router_result
         else:
-            await rate_limiter.acquire()
+            await in_flight.acquire()
             try:
                 response = await asyncio.to_thread(
                     _sync_claude_call,
@@ -109,7 +109,7 @@ async def llm_call(
                     investigation_id=investigation_id,
                 )
             finally:
-                rate_limiter.release()
+                in_flight.release()
             result = _extract_result(response)
 
         if worker_span is not None:
@@ -181,8 +181,8 @@ async def _maybe_dispatch_via_router(
     # The fallback this used to take was ClaudeService's tool loop, context
     # reduction and session management. None of the three exist (#629, #631,
     # #632), so every provider dispatches the one way.
-    rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
-    await rate_limiter.acquire()
+    in_flight: asyncio.Semaphore = ctx["in_flight"]
+    await in_flight.acquire()
     try:
         return await router.dispatch(
             provider=spec,
@@ -196,7 +196,7 @@ async def _maybe_dispatch_via_router(
             thinking_budget=thinking_budget,
         )
     finally:
-        rate_limiter.release()
+        in_flight.release()
 
 
 # The two _sync_* helpers below run inside asyncio.to_thread.
@@ -326,7 +326,9 @@ async def on_startup(ctx: Dict[str, Any]):
 
     claude_service = ClaudeService()
     ctx["claude_service"] = claude_service
-    ctx["rate_limiter"] = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
+    # A cap on calls in flight, not a rate limit: the rate is Bifrost's, and
+    # how a client answers its refusals is core.llm.gateway_retry's.
+    ctx["in_flight"] = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
     ctx["session_store"] = RedisSessionStore(ctx["redis"])
 
     # Multi-provider routing (GH #88). Router is optional: if construction

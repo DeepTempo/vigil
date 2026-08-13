@@ -13,56 +13,13 @@ logger = logging.getLogger(__name__)
 DispatchPath = Literal["bifrost"]
 
 
-def _is_budget_status(status_code: Optional[int]) -> bool:
-    return status_code in (402, 429)
+# Kept as the name the dispatch paths call. The policy is shared with the agent
+# worker rather than restated here: a 429 is retried, a 402 is terminal. A
+# factory rather than a coroutine, because a retry needs a fresh one.
+async def _wrap_budget_errors(call):
+    from core.llm.gateway_retry import through_gateway
 
-
-def _classify_tier(status_code: Optional[int], body: str) -> str:
-    body_lc = (body or "").lower()
-    if status_code == 402 or "budget" in body_lc:
-        return "virtual_key"
-    if status_code == 429 or "rate" in body_lc:
-        return "rate_limit"
-    return "unknown"
-
-
-async def _wrap_budget_errors(coro):
-    """Run ``coro`` and translate Bifrost's budget/rate-limit responses
-    into ``core.llm.cost.budget.BudgetExceeded``.
-
-    Both the Anthropic and OpenAI SDKs raise their own ``APIStatusError``
-    subclasses with a ``status_code`` attribute. We don't import either
-    SDK here (lazy at call sites) so the catch is duck-typed.
-    """
-    try:
-        return await coro
-    except Exception as e:
-        status_code = getattr(e, "status_code", None)
-        if not _is_budget_status(status_code):
-            raise
-        # Best-effort body extraction. SDKs vary: some have .response.text,
-        # some .message, some neither.
-        body = ""
-        for attr in ("message", "body"):
-            v = getattr(e, attr, None)
-            if v:
-                body = str(v)
-                break
-        if not body:
-            resp = getattr(e, "response", None)
-            if resp is not None:
-                body = getattr(resp, "text", "") or ""
-        from core.llm.cost.budget import BudgetExceeded
-
-        raise BudgetExceeded(
-            tier=_classify_tier(status_code, body),
-            message=body or f"Bifrost returned {status_code}",
-            status_code=status_code,
-        ) from e
-
-
-async def _raise_async(exc: Exception):
-    raise exc
+    return await through_gateway(call)
 
 
 @dataclass(frozen=True)
@@ -293,7 +250,7 @@ class LLMRouter:
         # passthrough to keep extended thinking and cache_control; both were
         # traded away, and by #632 nothing asked for either.
         return await _wrap_budget_errors(
-            self._dispatch_bifrost_openai(
+            lambda: self._dispatch_bifrost_openai(
                 provider=provider,
                 messages=messages,
                 system_prompt=system_prompt,
@@ -442,7 +399,11 @@ class LLMRouter:
             async for chunk in stream:
                 yield chunk
         except Exception as exc:
-            await _wrap_budget_errors(_raise_async(exc))
+            # The stream already ran, so there is nothing to retry: read the
+            # status and re-raise, rather than attempt the call again.
+            from core.llm.gateway_retry import translate
+
+            raise translate(exc) from exc
         finally:
             # AsyncOpenAI holds an httpx connection pool; close it on normal
             # completion, error, AND consumer disconnect (GeneratorExit, e.g.

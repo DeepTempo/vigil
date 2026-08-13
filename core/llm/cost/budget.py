@@ -34,16 +34,18 @@ GLOBAL_KEY = "bifrost.virtual_keys"
 
 
 class BudgetExceeded(Exception):
-    """Bifrost rejected an upstream call because a budget tier was hit.
+    """Bifrost refused an upstream call because a budget is spent.
 
-    The chat UI catches this and renders a typed banner (instead of a
-    generic 500 toast). The agent loop catches it as a terminal failure
-    for the investigation rather than retrying.
+    Raised on 402 and nothing else. A 429 means slow down and is retried by
+    core.llm.gateway_retry, so reaching this exception always means waiting
+    would not have helped.
     """
 
-    def __init__(self, *, tier: str, message: str = "", status_code: Optional[int] = None):
+    def __init__(
+        self, *, tier: str, message: str = "", status_code: Optional[int] = None
+    ):
         super().__init__(message or f"LLM budget exceeded ({tier})")
-        self.tier = tier  # "virtual_key" | "team" | "customer" | "rate_limit" | "unknown"
+        self.tier = tier  # "virtual_key" | "team" | "customer"
         self.status_code = status_code
         self.message = message
 
@@ -102,7 +104,9 @@ def get_settings() -> dict:
     }
 
 
-def set_settings(*, default_vk: str, budget_limit_usd: float, enforcement_mode: str) -> dict:
+def set_settings(
+    *, default_vk: str, budget_limit_usd: float, enforcement_mode: str
+) -> dict:
     """Persist the VK + budget config. Caller (API handler) is admin-gated."""
     if enforcement_mode not in ("warning", "hard_stop"):
         raise ValueError(

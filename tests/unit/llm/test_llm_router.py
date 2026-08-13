@@ -404,28 +404,38 @@ async def test_dispatch_translates_402_into_budget_exceeded():
 
 
 @pytest.mark.asyncio
-async def test_dispatch_translates_429_into_budget_exceeded_rate_tier():
-    from core.llm.cost.budget import BudgetExceeded
+async def test_dispatch_retries_a_429_rather_than_failing_the_run():
+    """A rate limit is not a budget failure.
 
+    This asserted the opposite until the two halves were unified: 429 raised
+    BudgetExceeded(tier="rate_limit") and nothing caught it, so a two-second
+    wait failed the run and was reported as being out of credit. The agent
+    worker had always retried the same response.
+    """
     router = LLMRouter(bifrost_url="http://test-bifrost:8080")
-    raise_err = type("FakeAPIErr", (Exception,), {})("rate limited")
-    raise_err.status_code = 429  # type: ignore[attr-defined]
+    limited = type("FakeAPIErr", (Exception,), {})("rate limited")
+    limited.status_code = 429  # type: ignore[attr-defined]
 
+    answered = SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content="hello", tool_calls=None))
+        ],
+        model="gpt-4o",
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+    )
     mock_client = MagicMock()
-    # Dispatchers close the client in a finally block to avoid leaking the
-    # httpx pool; make .close() awaitable so the real cleanup path runs.
     mock_client.close = AsyncMock()
-    mock_client.chat.completions.create = AsyncMock(side_effect=raise_err)
+    mock_client.chat.completions.create = AsyncMock(side_effect=[limited, answered])
 
     with patch("openai.AsyncOpenAI", return_value=mock_client):
-        with pytest.raises(BudgetExceeded) as excinfo:
-            await router.dispatch(
+        with patch("core.llm.gateway_retry.asyncio.sleep", new=AsyncMock()):
+            out = await router.dispatch(
                 provider=_openai_spec(),
                 messages=[{"role": "user", "content": "hi"}],
             )
 
-    assert excinfo.value.status_code == 429
-    assert excinfo.value.tier == "rate_limit"
+    assert out["content"] == "hello"
+    assert mock_client.chat.completions.create.await_count == 2
 
 
 @pytest.mark.asyncio
