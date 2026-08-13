@@ -1,7 +1,5 @@
--- A row per in-flight run: who is working on it, and when that claim lapses.
--- Presence is the only ledger fact this table implies, and it holds no copy of
--- one, so nothing here can disagree with agent_events -- only be late, which
--- costs one sweep rather than a wrong answer.
+-- A row per in-flight run: who is working on it, and when that claim lapses. It
+-- holds no copy of a ledger fact, so it can only be late, never wrong.
 
 CREATE TABLE IF NOT EXISTS agent_run_leases (
     run_id      uuid        PRIMARY KEY,

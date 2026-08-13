@@ -1,7 +1,5 @@
-# Queue an operator's directive for a running agent. This is the one write Python
-# makes into agent-layer state, and it lands in agent_directives rather than
-# agent_events: enqueuing is open to any process, journaling is not. The run
-# holding the ledger is what turns a queued directive into a ledger event.
+# Queue an operator's directive for a running agent. It lands in agent_directives,
+# never agent_events: enqueuing is open to any process, journaling is not.
 
 from __future__ import annotations
 
@@ -17,9 +15,8 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# The vocabulary the TypeScript DIRECTIVE_KINDS declares. Duplicated across the
-# language boundary for the same reason RUN_KINDS is, and checked here so a typo
-# is a 4xx at the console rather than a directive the drain has to refuse.
+# The vocabulary TypeScript's DIRECTIVE_KINDS declares, duplicated across the
+# language boundary so a typo is a 4xx rather than a directive the drain refuses.
 DIRECTIVE_KINDS = (
     "note",
     "lead",
@@ -45,16 +42,19 @@ DIRECTIVE_FIELDS = (
 )
 
 
+# Malformed, so it is refused before it reaches the queue.
 class InvalidDirective(ValueError):
-    """The directive is malformed, so it is refused before it reaches the queue."""
+    pass
 
 
+# No ledger under that run id, so nothing would ever drain the directive.
 class UnknownRun(InvalidDirective):
-    """No ledger under that run id, so nothing will ever drain the directive."""
+    pass
 
 
+# The run journaled its terminal, so no drain will run again.
 class RunAlreadyEnded(InvalidDirective):
-    """The run journaled its terminal event, so no drain will run again."""
+    pass
 
 
 def new_directive_id() -> str:
@@ -107,13 +107,8 @@ def _refuse_unless_running(session: Session, run_id: str) -> None:
         raise RunAlreadyEnded(f"run {run_id} has already ended")
 
 
-# The parked run's own due date, pulled forward so the watchdog picks it up on its
-# next sweep rather than after the park interval. This is the second and last table
-# Python writes in the agent layer, and like agent_directives it is not the ledger:
-# enqueuing and nudging are open to any process, journaling is not.
-#
-# Only a run nobody holds. Moving a live worker's deadline back would declare it
-# dead, which is the one thing a nudge must never do.
+# A parked run's due date pulled forward, so the watchdog takes it on the next sweep.
+# Only a run nobody holds: moving a live worker's deadline would declare it dead.
 def _wake(session: Session, run_id: str) -> None:
     session.execute(
         text(
@@ -125,8 +120,7 @@ def _wake(session: Session, run_id: str) -> None:
 
 
 # Idempotent on directive_id, so a retried request is not a second directive. The
-# columns are the envelope every workflow shares; the payload carries the whole
-# directive, including the fields only the workflow reads.
+# columns are the shared envelope; the payload carries what only a workflow reads.
 def enqueue_directive(
     session: Session,
     run_id: str,

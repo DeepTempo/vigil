@@ -23,9 +23,8 @@ let clock: number;
 beforeEach(() => {
   config = join(mkdtempSync(join(tmpdir(), "vigil-watchdog-")), "vigil.config.yaml");
   copyFileSync(join(FIXTURES, "hunt.config.yaml"), config);
-  // Anchored to real time, because the park check and the budget pool both read
-  // the process clock. A test reaches the past by writing events at a rewound
-  // store clock rather than by moving the present.
+  // Anchored to real time, because the park check and the pool read the process
+  // clock. The past is reached by rewinding the store's, never the present.
   clock = Date.now();
   state = new InProcessState(() => clock);
   leases = new InProcessLeases(() => clock);
@@ -96,15 +95,11 @@ function recorder(): Enqueue & { jobs: RunJob[]; ids: string[] } {
   };
 }
 
-// The exploit this ticket would otherwise ship. A pool built fresh per resume
-// hands a run killed near its ceiling a whole new allowance, and a watchdog that
-// resumes it automatically turns that into an unbounded spend loop.
+// The exploit this would otherwise ship: a pool built fresh per resume hands a
+// killed run a new allowance, and the watchdog turns that into a spend loop.
 describe("a resumed run continues its budget rather than restarting it", () => {
-  // A run killed mid-iteration leaves spend on the ledger and no terminal, which is
-  // exactly what the watchdog resumes. Nothing in the new process remembers the
-  // first attempt, so the fold is the only thing standing between a killed run and
-  // a fresh allowance -- and a watchdog that resumes automatically would otherwise
-  // spend the cap again on every crash.
+  // A run killed mid-iteration leaves spend and no terminal, which is what the
+  // watchdog resumes. The fold is all that stands between it and a fresh allowance.
   it("refuses a further call when the ledger's spend fold has reached the cap", async () => {
     await opened({ budgets: { max_calls: 2 } }, spend(), spend());
     expect(await state.terminal(RUN)).toBeNull();
@@ -241,11 +236,8 @@ describe("a run nobody is working on is put back on the queue", () => {
     expect(queue.ids[0]).not.toBe(queue.ids[1]);
   });
 
-  // The join the other tests in this file leave out, and the one that matters: a
-  // sweep that enqueues is worth nothing unless the worker on the far side of the
-  // queue can take the run. A sweeper that stamped its own name on the row would
-  // be refused by its own reservation here, and every resume would be a no-op --
-  // the exact bug the watchdog exists to fix, reintroduced by the watchdog.
+  // The join that matters: a sweep is worth nothing unless the worker across the
+  // queue can take the run. A sweeper stamping its own name refuses itself.
   it("drives the run when the worker picks the queued resume up", async () => {
     await opened(undefined);
     await leases.claim(RUN, "hunt", "dead-worker", LEASE_TTL_MS);
@@ -258,9 +250,8 @@ describe("a run nobody is working on is put back on the queue", () => {
     expect((await state.terminal(RUN))?.outcome).toBe("completed");
   });
 
-  // A run that failed before it opened a ledger cannot be resumed and cannot
-  // journal a terminal, so a row left behind for it is swept forever and throws
-  // every time. Nothing else would ever drop it.
+  // A run that failed before opening a ledger can neither resume nor journal a
+  // terminal, so a row left for it is swept forever. Nothing else drops it.
   it("leaves no lease behind for a start that never opened a ledger", async () => {
     const missing = { ...startJob(), request: { arch: "", playbook: "/nowhere.yaml", config: "/nowhere.yaml", prompt: "go" } };
     await expect(advance(state, leases, missing, scriptedHarness([]))).rejects.toThrow();
@@ -270,10 +261,8 @@ describe("a run nobody is working on is put back on the queue", () => {
   });
 });
 
-// max_wall_ms is a ceiling on work, and waiting for a person is not work. If the
-// pool's clock ran while a run was parked, the two ceilings would contradict each
-// other -- a seven-day park TTL behind a thirty-minute wall budget -- and every
-// checkpoint answered late would resume straight into wall_exhausted.
+// max_wall_ms is a ceiling on work, and waiting for a person is not work: a seven-day
+// park TTL behind a thirty-minute wall budget contradicts itself.
 describe("a run does not spend wall time while it is parked", () => {
   it("still has its allowance when the answer comes long after it parked", async () => {
     clock -= 2 * 3_600_000;

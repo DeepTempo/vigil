@@ -4,28 +4,49 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+import uuid
+from typing import Any, Dict, Optional
+
+from sqlalchemy import text
 
 from core.agents.queue import build_resume_job, enqueue_run
-from core.workflows.workflows_service import COMPOSE_RUN_KIND
+from core.storage.connection import get_db_session
 
 logger = logging.getLogger(__name__)
 
 
-async def resume_run(run_id: str, action_id: str, decided_by: str) -> Dict[str, Any]:
-    """Ask the agent layer to pick ``run_id`` back up after a decision."""
-    job = build_resume_job(
-        run_id=run_id, run_kind=COMPOSE_RUN_KIND, enqueued_by=decided_by
-    )
+# Off the run event the worker journaled, never assumed: a hunt resumed as a
+# compose is handed to the wrong workflow, which then finds nothing it recognises.
+def _run_kind(run_id: str) -> Optional[str]:
     try:
-        # No job id of our own. It used to be f"{run_id}:{action_id}", so that a
-        # double click on approve was one job -- but a resume that *fails* keeps
-        # that id in the queue, and every later attempt at the same decision is
-        # then dropped as a duplicate, wedging the run on the one approval it was
-        # waiting for. Run-level exclusion belongs to agent_run_leases, which
-        # refuses the second worker whatever the queue let through: a double click
-        # now costs one job that claims and one that returns having found the run
-        # already being driven.
+        uuid.UUID(run_id)
+    except ValueError:
+        return None
+
+    with get_db_session() as session:
+        row = session.execute(
+            text(
+                "SELECT run_kind FROM agent_events "
+                "WHERE run_id = CAST(:run_id AS uuid) ORDER BY seq LIMIT 1"
+            ),
+            {"run_id": run_id},
+        ).one_or_none()
+    return None if row is None else str(row.run_kind)
+
+
+# Asks the agent layer to pick the run back up after a decision.
+async def resume_run(run_id: str, action_id: str, decided_by: str) -> Dict[str, Any]:
+    run_kind = _run_kind(run_id)
+    if run_kind is None:
+        # Nothing on the ledger to resume. The decision is still recorded; there
+        # is simply no agent-layer run behind it, which a compose-era approval is.
+        logger.info("no agent-layer ledger for run %s; nothing to resume", run_id)
+        return {"success": False, "run_id": run_id, "error": "no ledger for this run"}
+
+    job = build_resume_job(run_id=run_id, run_kind=run_kind, enqueued_by=decided_by)
+    try:
+        # No job id of our own: a failed resume would keep it and wedge the run on
+        # the approval it waits for. agent_run_leases refuses the second worker.
         job_id = await enqueue_run(job)
     except Exception as exc:  # noqa: BLE001
         logger.error(

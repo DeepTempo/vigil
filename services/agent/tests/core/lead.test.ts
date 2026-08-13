@@ -227,9 +227,8 @@ describe("an arch drives the loop", () => {
     const { spec, state, harness } = peers("parallel");
     await runLead(harness, options("hunt", spec));
 
-    // The failure this guards is silent: three turns claiming one ledger
-    // position means two collide, and a round that lost two findings still
-    // reads as a round that ran three.
+    // The failure this guards is silent: a round that lost two findings to a
+    // collision still reads as a round that ran three.
     const events = await state.read(RUN);
     expect(events.filter((event) => event.kind === "dispatch")).toHaveLength(3);
     expect(events.filter((event) => event.kind === "finding")).toHaveLength(3);

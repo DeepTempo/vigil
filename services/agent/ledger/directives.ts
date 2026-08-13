@@ -8,8 +8,7 @@ export class DirectiveRepository implements DirectiveQueue {
   constructor(private readonly pool: Pool) {}
 
   // Idempotent on directive_id, so a retried enqueue is not a second directive.
-  // The row carries the whole directive; the columns are the envelope a query
-  // needs to answer who steered a run and when.
+  // The row carries the whole thing; the columns answer who steered a run, and when.
   async enqueue(runId: string, directive: Directive): Promise<void> {
     await this.pool.query(
       `INSERT INTO agent_directives (run_id, directive_id, kind, actor, created_at, payload)
@@ -26,9 +25,8 @@ export class DirectiveRepository implements DirectiveQueue {
     );
   }
 
-  // Insertion order, because the order an operator queued two directives in is
-  // the order they meant them. Excluding by id rather than by a row count is what
-  // survives a directive that commits behind one already journaled.
+  // Insertion order, because that is the order an operator meant them in. Excluding
+  // by id rather than count survives one committing behind another already journaled.
   async pending(runId: string, journaled: readonly string[]): Promise<Directive[]> {
     const result = await this.pool.query<{ directive_id: string; payload: Directive }>(
       `SELECT directive_id, payload FROM agent_directives
@@ -36,9 +34,8 @@ export class DirectiveRepository implements DirectiveQueue {
        ORDER BY id`,
       [runId, journaled],
     );
-    // Identity comes from the column the unique constraint guards, not from the
-    // payload: a hand-written row could disagree with itself, and the drain needs
-    // an id it can exclude on the next pass.
+    // Identity comes from the guarded column, not the payload: a hand-written row
+    // could disagree with itself, and the drain excludes on this id.
     return result.rows.map((row) => ({ ...row.payload, directive_id: row.directive_id }));
   }
 }

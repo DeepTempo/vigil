@@ -8,10 +8,8 @@ import { huntNotes } from "../workflows/hunt/recall.js";
 import { leadProjection } from "../workflows/lead/projection.js";
 import type { LeadKinds } from "../workflows/lead/workflow.js";
 
-// What a run kind runs, and what its workflow can act on. Adding an agent type is
-// an arch file plus an entry here, never a change to the loop.
-// Which loop drives this kind. Named here rather than switched on in the worker,
-// so adding an agent type is an arch file and an entry, never a new branch.
+// Which loop drives a kind, and what its workflow may act on. Named here rather
+// than switched on in the worker: an agent type is a file and an entry, not a branch.
 export type WorkflowId = "lead" | "compose";
 
 export interface ArchEntry {
@@ -51,10 +49,8 @@ const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
   // No actions: nothing emits one. A step ends when its agent answers, and the run
   // ends when the list does, so there is no verb for a model to choose or to halt on.
   compose: { arch: packaged("compose.yaml"), workflow: "compose", actions: [], halts: [] },
-  // Nor here, and for a nearer reason: the lead answers in prose, so there is no
-  // emission to constrain and nothing for a vocabulary to name.
-  // Served over SSE by serve.ts rather than driven from the queue, so drive()
-  // never sees it; the field is declared because every entry declares it.
+  // No actions: the lead answers in prose, so there is no emission to constrain.
+  // Served over SSE by serve.ts rather than the queue, so drive() never sees it.
   chat: { arch: packaged("chat.yaml"), workflow: "lead", actions: [], halts: [] },
 };
 

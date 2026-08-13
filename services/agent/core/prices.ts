@@ -1,27 +1,23 @@
 import type { TokenCounts } from "../contracts/budget.js";
 
-// What a model costs, per token, in USD. Four rates rather than two because cache
-// tokens are not billed at the input rate -- counting a cache read at full price
-// over-bills it tenfold on Anthropic, which is most of this deployment's traffic.
+// What a model costs per token, in USD. Four rates, not two: charging a cache read
+// at the input rate over-bills it tenfold on Anthropic.
 export interface Rates {
   input: number;
   output: number;
   cache_read: number;
   cache_write: number;
-  // How the rates resolved: "exact" from a catalog entry, "heuristic" from a model-id
-  // prefix, "zero" for self-hosted, "unknown" when nothing matched. A $0 call priced
-  // from a real entry and a $0 call nobody could price look identical otherwise.
+  // exact from a catalog entry, heuristic from a model-id prefix, zero for self-hosted,
+  // unknown when nothing matched -- otherwise two very different $0 calls look alike.
   source: string;
 }
 
-// Where a price comes from. A port because pricing is the backend's catalog and this
-// layer must not hold a second copy of it: one repricing and the two would disagree
-// about what a run cost.
+// Where a price comes from. A port because the catalog is the backend's: a second
+// copy here would disagree with the dashboard after one repricing.
 export type Prices = (modelId: string, providerType: string) => Promise<Rates | null>;
 
-// Nobody to ask, so nothing is priced and cost_usd stays null. For tests, and for a
-// deployment running the agent without the backend reachable -- the run still runs
-// and its token counts are still journaled, which is what the ledger is for.
+// Nobody to ask, so nothing is priced and cost_usd stays null. The run still runs
+// and its tokens are still journaled, which is what the ledger is for.
 export const noPrices: Prices = async () => null;
 
 export function costOf(rates: Rates, tokens: TokenCounts): number {
@@ -39,12 +35,8 @@ export interface PricesOptions {
   fetch?: typeof globalThis.fetch;
 }
 
-// Memoised per model, because rates do not change while a process lives and this is
-// asked once per model call. Only successes are remembered: a cached failure would
-// disable pricing for the life of the worker over one blip.
-//
-// Never throws. A spend event that could not be priced is still a spend event, and
-// losing it to a pricing outage would be strictly worse than not knowing the dollars.
+// Memoised per model and asked once per call; only successes are kept, or one blip
+// would disable pricing for the process. Never throws: an unpriced spend is a spend.
 export function httpPrices(options: PricesOptions): Prices {
   const call = options.fetch ?? globalThis.fetch;
   const base = options.url.replace(/\/$/, "");

@@ -130,9 +130,8 @@ describe("event kinds are closed", () => {
 });
 
 describe("a resume job carries nothing but its identity", () => {
-  // A start dedupes so a double POST cannot open two runs. A resume deliberately
-  // does not: a parked run's position never moves, so a positional id would repeat
-  // and the queue would drop every check after the first.
+  // A start dedupes so a double POST cannot open two runs; a resume deliberately
+  // does not, or the queue would drop every check after the first.
   it("dedupes a start on run_id and gives every resume its own id", () => {
     expect(jobIdFor(START, "unused")).toBe(START.run_id);
     expect(jobIdFor(RESUME, "a1b2")).toBe(`${START.run_id}:a1b2`);

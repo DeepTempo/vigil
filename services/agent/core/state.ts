@@ -6,9 +6,8 @@ import type { ReadOptions, State } from "./seams.js";
 export class InProcessState<Kinds extends Record<string, unknown> = Record<never, never>> implements State<Kinds> {
   private readonly runs = new Map<string, AgentEvent<Kinds>[]>();
 
-  // The store's clock, injectable for the same reason the lease's is: a run parked
-  // past its TTL is behaviour that only exists in the past, and no caller may
-  // supply a ts, so a test has to move the store's clock to reach it.
+  // The store's clock, injectable like the lease's: no caller may supply a ts, so
+  // reaching a run parked past its TTL means moving this.
   constructor(private readonly now: () => number = Date.now) {}
 
   private log(runId: string): AgentEvent<Kinds>[] {

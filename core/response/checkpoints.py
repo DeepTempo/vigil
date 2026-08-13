@@ -1,6 +1,5 @@
 # A checkpoint the agent layer parked on, as an approval a human can answer. The
-# answer travels back through /internal/runs/{id}/decisions, which the agent layer
-# reads and journals: this side never writes the ledger.
+# answer goes back via /internal/runs/{id}/decisions; this side never writes the ledger.
 
 from __future__ import annotations
 

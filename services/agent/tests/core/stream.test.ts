@@ -429,10 +429,8 @@ describe("the status the store holds", () => {
   });
 });
 
-// The loop used to return its events for a workflow to append, so a workflow that
-// dropped them dropped the record of what the run had already spent -- invisible
-// on a resume, and a ledger that under-reports its own spend lets a resumed run
-// spend the same allowance twice.
+// The loop used to return its events for a workflow to append, so a dropped batch
+// lost the spend record -- and a resumed run spends the same allowance twice.
 describe("a workflow cannot discard what the harness burned", () => {
   it("has the spend on the ledger before the workflow is handed anything", async () => {
     const state = new InProcessState();

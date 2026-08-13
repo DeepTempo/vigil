@@ -1,9 +1,8 @@
 import type { DirectiveQueue } from "./ports.js";
 import type { Directive } from "./types.js";
 
-// The queue without Postgres. It reproduces rather than approximates what the
-// table guarantees — insertion order, idempotence on directive_id, and no delete
-// on read — so a caller cannot tell the two implementations apart.
+// The queue without Postgres. It reproduces rather than approximates the table's
+// guarantees: insertion order, idempotence on directive_id, and no delete on read.
 export class InProcessDirectiveQueue implements DirectiveQueue {
   private readonly runs = new Map<string, Directive[]>();
 

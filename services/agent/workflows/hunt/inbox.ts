@@ -12,9 +12,8 @@ export const CONTROLLER_ACTOR = "controller";
 // is exercised with auth off rather than skipped. Read here rather than in
 export const DEV_ACTOR = "dev-admin";
 
-// Who this process is, for attribution. A directive's actor is a person -- who
-// steered the run -- which is a different thing from the lease's owner, which is
-// a process. They were one helper while the lease was a file beside the ledger.
+// Who this process is, for attribution. A directive's actor is a person who steered
+// the run, which is a different thing from the lease's owner, a process.
 function actorName(): string {
   return process.env["VIGIL_ACTOR"] || userInfo().username;
 }
@@ -51,10 +50,8 @@ export type DirectiveFields = Partial<
   Pick<Directive, "actor" | "checkpoint_id" | "entity_key" | "question_id" | "hypothesis_id" | "tenant" | "revoke">
 >;
 
-// The envelope, checked at the boundary another process writes across. The fields
-// a workflow owns are deliberately not checked here — the workflow validates its
-// own vocabulary, and a directive that names a checkpoint that does not exist is
-// a question for the controller, not a malformed directive.
+// The envelope, checked where another process writes across. A workflow's own fields
+// are not: naming a checkpoint that does not exist is the controller's question.
 export function validateDirective(directive: Directive): void {
   if (typeof directive.directive_id !== "string" || directive.directive_id.length === 0) {
     throw new InvalidDirective("a directive with no id cannot be journaled or excluded from the next drain");
@@ -70,9 +67,8 @@ export function validateDirective(directive: Directive): void {
   }
 }
 
-// Queues an operator's directive. Async because the queue is shared with every
-// other process now, and it throws rather than firing the write off unawaited: an
-// enqueue that failed must reach the operator, not vanish.
+// Queues an operator's directive. It throws rather than firing the write off
+// unawaited: an enqueue that failed must reach the operator, not vanish.
 export async function steer(
   queue: DirectiveQueue,
   runId: string,
@@ -110,9 +106,8 @@ export function journalNote(ledger: Journal, text: string): Directive {
   return directive;
 }
 
-// Everything the ledger already holds, whoever wrote it. The controller's own
-// notes were never queued, so excluding them costs nothing and keeps this one
-// question: has this directive reached the record?
+// Everything the ledger already holds, whoever wrote it, so this asks one question:
+// has this directive reached the record?
 function journaled(ledger: Journal): string[] {
   return ledger.projection.directives.map((directive) => directive.directive_id);
 }
@@ -123,9 +118,8 @@ export async function peek(ledger: Journal): Promise<Directive[]> {
   return ledger.queue.pending(ledger.runId, journaled(ledger));
 }
 
-// Skips what the ledger already recorded rather than deleting from the queue, so
-// a drain interrupted halfway simply re-runs. Only the run holding the ledger
-// drains, so the controller stays the sole mutator.
+// Skips what the ledger recorded rather than deleting from the queue, so a drain
+// interrupted halfway re-runs. Only the run holding the ledger drains.
 export async function drain(ledger: Journal): Promise<Directive[]> {
   const taken: Directive[] = [];
 
@@ -133,11 +127,8 @@ export async function drain(ledger: Journal): Promise<Directive[]> {
     try {
       validateDirective(directive);
     } catch (error) {
-      // Journaled under its own id, as a controller note: the operator's attempt
-      // is on the record, the switch never sees a kind it cannot read, and the
-      // refusal happens once rather than on every drain for the rest of the run.
-      // Their own words and the kind they asked for carry into the note, because
-      // the refusal is the only thing the record will hold of the attempt.
+      // Journaled under its own id as a controller note, so the attempt is on the
+      // record and the refusal happens once rather than on every later drain.
       const said = typeof directive.text === "string" && directive.text.length > 0 ? ` — ${directive.text}` : "";
       ledger.append({
         kind: "directive",
@@ -150,9 +141,8 @@ export async function drain(ledger: Journal): Promise<Directive[]> {
       });
       continue;
     }
-    // Normalised on the way in, not at every read: an extend queued by a writer
-    // that does not parse prose still lands on the ledger as numbers, so what was
-    // granted reads the same whoever asked. The regex stays defined once, here.
+    // Normalised on the way in, not at every read: an extend from a writer that does
+    // not parse prose still lands as numbers, so a grant reads the same whoever asked.
     const journaling =
       directive.kind === "extend" && directive.grant === undefined
         ? { ...directive, grant: grantOf(directive) }

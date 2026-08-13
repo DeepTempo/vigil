@@ -21,9 +21,14 @@ SCOPED = (
     "core/agents/tool_registry.py",
     "core/agents/tools_router.py",
     "core/llm/cost/rates.py",
+    "core/agents/directives.py",
+    "core/agents/internal_auth.py",
+    "core/response/checkpoints.py",
+    "core/workflows/run_bridge_router.py",
+    "core/workflows/run_resume.py",
     "infra/database/init/19_agent_ledger.sql",
-    "infra/database/init/20_model_rates.sql",
-    "infra/database/init/21_model_rates_seed.sql",
+    "infra/database/init/20_agent_directives.sql",
+    "infra/database/init/21_agent_run_leases.sql",
 )
 SKIP = ("node_modules", "package-lock.json", "dist", "__pycache__")
 

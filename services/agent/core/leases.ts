@@ -1,27 +1,22 @@
 import type { RunKind } from "../contracts/events.js";
 
-// Not one of the four seams: the harness never receives this and a turn has no
-// business renewing a lease. It is the composition root's, held by whatever
-// drives a run and by the sweeper that reclaims one nobody is driving.
+// Not one of the four seams: a turn has no business renewing a lease. It belongs
+// to whatever drives a run, and to the sweeper that reclaims one nobody drives.
 
-// Deployment timings, so a slow cluster can widen them without a rebuild. They are
-// not in core/config.py: that is Python's settings surface and nothing in this
-// layer reads it.
+// Deployment timings, so a slow cluster widens them without a rebuild. Not in
+// core/config.py: nothing in this layer reads Python's settings surface.
 function ms(name: string, fallback: number): number {
   const raw = Number(process.env[name]);
   return Number.isFinite(raw) && raw > 0 ? raw : fallback;
 }
 
-// How long a claim lasts, and how often its holder pushes it forward. The margin
-// is 4x rather than 3x because renewal shares an event loop with a fold that can
-// block it: a live worker declared dead pays for an LLM call it cannot record,
-// while a lease held too long only delays a reclaim. Money loses to seconds.
+// How long a claim lasts and how often its holder pushes it forward. 4x, not 3x:
+// renewal shares a loop with the fold, and a live worker declared dead pays twice.
 export const LEASE_TTL_MS = ms("VIGIL_LEASE_TTL_MS", 60_000);
 export const RENEW_EVERY_MS = ms("VIGIL_LEASE_RENEW_MS", 15_000);
 
-// How often the sweeper looks, and how long a parked run waits before it is
-// looked at again. The park interval is the safety net once the console pushes
-// claim_until forward on an answer; until then it is the only path.
+// How often the sweeper looks, and how long a parked run waits to be looked at.
+// The interval is the safety net once the console can pull a run forward.
 export const SWEEP_EVERY_MS = ms("VIGIL_SWEEP_MS", 30_000);
 export const PARK_EVERY_MS = ms("VIGIL_PARK_POLL_MS", 60_000);
 
@@ -33,11 +28,8 @@ export interface Claim {
 }
 
 export interface Leases {
-  // False when someone else is *driving* the run. A null owner is nobody driving
-  // it -- a run the sweeper reserved, or one parked waiting for an answer -- and
-  // the worker holding its job may take it. Refusal is not a failure: the caller
-  // returns rather than throwing, because a run already being driven is the good
-  // case.
+  // False when someone else is driving it. A null owner is nobody driving -- reserved
+  // or parked -- so the job's holder may take it. Refusal is the good case, not a failure.
   claim(runId: string, runKind: RunKind, owner: string, ttlMs: number): Promise<boolean>;
   // False when the claim was stolen, which tells the holder it has been declared
   // dead and should stop paying for work nobody will record.
@@ -45,17 +37,13 @@ export interface Leases {
   // The run parked. The row stays -- it is unfinished -- and nothing touches it
   // until the interval passes or the console pulls it forward.
   release(runId: string, owner: string, afterMs: number): Promise<void>;
-  // Something arrived for a parked run, so the next sweep should pick it up rather
-  // than waiting out its interval. No owner to match: whoever held the run has
-  // already let go, and the caller is an API process that never held it.
+  // Something arrived for a parked run, so the next sweep takes it rather than
+  // waiting out the interval. No owner to match: the caller never held it.
   wake(runId: string): Promise<void>;
   // The run journaled its terminal, so it is nobody's work now.
   finish(runId: string): Promise<void>;
-  // Discovery and reservation in one step, so N sweepers cannot enqueue one run
-  // twice. The sweeper takes no ownership -- it is not going to drive the run,
-  // only queue it -- so the row keeps a null owner and the worker that dequeues
-  // the job is the one that claims it. ttlMs is how long the reservation holds
-  // the run off the next sweep, which is the queue latency being budgeted for.
+  // Discovery and reservation in one statement, so N sweepers cannot enqueue one run
+  // twice. Owner stays null: the sweeper queues the run, it does not drive it.
   sweep(ttlMs: number, limit: number): Promise<Claim[]>;
 }
 
@@ -65,9 +53,8 @@ interface Held {
   claim_until: number;
 }
 
-// The Leases port without Postgres, so a resume test needs no database. It is
-// this process's clock rather than the store's, which is the same substitution
-// InProcessState makes: neither implementation lets a caller supply a time.
+// The Leases port without Postgres, so a resume test needs no database. This
+// process's clock stands in for the store's, as InProcessState does for events.
 export class InProcessLeases implements Leases {
   private readonly runs = new Map<string, Held>();
 
@@ -106,10 +93,8 @@ export class InProcessLeases implements Leases {
     this.runs.delete(runId);
   }
 
-  // Due at or before now, not strictly before: Postgres gets the same answer from
-  // a strict < because now() is the transaction's, and a later transaction's is
-  // later. There is no transaction here, so a wake() that set the deadline to this
-  // instant would be invisible to a sweep in the same millisecond.
+  // Due at or before now, not strictly before: with no transaction to advance the
+  // clock, a wake() setting this instant would be invisible to a sweep in it.
   async sweep(ttlMs: number, limit: number): Promise<Claim[]> {
     const due = [...this.runs.entries()]
       .filter(([, held]) => held.claim_until <= this.now())

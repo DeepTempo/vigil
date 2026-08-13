@@ -84,12 +84,8 @@ export interface Outcome<T> {
   reason: string;
 }
 
-// The workflow's events for this turn. The harness no longer hands its own over
-// to be written -- it appends them as it burns them, so a process killed
-// mid-turn cannot leave spend off the ledger, and a workflow cannot drop it.
-//
-// No position is offered: the store assigns one. A round of turns that ran
-// together would otherwise all commit from the position they each read first.
+// The workflow's events for this turn; the harness appends its own as it burns them.
+// No position is offered: the store assigns one, so concurrent turns cannot collide.
 export async function commitTurn<Kinds extends Record<string, unknown>>(
   state: State<Kinds>,
   runId: string,

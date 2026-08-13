@@ -17,9 +17,8 @@ export function scriptedHarness(script: readonly ScriptedTurn[]): HarnessFactory
     spec: RunSpec,
     state: State<K>,
     memory: Memory = nullMemory,
-    // Honoured rather than ignored: seeding the pool from the ledger is what stops
-    // a resumed run spending its cap again, so a double that dropped it would make
-    // that untestable through this path.
+    // Honoured rather than ignored: seeding from the ledger is what stops a resumed
+    // run spending its cap again, and a double that dropped it hides that.
     seed: Seed = FRESH,
   ): Harness<K> => ({
     provider: scriptedProvider(script),

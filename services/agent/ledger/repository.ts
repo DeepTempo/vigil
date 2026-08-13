@@ -45,14 +45,12 @@ export class LedgerRepository<Kinds extends Record<string, unknown> = Record<nev
     return result.rows.map(rowToEvent) as AgentEvent<Kinds>[];
   }
 
-  // One transaction, so a partially written iteration never lands. Each row takes
-  // the position after the highest the run holds, computed in the INSERT so that
-  // two turns writing at once serialise rather than collide.
+  // One transaction, so a partial iteration never lands. Each row takes the position
+  // after the highest the run holds, computed in the INSERT rather than by a caller.
   async append(runId: string, events: readonly NewEvent<Kinds>[]): Promise<number> {
     if (events.length === 0) return ((await this.latestSeq(runId)) ?? -1) + 1;
-    // The lock serialises this layer's writers, so a violation here means a writer
-    // that did not take it -- another process inserting directly. One retry covers
-    // the one that has since committed; a second means it is still going.
+    // The lock serialises this layer's writers, so a violation means one that did not
+    // take it. Retried once, for the writer that has since committed.
     for (let attempt = 0; ; attempt += 1) {
       try {
         return await this.transact(runId, events);
@@ -67,9 +65,8 @@ export class LedgerRepository<Kinds extends Record<string, unknown> = Record<nev
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      // Writers for one run take their turn rather than racing and retrying: the
-      // lock is held to commit, so the max each reads is one nobody else is about
-      // to take. Held per run, so two runs never wait on each other.
+      // Writers for one run take their turn rather than racing: held to commit, so the
+      // max each reads is one nobody else is taking. Per run, so runs never block.
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", [runId]);
       let seq = 0;
       for (const event of events) seq = await insert(client, event);
@@ -105,10 +102,8 @@ interface Insertable {
   snapshot?: unknown;
 }
 
-// The position is the subquery, not an argument: the composite key then rejects
-// a racing writer instead of two callers agreeing on a number that is already
-// taken. Earlier rows in this transaction are visible to later ones, so a batch
-// numbers itself contiguously.
+// The position is the subquery, not an argument, so the composite key rejects a racer
+// rather than two callers agreeing on a taken number. A batch numbers itself.
 async function insert(client: PoolClient, event: Insertable): Promise<number> {
   const result = await client.query<{ seq: number }>(
     `INSERT INTO agent_events (run_id, run_kind, seq, kind, payload, snapshot, schema_version)

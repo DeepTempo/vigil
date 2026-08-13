@@ -120,10 +120,8 @@ export interface Entity {
   value: string;
 }
 
-// Human input, and the one thing in the ledger that is direction rather than
-// data. Applied by the controller at an iteration boundary, never written as state.
-// An array rather than a bare union because another process queues these now, so
-// the vocabulary has to be checkable at runtime and not only by the compiler.
+// Human input: the one thing on the ledger that is direction rather than data, applied
+// at an iteration boundary. An array, because another process must check it at runtime.
 export const DIRECTIVE_KINDS = [
   "note",
   "lead",
@@ -167,9 +165,8 @@ export interface Directive {
   // Set on the benign that lifts an earlier one. Reversal is an append like
   // everything else — the suppression it undoes stays on the record.
   revoke?: boolean;
-  // Set on the notes the controller journals itself (a refused CONCLUDE, a
-  // clamped extension), so the report can say whose voice a line is. The drain
-  // excludes by id and never reads this.
+  // Set on notes the controller journals itself, so the report can say whose voice a
+  // line is. The drain excludes by id and never reads it.
   origin?: "inbox" | "controller";
 }
 

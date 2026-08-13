@@ -1,8 +1,7 @@
 import type { Memory } from "./seams.js";
 
-// Notes from somewhere the caller already named, rather than a search over
-// everything. What is worth carrying out of a finished run is that run's
-// workflow's to say, so the rendering arrives from outside.
+// Notes from somewhere the caller named, not a search over everything: what a
+// finished run carries forward is its own workflow's to say.
 export type Notes = (limit: number) => Promise<readonly string[]>;
 
 // The only implementation shipped. Recall returning nothing is the seam's default,

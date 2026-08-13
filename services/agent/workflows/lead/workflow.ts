@@ -77,9 +77,8 @@ export async function runLead(harness: Harness<LeadKinds>, options: LeadOptions)
   const topology = topologyFor(spec.dispatch.topology);
   const rounds: Round[] = [];
   for (;;) {
-    // Per iteration, not once per resume. The loop reads the ledger to decide
-    // whether it is still parked, so an answer journaled after that check used to
-    // wait for a whole resume; now it waits for one iteration boundary.
+    // Per iteration, not once per resume: an answer journaled after the parked check
+    // waits for one iteration boundary rather than a whole resume.
     await journalAnswers(harness.state, run_id, options.run_kind, options.answers ?? noAnswers);
 
     const outcome = await drain(streamTurn<Decision, LeadKinds>(turnFor(options, "lead", lead, brief(spec)), harness));
@@ -116,10 +115,8 @@ function named(spec: RunSpec, decision: Decision): string | null {
   return typeof id === "string" && id in spec.roles.workers ? id : null;
 }
 
-// The model turns may overlap and so may their writes: each turn's spend lands as
-// it burns, and every position is the store's to assign. What a round still owes
-// the ledger is order, so a parallel round commits its dispatches and findings in
-// assignment order once the turns are all in.
+// Turns may overlap and so may their writes; every position is the store's. What a
+// round owes is order, so it commits in assignment order once the turns are in.
 async function dispatchAll(harness: Harness<LeadKinds>, options: LeadOptions, assignments: readonly Assignment[]): Promise<void> {
   if (assignments.length === 0) return;
   if (options.spec.dispatch.mode === "serial") {

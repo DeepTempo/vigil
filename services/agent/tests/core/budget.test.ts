@@ -127,9 +127,8 @@ describe("the wall clock is a ceiling of its own", () => {
   });
 });
 
-// What made max_cost_usd mean something. It had one reader, overspent(), which
-// compared a total that nothing ever added to -- every call wrote cost_usd: null,
-// so the sum was zero and the ceiling refused nothing in any deployment.
+// What made max_cost_usd mean something: its one reader compared a total nothing
+// added to, so the ceiling refused nothing in any deployment.
 describe("a call is priced from the backend's rates", () => {
   const RATES = { input: 3e-6, output: 15e-6, cache_read: 3e-7, cache_write: 3.75e-6, source: "exact" };
 

@@ -1,9 +1,8 @@
 import { ZERO_TOKENS } from "../../contracts/budget.js";
 import type { Provider, ProviderEvent, TurnRequest } from "../../core/provider.js";
 
-// Answers what it was asked rather than what position it is at. A scripted
-// provider walks one counter, so two turns running at once take each other's
-// entries -- which makes a sequential script unable to model a parallel round.
+// Answers what it was asked rather than what position it is at: a scripted provider
+// walks one counter, so two turns at once take each other's entries.
 export interface Responding extends Provider {
   // The most turns that were ever in flight together. 1 means nothing overlapped.
   readonly peak: () => number;

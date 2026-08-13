@@ -69,9 +69,8 @@ describe("the ledger is append-only and derives nothing", () => {
   });
 });
 
-// Positions come from the store, so concurrency is no longer something a caller
-// can get wrong. What the composite key still guarantees is that it never issues
-// one twice, which is what these assert.
+// Positions come from the store, so a caller cannot get concurrency wrong. What the
+// composite key still guarantees is that no position is issued twice.
 describe("concurrent writers each take their own position", () => {
   it("gives two writers racing on one run distinct positions", async () => {
     await ledger.append(runId, [runEvent(runId)]);

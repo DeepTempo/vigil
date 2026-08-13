@@ -91,11 +91,8 @@ describe("a directive crosses a process boundary to reach its run", () => {
     expect(again.projection.directives).toHaveLength(2);
   });
 
-  // Postgres hands out an id at INSERT but reveals the row at COMMIT, so a
-  // directive can appear *behind* one already journaled. Counting what the ledger
-  // holds and skipping that many rows would re-journal the later directive and
-  // never journal this one — which for an abort or an extend loses the operator's
-  // instruction outright.
+  // Postgres assigns an id at INSERT and reveals the row at COMMIT, so one can appear
+  // behind another already journaled. Skipping by count would lose it outright.
   it("journals a directive that only became visible after a later one", async () => {
     const ledger = await Journal.create(state, held, runId, huntState());
 

@@ -1289,9 +1289,8 @@ export class HuntController {
     // One signal for the iteration, cancelled the moment an abort appears in the
     // inbox: a worker that has not started is skipped, and one already running is
     const halt = new AbortController();
-    // The check is a query now, so a slow one must not stack ticks behind it: at
-    // most one is in flight, and a tick that arrives while it is still running is
-    // dropped rather than queued.
+    // The check is a query, so a slow one must not stack ticks behind it: at most
+    // one in flight, and a tick arriving during it is dropped rather than queued.
     let checking = false;
     const poll = setInterval(() => {
       if (checking) return;
@@ -1352,10 +1351,8 @@ export class HuntController {
     }
   }
 
-  // Only what an operator queued and the drain has not taken yet: a halt already
-  // on the ledger has ended the hunt, and a controller note is not an abort.
-  // A queue that cannot be reached reads as no abort rather than throwing: the
-  // check runs on a timer nothing awaits, and the next drain asks again anyway.
+  // Only what an operator queued and the drain has not taken: a halt on the ledger
+  // already ended the hunt. An unreachable queue reads as no abort, never a throw.
   private async abortQueued(): Promise<boolean> {
     try {
       return (await peek(this.ledger)).some((directive) => directive.kind === "abort");

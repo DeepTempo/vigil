@@ -541,10 +541,8 @@ export function assembleSpec(sources: SpecSources): RunSpec {
   };
 }
 
-// The arch is always a file: it is operator-authored and never uploaded, so
-// unlike a playbook it has no reference form for anyone to resolve.
-// What the caller may tighten about a run it is paying for, and nothing else: a
-// deployment's ceilings are the deployment's, but the arch is not negotiable.
+// What a caller may tighten about the run it is paying for, and nothing else. The
+// arch is operator-authored and never uploaded, so it has no reference form.
 export function withOverrides(spec: RunSpec, overrides: Record<string, unknown> | undefined): RunSpec {
   if (overrides === undefined) return spec;
   const stray = Object.keys(overrides).filter((key) => key !== "budgets" && key !== "runtime");

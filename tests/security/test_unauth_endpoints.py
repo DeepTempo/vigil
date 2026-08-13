@@ -101,19 +101,7 @@ PROTECTED_ROUTES = [
         "/api/integrations/compatibility/install",
         {"integration_id": "misp"},
     ),
-    ("GET", "/api/claude/sdk-status", None),
     ("GET", "/api/claude/models", None),
-    (
-        "POST",
-        "/api/claude/chat",
-        {
-            "messages": [{"role": "user", "content": "auth gate test"}],
-            "max_tokens": 1,
-            "enable_thinking": False,
-            "streaming": False,
-            "use_agent_sdk": False,
-        },
-    ),
     (
         "POST",
         "/api/claude/chat/stream",
@@ -121,11 +109,6 @@ PROTECTED_ROUTES = [
             "messages": [{"role": "user", "content": "auth gate test"}],
             "max_tokens": 1,
         },
-    ),
-    (
-        "POST",
-        "/api/claude/agent/task",
-        {"task": "auth gate test only", "max_turns": 1, "allowed_tools": []},
     ),
     ("POST", "/api/claude/analyze-finding?finding_id=auth-gate-test", None),
     ("GET", "/api/webhooks/", None),
@@ -142,6 +125,18 @@ PROTECTED_ROUTES = [
     ("GET", "/api/integrations/vstrike/ui/networks", None),
     ("POST", "/api/integrations/vstrike/ui/iframe-token", None),
     ("GET", "/api/integrations/vstrike/topology/asset/test-asset", None),
+    # The agent layer's own surfaces. /api/* takes a session; /internal/* takes
+    # the shared secret, and answers the same way when it is not presented.
+    ("POST", "/api/agent-runs", {"run_kind": "hunt", "playbook": "p", "config": "c"}),
+    ("GET", "/api/agent-runs/9c1c2d3e-0000-4000-8000-000000000592", None),
+    ("GET", "/internal/runs/run-auth-gate/decisions", None),
+    ("POST", "/internal/runs/run-auth-gate/terminal", {"outcome": "failed"}),
+    (
+        "POST",
+        "/internal/tools/invoke",
+        {"tool": "noop", "args": {}, "bounds": {"max_rows": 1, "timeout_ms": 1000}},
+    ),
+    ("GET", "/internal/pricing/rates?model_id=m&provider_type=p", None),
     # Routes that were on bare `router` (no auth) — fixed in issue #286.
     ("POST", "/api/integrations/vstrike/network-graph", {"network_id": "test"}),
     ("POST", "/api/integrations/vstrike/ui/legend-apply", {"legend_run_id": "test"}),

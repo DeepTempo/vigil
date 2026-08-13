@@ -239,10 +239,8 @@ class Run<T, Kinds extends Record<string, unknown>> {
     return { content, tool_calls };
   }
 
-  // Priced before it is recorded, so the ledger's spend fold is in dollars and the
-  // pool has something to hold against max_cost_usd. Null when nothing could price
-  // it: the tokens are exact either way, and a call that could not be priced is not
-  // a call that was free.
+  // Priced before recorded, so the spend fold is in dollars and the pool has something
+  // to hold. Null when nothing priced it: an unpriced call is not a free one.
   private async settle(tokens: TokenCounts): Promise<SpendPayload> {
     const model_id = this.harness.provider.model;
     const provider_type = this.harness.provider.provider_type;
@@ -272,9 +270,8 @@ class Run<T, Kinds extends Record<string, unknown>> {
     return { ...outcome, pending: { checkpoint_id, tool, args } };
   }
 
-  // Written as it happens rather than returned to be written: a workflow cannot
-  // discard what is already on the ledger, and a process killed between the call
-  // and the workflow's conclusion has still recorded what it spent.
+  // Written as it happens, not returned to be written: a workflow cannot discard
+  // what is already on the ledger, and a killed process has still recorded it.
   private async write(event: NewEvent<Record<never, never>>): Promise<void> {
     await this.harness.state.append(this.cfg.run_id, [event as unknown as NewEvent<Kinds>]);
   }

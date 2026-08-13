@@ -86,14 +86,8 @@ def build_resume_job(
 async def enqueue_run(job: Dict[str, Any], job_id: Optional[str] = None) -> str:
     queue = Queue(RUN_QUEUE, {"connection": _redis_url()})
     try:
-        # jobId is the run id for a start, so a double POST dedupes inside BullMQ.
-        #
-        # A resume gets its own id every time and deliberately does not dedupe. The
-        # run id is already taken by the start, and a parked run's ledger position
-        # never advances, so any id derived from either would repeat and the queue
-        # would silently drop every resume after the first -- leaving the run parked
-        # forever, which is the thing a resume exists to prevent. Run-level exclusion
-        # is the lease's, in agent_run_leases, and it is stronger than a job id.
+        # jobId is the run id for a start, so a double POST dedupes in BullMQ. A
+        # resume takes a fresh id: any derived one repeats, and the queue drops it.
         enqueued = await queue.add(
             "run",
             job,

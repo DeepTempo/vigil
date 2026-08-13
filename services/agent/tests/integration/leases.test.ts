@@ -3,9 +3,8 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { LeaseRepository } from "../../ledger/leases.js";
 
-// Two pools, because the claim is about two processes rather than two objects. One
-// connection could satisfy an in-memory implementation and prove nothing about the
-// statement that actually refuses the second worker.
+// Two pools, because the claim is about two processes rather than two objects: one
+// connection proves nothing about the statement that refuses the second worker.
 const connectionString = process.env["DATABASE_URL"] ?? "postgres://vigil:vigil@localhost:55432/vigil_test";
 const first = new pg.Pool({ connectionString });
 const second = new pg.Pool({ connectionString });
@@ -28,9 +27,8 @@ afterEach(async () => {
   await first.query("DELETE FROM agent_run_leases WHERE run_id = $1", [runId]);
 });
 
-// Sorted to the front of the sweep. Other suites hold rows in this table at the
-// same time, and a sweep is ordered by claim_until with a limit, so a test that
-// needs its own run offered has to be the most overdue thing in there.
+// Sorted to the front of the sweep: other suites hold rows here too, and a sweep is
+// ordered by claim_until with a limit, so this run has to be the most overdue.
 async function isDue(): Promise<boolean> {
   const row = await first.query<{ due: boolean }>(
     "SELECT claim_until <= now() AS due FROM agent_run_leases WHERE run_id = $1",
@@ -81,9 +79,8 @@ describe("two workers cannot hold one run", () => {
     expect(await workerB.renew(runId, "b", 60_000)).toBe(true);
   });
 
-  // Renewal keys on the owner, not on the expiry: nobody took the run, so a holder
-  // whose renewal ran late still holds it. Killing a run over a moment of event-loop
-  // starvation would be worse than the late renewal it is recovering from.
+  // Renewal keys on the owner, not the expiry: nobody took the run, so a late
+  // renewal still holds it. Event-loop starvation must not kill a run.
   it("lets a late renewal succeed while nobody else has claimed the run", async () => {
     await workerA.claim(runId, "hunt", "a", 0);
 
@@ -122,10 +119,8 @@ describe("the sweeper claims in the same statement it discovers by", () => {
     expect(swept.map((claim) => claim.run_id)).not.toContain(runId);
   });
 
-  // The join between the two halves, and the one that makes the watchdog work at
-  // all: a sweeper reserves the row and the worker on the far side of the queue has
-  // to be able to take it. A reservation stamped with the sweeper's own name would
-  // be refused by claim's own filter, and every resume would be a no-op.
+  // What makes the watchdog work: the sweeper reserves the row and the worker across
+  // the queue takes it. A reservation in the sweeper's name refuses that worker.
   it("lets the worker that picks the job up claim a reserved run", async () => {
     await workerA.claim(runId, "hunt", "a", 0);
     await overdue();
@@ -134,9 +129,8 @@ describe("the sweeper claims in the same statement it discovers by", () => {
     expect(await workerB.claim(runId, "hunt", "b", 60_000)).toBe(true);
   });
 
-  // A parked run is the same state -- nobody driving it -- so an answer that
-  // enqueues a resume takes effect now rather than waiting out an interval nobody
-  // is using.
+  // A parked run is the same state, nobody driving it, so an answer takes effect
+  // now rather than waiting out an interval nobody is using.
   it("lets a worker claim a parked run before its interval passes", async () => {
     await workerA.claim(runId, "hunt", "a", 60_000);
     await workerA.release(runId, "a", 60_000);
@@ -153,9 +147,8 @@ describe("the sweeper claims in the same statement it discovers by", () => {
     expect((await workerB.sweep(60_000, 50)).map((claim) => claim.run_id)).not.toContain(runId);
   });
 
-  // What the console does when an answer arrives: the run stops waiting out its
-  // interval. Asserted on the column rather than through a sweep, because a sweep
-  // is ordered against every other suite's rows and would pass for other reasons.
+  // What the console does when an answer arrives. Asserted on the column, not through
+  // a sweep: a sweep is ordered against other suites' rows and could pass by accident.
   it("makes a woken run due at once", async () => {
     await workerA.claim(runId, "hunt", "a", 60_000);
     await workerA.release(runId, "a", 60_000);

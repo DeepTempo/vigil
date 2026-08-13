@@ -19,10 +19,8 @@ export interface ReadOptions {
   snapshots?: boolean;
 }
 
-// Deliberately the ledger repository's public surface, so Postgres satisfies it
-// with no adapter. The store assigns seq rather than the caller offering one: a
-// position read before a turn and written after it is a position two concurrent
-// turns both believe is theirs.
+// Deliberately the ledger repository's public surface, so Postgres satisfies it with
+// no adapter. The store assigns seq: a position read before a turn is stale after it.
 export interface State<Kinds extends Record<string, unknown> = Record<never, never>> {
   latestSeq(runId: string): Promise<number | null>;
   read(runId: string, opts?: ReadOptions): Promise<AgentEvent<Kinds>[]>;

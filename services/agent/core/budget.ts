@@ -24,9 +24,8 @@ export function addTokens(left: TokenCounts, right: TokenCounts): TokenCounts {
 // gateway's. For tests and for any deployment running without a gateway key.
 export const unmeteredQuota: Quota = { spent: async () => null };
 
-// What the run has spent, read off its own ledger. One spend event is one model
-// call, so the count is the call count -- the same thing beginCall increments,
-// which is why a resumed run continues its allowance rather than restarting it.
+// What the run has spent, off its own ledger. One spend event is one model call,
+// which is what beginCall counts, so a resumed run continues its allowance.
 export function seedFrom(events: readonly SpentEvent[], now = Date.now()): Seed {
   let spent: Spend = { calls: 0, cost_usd: 0, tokens: ZERO_TOKENS };
   let opened = 0;
@@ -49,18 +48,8 @@ interface Wait {
   to: number;
 }
 
-// How long the run sat on a checkpoint nobody had answered. A run waiting on a
-// human is not a run burning wall time, and the pool's origin is pushed forward by
-// this so max_wall_ms measures work rather than patience.
-//
-// Without it the two ceilings contradict each other: a park TTL of seven days is
-// unreachable behind a wall budget of thirty minutes, and every checkpoint answered
-// late resumes straight into wall_exhausted -- which is the case the whole resume
-// path exists to serve.
-//
-// Crash time still counts. Only a checkpoint the run itself raised excuses the
-// clock, so a worker that died and was reclaimed has spent what it spent, and the
-// exploit this seeding closes stays closed.
+// How long the run sat on an unanswered checkpoint, so max_wall_ms measures work
+// rather than patience. Crash time still counts: only a checkpoint excuses the clock.
 function waitedMs(events: readonly SpentEvent[], now: number): number {
   const answeredAt = new Map<string, number>();
   for (const event of events) {
@@ -71,8 +60,7 @@ function waitedMs(events: readonly SpentEvent[], now: number): number {
   }
 
   // An unanswered checkpoint is still waiting, so its wait runs to now: a resume
-  // that arrives before the answer is journaled must not bill the wait it is
-  // recovering from.
+  // must not bill the wait it is recovering from.
   const waits: Wait[] = [];
   for (const event of events) {
     if (event.kind !== "checkpoint") continue;
@@ -107,14 +95,8 @@ export interface SpentEvent {
   payload: unknown;
 }
 
-// What a run has already spent and when its wall clock began, folded from its
-// ledger. A pool built without one is a pool that starts a resumed run's allowance
-// over, so a run killed near its ceiling would come back with a full budget every
-// time.
-//
-// started is the run event's time pushed forward by however long the run sat on an
-// unanswered checkpoint, so it is where the clock reads from rather than when the
-// run opened.
+// What a run has spent and where its wall clock reads from, folded off the ledger.
+// started is the run event pushed forward by the time it sat parked, not when it opened.
 export interface Seed {
   spent: Spend;
   started: number;
@@ -122,9 +104,8 @@ export interface Seed {
 
 export const FRESH: Seed = { spent: { calls: 0, cost_usd: 0, tokens: ZERO_TOKENS }, started: 0 };
 
-// One pool per run. Calls and elapsed time are counted here because no gateway
-// knows either; dollars are read from the gateway when it can be reached, and
-// held against the local total when it cannot.
+// One pool per run. Calls and elapsed time are counted here because no gateway knows
+// either; dollars come from the gateway when it answers, the local total when not.
 export function budgetOf(
   limits: BudgetLimits,
   quota: Quota,
@@ -183,22 +164,15 @@ class Pool implements Budget {
     if (payload.cost_usd !== null) this.cost += payload.cost_usd;
   }
 
-  // Rates from the backend catalog, applied to tokens this layer already has. The
-  // catalog is not copied here: one repricing and a second table would disagree with
-  // the dashboard about what a run cost.
-  //
-  // Never throws, and null rather than zero when nothing answered -- an unpriced call
-  // must not read as a free one, either on the ledger or against the ceiling.
+  // The backend catalog's rates, never a second copy of it. Null rather than zero
+  // when nothing answered: an unpriced call must not read as a free one.
   async priceOf(modelId: string, providerType: string, tokens: TokenCounts): Promise<Priced> {
     const rates = await this.prices(modelId, providerType);
     return rates === null ? { cost_usd: null, source: null } : { cost_usd: costOf(rates, tokens), source: rates.source };
   }
 
-  // An unreadable quota is not a refusal, but it is not a licence either: the local
-  // total is held against max_cost_usd whether or not the gateway answers. That is
-  // the arm every deployment takes, because unmeteredQuota is what harness.ts wires
-  // -- so without it max_cost_usd would be a number a config can set and nothing
-  // enforces, which is what it was.
+  // An unreadable quota is not a refusal, nor a licence: the local total is held
+  // against max_cost_usd either way. Every deployment takes this arm today.
   private async overspent(): Promise<Refusal | null> {
     const reported = await this.quota.spent();
     if (reported === null) {

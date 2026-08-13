@@ -10,11 +10,8 @@ import type {
   WorkerEvidence,
 } from "./types.js";
 
-// Where a directive waits before the run takes it. Any process may enqueue; the
-// run holding the ledger is the only one that drains, so this stays a store and
-// never decides anything. It does not delete on read — what has been journaled
-// is a fact about the ledger, so the caller passes it in rather than the queue
-// tracking it.
+// Where a directive waits before the run takes it. Any process enqueues, only the
+// run drains, and nothing is deleted on read: what is journaled is the ledger's fact.
 export interface DirectiveQueue {
   enqueue(runId: string, directive: Directive): Promise<void>;
   pending(runId: string, journaled: readonly string[]): Promise<Directive[]>;

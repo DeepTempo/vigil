@@ -2,9 +2,8 @@ import type { SpendPayload } from "../../contracts/budget.js";
 import type { AgentEvent, CheckpointPayload, ResolutionPayload, TerminalPayload } from "../../contracts/events.js";
 import type { DecisionPayload, FindingPayload, LeadKinds } from "./workflow.js";
 
-// What a reader outside this process is told about a run. Deliberately not the
-// ledger: the events are the record and their shape stays ours to change, so a
-// caller reads what a run has decided rather than how it was written down.
+// What a reader outside this process is told about a run -- deliberately not the
+// ledger, so a caller reads what a run decided rather than how it was written down.
 export interface LeadProjection {
   run_id: string;
   status: "running" | "waiting_approval" | "terminal";

@@ -67,6 +67,11 @@ jobs:
       - name: Run one-loop gate
         run: python scripts/check_one_loop.py
 
+      # No comment block over two lines in the agent layer. Prose that needs more
+      # room does not belong in the code.
+      - name: Run comment-style gate
+        run: python scripts/check_comment_style.py
+
   lint-frontend:
     name: Lint Frontend
     if: github.repository == 'Vigil-SOC/vigil'
@@ -385,6 +390,16 @@ jobs:
       - name: Initialize schema
         run: |
           python -c "from core.storage.connection import init_database; init_database()"
+
+      # The agent layer's tables are raw SQL with no ORM model, deliberately:
+      # Python makes two reads against the ledger and a model invites writes.
+      # init_database() builds from the models, so it creates none of them.
+      - name: Apply agent-layer schema
+        run: |
+          PGPASSWORD=test psql -h localhost -p 5432 -U test -d deeptempo_test \
+            -f infra/database/init/19_agent_ledger.sql \
+            -f infra/database/init/20_agent_directives.sql \
+            -f infra/database/init/21_agent_run_leases.sql
 
       - name: Run integration tests
         run: |

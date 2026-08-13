@@ -7,9 +7,8 @@ import type { Hypothesis } from "./types.js";
 // more often than about what it left open, and the limit cuts from the bottom.
 const SETTLED = ["handed_off", "proven", "disproven"];
 
-// What a later conversation needs from a hunt that already ran: what it was, how
-// it ended, and where each hypothesis landed. Not the evidence -- a follow-up that
-// wants a record queries for it rather than reading a summary of it.
+// What a later conversation needs from a finished hunt: what it was, how it ended,
+// where each hypothesis landed. Not the evidence -- a follow-up queries for that.
 export function huntNotes(state: State<HuntKinds>, runId: string): Notes {
   return async (limit) => {
     const events = await state.read(runId);
