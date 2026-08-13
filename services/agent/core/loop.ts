@@ -81,22 +81,21 @@ export interface Outcome<T> {
   calls: Attempt[];
   turns: number;
   rejected: string[];
-  // Where the workflow's own events go. The harness has already written its own
-  // by the time a turn ends, so this is the position after them.
-  from: number;
   reason: string;
 }
 
 // The workflow's events for this turn. The harness no longer hands its own over
 // to be written -- it appends them as it burns them, so a process killed
 // mid-turn cannot leave spend off the ledger, and a workflow cannot drop it.
+//
+// No position is offered: the store assigns one. A round of turns that ran
+// together would otherwise all commit from the position they each read first.
 export async function commitTurn<Kinds extends Record<string, unknown>>(
   state: State<Kinds>,
   runId: string,
-  outcome: Pick<Outcome<unknown>, "from">,
   own: readonly NewEvent<Kinds>[],
 ): Promise<number> {
-  return state.append(runId, outcome.from, own);
+  return state.append(runId, own);
 }
 
 // Derived from the call rather than generated, so a resumed run recognises the

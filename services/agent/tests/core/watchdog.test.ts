@@ -35,10 +35,10 @@ beforeEach(() => {
 // a resume reads what a resume actually reads, plus whatever else the case needs.
 async function opened(
   overrides: Record<string, unknown> | undefined,
-  ...rest: readonly Parameters<InProcessState["append"]>[2][number][]
+  ...rest: readonly Parameters<InProcessState["append"]>[1][number][]
 ): Promise<void> {
   const spec = await resolveSpec(startJob(overrides));
-  await state.append(RUN, 0, [
+  await state.append(RUN, [
     {
       run_id: RUN,
       run_kind: "hunt",
@@ -49,7 +49,7 @@ async function opened(
   ]);
 }
 
-function spend(): Parameters<InProcessState["append"]>[2][number] {
+function spend(): Parameters<InProcessState["append"]>[1][number] {
   return {
     run_id: RUN,
     run_kind: "hunt",
@@ -140,7 +140,7 @@ describe("a resumed run continues its budget rather than restarting it", () => {
   });
 });
 
-function checkpoint(id: string): Parameters<InProcessState["append"]>[2][number] {
+function checkpoint(id: string): Parameters<InProcessState["append"]>[1][number] {
   return {
     run_id: RUN,
     run_kind: "hunt",
@@ -149,7 +149,7 @@ function checkpoint(id: string): Parameters<InProcessState["append"]>[2][number]
   };
 }
 
-function resolution(id: string): Parameters<InProcessState["append"]>[2][number] {
+function resolution(id: string): Parameters<InProcessState["append"]>[1][number] {
   return {
     run_id: RUN,
     run_kind: "hunt",
@@ -279,7 +279,7 @@ describe("a run does not spend wall time while it is parked", () => {
     clock -= 2 * 3_600_000;
     await opened(undefined, checkpoint("apr-late"));
     clock += 2 * 3_600_000;
-    await state.append(RUN, (await state.latestSeq(RUN) ?? -1) + 1, [resolution("apr-late")]);
+    await state.append(RUN, [resolution("apr-late")]);
 
     await advance(state, leases, resumeJob(), scriptedHarness(CONCLUDE));
 

@@ -87,7 +87,7 @@ export class Journal {
     const batch = this.pending;
     this.pending = [];
     const owned = batch.map((body) => ({ ...body, run_id: this.runId, run_kind: this.runKind }) as NewEvent<HuntKinds>);
-    this.written = await this.state.append(this.runId, this.written, owned);
+    this.written = await this.state.append(this.runId, owned);
     this.events = await this.state.read(this.runId);
     this.view = null;
   }

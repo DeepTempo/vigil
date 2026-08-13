@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
-import { LedgerRepository, SeqConflict } from "../../ledger/repository.js";
-import type { NewEvent } from "../../contracts/events.js";
+import { LedgerRepository } from "../../ledger/repository.js";
+import type { NewEvent, RunKind } from "../../contracts/events.js";
 
 const pool = new pg.Pool({
   connectionString: process.env["DATABASE_URL"] ?? "postgres://vigil:vigil@localhost:55432/vigil_test",
@@ -43,7 +43,7 @@ function terminalEvent(id: string): NewEvent<Record<never, never>> {
 
 describe("the ledger is append-only and derives nothing", () => {
   it("assigns seq itself and reads events back in order", async () => {
-    const next = await ledger.append(runId, 0, [runEvent(runId), terminalEvent(runId)]);
+    const next = await ledger.append(runId, [runEvent(runId), terminalEvent(runId)]);
     expect(next).toBe(2);
 
     const events = await ledger.read(runId);
@@ -60,51 +60,39 @@ describe("the ledger is append-only and derives nothing", () => {
     expect(await ledger.terminal(randomUUID())).toBeNull();
   });
 
-  it("rolls back the whole batch when one event collides", async () => {
-    await ledger.append(runId, 0, [runEvent(runId)]);
-    await expect(ledger.append(runId, 0, [runEvent(runId), terminalEvent(runId)])).rejects.toBeInstanceOf(SeqConflict);
+  it("leaves nothing behind when a batch fails partway", async () => {
+    await ledger.append(runId, [runEvent(runId)]);
+    const bad = { ...terminalEvent(runId), run_kind: null as unknown as RunKind };
+    await expect(ledger.append(runId, [terminalEvent(runId), bad])).rejects.toThrow();
 
-    const events = await ledger.read(runId);
-    expect(events).toHaveLength(1);
+    expect(await ledger.read(runId)).toHaveLength(1);
   });
 });
 
-// The composite primary key is the single-mutator guarantee, not an index:
-// this is the test that says so.
-describe("concurrent writers are rejected by the composite primary key", () => {
-  it("lets exactly one of two writers take a ledger position", async () => {
-    await ledger.append(runId, 0, [runEvent(runId)]);
+// Positions come from the store, so concurrency is no longer something a caller
+// can get wrong. What the composite key still guarantees is that it never issues
+// one twice, which is what these assert.
+describe("concurrent writers each take their own position", () => {
+  it("gives two writers racing on one run distinct positions", async () => {
+    await ledger.append(runId, [runEvent(runId)]);
 
-    const results = await Promise.allSettled([
-      ledger.append(runId, 1, [terminalEvent(runId)]),
-      ledger.append(runId, 1, [terminalEvent(runId)]),
+    await Promise.all([
+      ledger.append(runId, [terminalEvent(runId)]),
+      ledger.append(runId, [terminalEvent(runId)]),
     ]);
 
-    const fulfilled = results.filter((r) => r.status === "fulfilled");
-    const rejected = results.filter((r) => r.status === "rejected");
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
-    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(SeqConflict);
-
-    const events = await ledger.read(runId);
-    expect(events.filter((event) => event.seq === 1)).toHaveLength(1);
+    expect((await ledger.read(runId)).map((event) => event.seq)).toEqual([0, 1, 2]);
   });
 
   it("holds under a wider race, with the table still holding one row per seq", async () => {
-    await ledger.append(runId, 0, [runEvent(runId)]);
+    await ledger.append(runId, [runEvent(runId)]);
 
-    const attempts = Array.from({ length: 8 }, () => ledger.append(runId, 1, [terminalEvent(runId)]));
-    const results = await Promise.allSettled(attempts);
+    await Promise.all(Array.from({ length: 8 }, () => ledger.append(runId, [terminalEvent(runId)])));
 
-    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    for (const result of results.filter((r) => r.status === "rejected")) {
-      expect((result as PromiseRejectedResult).reason).toBeInstanceOf(SeqConflict);
-    }
-
-    const { rows } = await pool.query<{ count: string }>(
-      "SELECT count(*) AS count FROM agent_events WHERE run_id = $1 AND seq = 1",
+    const { rows } = await pool.query<{ seqs: string; rows: string }>(
+      "SELECT count(DISTINCT seq) AS seqs, count(*) AS rows FROM agent_events WHERE run_id = $1",
       [runId],
     );
-    expect(rows[0]?.count).toBe("1");
+    expect(rows[0]).toEqual({ seqs: "9", rows: "9" });
   });
 });

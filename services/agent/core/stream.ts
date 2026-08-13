@@ -58,9 +58,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
   private readonly rejected: string[] = [];
   private readonly transcript: Message[] = [];
   private prefix: Prefix = { system: "", tools: [], recall: "" };
-  private folded = 0;
   private lastFold = 0;
-  private from = 0;
   private turns = 0;
   private capped = false;
   private prose = "";
@@ -74,7 +72,6 @@ class Run<T, Kinds extends Record<string, unknown>> {
   }
 
   async *execute(): TurnStream<T> {
-    this.from = ((await this.harness.state.latestSeq(this.cfg.run_id)) ?? -1) + 1;
     this.transcript.push(...(this.cfg.history ?? []));
 
     // Recalled once and rendered into the opening turn, never re-recalled per
@@ -209,7 +206,6 @@ class Run<T, Kinds extends Record<string, unknown>> {
   // summarising drops is the fold's to decide, and the edges are never dropped.
   private assembled(working = ""): Message[] {
     const { messages, folded } = assemble(this.prefix, this.cfg.task, this.transcript, working, summariseFolded);
-    this.folded += folded;
     this.lastFold = folded;
     return messages;
   }
@@ -278,12 +274,9 @@ class Run<T, Kinds extends Record<string, unknown>> {
 
   // Written as it happens rather than returned to be written: a workflow cannot
   // discard what is already on the ledger, and a process killed between the call
-  // and the workflow's conclusion has still recorded what it spent. A second
-  // writer on this run is discovered here, before the next call is paid for.
+  // and the workflow's conclusion has still recorded what it spent.
   private async write(event: NewEvent<Record<never, never>>): Promise<void> {
-    this.from = await this.harness.state.append(this.cfg.run_id, this.from, [
-      event as unknown as NewEvent<Kinds>,
-    ]);
+    await this.harness.state.append(this.cfg.run_id, [event as unknown as NewEvent<Kinds>]);
   }
 
   private exhausted(refusal: Refusal): Outcome<T> {
@@ -302,7 +295,6 @@ class Run<T, Kinds extends Record<string, unknown>> {
       calls: this.calls,
       turns: this.turns,
       rejected: this.rejected,
-      from: this.from,
       reason,
     };
   }

@@ -81,7 +81,7 @@ describe("a run reaches its workflow", () => {
   // A crash between the two appends must resume rather than collide on seq 0.
   it("is re-entrant against a ledger that already opened", async () => {
     const job = startJob(runId);
-    await ledger.append(runId, 0, [
+    await ledger.append(runId, [
       {
         run_id: runId,
         run_kind: "hunt",

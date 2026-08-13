@@ -12,12 +12,21 @@ export interface Memory {
   remember(note: string): Promise<void>;
 }
 
+// Snapshots are excluded unless asked for, and `since` reads only what is new.
+// The fold runs once per tool turn, so a full read there is quadratic in a run.
+export interface ReadOptions {
+  since?: number;
+  snapshots?: boolean;
+}
+
 // Deliberately the ledger repository's public surface, so Postgres satisfies it
-// with no adapter. seq is assigned here: no caller picks its position in the log.
+// with no adapter. The store assigns seq rather than the caller offering one: a
+// position read before a turn and written after it is a position two concurrent
+// turns both believe is theirs.
 export interface State<Kinds extends Record<string, unknown> = Record<never, never>> {
   latestSeq(runId: string): Promise<number | null>;
-  read(runId: string): Promise<AgentEvent<Kinds>[]>;
-  append(runId: string, from: number, events: readonly NewEvent<Kinds>[]): Promise<number>;
+  read(runId: string, opts?: ReadOptions): Promise<AgentEvent<Kinds>[]>;
+  append(runId: string, events: readonly NewEvent<Kinds>[]): Promise<number>;
   terminal(runId: string): Promise<TerminalPayload | null>;
 }
 

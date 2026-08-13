@@ -151,14 +151,13 @@ async function bare(state: State<TallyKinds>): Promise<unknown[]> {
 }
 
 async function approve(state: State<TallyKinds>, checkpoint_id: string): Promise<void> {
-  const from = ((await state.latestSeq(RUN)) ?? -1) + 1;
   const event: NewEvent<TallyKinds> = {
     run_id: RUN,
     run_kind: "tally",
     kind: "resolution",
     payload: { checkpoint_id, actor: "reviewer", answer: "approve", text: "go on", resolved_at: new Date().toISOString() },
   };
-  await state.append(RUN, from, [event]);
+  await state.append(RUN, [event]);
 }
 
 // A different State implementation rather than a second instance of the same
@@ -171,9 +170,9 @@ function counting(inner: State<TallyKinds>) {
       tally.reads += 1;
       return inner.read(runId);
     },
-    append: (runId, from, events) => {
+    append: (runId, events) => {
       tally.appends += 1;
-      return inner.append(runId, from, events);
+      return inner.append(runId, events);
     },
     terminal: (runId) => inner.terminal(runId),
   };

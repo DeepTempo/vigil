@@ -28,7 +28,7 @@ const answering = (...payloads: readonly ResolutionPayload[]): Answers =>
 
 async function ledgerWith(...events: readonly NewEvent<Record<never, never>>[]): Promise<InProcessState> {
   const state = new InProcessState();
-  if (events.length > 0) await state.append(RUN, 0, events);
+  if (events.length > 0) await state.append(RUN, events);
   return state;
 }
 

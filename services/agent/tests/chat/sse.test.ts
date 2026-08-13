@@ -20,7 +20,7 @@ function nameOf(event: ChatEvent): string {
 }
 
 const outcome = (reason: string): Outcome<string> =>
-  ({ status: "failed", value: null, reason, refusal: null, pending: null, capped: false, transcript: [], calls: [], turns: 1, rejected: [], from: 0 });
+  ({ status: "failed", value: null, reason, refusal: null, pending: null, capped: false, transcript: [], calls: [], turns: 1, rejected: [] });
 
 const EVERY: StreamEvent<string>[] = [
   { type: "text_delta", text: "hello" },

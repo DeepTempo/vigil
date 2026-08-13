@@ -6,9 +6,10 @@ import {
   type RunKind,
   type TerminalPayload,
 } from "../contracts/events.js";
+import type { ReadOptions } from "../core/seams.js";
 
-// A second writer reached the same ledger position. Not an error to retry
-// blindly: the run advanced underneath this worker, so it must re-read first.
+// Two writers reached the same ledger position. Retried once inside append, so
+// reaching a caller means the run is genuinely being driven twice.
 export class SeqConflict extends Error {
   constructor(readonly runId: string, readonly seq: number) {
     super(`ledger position ${runId}/${seq} is already taken`);
@@ -16,6 +17,9 @@ export class SeqConflict extends Error {
 }
 
 const UNIQUE_VIOLATION = "23505";
+
+const FOLD_COLUMNS = "run_id, run_kind, seq, ts, kind, payload, schema_version";
+const SNAPSHOT_COLUMNS = `${FOLD_COLUMNS}, snapshot`;
 
 // The single writer to agent_events. Assigns seq itself, so no
 // caller chooses its own position in the log.
@@ -30,28 +34,51 @@ export class LedgerRepository<Kinds extends Record<string, unknown> = Record<nev
     return result.rows[0]?.max ?? null;
   }
 
-  async read(runId: string): Promise<AgentEvent<Kinds>[]> {
+  // snapshot is selected only when asked for: it holds the digest presented to
+  // the lead, which the fold never reads and a long run measures in megabytes.
+  async read(runId: string, opts: ReadOptions = {}): Promise<AgentEvent<Kinds>[]> {
+    const columns = opts.snapshots === true ? SNAPSHOT_COLUMNS : FOLD_COLUMNS;
     const result = await this.pool.query(
-      "SELECT run_id, run_kind, seq, ts, kind, payload, snapshot, schema_version FROM agent_events WHERE run_id = $1 ORDER BY seq",
-      [runId],
+      `SELECT ${columns} FROM agent_events WHERE run_id = $1 AND seq >= $2 ORDER BY seq`,
+      [runId, opts.since ?? 0],
     );
     return result.rows.map(rowToEvent) as AgentEvent<Kinds>[];
   }
 
-  // One transaction, so a partially written iteration never lands. The events
-  // are numbered from `from`, which the caller read before deciding to append.
-  async append(runId: string, from: number, events: readonly NewEvent<Kinds>[]): Promise<number> {
-    if (events.length === 0) return from;
+  // One transaction, so a partially written iteration never lands. Each row takes
+  // the position after the highest the run holds, computed in the INSERT so that
+  // two turns writing at once serialise rather than collide.
+  async append(runId: string, events: readonly NewEvent<Kinds>[]): Promise<number> {
+    if (events.length === 0) return ((await this.latestSeq(runId)) ?? -1) + 1;
+    // The lock serialises this layer's writers, so a violation here means a writer
+    // that did not take it -- another process inserting directly. One retry covers
+    // the one that has since committed; a second means it is still going.
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.transact(runId, events);
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        if (attempt >= 1) throw new SeqConflict(runId, ((await this.latestSeq(runId)) ?? -1) + 1);
+      }
+    }
+  }
+
+  private async transact(runId: string, events: readonly NewEvent<Kinds>[]): Promise<number> {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      let seq = from;
-      for (const event of events) await insert(client, event, seq++);
+      // Writers for one run take their turn rather than racing and retrying: the
+      // lock is held to commit, so the max each reads is one nobody else is about
+      // to take. Held per run, so two runs never wait on each other.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", [runId]);
+      let seq = 0;
+      for (const event of events) seq = await insert(client, event);
       await client.query("COMMIT");
-      return seq;
+      return seq + 1;
     } catch (error) {
-      await client.query("ROLLBACK");
-      throw isUniqueViolation(error) ? new SeqConflict(runId, from) : error;
+      // The rollback's own failure would otherwise mask what actually went wrong.
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
     } finally {
       client.release();
     }
@@ -78,19 +105,25 @@ interface Insertable {
   snapshot?: unknown;
 }
 
-async function insert(client: PoolClient, event: Insertable, seq: number): Promise<void> {
-  await client.query(
-    "INSERT INTO agent_events (run_id, run_kind, seq, kind, payload, snapshot, schema_version) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+// The position is the subquery, not an argument: the composite key then rejects
+// a racing writer instead of two callers agreeing on a number that is already
+// taken. Earlier rows in this transaction are visible to later ones, so a batch
+// numbers itself contiguously.
+async function insert(client: PoolClient, event: Insertable): Promise<number> {
+  const result = await client.query<{ seq: number }>(
+    `INSERT INTO agent_events (run_id, run_kind, seq, kind, payload, snapshot, schema_version)
+     SELECT $1, $2, coalesce((SELECT max(seq) FROM agent_events WHERE run_id = $1), -1) + 1, $3, $4, $5, $6
+     RETURNING seq`,
     [
       event.run_id,
       event.run_kind,
-      seq,
       event.kind,
       JSON.stringify(event.payload),
       event.snapshot === undefined ? null : JSON.stringify(event.snapshot),
       EVENT_SCHEMA_VERSION,
     ],
   );
+  return Number(result.rows[0]?.seq);
 }
 
 function rowToEvent(row: Record<string, unknown>): AgentEvent<Record<never, never>> {
@@ -101,7 +134,8 @@ function rowToEvent(row: Record<string, unknown>): AgentEvent<Record<never, neve
     ts: (row["ts"] as Date).toISOString(),
     kind: String(row["kind"]),
     payload: row["payload"],
-    ...(row["snapshot"] === null ? {} : { snapshot: row["snapshot"] }),
+    // Absent when the fold's column list was used, null when the row carries none.
+    ...(row["snapshot"] === null || row["snapshot"] === undefined ? {} : { snapshot: row["snapshot"] }),
     schema_version: Number(row["schema_version"]),
   } as AgentEvent<Record<never, never>>;
 }

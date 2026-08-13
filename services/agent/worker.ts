@@ -239,8 +239,7 @@ async function abandonIfParkedOut(state: State, leases: Leases, job: RunJob, spe
   if (waited === null || waited < spec.budgets.max_park_ms) return false;
 
   const days = (waited / 86_400_000).toFixed(1);
-  const from = ((await state.latestSeq(job.run_id)) ?? -1) + 1;
-  await state.append(job.run_id, from, [
+  await state.append(job.run_id, [
     {
       run_id: job.run_id,
       run_kind: job.run_kind,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Pool } from "pg";
-import { LedgerRepository, SeqConflict } from "../../ledger/repository.js";
+import { LedgerRepository } from "../../ledger/repository.js";
 import { InProcessState } from "../../core/state.js";
 import { nullMemory } from "../../core/memory.js";
 import { localDispatch } from "../../core/dispatch.js";
@@ -17,7 +17,7 @@ void repository;
 describe("the State seam", () => {
   it("assigns seq itself and reads back in order", async () => {
     const state = new InProcessState();
-    const next = await state.append(RUN, 0, [
+    const next = await state.append(RUN, [
       { run_id: RUN, run_kind: "tally", kind: "terminal", payload: { outcome: "completed", reason: "done" } },
     ]);
 
@@ -27,7 +27,9 @@ describe("the State seam", () => {
     expect(await state.terminal(RUN)).toEqual({ outcome: "completed", reason: "done" });
   });
 
-  it("refuses a second writer at a position already taken", async () => {
+  // No caller offers a position, so two writers cannot claim one. What used to be
+  // a conflict is now the second writer simply landing after the first.
+  it("gives a second writer the position after the first", async () => {
     const state = new InProcessState();
     const event = {
       run_id: RUN,
@@ -35,15 +37,25 @@ describe("the State seam", () => {
       kind: "terminal" as const,
       payload: { outcome: "completed" as const, reason: "done" },
     };
-    await state.append(RUN, 0, [event]);
-    await expect(state.append(RUN, 0, [event])).rejects.toThrow(SeqConflict);
+    await state.append(RUN, [event]);
+    expect(await state.append(RUN, [event])).toBe(2);
+    expect((await state.read(RUN)).map((one) => one.seq)).toEqual([0, 1]);
+  });
+
+  // Interleaved rather than sequential: the seam is what a parallel round writes
+  // through, and it must not depend on the caller awaiting one append at a time.
+  it("numbers concurrent appends without collision", async () => {
+    const state = new InProcessState();
+    const event = { run_id: RUN, run_kind: "tally" as const, kind: "patch" as const, payload: { target: "t", id: "i", fields: {} } };
+    await Promise.all(Array.from({ length: 8 }, () => state.append(RUN, [event])));
+    expect((await state.read(RUN)).map((one) => one.seq)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
   });
 
   // A caller holding a read result must not be able to reach into the log; the
   // Postgres implementation hands out fresh rows, so this one hands out clones.
   it("does not hand out the log itself", async () => {
     const state = new InProcessState();
-    await state.append(RUN, 0, [
+    await state.append(RUN, [
       { run_id: RUN, run_kind: "tally", kind: "terminal", payload: { outcome: "completed", reason: "done" } },
     ]);
 

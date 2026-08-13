@@ -36,19 +36,19 @@ export async function runTally(harness: Harness<TallyKinds>, options: TallyOptio
     const outcome = await drain(streamTurn<Emission, TallyKinds>(config(options, count), harness));
 
     if (outcome.status === "waiting_approval") {
-      await commitTurn(harness.state, run_id, outcome, []);
+      await commitTurn(harness.state, run_id, []);
       return { ...(await report(harness, run_id)), status: "waiting_approval", reason: outcome.reason, pending: outcome.pending };
     }
 
     if (outcome.status === "failed" || outcome.value === null) {
-      await commitTurn(harness.state, run_id, outcome, []);
+      await commitTurn(harness.state, run_id, []);
       const status = outcome.refusal === null ? "failed" : "budget_exhausted";
       return end(harness, options, status, outcome.reason);
     }
 
     const reached = countFrom(outcome.calls, count);
     const applied: TallyPayload = { verb: outcome.value.verb, count: reached, note: outcome.value.note };
-    await commitTurn(harness.state, run_id, outcome, [{ run_id, run_kind: "tally", kind: "tally", payload: applied }]);
+    await commitTurn(harness.state, run_id, [{ run_id, run_kind: "tally", kind: "tally", payload: applied }]);
 
     // Termination is the workflow's, and it is a predicate the model does not
     // control: HALT is honoured, but reaching the target ends the run regardless.
@@ -71,7 +71,7 @@ async function open(harness: Harness<TallyKinds>, options: TallyOptions): Promis
       started_by: options.started_by ?? "tally",
     },
   };
-  await harness.state.append(options.run_id, 0, [event]);
+  await harness.state.append(options.run_id, [event]);
 }
 
 async function end(
@@ -80,9 +80,8 @@ async function end(
   outcome: RunOutcome,
   reason: string,
 ): Promise<TallyReport> {
-  const from = ((await harness.state.latestSeq(options.run_id)) ?? -1) + 1;
   const event: Event = { run_id: options.run_id, run_kind: "tally", kind: "terminal", payload: { outcome, reason } };
-  await harness.state.append(options.run_id, from, [event]);
+  await harness.state.append(options.run_id, [event]);
   return { ...(await report(harness, options.run_id)), status: outcome, reason, pending: null };
 }
 

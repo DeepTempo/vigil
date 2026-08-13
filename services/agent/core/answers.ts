@@ -62,10 +62,8 @@ export async function journalAnswers<K extends Record<string, unknown>>(
   const fresh = (await answers(runId)).filter((one) => raised.has(one.checkpoint_id) && !held.has(one.checkpoint_id));
   if (fresh.length === 0) return 0;
 
-  const from = ((await state.latestSeq(runId)) ?? -1) + 1;
   await state.append(
     runId,
-    from,
     fresh.map((payload) => ({ run_id: runId, run_kind: runKind, kind: "resolution", payload }) as NewEvent<K>),
   );
   return fresh.length;

@@ -47,7 +47,7 @@ gated("the fold survives the move to the harness ledger", () => {
   it.each(RUNS)("%s folds identically when read back through the State seam", async (name) => {
     const events = asHarnessEvents(gunzipped(`${name}.jsonl.gz`), name);
     const state = new InProcessState<HuntKinds>();
-    await state.append(name, 0, events.map(({ seq, ts, schema_version, ...rest }) => rest));
+    await state.append(name, events.map(({ seq, ts, schema_version, ...rest }) => rest));
 
     expect(comparable(await projectionOf(state, name))).toEqual(comparable(fold(events)));
   });

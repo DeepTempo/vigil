@@ -468,24 +468,36 @@ describe("commitTurn", () => {
     const own: NewEvent<Record<never, never>>[] = [
       { run_id: RUN, run_kind: "tally", kind: "terminal", payload: { outcome: "completed", reason: "done" } },
     ];
-    const next = await commitTurn(state, RUN, outcome, own);
+    const next = await commitTurn(state, RUN, own);
 
     const kinds = (await state.read(RUN)).map((event) => event.kind);
     expect(kinds).toEqual(["spend", "spend", "terminal"]);
     expect(next).toBe(3);
   });
 
-  // The harness's own events are already on the ledger by the time a turn ends,
-  // so from is the position after them rather than where the turn began.
-  it("starts after what the harness already wrote", async () => {
+  // The store assigns the position, so what a workflow commits lands after
+  // whatever reached the ledger while its turn was running, not on top of it.
+  it("numbers contiguously over what was already there", async () => {
     const state = new InProcessState();
     await seed(state, resolution("approve", "apr-unrelated"));
     const harness = harnessOf([{ calls: [] }, HALT], { state });
-    const outcome = await outcomeOf(config(), harness);
+    await outcomeOf(config(), harness);
 
-    expect(outcome.from).toBe(3);
-    await commitTurn(state, RUN, outcome, []);
+    await commitTurn(state, RUN, []);
     expect((await state.read(RUN)).map((event) => event.seq)).toEqual([0, 1, 2]);
+  });
+
+  // The case the parallel round hits: several turns burning against one run at
+  // once. Every position is the store's, so none of them collide.
+  it("gives concurrent turns distinct positions", async () => {
+    const state = new InProcessState();
+    const turns = Array.from({ length: 4 }, () =>
+      outcomeOf(config(), harnessOf([{ calls: [] }, HALT], { state })),
+    );
+    await Promise.all(turns);
+
+    const seqs = (await state.read(RUN)).map((event) => event.seq);
+    expect(seqs).toEqual([...seqs.keys()]);
   });
 });
 
@@ -612,5 +624,5 @@ function terminal(outcome: TerminalPayload["outcome"], reason: string): Seeded {
 
 async function seed(state: State, ...events: readonly Seeded[]): Promise<void> {
   const from = ((await state.latestSeq(RUN)) ?? -1) + 1;
-  await state.append(RUN, from, events);
+  await state.append(RUN, events);
 }

@@ -55,7 +55,7 @@ export async function* runChat(harness: Harness, options: ChatOptions): AsyncGen
   for (;;) {
     const next = await stream.next();
     if (next.done) {
-      await commitTurn(harness.state, options.run_id, next.value, []);
+      await commitTurn(harness.state, options.run_id, []);
       return reportOf(next.value);
     }
     yield next.value;
@@ -108,7 +108,7 @@ function event(options: ChatOptions, kind: Event["kind"], payload: Event["payloa
 // A conversation is the run, so it opens once and stays open. Nothing writes a
 // terminal: the person may always say something else.
 async function open(harness: Harness, options: ChatOptions): Promise<void> {
-  await harness.state.append(options.run_id, 0, [
+  await harness.state.append(options.run_id, [
     event(options, "run", {
       run_kind: KIND,
       spec: options.spec,

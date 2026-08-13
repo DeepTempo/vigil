@@ -68,7 +68,7 @@ export async function runCompose(harness: Harness<ComposeKinds>, options: Compos
     );
 
     if (outcome.status === "waiting_approval") {
-      await commitTurn(harness.state, run_id, outcome, []);
+      await commitTurn(harness.state, run_id, []);
       await mirror.phase(run_id, { ...at(phase, order), status: "pending_approval", ...idOf(outcome.pending), question: outcome.reason });
       return { ...progress(spec, ledger.done.size), status: "waiting_approval", reason: outcome.reason, pending: outcome.pending };
     }
@@ -76,13 +76,13 @@ export async function runCompose(harness: Harness<ComposeKinds>, options: Compos
     // A step that failed ends the run rather than being stepped over: the steps
     // after it were written expecting its answer, not expecting its absence.
     if (outcome.status === "failed" || outcome.value === null) {
-      await commitTurn(harness.state, run_id, outcome, [dispatched(options, phase, outcome.reason)]);
+      await commitTurn(harness.state, run_id, [dispatched(options, phase, outcome.reason)]);
       await mirror.phase(run_id, { ...at(phase, order), status: "failed", error: outcome.reason });
       const status: RunOutcome = outcome.refusal === null ? "failed" : "budget_exhausted";
       return end(harness, options, status, `${phase.name}: ${outcome.reason}`, mirror);
     }
 
-    await commitTurn(harness.state, run_id, outcome, [
+    await commitTurn(harness.state, run_id, [
       dispatched(options, phase, null),
       { run_id, run_kind: "compose", kind: "phase", payload: { phase_id: phase.id, agent: phase.agent, name: phase.name, answer: outcome.value } },
     ]);
@@ -257,7 +257,7 @@ async function open(harness: Harness<ComposeKinds>, options: ComposeOptions): Pr
       started_by: options.started_by ?? "compose",
     },
   };
-  await harness.state.append(options.run_id, 0, [event]);
+  await harness.state.append(options.run_id, [event]);
 }
 
 async function end(
@@ -282,5 +282,5 @@ function summarise(answers: readonly PhasePayload[]): string {
 
 // Appends outside a turn, where there is no outcome to commit alongside.
 async function append(state: State<ComposeKinds>, runId: string, events: readonly Event[]): Promise<number> {
-  return state.append(runId, ((await state.latestSeq(runId)) ?? -1) + 1, events);
+  return state.append(runId, events);
 }

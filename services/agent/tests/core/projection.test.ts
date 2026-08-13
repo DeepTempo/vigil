@@ -28,7 +28,7 @@ const ended = (outcome: "completed" | "failed", reason: string): New => event("t
 
 async function project(...events: readonly New[]) {
   const state = new InProcessState<LeadKinds>();
-  await state.append(RUN, 0, events);
+  await state.append(RUN, events);
   return leadProjection(RUN, await state.read(RUN));
 }
 
@@ -121,7 +121,7 @@ describe("the registry says which kinds can be read", () => {
 
   it("reaches the same answer through the registry as through the workflow", async () => {
     const state = new InProcessState<LeadKinds>();
-    await state.append(RUN, 0, [opened(), decided("EXAMINE")]);
+    await state.append(RUN, [opened(), decided("EXAMINE")]);
     const events = (await state.read(RUN)) as readonly AgentEvent<Record<never, never>>[];
 
     expect(archFor("investigate").projection!(RUN, events)).toEqual(leadProjection(RUN, await state.read(RUN)));
