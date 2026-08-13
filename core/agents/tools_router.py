@@ -7,7 +7,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
 
 from core.agents.internal_auth import authorise
@@ -73,10 +73,9 @@ async def _run(body: InvokeRequest) -> Tuple[Any, bool]:
 @router.post("/invoke")
 async def invoke(
     body: InvokeRequest,
-    request: Request,
     authorization: Optional[str] = Header(default=None),
 ) -> Dict[str, Any]:
-    authorise(request, authorization, "tool invocation")
+    authorise(authorization, "tool invocation")
 
     try:
         result, handled = await _run(body)

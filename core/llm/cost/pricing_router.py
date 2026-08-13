@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header
 
 from core.agents.internal_auth import authorise
 from core.routing import Auth, RouterMeta
@@ -35,11 +35,10 @@ logger = logging.getLogger(__name__)
 async def rates(
     model_id: str,
     provider_type: str,
-    request: Request,
     authorization: Optional[str] = Header(default=None),
 ) -> Dict[str, Any]:
     """Per-token USD rates for one model, plus how confidently they resolved."""
-    authorise(request, authorization, "pricing lookup")
+    authorise(authorization, "pricing lookup")
 
     from core.llm.providers.registry import get_registry
 

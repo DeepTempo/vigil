@@ -79,22 +79,17 @@ def clean_tables():
     _clear()
 
 
-class _Loopback:
-    """Just enough Request for ``authorise`` to let a call through."""
-
-    class _Client:
-        host = "127.0.0.1"
-
-    client = _Client()
-
-
 @pytest.fixture
 def internal(monkeypatch):
-    """Answer the shared-secret check so the bridge is callable directly."""
+    """Answer the shared-secret check so the bridge is callable directly.
+
+    The token is the whole of it since ADR 0014 -- ``authorise`` no longer reads
+    the request, so there is no loopback stand-in left to build.
+    """
     from core.agents import internal_auth
 
     monkeypatch.setattr(internal_auth, "get_secret", lambda name: "test-token")
-    return _Loopback(), "Bearer test-token"
+    return "Bearer test-token"
 
 
 def _run(workflow_id: str = "test-phase-001") -> str:
@@ -134,9 +129,9 @@ class TestPhaseApprovalAcrossTheBridge:
         from core.workflows.workflow_run_service import \
             get_workflow_run_service
 
-        request, token = internal
+        token = internal
         run_id = _run()
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), request, token)
+        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
 
         run = get_workflow_run_service().get_run(run_id)
         assert run["status"] == "paused"
@@ -156,10 +151,10 @@ class TestPhaseApprovalAcrossTheBridge:
                                                     get_approval_service)
         from core.workflows.run_bridge_router import record_phase
 
-        request, token = internal
+        token = internal
         run_id = _run()
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), request, token)
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), request, token)
+        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
+        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
 
         pending = get_approval_service().list_actions(
             status=ActionStatus.PENDING, workflow_run_id=run_id
@@ -174,9 +169,9 @@ class TestPhaseApprovalAcrossTheBridge:
         from core.workflows.run_bridge_router import (list_decisions,
                                                       record_phase)
 
-        request, token = internal
+        token = internal
         run_id = _run()
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), request, token)
+        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
 
         service = get_approval_service()
         action = service.list_actions(
@@ -184,7 +179,7 @@ class TestPhaseApprovalAcrossTheBridge:
         )[0]
         service.approve_action(action.action_id, approved_by="tester")
 
-        decisions = list_decisions(run_id, request, token).decisions
+        decisions = list_decisions(run_id, token).decisions
         assert len(decisions) == 1
         assert decisions[0].checkpoint_id == "chk-phase-2"
         assert decisions[0].answer == "approve"
@@ -196,9 +191,9 @@ class TestPhaseApprovalAcrossTheBridge:
         from core.workflows.run_bridge_router import (list_decisions,
                                                       record_phase)
 
-        request, token = internal
+        token = internal
         run_id = _run()
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), request, token)
+        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
 
         service = get_approval_service()
         action = service.list_actions(
@@ -206,7 +201,7 @@ class TestPhaseApprovalAcrossTheBridge:
         )[0]
         service.reject_action(action.action_id, reason="too risky", rejected_by="tester")
 
-        decisions = list_decisions(run_id, request, token).decisions
+        decisions = list_decisions(run_id, token).decisions
         assert len(decisions) == 1
         assert decisions[0].answer == "reject"
         assert decisions[0].text == "too risky"
@@ -217,20 +212,20 @@ class TestPhaseApprovalAcrossTheBridge:
         from core.workflows.run_bridge_router import (list_decisions,
                                                       record_phase)
 
-        request, token = internal
+        token = internal
         run_id = _run()
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), request, token)
+        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
 
-        assert list_decisions(run_id, request, token).decisions == []
+        assert list_decisions(run_id, token).decisions == []
 
     def test_a_completed_phase_leaves_the_run_running(self, clean_tables, internal):
         from core.workflows.run_bridge_router import record_phase
         from core.workflows.workflow_run_service import \
             get_workflow_run_service
 
-        request, token = internal
+        token = internal
         run_id = _run()
-        record_phase(run_id, _update("completed"), request, token)
+        record_phase(run_id, _update("completed"), token)
 
         run_service = get_workflow_run_service()
         assert run_service.get_run(run_id)["status"] == "running"
@@ -244,12 +239,11 @@ class TestPhaseApprovalAcrossTheBridge:
         from core.workflows.workflow_run_service import \
             get_workflow_run_service
 
-        request, token = internal
+        token = internal
         run_id = _run()
         record_terminal(
             run_id,
             TerminalUpdate(outcome="completed", reason="all 2 phases ran", summary="s"),
-            request,
             token,
         )
 

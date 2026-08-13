@@ -193,6 +193,12 @@ agentWorker:
       # Only used when redis.enabled=false AND redis.bitnami.enabled=false.
       # host:port form without scheme or password.
       redisAddress: ""
+      # Which Redis database to count the list in. Empty means the one the chart's
+      # own Redis is addressed on, so the scaler and the worker cannot disagree.
+      # Set it only alongside redis.external.url, to whatever database that URL
+      # names — a scaler counting the wrong one reads an empty queue and holds the
+      # Deployment at its floor while runs pile up.
+      databaseIndex: ""
   podAnnotations: {}
   nodeSelector: {}
   tolerations: []
@@ -224,20 +230,17 @@ agentServe:
     limits:
       cpu: 1000m
       memory: 1Gi
-  autoscaling:
-    # Off, and not merely unconfigured. This process holds SSE streams open for
-    # minutes while they wait on a model, so an idle-looking box may be holding
-    # hundreds of live conversations -- CPU reads near zero and an HPA would
-    # scale it down mid-answer. #635 asks that worker and serve scale
-    # independently, which separate replica counts already satisfy honestly.
-    #
-    # The signal that would work is concurrent connections, which means exporting
-    # a custom metric and a metrics pipeline to read it. That is its own piece of
-    # work; turning this on before then would be worse than leaving it off.
-    enabled: false
-    minReplicas: 2
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 70
+  # No autoscaling block, and its absence is the decision rather than an omission.
+  # This process holds SSE streams open for minutes while they wait on a model, so
+  # an idle-looking box may be carrying hundreds of live conversations -- CPU reads
+  # near zero and an HPA would scale it down mid-answer. #635 asks that worker and
+  # serve scale independently, which separate replica counts satisfy honestly.
+  #
+  # The signal that would work is concurrent connections, which means exporting a
+  # custom metric and a pipeline to read it: its own piece of work. Left out
+  # entirely rather than shipped as `enabled: false`, because a flag that renders
+  # no HorizontalPodAutoscaler is a flag that quietly scales you to one replica
+  # when somebody believes it and turns it on.
   podAnnotations: {}
   nodeSelector: {}
   tolerations: []

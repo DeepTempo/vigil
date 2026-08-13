@@ -21,9 +21,12 @@ metadata:
   labels:
     {{- include "vigil.componentLabels" (dict "context" . "component" "agent-serve") | nindent 4 }}
 spec:
-  {{- if not .Values.agentServe.autoscaling.enabled }}
+  {{- /* Unconditional, unlike agent-worker's. There is no agent-serve HPA to
+         hand the replica count to and deliberately so — see values.yaml, which
+         says why an autoscaler is the wrong instrument for a process holding SSE
+         streams. Guarding this on an autoscaling flag that renders no autoscaler
+         would silently drop the Deployment to Kubernetes' default of one. */}}
   replicas: {{ .Values.agentServe.replicaCount }}
-  {{- end }}
   selector:
     matchLabels:
       {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-serve") | nindent 6 }}
@@ -62,8 +65,8 @@ spec:
             - name: AGENT_HTTP_PORT
               value: {{ .Values.agentServe.service.port | toString | quote }}
             {{- /* vigil.env supplies POSTGRES_* and REDIS_URL. Serve ignores
-                   REDIS_URL -- it never touches the queue -- but the block is
-                   shared, and a variable it does not read costs nothing. */}}
+                   every Redis variable -- it never touches the queue -- but the
+                   block is shared, and one it does not read costs nothing. */}}
             {{- include "vigil.env" . | nindent 12 }}
             {{- with .Values.agentServe.extraEnv }}
             {{- toYaml . | nindent 12 }}

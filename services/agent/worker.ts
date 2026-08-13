@@ -5,7 +5,7 @@ import pg from "pg";
 import { archFor } from "./arch/registry.js";
 import { httpAnswers, journalAnswers, noAnswers, type Answers } from "./core/answers.js";
 import { harnessFor, internalToken, type HarnessFactory } from "./harness.js";
-import { poolConfig } from "./core/db.js";
+import { poolConfig, redisConfig } from "./core/db.js";
 import { healthPort, healthServer } from "./core/health.js";
 import { jobIdFor, RUN_QUEUE, JOB_SCHEMA_VERSION, type RunJob } from "./contracts/job.js";
 import type { AgentEvent, CheckpointPayload, ResolutionPayload, RunKind, RunPayload } from "./contracts/events.js";
@@ -179,7 +179,7 @@ export async function advance(
     await settle(state, leases, job, spec, owner);
   } catch (error) {
     await abandon(job, error);
-    await forget(state, leases, job.run_id);
+    await forget(state, leases, job.run_id, owner);
     throw error;
   } finally {
     clearInterval(renewing);
@@ -191,10 +191,22 @@ export async function advance(
 // being swept forever, throwing on every attempt. Dropped here because this is the
 // only place that knows the ledger stayed empty.
 //
-// A failure with a ledger behind it keeps its row: that run is real and unfinished,
-// and the sweeper reclaiming it is exactly right.
-async function forget(state: State, leases: Leases, runId: string): Promise<void> {
-  if ((await state.latestSeq(runId)) === null) await leases.finish(runId);
+// A failure with a ledger behind it keeps its row -- that run is real and
+// unfinished -- but hands the claim back rather than sitting on it. Holding it
+// would defeat the retry policy the failure is meant to reach: a lease lasts
+// LEASE_TTL_MS and the first retry lands seconds later, so claim() would find the
+// row still owned, refuse it, and advance() would return having done nothing --
+// which BullMQ records as a *success*, retiring the job with the run stalled until
+// the sweeper notices. Released, the retry takes exactly the path a resume takes.
+//
+// Safe against a lost lease: release() is scoped to this owner, so a worker that
+// was already reclaimed matches no row and displaces nobody.
+async function forget(state: State, leases: Leases, runId: string, owner: string): Promise<void> {
+  if ((await state.latestSeq(runId)) === null) {
+    await leases.finish(runId);
+    return;
+  }
+  await leases.release(runId, owner, 0);
 }
 
 export const LOST_LEASE = "the lease was reclaimed by another worker";
@@ -274,9 +286,6 @@ async function reap(leases: Leases, runId: string): Promise<void> {
   await leases.finish(runId);
 }
 
-function redisUrl(): URL {
-  return new URL(process.env["REDIS_URL"] ?? "redis://localhost:6379/0");
-}
 
 // A run whose claim has lapsed, put back on the queue. Two cases reach here and
 // neither needs telling apart: a worker died holding the run, or a parked run's
@@ -303,6 +312,10 @@ export interface Enqueue {
 // Retrying is safe rather than merely tolerable: advance() checks terminal first
 // and leases.claim is a conditional UPDATE, so a second attempt takes exactly the
 // path a sweeper resume takes.
+//
+// It also has to be *reachable*, which is forget()'s half of this: a retry lands
+// seconds after the failure and a lease lasts LEASE_TTL_MS, so a run whose claim
+// was still held would find the row taken and quietly do nothing.
 export const RUN_ATTEMPTS = 3;
 export const RUN_BACKOFF = { type: "exponential", delay: 5_000 } as const;
 
@@ -365,13 +378,7 @@ export function startWorker(): Running {
   const pool = new pg.Pool(poolConfig());
   const ledger = new LedgerRepository(pool);
   const leases = new LeaseRepository(pool);
-  const url = redisUrl();
-  const connection = {
-    host: url.hostname,
-    port: Number(url.port || 6379),
-    db: Number(url.pathname.slice(1) || 0),
-    ...(url.password === "" ? {} : { password: url.password }),
-  };
+  const connection = redisConfig();
 
   // Long, because the lease is the liveness signal and a second clock that
   // disagreed with it would either double-process a run or wedge one. BullMQ's

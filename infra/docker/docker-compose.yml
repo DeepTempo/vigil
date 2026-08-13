@@ -291,10 +291,11 @@ services:
     # An SSE stream can sit on one model call for minutes; the chart's
     # terminationGracePeriodSeconds says the same thing.
     stop_grace_period: 120s
+    # Postgres only. Serve reads and writes the ledger and never touches the
+    # queue, which is the reason it is a separate service at all; waiting on
+    # Redis would say otherwise.
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     restart: unless-stopped
     networks:

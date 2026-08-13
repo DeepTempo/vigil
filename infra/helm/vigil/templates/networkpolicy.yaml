@@ -224,6 +224,22 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "db-init") | nindent 14 }}
+        {{- /* Both agent components, and both genuinely need it: the worker
+               writes the ledger and takes the run lease, and serve reads and
+               writes the ledger too — its readiness probe *is* a query, so
+               leaving it out here does not degrade the Deployment, it stops it
+               rolling out at all. ADR 0014 leans on this file, which makes an
+               omission here the decision failing rather than a policy gap. */}}
+        {{- if .Values.agentWorker.enabled }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-worker") | nindent 14 }}
+        {{- end }}
+        {{- if .Values.agentServe.enabled }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-serve") | nindent 14 }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: {{ .Values.postgresql.service.port }}
@@ -254,6 +270,15 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "llm-worker") | nindent 14 }}
+        {{- /* The worker only: agent-serve answers HTTP off the ledger and never
+               touches the queue, which is the whole reason the two are separate
+               Deployments. Without this rule the worker's readiness never passes
+               and the agent-runs queue is drained by nobody. */}}
+        {{- if .Values.agentWorker.enabled }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-worker") | nindent 14 }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: {{ .Values.redis.service.port }}

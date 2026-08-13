@@ -15,7 +15,8 @@ def client(monkeypatch):
     monkeypatch.setattr(internal_auth, "get_secret", lambda name: "shhh")
     app = FastAPI()
     app.include_router(tools_router.router, prefix=tools_router.ROUTER_META.prefix)
-    return TestClient(app, client=("127.0.0.1", 50000))
+    # No `client=` address: nothing reads the peer since ADR 0014.
+    return TestClient(app)
 
 
 def _answers(monkeypatch, result, handled=True):

@@ -1,7 +1,8 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import pg from "pg";
 import { archFor, registeredKinds } from "./arch/registry.js";
-import { handleHealth, type Ready } from "./core/health.js";
+import { cachedReady, handleHealth, type Ready } from "./core/health.js";
 import { LedgerRepository } from "./ledger/repository.js";
 import { poolConfig } from "./core/db.js";
 import type { RunKind } from "./contracts/events.js";
@@ -90,9 +91,16 @@ export async function streamChat(state: State, request: ChatRequest, res: Server
 // instead, which is what "same box" was standing in for.
 //
 // An unset token refuses everything, and that is now the only gate in the process.
+//
+// Compared over a digest rather than with ===, for the reason Python's authorise
+// gives: === returns on the first differing byte and the header is the caller's to
+// choose. Hashed rather than compared raw because timingSafeEqual throws on a
+// length mismatch, and the throw would leak the length it was meant to hide.
 function authorised(req: IncomingMessage): boolean {
   const expected = process.env["AGENT_INTERNAL_TOKEN"] ?? process.env["VIGIL_TOOLS_TOKEN"] ?? "";
-  return expected !== "" && req.headers.authorization === `Bearer ${expected}`;
+  if (expected === "") return false;
+  const digest = (value: string): Buffer => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(req.headers.authorization ?? ""), digest(`Bearer ${expected}`));
 }
 
 async function body(req: IncomingMessage): Promise<string> {
@@ -184,7 +192,10 @@ export function serveReady(pool: pg.Pool): Ready {
 // the worker now, and a pool cannot be shared across processes.
 if (process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "")) {
   const pool = new pg.Pool(poolConfig());
-  const serving = chatServer(new LedgerRepository(pool), serveReady(pool)).listen(chatPort());
+  // Cached: /readyz is answered before the token check, so an unauthenticated
+  // caller can ask as often as it likes and each ask would otherwise take a
+  // connection out of the pool this process serves chat from.
+  const serving = chatServer(new LedgerRepository(pool), cachedReady(serveReady(pool))).listen(chatPort());
   const stop = () => {
     serving.close();
     void pool.end();

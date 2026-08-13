@@ -32,7 +32,8 @@ RUN_KINDS = ("hunt", "investigate", "compose", "chat")
 #
 # Retrying is safe rather than merely tolerable: advance() checks terminal first and
 # leases.claim is a conditional UPDATE, so a second attempt takes exactly the path a
-# watchdog resume takes.
+# watchdog resume takes -- and it is reachable because a failed attempt hands its
+# lease back (services/agent/worker.ts::forget) instead of holding it out the TTL.
 #
 # The consumer reads these off the job, so the Node worker honours what is set here.
 RUN_ATTEMPTS = 3

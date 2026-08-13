@@ -49,9 +49,12 @@ spec:
         {{- end }}
         listName: {{ .Values.agentWorker.autoscaling.keda.queueName | default "bull:agent-runs:wait" | quote }}
         listLength: {{ .Values.agentWorker.autoscaling.keda.listLength | default "5" | quote }}
-        # Explicit rather than relying on KEDA's default of 0: the worker takes
-        # its database index from REDIS_URL's path, so the two must agree.
-        databaseIndex: "0"
+        # Explicit rather than relying on KEDA's default of 0: a scaler counting a
+        # different database than the worker drains reads an empty queue forever.
+        # Defaulted from the one helper the URL and REDIS_DB also come from, so
+        # the three cannot drift; the value exists for an external Redis, whose
+        # database this chart does not choose.
+        databaseIndex: {{ .Values.agentWorker.autoscaling.keda.databaseIndex | default (include "vigil.redis.database" .) | quote }}
       {{- if and .Values.redis.bitnami.enabled .Values.redis.bitnami.auth.enabled }}
       authenticationRef:
         name: {{ include "vigil.agentWorker.fullname" . }}-keda-auth

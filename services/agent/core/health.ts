@@ -54,13 +54,39 @@ export async function handleHealth(req: IncomingMessage, res: ServerResponse, re
   return false;
 }
 
+// How long an answer stands before the dependency is asked again. /readyz is
+// unauthenticated -- a kubelet carries no token -- and the chart's agent-serve
+// policy admits probes from any namespace by default, so any pod in the cluster
+// can drive this. A kubelet asks every ten seconds; anything faster than this is
+// not a probe, and it should not reach the pool.
+const CACHE_MS = 1_000;
+
+// Answers from the last window rather than asking again. The check itself is the
+// thing worth protecting: `SELECT 1` is cheap once and a connection per caller
+// when it is not rate-limited.
+export function cachedReady(check: Ready, windowMs = CACHE_MS): Ready {
+  let answered = -Infinity;
+  let last: Promise<boolean> | null = null;
+  return () => {
+    const now = Date.now();
+    if (last === null || now - answered >= windowMs) {
+      answered = now;
+      // Held, not awaited: concurrent probes share one query rather than each
+      // opening their own, which is the case this exists for.
+      last = within(check);
+    }
+    return last;
+  };
+}
+
 // The worker consumes a queue and serves nothing else, so it gets a listener for
 // these two routes alone. Cheaper than an exec probe, which pays Node's startup
 // every ten seconds per replica to learn the same thing.
 export function healthServer(ready: Ready): Server {
+  const answer = cachedReady(ready);
   return createServer((req, res) => {
     void (async () => {
-      if (await handleHealth(req, res, ready)) return;
+      if (await handleHealth(req, res, answer)) return;
       res.writeHead(404, { "content-type": "text/plain" });
       res.end("not found");
     })();

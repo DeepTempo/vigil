@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
 
 from core.agents.internal_auth import authorise
@@ -69,12 +69,11 @@ class Decisions(BaseModel):
 def record_phase(
     run_id: str,
     update: PhaseUpdate,
-    request: Request,
     authorization: Optional[str] = Header(default=None),
 ) -> None:
     from core.workflows.workflow_run_service import get_workflow_run_service
 
-    authorise(request, authorization, "run progress")
+    authorise(authorization, "run progress")
 
     run_service = get_workflow_run_service()
     now = datetime.utcnow()
@@ -103,12 +102,11 @@ def record_phase(
 def record_terminal(
     run_id: str,
     update: TerminalUpdate,
-    request: Request,
     authorization: Optional[str] = Header(default=None),
 ) -> None:
     from core.workflows.workflow_run_service import get_workflow_run_service
 
-    authorise(request, authorization, "run outcome")
+    authorise(authorization, "run outcome")
 
     get_workflow_run_service().finalize_run(
         run_id,
@@ -123,13 +121,12 @@ def record_terminal(
 @router.get("/{run_id}/decisions", response_model=Decisions)
 def list_decisions(
     run_id: str,
-    request: Request,
     authorization: Optional[str] = Header(default=None),
 ) -> Decisions:
     from core.response.approval_service import (ActionStatus,
                                                 get_approval_service)
 
-    authorise(request, authorization, "run decisions")
+    authorise(authorization, "run decisions")
 
     service = get_approval_service()
     decided: List[Decision] = []

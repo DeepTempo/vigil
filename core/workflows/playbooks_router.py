@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from core.agents.internal_auth import authorise
@@ -35,10 +35,9 @@ class ResolvedPlaybook(BaseModel):
 @router.get("/{workflow_id}", response_model=ResolvedPlaybook)
 def get_playbook(
     workflow_id: str,
-    request: Request,
     authorization: Optional[str] = Header(default=None),
 ) -> ResolvedPlaybook:
-    authorise(request, authorization, "playbook resolution")
+    authorise(authorization, "playbook resolution")
 
     try:
         playbook, config = resolve(workflow_id)

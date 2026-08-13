@@ -57,8 +57,11 @@ spec:
                   key: {{ include "vigil.postgres.passwordSecretKey" . }}
             {{- /* vigil.env supplies POSTGRES_* and REDIS_URL. The worker reads
                    the discrete POSTGRES_* vars rather than a DSN, because
-                   _env.tpl deliberately ships no DATABASE_URL. */}}
+                   _env.tpl deliberately ships no DATABASE_URL — and the discrete
+                   REDIS_* below for the same reason, since a $(REDIS_PASSWORD)
+                   substituted into a URL is not URL-encoded. */}}
             {{- include "vigil.env" . | nindent 12 }}
+            {{- include "vigil.agentRedisEnv" . | nindent 12 }}
             {{- with .Values.agentWorker.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
