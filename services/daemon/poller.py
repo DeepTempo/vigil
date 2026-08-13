@@ -305,9 +305,9 @@ class DataPoller:
         for event in findings:
             finding = self._splunk_event_to_finding(event)
             if finding and not await self._splunk_dedup.is_processed(finding['finding_id']):
-                await self._enqueue_finding(finding, "splunk")
-                await self._splunk_dedup.mark_processed(finding['finding_id'])
-                new_count += 1
+                if await self._enqueue_finding(finding, "splunk"):
+                    await self._splunk_dedup.mark_processed(finding['finding_id'])
+                    new_count += 1
         
         if new_count > 0:
             logger.info(f"Polled {new_count} new findings from Splunk")
@@ -417,9 +417,9 @@ class DataPoller:
             for detection in detections:
                 finding = self._crowdstrike_detection_to_finding(detection)
                 if finding and not await self._crowdstrike_dedup.is_processed(finding['finding_id']):
-                    await self._enqueue_finding(finding, "crowdstrike")
-                    await self._crowdstrike_dedup.mark_processed(finding['finding_id'])
-                    new_count += 1
+                    if await self._enqueue_finding(finding, "crowdstrike"):
+                        await self._crowdstrike_dedup.mark_processed(finding['finding_id'])
+                        new_count += 1
             
             if new_count > 0:
                 logger.info(f"Polled {new_count} new detections from CrowdStrike")
@@ -533,9 +533,9 @@ class DataPoller:
                     
                     if not await self._webhook_dedup.is_processed(finding_id):
                         finding_data['data_source'] = finding_data.get('data_source', 'webhook')
-                        await self._enqueue_finding(finding_data, "webhook")
-                        await self._webhook_dedup.mark_processed(finding_id)
-                        count += 1
+                        if await self._enqueue_finding(finding_data, "webhook"):
+                            await self._webhook_dedup.mark_processed(finding_id)
+                            count += 1
                 
                 self.stats["webhook_findings"] += count
                 return web.json_response({"status": "ok", "ingested": count})
@@ -566,8 +566,13 @@ class DataPoller:
         await runner.cleanup()
         logger.info("Webhook server stopped")
     
-    async def _enqueue_finding(self, finding: Dict[str, Any], source: str):
-        """Add finding to output queue for processing."""
+    async def _enqueue_finding(self, finding: Dict[str, Any], source: str) -> bool:
+        """Hand a finding off for processing. True if it was accepted.
+
+        Callers must not mark a finding processed unless this returns True:
+        the dedup key is what makes a retry possible, so marking a finding that
+        was never stored drops it permanently.
+        """
         if self._output_queue:
             await self._output_queue.put({
                 "type": "finding",
@@ -576,15 +581,25 @@ class DataPoller:
                 "timestamp": datetime.utcnow().isoformat()
             })
             logger.debug(f"Enqueued finding {finding.get('finding_id')} from {source}")
-        else:
-            # No queue, store directly
-            if self._data_service:
-                try:
-                    from core.ingestion.ingestion_service import IngestionService
-                    ingestion = IngestionService()
-                    ingestion.ingest_finding(finding)
-                except Exception as e:
-                    logger.error(f"Failed to store finding: {e}")
+            return True
+
+        if not self._data_service:
+            logger.error(
+                "Dropping finding %s from %s: no output queue and no data service",
+                finding.get("finding_id"), source,
+            )
+            return False
+
+        try:
+            from core.ingestion.ingestion_service import IngestionService
+            IngestionService().ingest_finding(finding)
+            return True
+        except Exception:
+            logger.exception(
+                "Failed to store finding %s from %s; leaving it unmarked to retry",
+                finding.get("finding_id"), source,
+            )
+            return False
     
     async def _poll_azure_sentinel_loop(self, shutdown_event: asyncio.Event):
         """Poll Azure Sentinel for new incidents on interval."""
@@ -628,6 +643,7 @@ class DataPoller:
                 logger.error(f"Azure Sentinel ingestion failed: {result.get('errors')}")
         except Exception as e:
             logger.error(f"Error polling Azure Sentinel: {e}")
+            raise
     
     async def _poll_aws_security_hub_loop(self, shutdown_event: asyncio.Event):
         """Poll AWS Security Hub for new findings on interval."""
@@ -671,6 +687,7 @@ class DataPoller:
                 logger.error(f"AWS Security Hub ingestion failed: {result.get('errors')}")
         except Exception as e:
             logger.error(f"Error polling AWS Security Hub: {e}")
+            raise
     
     async def _poll_microsoft_defender_loop(self, shutdown_event: asyncio.Event):
         """Poll Microsoft Defender for new alerts on interval."""
@@ -714,6 +731,7 @@ class DataPoller:
                 logger.error(f"Microsoft Defender ingestion failed: {result.get('errors')}")
         except Exception as e:
             logger.error(f"Error polling Microsoft Defender: {e}")
+            raise
 
     async def _poll_elastic_loop(self, shutdown_event: asyncio.Event):
         """Poll Elastic Security for new detection alerts on interval."""
@@ -756,9 +774,9 @@ class DataPoller:
             for alert in alerts:
                 finding = self._elastic_service.transform_alert_to_finding(alert)
                 if finding and not await self._elastic_dedup.is_processed(finding["finding_id"]):
-                    await self._enqueue_finding(finding, "elastic")
-                    await self._elastic_dedup.mark_processed(finding["finding_id"])
-                    new_count += 1
+                    if await self._enqueue_finding(finding, "elastic"):
+                        await self._elastic_dedup.mark_processed(finding["finding_id"])
+                        new_count += 1
 
             if new_count > 0:
                 logger.info(f"Polled {new_count} new findings from Elastic Security")
