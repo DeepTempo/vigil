@@ -9,15 +9,20 @@ All mutating endpoints require an authenticated admin
 (``integrations.write`` permission).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 import logging
 
-from services.api.middleware.auth import get_current_active_user
-from core.auth.auth_service import AuthService
-from core.storage.models import User
-from core.integrations.integration_compatibility_service import get_compatibility_service
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from core.integrations.integration_compatibility_service import (
+    get_compatibility_service,
+)
 from core.routing import Auth, RouterMeta
+from core.storage.models import User
+from services.api.middleware.auth import (
+    get_current_active_user,
+    require_integrations_admin,
+)
 
 router = APIRouter()
 
@@ -33,19 +38,6 @@ class IntegrationActionRequest(BaseModel):
     """Request body for install/upgrade/uninstall of a known integration."""
 
     integration_id: str
-
-
-def _require_integrations_admin(current_user: User) -> None:
-    """Raise 403 unless the user has ``integrations.write``.
-
-    Centralised so all three mutating endpoints share the exact same
-    check.
-    """
-    if not AuthService.check_permission(current_user.user_id, "integrations.write"):
-        raise HTTPException(
-            status_code=403,
-            detail="Permission denied: integrations.write required",
-        )
 
 
 @router.get("/compatibility/status")
@@ -93,7 +85,7 @@ async def install_package(
     integration registry. There is no way for the client to specify
     a package name, URL, or version directly.
     """
-    _require_integrations_admin(current_user)
+    require_integrations_admin(current_user)
 
     service = get_compatibility_service()
     allowed = service.get_allowed_integration_ids()
@@ -128,7 +120,7 @@ async def upgrade_package(
     current_user: User = Depends(get_current_active_user),
 ):
     """Upgrade an integration's pinned package."""
-    _require_integrations_admin(current_user)
+    require_integrations_admin(current_user)
 
     service = get_compatibility_service()
     if request.integration_id not in service.get_allowed_integration_ids():
@@ -159,7 +151,7 @@ async def uninstall_package(
     current_user: User = Depends(get_current_active_user),
 ):
     """Uninstall the package backing a known integration."""
-    _require_integrations_admin(current_user)
+    require_integrations_admin(current_user)
 
     service = get_compatibility_service()
     if request.integration_id not in service.get_allowed_integration_ids():
