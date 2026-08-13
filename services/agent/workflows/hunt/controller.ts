@@ -287,6 +287,7 @@ export async function startHunt(
   queue: DirectiveQueue,
   runId: string,
   spec: HuntSpec,
+  startedBy = "worker",
 ): Promise<Journal> {
   const now = new Date().toISOString();
   const huntId = newId("hunt");
@@ -310,6 +311,13 @@ export async function startHunt(
     parked_at: null,
     parked_reason: null,
     termination_reason: null,
+  }, "hunt", {
+    run_kind: "hunt",
+    spec,
+    budgets: spec.budgets,
+    seed: runId,
+    tenant_id: null,
+    started_by: startedBy,
   });
 
   for (const [index, statement] of spec.hypotheses.entries()) {

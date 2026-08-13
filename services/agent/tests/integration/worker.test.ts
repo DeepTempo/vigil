@@ -30,15 +30,15 @@ function startJob(id: string): StartJob {
   return {
     schema_version: 1,
     run_id: id,
-    run_kind: "hunt",
+    run_kind: "investigate",
     tenant_id: null,
     enqueued_at: new Date().toISOString(),
     enqueued_by: "test",
     reason: "start",
     request: {
       arch: "",
-      playbook: join(FIXTURES, "hunt.playbook.yaml"),
-      config: join(FIXTURES, "hunt.config.yaml"),
+      playbook: join(FIXTURES, "case.playbook.yaml"),
+      config: join(FIXTURES, "case.config.yaml"),
       prompt: "go",
     },
   };
@@ -50,7 +50,7 @@ function resumeJob(id: string): RunJob {
   return {
     schema_version: 1,
     run_id: id,
-    run_kind: "hunt",
+    run_kind: "investigate",
     tenant_id: null,
     enqueued_at: new Date().toISOString(),
     enqueued_by: "watchdog",
@@ -58,8 +58,10 @@ function resumeJob(id: string): RunJob {
   };
 }
 
-const CONCLUDE: ScriptedTurn[] = [{ calls: [] }, { emit: { action: "CONCLUDE", rationale: "nothing to pursue", evidence_citations: [] } }];
+const CONCLUDE: ScriptedTurn[] = [{ calls: [] }, { emit: { action: "CONCLUDE", rationale: "nothing to pursue", citations: [] } }];
 
+// investigate rather than hunt: what is under test is the worker -- opening a
+// ledger, re-entering one, refusing a settled run. The hunt has its own file.
 describe("a run reaches its workflow", () => {
   it("opens the ledger and drives the workflow to terminal", async () => {
     await advance(ledger, leases, startJob(runId), scriptedHarness(CONCLUDE));
@@ -75,7 +77,7 @@ describe("a run reaches its workflow", () => {
 
     const [first] = await ledger.read(runId);
     expect(first?.kind).toBe("run");
-    expect(first?.payload).toMatchObject({ spec: { arch: "threathunt" }, started_by: "test" });
+    expect(first?.payload).toMatchObject({ spec: { arch: "investigate" }, started_by: "test" });
   });
 
   // A crash between the two appends must resume rather than collide on seq 0.
@@ -84,10 +86,10 @@ describe("a run reaches its workflow", () => {
     await ledger.append(runId, [
       {
         run_id: runId,
-        run_kind: "hunt",
+        run_kind: "investigate",
         kind: "run",
         payload: {
-          run_kind: "hunt",
+          run_kind: "investigate",
           spec: await resolveSpec(job),
           budgets: { max_calls: 0, max_cost_usd: 0, max_wall_ms: 600_000, max_park_ms: 604_800_000 },
           seed: runId,

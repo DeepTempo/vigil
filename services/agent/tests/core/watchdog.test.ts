@@ -13,7 +13,7 @@ import type { ScriptedTurn } from "../support/scripted-provider.js";
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 const RUN = "7d3c2d3e-0000-4000-8000-000000000633";
 
-const CONCLUDE: ScriptedTurn[] = [{ calls: [] }, { emit: { action: "CONCLUDE", rationale: "done", evidence_citations: [] } }];
+const CONCLUDE: ScriptedTurn[] = [{ calls: [] }, { emit: { action: "CONCLUDE", rationale: "done", citations: [] } }];
 
 let config: string;
 let state: InProcessState;
@@ -22,7 +22,7 @@ let clock: number;
 
 beforeEach(() => {
   config = join(mkdtempSync(join(tmpdir(), "vigil-watchdog-")), "vigil.config.yaml");
-  copyFileSync(join(FIXTURES, "hunt.config.yaml"), config);
+  copyFileSync(join(FIXTURES, "case.config.yaml"), config);
   // Anchored to real time, because the park check and the pool read the process
   // clock. The past is reached by rewinding the store's, never the present.
   clock = Date.now();
@@ -30,8 +30,8 @@ beforeEach(() => {
   leases = new InProcessLeases(() => clock);
 });
 
-// A ledger the way a first attempt would have left it: the real resolved spec, so
-// a resume reads what a resume actually reads, plus whatever else the case needs.
+// The real resolved spec, so a resume reads what a resume reads. investigate,
+// because the lease and budget machinery under test is the worker's, not a hunt's.
 async function opened(
   overrides: Record<string, unknown> | undefined,
   ...rest: readonly Parameters<InProcessState["append"]>[1][number][]
@@ -40,9 +40,9 @@ async function opened(
   await state.append(RUN, [
     {
       run_id: RUN,
-      run_kind: "hunt",
+      run_kind: "investigate",
       kind: "run",
-      payload: { run_kind: "hunt", spec, budgets: spec.budgets, seed: RUN, tenant_id: null, started_by: "test" },
+      payload: { run_kind: "investigate", spec, budgets: spec.budgets, seed: RUN, tenant_id: null, started_by: "test" },
     },
     ...rest,
   ]);
@@ -51,7 +51,7 @@ async function opened(
 function spend(): Parameters<InProcessState["append"]>[1][number] {
   return {
     run_id: RUN,
-    run_kind: "hunt",
+    run_kind: "investigate",
     kind: "spend",
     payload: { model_id: "m", provider_type: "scripted", role: "lead", tokens: { input: 10, output: 1, cache_read: 0, cache_write: 0 }, cost_usd: null, pricing_source: null },
   };
@@ -61,12 +61,12 @@ function startJob(overrides?: Record<string, unknown>): Extract<RunJob, { reason
   return {
     schema_version: 1,
     run_id: RUN,
-    run_kind: "hunt",
+    run_kind: "investigate",
     tenant_id: null,
     enqueued_at: new Date().toISOString(),
     enqueued_by: "test",
     reason: "start",
-    request: { arch: "", playbook: join(FIXTURES, "hunt.playbook.yaml"), config, prompt: "go", ...(overrides ? { overrides } : {}) },
+    request: { arch: "", playbook: join(FIXTURES, "case.playbook.yaml"), config, prompt: "go", ...(overrides ? { overrides } : {}) },
   };
 }
 
@@ -74,7 +74,7 @@ function resumeJob(): RunJob {
   return {
     schema_version: 1,
     run_id: RUN,
-    run_kind: "hunt",
+    run_kind: "investigate",
     tenant_id: null,
     enqueued_at: new Date().toISOString(),
     enqueued_by: "watchdog",
@@ -138,7 +138,7 @@ describe("a resumed run continues its budget rather than restarting it", () => {
 function checkpoint(id: string): Parameters<InProcessState["append"]>[1][number] {
   return {
     run_id: RUN,
-    run_kind: "hunt",
+    run_kind: "investigate",
     kind: "checkpoint",
     payload: { checkpoint_id: id, checkpoint_class: "tool_approval", question: "Approve?", raised_at: new Date(clock).toISOString() },
   };
@@ -147,7 +147,7 @@ function checkpoint(id: string): Parameters<InProcessState["append"]>[1][number]
 function resolution(id: string): Parameters<InProcessState["append"]>[1][number] {
   return {
     run_id: RUN,
-    run_kind: "hunt",
+    run_kind: "investigate",
     kind: "resolution",
     payload: { checkpoint_id: id, answer: "approve", actor: "someone", text: "go ahead", resolved_at: new Date(clock).toISOString() },
   };
@@ -196,7 +196,7 @@ describe("a run parked past its TTL is abandoned rather than left parked", () =>
 
 describe("a run nobody is working on is put back on the queue", () => {
   it("enqueues a resume for a lapsed claim and not for a held one", async () => {
-    await leases.claim(RUN, "hunt", "worker-a", LEASE_TTL_MS);
+    await leases.claim(RUN, "investigate", "worker-a", LEASE_TTL_MS);
 
     const queue = recorder();
     expect(await sweepOnce(leases, queue)).toBe(0);
@@ -211,7 +211,7 @@ describe("a run nobody is working on is put back on the queue", () => {
   // Claiming is part of discovering, so the run is not handed out twice in the
   // same interval however many sweepers are looking.
   it("hands a due run to exactly one sweeper", async () => {
-    await leases.claim(RUN, "hunt", "worker-a", LEASE_TTL_MS);
+    await leases.claim(RUN, "investigate", "worker-a", LEASE_TTL_MS);
     clock += LEASE_TTL_MS + 1;
 
     const [first, second] = [recorder(), recorder()];
@@ -224,7 +224,7 @@ describe("a run nobody is working on is put back on the queue", () => {
   // A parked run's ledger position never moves, so an id derived from it would
   // repeat and the queue would drop every check after the first.
   it("gives each resume its own job id", async () => {
-    await leases.claim(RUN, "hunt", "worker-a", LEASE_TTL_MS);
+    await leases.claim(RUN, "investigate", "worker-a", LEASE_TTL_MS);
     const queue = recorder();
 
     clock += LEASE_TTL_MS + 1;
@@ -240,7 +240,7 @@ describe("a run nobody is working on is put back on the queue", () => {
   // queue can take the run. A sweeper stamping its own name refuses itself.
   it("drives the run when the worker picks the queued resume up", async () => {
     await opened(undefined);
-    await leases.claim(RUN, "hunt", "dead-worker", LEASE_TTL_MS);
+    await leases.claim(RUN, "investigate", "dead-worker", LEASE_TTL_MS);
     clock += LEASE_TTL_MS + 1;
 
     const queue = recorder();
@@ -290,16 +290,16 @@ describe("a run does not spend wall time while it is parked", () => {
 
 describe("two workers cannot hold one run", () => {
   it("refuses the second claim while the first is live", async () => {
-    expect(await leases.claim(RUN, "hunt", "worker-a", LEASE_TTL_MS)).toBe(true);
-    expect(await leases.claim(RUN, "hunt", "worker-b", LEASE_TTL_MS)).toBe(false);
+    expect(await leases.claim(RUN, "investigate", "worker-a", LEASE_TTL_MS)).toBe(true);
+    expect(await leases.claim(RUN, "investigate", "worker-b", LEASE_TTL_MS)).toBe(false);
   });
 
   // Losing the claim is how a worker learns it has been declared dead: it stops
   // rather than paying for a call the ledger will refuse to take.
   it("tells the displaced holder its renewal failed", async () => {
-    await leases.claim(RUN, "hunt", "worker-a", LEASE_TTL_MS);
+    await leases.claim(RUN, "investigate", "worker-a", LEASE_TTL_MS);
     clock += LEASE_TTL_MS + 1;
-    await leases.claim(RUN, "hunt", "worker-b", LEASE_TTL_MS);
+    await leases.claim(RUN, "investigate", "worker-b", LEASE_TTL_MS);
 
     expect(await leases.renew(RUN, "worker-a", LEASE_TTL_MS)).toBe(false);
     expect(await leases.renew(RUN, "worker-b", LEASE_TTL_MS)).toBe(true);
@@ -308,7 +308,7 @@ describe("two workers cannot hold one run", () => {
   // A worker that cannot claim returns rather than throwing: someone else driving
   // the run is the good case, and a throw would fill the failed set with non-events.
   it("returns quietly when another worker holds the run", async () => {
-    await leases.claim(RUN, "hunt", "worker-a", LEASE_TTL_MS);
+    await leases.claim(RUN, "investigate", "worker-a", LEASE_TTL_MS);
     await advance(state, leases, startJob(), scriptedHarness(CONCLUDE));
 
     expect(await state.latestSeq(RUN)).toBeNull();

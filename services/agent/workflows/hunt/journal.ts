@@ -1,4 +1,4 @@
-import { EVENT_SCHEMA_VERSION, type NewEvent, type RunKind } from "../../contracts/events.js";
+import { EVENT_SCHEMA_VERSION, type NewEvent, type RunKind, type RunPayload } from "../../contracts/events.js";
 import type { State } from "../../core/seams.js";
 import { fold, type HuntEvent, type HuntKinds, type Projection } from "./ledger.js";
 
@@ -37,15 +37,18 @@ export class Journal {
     return journal;
   }
 
+  // The run event carries the domain-free RunPayload as well as the hunt's own
+  // state: resume reads the spec off it without knowing which workflow wrote it.
   static async create(
     state: State<HuntKinds>,
     queue: DirectiveQueue,
     runId: string,
     hunt: HuntState,
     runKind: RunKind = "hunt",
+    envelope: Partial<RunPayload> = {},
   ): Promise<Journal> {
     const journal = new Journal(state, queue, runId, runKind);
-    journal.append({ kind: "run", payload: { hunt } } as unknown as Body);
+    journal.append({ kind: "run", payload: { ...envelope, hunt } } as unknown as Body);
     await journal.flush();
     return journal;
   }

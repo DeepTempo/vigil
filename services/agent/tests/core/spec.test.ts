@@ -56,7 +56,7 @@ describe("the registry resolves a run kind to an arch", () => {
   // Adding an agent type is an arch file and an entry. Nothing in the worker
   // names a kind, so a new one reaches its loop without a branch being added.
   it("names the loop that drives each kind, rather than leaving the worker to switch", () => {
-    expect(archFor("hunt").workflow).toBe("lead");
+    expect(archFor("hunt").workflow).toBe("hunt");
     expect(archFor("investigate").workflow).toBe("lead");
     expect(archFor("compose").workflow).toBe("compose");
   });

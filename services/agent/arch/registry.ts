@@ -10,7 +10,7 @@ import type { LeadKinds } from "../workflows/lead/workflow.js";
 
 // Which loop drives a kind, and what its workflow may act on. Named here rather
 // than switched on in the worker: an agent type is a file and an entry, not a branch.
-export type WorkflowId = "lead" | "compose";
+export type WorkflowId = "lead" | "compose" | "hunt";
 
 export interface ArchEntry {
   arch: string;
@@ -31,7 +31,7 @@ export interface ArchEntry {
 const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
   hunt: {
     arch: packaged("threathunt.yaml"),
-    workflow: "lead",
+    workflow: "hunt",
     actions: ["INVESTIGATE", "EXPAND", "PIVOT", "DEEPEN", "ABANDON", "VALIDATE", "CHECKPOINT", "CONCLUDE", "HANDOFF_IR"],
     halts: ["CONCLUDE"],
     owned: { playbook: ["hypotheses", "attack_techniques", "data_domains"], config: ["enrichment", "checkpoints", "hypothesis_loop"] },

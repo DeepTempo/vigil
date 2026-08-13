@@ -27,6 +27,11 @@ import { httpMirror, nullMirror, type Mirror } from "./workflows/compose/mirror.
 import { runCompose } from "./workflows/compose/workflow.js";
 import type { ComposeKinds } from "./workflows/compose/vocabulary.js";
 import { runLead, type LeadKinds } from "./workflows/lead/workflow.js";
+import { runHunt } from "./workflows/hunt/workflow.js";
+import type { HuntKinds } from "./workflows/hunt/ledger.js";
+import type { DirectiveQueue } from "./workflows/hunt/ports.js";
+import { InProcessDirectiveQueue } from "./workflows/hunt/directives.js";
+import { DirectiveRepository } from "./ledger/directives.js";
 
 type StartJob = Extract<RunJob, { reason: "start" }>;
 
@@ -114,6 +119,7 @@ async function drive(
   spec: RunSpec,
   build: HarnessFactory,
   signal: AbortSignal,
+  directives: DirectiveQueue,
 ): Promise<void> {
   const { run_kind: kind, run_id, enqueued_by: started_by } = job;
   // Folded off the ledger, so a resumed run continues its allowance instead of
@@ -125,8 +131,13 @@ async function drive(
     await runCompose(build(kind, spec, as<ComposeKinds>(state), undefined, seed), { run_id, spec, started_by, mirror: mirrorFor(), signal });
     return;
   }
+  const entry = archFor(kind);
+  if (entry.workflow === "hunt") {
+    const harness = build(kind, spec, as<HuntKinds>(state), undefined, seed);
+    await runHunt(harness, { run_id, spec, actions: entry.actions, queue: directives, started_by, announce: announceFor(), signal });
+    return;
+  }
   if (kind === "hunt" || kind === "investigate") {
-    const entry = archFor(kind);
     const harness = build(kind, spec, as<LeadKinds>(state), undefined, seed);
     await runLead(harness, { run_id, run_kind: kind, spec, actions: entry.actions, halts: entry.halts, started_by, answers: answersFor(), announce: announceFor(), signal });
     return;
@@ -147,6 +158,7 @@ export async function advance(
   leases: Leases,
   job: RunJob,
   build: HarnessFactory = harnessFor,
+  directives: DirectiveQueue = new InProcessDirectiveQueue(),
 ): Promise<void> {
   if ((await state.terminal(job.run_id)) !== null) {
     await leases.finish(job.run_id);
@@ -183,7 +195,7 @@ export async function advance(
     await journalAnswers(state, job.run_id, job.run_kind, answersFor());
 
     if (await abandonIfParkedOut(state, leases, job, spec)) return;
-    await drive(state, job, spec, build, halt.signal);
+    await drive(state, job, spec, build, halt.signal, directives);
     await settle(state, leases, job, spec, owner);
   } catch (error) {
     await abandon(job, error);
@@ -354,9 +366,9 @@ export async function sweepOnce(leases: Leases, queue: Enqueue, limit = 50): Pro
 //
 // Only here, not inside advance(): what a failure means to the queue is the queue's
 // business, and advance() is driven without one by the tests and by run-once.ts.
-async function handle(state: State, leases: Leases, job: RunJob): Promise<void> {
+async function handle(state: State, leases: Leases, job: RunJob, directives: DirectiveQueue): Promise<void> {
   try {
-    await advance(state, leases, job);
+    await advance(state, leases, job, harnessFor, directives);
   } catch (error) {
     if (error instanceof SpecError) throw new UnrecoverableError(error.message);
     throw error;
@@ -383,7 +395,8 @@ export function startWorker(): Running {
   // disagreed with it would either double-process a run or wedge one. BullMQ's
   // stalled sweep still retires a dead worker's job eventually, and the lease
   // refuses it if it comes back around.
-  const worker = new Worker<RunJob>(RUN_QUEUE, (job) => handle(ledger, leases, job.data), {
+  const directives = new DirectiveRepository(pool);
+  const worker = new Worker<RunJob>(RUN_QUEUE, (job) => handle(ledger, leases, job.data, directives), {
     connection,
     lockDuration: LEASE_TTL_MS * 10,
   });
