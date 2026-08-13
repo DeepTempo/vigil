@@ -21,6 +21,22 @@ export function internalToken(): string {
   return process.env["AGENT_INTERNAL_TOKEN"] ?? process.env["VIGIL_TOOLS_TOKEN"] ?? "";
 }
 
+// One per process, not one per run. A client per run opens its own connection pool
+// and reuses no keep-alive; a limiter per run means N runs get N times the rate.
+const client = new OpenAI({
+  baseURL: process.env["BIFROST_URL"] ?? "http://bifrost:8080",
+  apiKey: process.env["BIFROST_API_KEY"] ?? "unused",
+});
+
+const limiter = new Limiter({ rpm: 500, tpm: 400_000 }, 4);
+
+// Memoised across runs, which is what its own comment promised: rates do not
+// change while a process lives, and a per-run memo dies with the run.
+const prices = httpPrices({
+  url: process.env["VIGIL_PRICING_URL"] ?? "http://localhost:6987/internal/pricing",
+  token: internalToken(),
+});
+
 // Which grants a run kind's roles hold. Compose grants per phase agent and chat
 // per declared tool, because neither reads a roster the arch wrote.
 function grantsFor(kind: RunKind, spec: RunSpec): Record<string, readonly string[]> {
@@ -38,12 +54,6 @@ export function harnessFor<K extends Record<string, unknown>>(
   memory: Memory = nullMemory,
   seed: Seed = FRESH,
 ): Harness<K> {
-  const client = new OpenAI({
-    baseURL: process.env["BIFROST_URL"] ?? "http://bifrost:8080",
-    apiKey: process.env["BIFROST_API_KEY"] ?? "unused",
-  });
-  const limiter = new Limiter({ rpm: 500, tpm: 400_000 }, 4);
-
   return {
     provider: openAiSurface(client, spec.model, limiter, "bifrost"),
     registry: registryOf(toolsFrom(spec.tools), grantsFor(kind, spec)),
@@ -51,10 +61,7 @@ export function harnessFor<K extends Record<string, unknown>>(
       url: process.env["VIGIL_TOOLS_URL"] ?? "http://localhost:6987/internal/tools/invoke",
       token: internalToken(),
     }),
-    budget: budgetOf(spec.budgets, unmeteredQuota, Date.now, seed, httpPrices({
-      url: process.env["VIGIL_PRICING_URL"] ?? "http://localhost:6987/internal/pricing",
-      token: internalToken(),
-    })),
+    budget: budgetOf(spec.budgets, unmeteredQuota, Date.now, seed, prices),
     memory,
     state,
   };

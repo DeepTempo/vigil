@@ -569,6 +569,13 @@ async def shutdown_event():
     except Exception as e:
         logger.error(f"Error closing LLM Gateway: {e}")
 
+    try:
+        from core.agents.queue import close_run_queue
+
+        await close_run_queue()
+    except Exception as e:
+        logger.error(f"Error closing the agent run queue: {e}")
+
     logger.info("Shutting down MCP connections...")
     try:
         from core.integrations.mcp.client import get_mcp_client

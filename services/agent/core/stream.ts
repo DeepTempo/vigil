@@ -62,6 +62,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
   private turns = 0;
   private capped = false;
   private prose = "";
+  private readonly folder: Folder<Kinds>;
 
   constructor(
     private readonly cfg: TurnConfig,
@@ -69,6 +70,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
   ) {
     this.scan = scannerFor(cfg.verbs);
     this.tools = harness.registry.granted(cfg.role);
+    this.folder = new Folder(harness.state, cfg.run_id);
   }
 
   async *execute(): TurnStream<T> {
@@ -92,7 +94,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
   // because the model asked for no tools or because the cap stopped it.
   private async *toolLoop(): AsyncGenerator<StreamEvent<T>, Outcome<T> | null> {
     while (this.turns < this.cfg.max_turns) {
-      const fold = await foldRun(this.harness.state, this.cfg.run_id);
+      const fold = await this.folder.advance();
       const settled = this.settled(fold);
       if (settled !== null) return settled;
 
@@ -342,27 +344,39 @@ interface Fold {
   terminal: TerminalPayload | null;
 }
 
-// One read answering the three questions the loop asks of the store each pass.
-async function foldRun<Kinds extends Record<string, unknown>>(state: State<Kinds>, runId: string): Promise<Fold> {
-  const answered = new Map<string, ResolutionPayload["answer"]>();
-  const executed = new Map<string, ToolResult>();
-  const raised: string[] = [];
-  let terminal: TerminalPayload | null = null;
+// The three questions the loop asks of the store each pass, folded once and then
+// advanced. Re-reading the whole ledger every tool turn is quadratic in the run.
+class Folder<Kinds extends Record<string, unknown>> {
+  private readonly answered = new Map<string, ResolutionPayload["answer"]>();
+  private readonly executed = new Map<string, ToolResult>();
+  private readonly raised: string[] = [];
+  private terminal: TerminalPayload | null = null;
+  private next = 0;
 
-  for (const event of await state.read(runId)) {
-    if (event.kind === "resolution") {
-      const payload = event.payload as ResolutionPayload;
-      answered.set(payload.checkpoint_id, payload.answer);
+  constructor(private readonly state: State<Kinds>, private readonly runId: string) {}
+
+  async advance(): Promise<Fold> {
+    for (const event of await this.state.read(this.runId, { since: this.next })) {
+      this.next = Math.max(this.next, event.seq + 1);
+      if (event.kind === "resolution") {
+        const payload = event.payload as ResolutionPayload;
+        this.answered.set(payload.checkpoint_id, payload.answer);
+      }
+      if (event.kind === "checkpoint") this.raised.push((event.payload as CheckpointPayload).checkpoint_id);
+      if (event.kind === "dispatch") {
+        const payload = event.payload as DispatchPayload;
+        if (payload.result !== undefined) this.executed.set(payload.dispatch_id, payload.result as ToolResult);
+      }
+      if (event.kind === "terminal") this.terminal = event.payload as TerminalPayload;
     }
-    if (event.kind === "checkpoint") raised.push((event.payload as CheckpointPayload).checkpoint_id);
-    if (event.kind === "dispatch") {
-      const payload = event.payload as DispatchPayload;
-      if (payload.result !== undefined) executed.set(payload.dispatch_id, payload.result as ToolResult);
-    }
-    if (event.kind === "terminal") terminal = event.payload as TerminalPayload;
+
+    return {
+      answered: this.answered,
+      executed: this.executed,
+      open: this.raised.find((id) => !this.answered.has(id)) ?? null,
+      terminal: this.terminal,
+    };
   }
-
-  return { answered, executed, open: raised.find((id) => !answered.has(id)) ?? null, terminal };
 }
 
 // Names what was dropped rather than reproducing it: a summary that quotes the

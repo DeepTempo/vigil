@@ -83,8 +83,28 @@ def build_resume_job(
     }
 
 
+_queue: Optional[Queue] = None
+
+
+# One per process. A Queue per enqueue opens and closes a Redis connection for one
+# job, which is a round trip of setup on the request path.
+def _run_queue() -> Queue:
+    global _queue
+    if _queue is None:
+        _queue = Queue(RUN_QUEUE, {"connection": _redis_url()})
+    return _queue
+
+
+# Called on shutdown, so the connection does not outlive the process that made it.
+async def close_run_queue() -> None:
+    global _queue
+    if _queue is not None:
+        await _queue.close()
+        _queue = None
+
+
 async def enqueue_run(job: Dict[str, Any], job_id: Optional[str] = None) -> str:
-    queue = Queue(RUN_QUEUE, {"connection": _redis_url()})
+    queue = _run_queue()
     try:
         # jobId is the run id for a start, so a double POST dedupes in BullMQ. A
         # resume takes a fresh id: any derived one repeats, and the queue drops it.
@@ -99,8 +119,11 @@ async def enqueue_run(job: Dict[str, Any], job_id: Optional[str] = None) -> str:
         )
         logger.info("enqueued agent run %s (%s)", job["run_id"], job["run_kind"])
         return str(enqueued.id)
-    finally:
-        await queue.close()
+    except Exception:
+        # A queue that failed is not reused: the next call builds a fresh one
+        # rather than inheriting a connection that may already be gone.
+        await close_run_queue()
+        raise
 
 
 def _default_job_id(job: Dict[str, Any]) -> str:
