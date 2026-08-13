@@ -41,6 +41,7 @@ class SOCDaemon:
         self._orchestrator = None
         self._llm_worker_manager = None
         self._metrics_server = None
+        self._mcp_client = None
         
         logger.info("SOC Daemon initialized")
     
@@ -61,6 +62,11 @@ class SOCDaemon:
         logger.info("Initializing daemon components...")
         
         # Import here to avoid circular imports
+        from core.integrations.mcp.client import (build_mcp_client,
+                                                  set_process_mcp_client)
+        from core.response.approval_service import ApprovalService
+        from core.response.autonomous_response_service import \
+            AutonomousResponseService
         from services.daemon.poller import DataPoller
         from services.daemon.processor import FindingProcessor
         from services.daemon.responder import AutonomousResponder
@@ -73,9 +79,24 @@ class SOCDaemon:
         self._poller = DataPoller(self.config.polling)
         self._kafka_ingestor = KafkaIngestor(self.config.kafka)
         self._processor = FindingProcessor(self.config.processing)
-        self._responder = AutonomousResponder(self.config.response, self.config.escalation)
+        # The daemon owns its own copies: it is a separate process from the API, so
+        # nothing on the API's app.state is reachable from here.
+        self._mcp_client = build_mcp_client()
+        set_process_mcp_client(self._mcp_client)
+        approvals = ApprovalService()
+
+        self._responder = AutonomousResponder(
+            self.config.response,
+            self.config.escalation,
+            response_service=AutonomousResponseService(approvals=approvals),
+            approvals=approvals,
+        )
         self._scheduler = TaskScheduler(self.config.scheduler)
-        self._orchestrator = Orchestrator(self.config.orchestrator)
+        self._orchestrator = Orchestrator(
+            self.config.orchestrator,
+            approvals=approvals,
+            mcp_client=self._mcp_client,
+        )
         self._llm_worker_manager = LLMWorkerManager()
 
         if self.config.metrics.enabled:

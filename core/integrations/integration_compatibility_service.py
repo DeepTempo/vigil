@@ -432,12 +432,3 @@ class IntegrationCompatibilityService:
 
 
 # Singleton instance
-_compatibility_service = None
-
-
-def get_compatibility_service() -> IntegrationCompatibilityService:
-    """Get singleton compatibility service instance."""
-    global _compatibility_service
-    if _compatibility_service is None:
-        _compatibility_service = IntegrationCompatibilityService()
-    return _compatibility_service

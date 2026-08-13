@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Callable, Any
 from datetime import datetime
 
 from core.agents.builtins import AgentId
+from core.response.approval_service import ActionType, ApprovalService
 
 logger = logging.getLogger(__name__)
 
@@ -17,21 +18,11 @@ EscalationCallback = Callable[[Dict[str, Any], str, str], None]
 class AutonomousResponseService:
     """Service for managing autonomous threat response with approval workflow."""
     
-    def __init__(self):
+    def __init__(self, approvals: Optional[ApprovalService] = None):
         """Initialize autonomous response service."""
-        self.approval_service = None
+        self.approval_service = approvals or ApprovalService()
         self._escalation_callbacks: List[EscalationCallback] = []
-        self._load_services()
-    
-    def _load_services(self):
-        """Load required services."""
-        try:
-            from core.response.approval_service import get_approval_service, ActionType
-            self.approval_service = get_approval_service()
-            self.ActionType = ActionType
-        except Exception as e:
-            logger.error(f"Error loading services: {e}")
-    
+
     def register_escalation_callback(self, callback: EscalationCallback):
         """Register a callback for escalation events."""
         self._escalation_callbacks.append(callback)
@@ -323,14 +314,10 @@ Please review and approve/reject in the SOC dashboard.
         Returns:
             Action result
         """
-        if not self.approval_service:
-            logger.error("Approval service not available")
-            return {"error": "Approval service not available"}
-        
         try:
             # Create pending action
             action = self.approval_service.create_action(
-                action_type=self.ActionType.ISOLATE_HOST,
+                action_type=ActionType.ISOLATE_HOST,
                 title=f"Isolate Host: {hostname or ip_address}",
                 description=f"Network isolation of compromised host based on correlated detections.\n\n"
                            f"Indicators: {', '.join(correlation_data.get('indicators', []))}\n"
@@ -454,9 +441,6 @@ Please review and approve/reject in the SOC dashboard.
         Returns:
             List of execution results
         """
-        if not self.approval_service:
-            return []
-        
         try:
             from core.response.approval_service import ActionStatus
             
@@ -659,13 +643,4 @@ Please review and approve/reject in the SOC dashboard.
 
 
 # Singleton instance
-_autonomous_response_service: Optional[AutonomousResponseService] = None
-
-
-def get_autonomous_response_service() -> AutonomousResponseService:
-    """Get singleton AutonomousResponseService instance."""
-    global _autonomous_response_service
-    if _autonomous_response_service is None:
-        _autonomous_response_service = AutonomousResponseService()
-    return _autonomous_response_service
 

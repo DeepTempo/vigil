@@ -164,7 +164,7 @@ class TestPhasedExecutionPauseResume:
 
     def test_pauses_before_phase_requiring_approval(self, clean_tables):
         from core.llm.harness import claude as cs_module
-        from core.workflows.workflow_run_service import get_workflow_run_service
+        from core.workflows.workflow_run_service import WorkflowRunService
 
         workflow = _make_workflow(approval_on_phase_2=True)
         svc = self._patched_service(workflow)
@@ -184,9 +184,9 @@ class TestPhasedExecutionPauseResume:
         assert result["pending_approval_action_id"]
         assert result["paused_at_phase"] == "phase-2"
 
-        run = get_workflow_run_service().get_run(result["run_id"])
+        run = WorkflowRunService().get_run(result["run_id"])
         assert run["status"] == "paused"
-        phases = get_workflow_run_service().list_phases(result["run_id"])
+        phases = WorkflowRunService().list_phases(result["run_id"])
         by_id = {p["phase_id"]: p for p in phases}
         assert by_id["phase-1"]["status"] == "completed"
         assert by_id["phase-2"]["status"] == "pending_approval"
@@ -194,8 +194,8 @@ class TestPhasedExecutionPauseResume:
 
     def test_resume_approved_completes_run(self, clean_tables):
         from core.llm.harness import claude as cs_module
-        from core.response.approval_service import get_approval_service
-        from core.workflows.workflow_run_service import get_workflow_run_service
+        from core.response.approval_service import ApprovalService
+        from core.workflows.workflow_run_service import WorkflowRunService
 
         workflow = _make_workflow(approval_on_phase_2=True)
         svc = self._patched_service(workflow)
@@ -208,7 +208,7 @@ class TestPhasedExecutionPauseResume:
             run_id = paused["run_id"]
             action_id = paused["pending_approval_action_id"]
 
-            get_approval_service().approve_action(action_id, approved_by="tester")
+            ApprovalService().approve_action(action_id, approved_by="tester")
             result = asyncio.run(
                 svc.resume_workflow(run_id, "approved", approved_by="tester")
             )
@@ -217,9 +217,9 @@ class TestPhasedExecutionPauseResume:
         assert result["status"] == "completed"
         assert result["run_id"] == run_id
 
-        run = get_workflow_run_service().get_run(run_id)
+        run = WorkflowRunService().get_run(run_id)
         assert run["status"] == "completed"
-        phases = get_workflow_run_service().list_phases(run_id)
+        phases = WorkflowRunService().list_phases(run_id)
         statuses = {p["phase_id"]: p["status"] for p in phases}
         approval_states = {p["phase_id"]: p["approval_state"] for p in phases}
         assert statuses == {"phase-1": "completed", "phase-2": "completed"}
@@ -227,8 +227,8 @@ class TestPhasedExecutionPauseResume:
 
     def test_resume_rejected_cancels_run(self, clean_tables):
         from core.llm.harness import claude as cs_module
-        from core.response.approval_service import get_approval_service
-        from core.workflows.workflow_run_service import get_workflow_run_service
+        from core.response.approval_service import ApprovalService
+        from core.workflows.workflow_run_service import WorkflowRunService
 
         workflow = _make_workflow(approval_on_phase_2=True)
         svc = self._patched_service(workflow)
@@ -240,7 +240,7 @@ class TestPhasedExecutionPauseResume:
             run_id = paused["run_id"]
             action_id = paused["pending_approval_action_id"]
 
-            get_approval_service().reject_action(
+            ApprovalService().reject_action(
                 action_id, reason="not safe", rejected_by="tester"
             )
             result = asyncio.run(
@@ -256,17 +256,17 @@ class TestPhasedExecutionPauseResume:
         assert result["status"] == "cancelled"
         assert "not safe" in result["rejection_reason"]
 
-        run = get_workflow_run_service().get_run(run_id)
+        run = WorkflowRunService().get_run(run_id)
         assert run["status"] == "cancelled"
         assert "not safe" in (run["error"] or "")
-        phases = get_workflow_run_service().list_phases(run_id)
+        phases = WorkflowRunService().list_phases(run_id)
         by_id = {p["phase_id"]: p for p in phases}
         assert by_id["phase-2"]["status"] == "failed"
         assert by_id["phase-2"]["approval_state"] == "rejected"
 
     def test_no_approval_required_runs_straight_through(self, clean_tables):
         from core.llm.harness import claude as cs_module
-        from core.workflows.workflow_run_service import get_workflow_run_service
+        from core.workflows.workflow_run_service import WorkflowRunService
 
         workflow = _make_workflow(approval_on_phase_2=False)
         svc = self._patched_service(workflow)
@@ -278,7 +278,7 @@ class TestPhasedExecutionPauseResume:
 
         assert result["success"] is True
         assert result["status"] == "completed"
-        run = get_workflow_run_service().get_run(result["run_id"])
+        run = WorkflowRunService().get_run(result["run_id"])
         assert run["status"] == "completed"
 
 
@@ -286,16 +286,16 @@ class TestApprovalActionWorkflowLinkage:
     def test_create_action_persists_workflow_linkage(self, clean_tables):
         from core.response.approval_service import (
             ActionType,
-            get_approval_service,
+            ApprovalService,
         )
-        from core.workflows.workflow_run_service import get_workflow_run_service
+        from core.workflows.workflow_run_service import WorkflowRunService
 
-        run_id = get_workflow_run_service().begin_run(
+        run_id = WorkflowRunService().begin_run(
             workflow_id="test-phase-linkage",
             workflow_name="Linkage",
         )
         assert run_id is not None
-        svc = get_approval_service()
+        svc = ApprovalService()
         action = svc.create_action(
             action_type=ActionType.WORKFLOW_PHASE,
             title="phase approval",

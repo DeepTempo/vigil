@@ -16,7 +16,10 @@ import logging
 from services.api.middleware.auth import get_current_active_user
 from core.auth.auth_service import AuthService
 from core.storage.models import User
-from core.integrations.integration_compatibility_service import get_compatibility_service
+from core.deps import provide_integration_compat
+from core.integrations.integration_compatibility_service import (
+    IntegrationCompatibilityService,
+)
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()
@@ -51,10 +54,10 @@ def _require_integrations_admin(current_user: User) -> None:
 @router.get("/compatibility/status")
 async def get_compatibility_status(
     current_user: User = Depends(get_current_active_user),
+    service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Get compatibility status for all integrations."""
     try:
-        service = get_compatibility_service()
         statuses = service.get_all_statuses()
         system_info = service.get_system_info()
 
@@ -71,10 +74,10 @@ async def get_compatibility_status(
 async def get_integration_compatibility(
     integration_id: str,
     current_user: User = Depends(get_current_active_user),
+    service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Get compatibility status for a specific integration."""
     try:
-        service = get_compatibility_service()
         status = service.get_integration_status(integration_id)
 
         if status.get("status") == "unknown":
@@ -95,6 +98,7 @@ async def get_integration_compatibility(
 async def install_package(
     request: IntegrationActionRequest,
     current_user: User = Depends(get_current_active_user),
+    service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Install or upgrade the pinned package for a known integration.
 
@@ -105,7 +109,6 @@ async def install_package(
     """
     _require_integrations_admin(current_user)
 
-    service = get_compatibility_service()
     allowed = service.get_allowed_integration_ids()
     if request.integration_id not in allowed:
         raise HTTPException(
@@ -142,11 +145,11 @@ async def install_package(
 async def upgrade_package(
     request: IntegrationActionRequest,
     current_user: User = Depends(get_current_active_user),
+    service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Upgrade an integration's pinned package."""
     _require_integrations_admin(current_user)
 
-    service = get_compatibility_service()
     if request.integration_id not in service.get_allowed_integration_ids():
         raise HTTPException(
             status_code=404,
@@ -179,11 +182,11 @@ async def upgrade_package(
 async def uninstall_package(
     request: IntegrationActionRequest,
     current_user: User = Depends(get_current_active_user),
+    service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Uninstall the package backing a known integration."""
     _require_integrations_admin(current_user)
 
-    service = get_compatibility_service()
     if request.integration_id not in service.get_allowed_integration_ids():
         raise HTTPException(
             status_code=404,
@@ -215,10 +218,10 @@ async def uninstall_package(
 @router.get("/compatibility/system")
 async def get_system_info(
     current_user: User = Depends(get_current_active_user),
+    service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Get system information including Python version."""
     try:
-        service = get_compatibility_service()
         return service.get_system_info()
     except Exception as e:
         logger.error(f"Error getting system info: {e}")

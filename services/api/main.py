@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 # Add the repo root to sys.path so `core.*` and `services.*` resolve whether
@@ -84,11 +85,24 @@ logger = logging.getLogger(__name__)
 # Initialize Sentry as early as possible (no-op if SENTRY_DSN is unset)
 init_sentry()
 
+
+# Delegates to _startup/_shutdown, defined further down alongside the rest of the
+# startup logic; they resolve at call time so the ordering here is fine.
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await _startup(app)
+    try:
+        yield
+    finally:
+        await _shutdown(app)
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Vigil SOC API",
     description="REST API for Vigil SOC Application",
     version=__version__,
+    lifespan=lifespan,
 )
 
 # Optional context path (sub-path) the whole app is served under, e.g. when
@@ -179,7 +193,7 @@ def _mcp_auto_connect_enabled() -> bool:
     return not settings.dev_mode
 
 
-async def _connect_external_services():
+async def _connect_external_services(mcp_client):
     """Connect external startup integrations (skipped under TESTING)."""
     import asyncio
 
@@ -237,10 +251,6 @@ async def _connect_external_services():
 
     logger.info("Initializing MCP client with persistent connections...")
     try:
-        from core.integrations.mcp.client import get_mcp_client
-
-        mcp_client = get_mcp_client()
-
         if mcp_client:
             mcp_service = mcp_client.mcp_service
             servers = mcp_service.list_servers()
@@ -318,12 +328,59 @@ async def _connect_external_services():
         logger.error(f"Error during MCP initialization: {e}")
 
 
-@app.on_event("startup")
-async def startup_event():
+# Constructs the process-scoped services. This is the only place they are built for
+# the API; handlers receive them through the Depends providers in core/deps.py.
+def _build_services(app: FastAPI):
+    from core.agents.agent_ai_generator import AgentAIGenerator
+    from core.config import is_demo_mode
+    from core.detections.detection_rules_service import DetectionRulesService
+    from core.integrations.integration_bridge_service import IntegrationBridgeService
+    from core.integrations.integration_compatibility_service import (
+        IntegrationCompatibilityService,
+    )
+    from core.integrations.mcp.client import build_mcp_client, set_process_mcp_client
+    from core.integrations.mcp.registry import MCPRegistry
+    from core.platform.demo_data_service import DemoDataService
+    from core.response.approval_service import ApprovalService
+    from core.workflows.custom_workflow_service import CustomWorkflowService
+    from core.workflows.workflow_ai_generator import WorkflowAIGenerator
+    from core.workflows.workflow_run_service import WorkflowRunService
+    from core.workflows.workflows_service import WorkflowsService
+
+    app.state.mcp_client = build_mcp_client()
+    set_process_mcp_client(app.state.mcp_client)
+
+    app.state.approvals = ApprovalService()
+    app.state.custom_workflows = CustomWorkflowService()
+    app.state.detection_rules = DetectionRulesService()
+    app.state.integration_bridge = IntegrationBridgeService()
+    app.state.integration_compat = IntegrationCompatibilityService()
+    app.state.mcp_registry = MCPRegistry()
+    app.state.workflow_runs = WorkflowRunService()
+
+    app.state.workflows = WorkflowsService(
+        approvals=app.state.approvals,
+        custom_workflows=app.state.custom_workflows,
+        mcp_registry=app.state.mcp_registry,
+        workflow_runs=app.state.workflow_runs,
+    )
+    app.state.workflow_ai = WorkflowAIGenerator(
+        workflows=app.state.workflows, mcp_registry=app.state.mcp_registry
+    )
+    app.state.agent_ai = AgentAIGenerator(mcp_registry=app.state.mcp_registry)
+
+    # Demo data is only generated when demo mode is on; generating it otherwise
+    # burns startup time building findings nothing will read.
+    app.state.demo_data = DemoDataService() if is_demo_mode() else None
+
+
+async def _startup(app: FastAPI):
     """Initialize database, MCP tools and check integration compatibility on startup."""
     logger.info("=" * 60)
     logger.info("Starting Vigil SOC Backend")
     logger.info("=" * 60)
+
+    _build_services(app)
 
     _testing = get_settings().testing
 
@@ -403,9 +460,7 @@ async def startup_event():
         from core.integrations.extension.trust import connector_allowlist_origins
 
         if not connector_allowlist_origins():
-            from core.integrations.integration_bridge_service import get_integration_bridge
-
-            cfg = get_integration_bridge().load_integration_config()
+            cfg = app.state.integration_bridge.load_integration_config()
             connectors = [
                 iid
                 for iid, c in (cfg.get("integrations") or {}).items()
@@ -500,9 +555,7 @@ async def startup_event():
     # Check integration compatibility
     logger.info("Checking integration compatibility...")
     try:
-        from core.integrations.integration_compatibility_service import get_compatibility_service
-
-        compat_service = get_compatibility_service()
+        compat_service = app.state.integration_compat
         system_info = compat_service.get_system_info()
         logger.info(
             f"System: Python {system_info['python_version']} on {system_info['platform']}"
@@ -533,7 +586,7 @@ async def startup_event():
             "(Bifrost sync, model catalog, LLM gateway, MCP)"
         )
     else:
-        await _connect_external_services()
+        await _connect_external_services(app.state.mcp_client)
 
     # Load custom agents from DB into the AgentManager so built-in + custom
     # agents are visible in one merged list. Lookup misses for "custom-*" IDs
@@ -547,8 +600,7 @@ async def startup_event():
         logger.warning(f"Could not preload custom agents: {e}")
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
+async def _shutdown(app: FastAPI):
     """Clean up LLM gateway and MCP connections on shutdown."""
     logger.info("Shutting down LLM Gateway...")
     try:
@@ -561,9 +613,9 @@ async def shutdown_event():
 
     logger.info("Shutting down MCP connections...")
     try:
-        from core.integrations.mcp.client import get_mcp_client
+        from core.integrations.mcp.client import set_process_mcp_client
 
-        mcp_client = get_mcp_client()
+        mcp_client = getattr(app.state, "mcp_client", None)
         if mcp_client:
             # Close all MCP sessions — stdio child processes are owned by
             # the MCP SDK's stdio_client contexts, which shut down as the
@@ -571,6 +623,7 @@ async def shutdown_event():
             # down since the legacy start_server path was removed (#125).
             await mcp_client.close_all()
             logger.info("All MCP connections closed")
+        set_process_mcp_client(None)
     except Exception as e:
         logger.error(f"Error during shutdown cleanup: {e}")
 

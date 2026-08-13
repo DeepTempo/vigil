@@ -126,12 +126,3 @@ class MCPRegistry:
 
 
 # Global singleton
-_mcp_registry: Optional[MCPRegistry] = None
-
-
-def get_mcp_registry() -> MCPRegistry:
-    """Get or create the global MCP registry instance."""
-    global _mcp_registry
-    if _mcp_registry is None:
-        _mcp_registry = MCPRegistry()
-    return _mcp_registry

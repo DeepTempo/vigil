@@ -9,7 +9,9 @@ from collections import deque
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
 from core.integrations.mcp import tool_manager
+from core.integrations.mcp.client import process_mcp_client
 from core.llm.router.format import anthropic_tools_to_openai
+from core.response.approval_service import ApprovalService
 from core.llm.router.router import LLMRouter, ProviderSpec
 
 logger = logging.getLogger(__name__)
@@ -88,7 +90,12 @@ class OpenAIAgentService:
         backend_tools: Optional[List[Dict[str, Any]]] = None,
         include_mcp_tools: bool = True,
         recommended_tools: Optional[List[str]] = None,
+        mcp_client=None,
+        approvals: Optional[ApprovalService] = None,
     ):
+        # mcp_client defaults to the process owner's; None when no owner started.
+        self._mcp_client = mcp_client if mcp_client is not None else process_mcp_client()
+        self._approvals = approvals or ApprovalService()
         self._backend_tools = backend_tools or self._load_backend_tools()
         self._include_mcp_tools = include_mcp_tools
         self._recommended_tools = recommended_tools
@@ -112,11 +119,8 @@ class OpenAIAgentService:
         if not self._include_mcp_tools:
             return []
         try:
-            from core.integrations.mcp.client import get_mcp_client
-
-            client = get_mcp_client()
-            if client:
-                return client.get_tools_for_claude()
+            if self._mcp_client:
+                return self._mcp_client.get_tools_for_claude()
         except Exception as exc:
             logger.debug("MCP tools unavailable: %s", exc)
         return []
@@ -576,9 +580,9 @@ class OpenAIAgentService:
         """Queue a pending approval instead of executing the tool, returning the
         message for the model and the action id to poll (None if not created)."""
         try:
-            from core.response.approval_service import ActionType, get_approval_service
+            from core.response.approval_service import ActionType
 
-            service = get_approval_service()
+            service = self._approvals
             try:
                 action_type = ActionType(tool_name)
             except ValueError:
@@ -622,9 +626,9 @@ class OpenAIAgentService:
         """Poll the approval queue until an operator decides, returning
         ``(decision, detail, waited_seconds)``. A vanished action reads as a
         rejection so an uncleared action never executes."""
-        from core.response.approval_service import ActionStatus, get_approval_service
+        from core.response.approval_service import ActionStatus
 
-        service = get_approval_service()
+        service = self._approvals
         started = time.monotonic()
         deadline = started + timeout
         while True:
@@ -663,17 +667,14 @@ class OpenAIAgentService:
                 )
             await asyncio.sleep(_APPROVAL_POLL_INTERVAL_S)
 
-    @staticmethod
     def _mark_action_executed(
-        action_id: Optional[str], result_text: str, is_error: bool
+        self, action_id: Optional[str], result_text: str, is_error: bool
     ) -> None:
         """Close out an approved action so the queue reflects what ran."""
         if not action_id:
             return
         try:
-            from core.response.approval_service import get_approval_service
-
-            service = get_approval_service()
+            service = self._approvals
             if is_error:
                 service.mark_failed(action_id, result_text[:2000])
             else:
@@ -708,10 +709,9 @@ class OpenAIAgentService:
     ) -> tuple[str, bool]:
         """Execute an MCP tool via the shared MCP client."""
         try:
-            from core.integrations.mcp.client import get_mcp_client
             from core.llm.security import wrap_tool_result
 
-            client = get_mcp_client()
+            client = self._mcp_client
             if not client:
                 return f"MCP client unavailable for tool: {tool_name}", True
 

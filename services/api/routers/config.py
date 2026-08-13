@@ -1,13 +1,19 @@
 """Configuration API endpoints."""
 
 from typing import Any, Dict, Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from pathlib import Path
 import json
 import logging
 import os
 
+from core.deps import (
+    provide_demo_data,
+    provide_integration_bridge,
+    provide_mcp_client,
+)
+from core.integrations.integration_bridge_service import IntegrationBridgeService
 from core.routing import Auth, RouterMeta
 from core.secrets import get_secret, set_secret
 from core.storage.config_service import get_config_service
@@ -171,7 +177,7 @@ async def set_demo_mode(config: DemoModeConfig):
 
 
 @router.post("/demo-mode/reset")
-async def reset_demo_data():
+async def reset_demo_data(demo_service=Depends(provide_demo_data)):
     """
     Reset demo data to regenerate sample findings and cases.
 
@@ -179,14 +185,9 @@ async def reset_demo_data():
         Success status
     """
     try:
-        from core.config import is_demo_mode
-
-        if not is_demo_mode():
+        if demo_service is None:
             raise HTTPException(status_code=400, detail="Demo mode is not enabled")
 
-        from core.platform.demo_data_service import get_demo_service
-
-        demo_service = get_demo_service()
         demo_service.reset()
 
         return {
@@ -773,7 +774,10 @@ async def get_integrations_config():
 
 
 @router.post("/integrations")
-async def set_integrations_config(config: IntegrationsConfig):
+async def set_integrations_config(
+    config: IntegrationsConfig,
+    bridge: IntegrationBridgeService = Depends(provide_integration_bridge),
+):
     """
     Set integrations configuration.
 
@@ -835,9 +839,7 @@ async def set_integrations_config(config: IntegrationsConfig):
         # connectorUrl just saved, so static mcp-config.json remote-MCP
         # entries resolve without a separately-set env var. Best-effort.
         try:
-            from core.integrations.integration_bridge_service import get_integration_bridge
-
-            get_integration_bridge().derive_remote_mcp_env()
+            bridge.derive_remote_mcp_env()
         except Exception as e:
             logger.warning(f"Could not derive remote MCP env vars: {e}")
 
@@ -848,7 +850,9 @@ async def set_integrations_config(config: IntegrationsConfig):
 
 
 @router.get("/integrations/status")
-async def get_integrations_status():
+async def get_integrations_status(
+    bridge: IntegrationBridgeService = Depends(provide_integration_bridge),
+):
     """
     Get status of all integrations.
 
@@ -856,10 +860,6 @@ async def get_integrations_status():
         Status information for all integrations
     """
     try:
-        # Import here to avoid circular dependencies
-        from core.integrations.integration_bridge_service import get_integration_bridge
-
-        bridge = get_integration_bridge()
         statuses = bridge.get_all_integration_statuses()
 
         return {"success": True, "statuses": statuses}
@@ -869,7 +869,10 @@ async def get_integrations_status():
 
 
 @router.post("/integrations/{integration_id}/test")
-async def test_integration(integration_id: str):
+async def test_integration(
+    integration_id: str,
+    bridge: IntegrationBridgeService = Depends(provide_integration_bridge),
+):
     """
     Test an integration connection.
 
@@ -880,10 +883,6 @@ async def test_integration(integration_id: str):
         Test result with success/failure and message
     """
     try:
-        # Import here to avoid circular dependencies
-        from core.integrations.integration_bridge_service import get_integration_bridge
-
-        bridge = get_integration_bridge()
         status = bridge.get_integration_status(integration_id)
 
         if not status["configured"]:
@@ -1476,7 +1475,7 @@ def _count_memories(palace_path: Path) -> Dict[str, Any]:
 
 
 @router.get("/mempalace/health")
-async def get_mempalace_health():
+async def get_mempalace_health(mcp_client=Depends(provide_mcp_client)):
     """Health snapshot for the mempalace memory store.
 
     Aggregates MCP connection state with filesystem facts about the
@@ -1497,9 +1496,6 @@ async def get_mempalace_health():
     connected = False
     error: Optional[str] = None
     try:
-        from core.integrations.mcp.client import get_mcp_client
-
-        mcp_client = get_mcp_client()
         if mcp_client is not None:
             statuses = mcp_client.get_connection_status() or {}
             connected = bool(statuses.get("mempalace", False))

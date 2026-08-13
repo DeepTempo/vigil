@@ -1,10 +1,12 @@
 """Agents API endpoints for SOC agent management."""
 
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import logging
 
+from core.deps import provide_mcp_registry
+from core.integrations.mcp.registry import MCPRegistry
 from core.llm.defaults import DEFAULT_MODEL
 from core.agents.builtins import DEFAULT_AGENT_ID
 from core.agents.manager import AgentManager, CUSTOM_AGENT_ID_PREFIX
@@ -202,7 +204,10 @@ class AgentRunRequest(BaseModel):
 
 
 @router.post("/agents/run")
-async def run_agent(request: AgentRunRequest):
+async def run_agent(
+    request: AgentRunRequest,
+    registry: MCPRegistry = Depends(provide_mcp_registry),
+):
     """
     Run an agent task using Claude Agent SDK.
     
@@ -286,8 +291,6 @@ Use the get_case tool first to retrieve full details, then investigate all assoc
         # dynamically discovered MCP tools from the registry
         allowed_tools = list(agent.recommended_tools) if agent.recommended_tools else []
         try:
-            from core.integrations.mcp.registry import get_mcp_registry
-            registry = get_mcp_registry()
             mcp_tool_names = registry.get_tool_names()
             if mcp_tool_names:
                 allowed_tools.extend(mcp_tool_names)

@@ -21,6 +21,8 @@ for p in (str(_REPO_ROOT),):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from core.deps import provide_mcp_client  # noqa: E402
+
 
 def _load_config_module():
     spec = importlib.util.spec_from_file_location(
@@ -42,19 +44,24 @@ def palace_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def client(palace_dir):
+def app(palace_dir):
+    # No lifespan runs on a bare app, so the MCP client arrives only through the
+    # provider override each test installs (#459).
     config_mod = _load_config_module()
-    app = FastAPI()
-    app.include_router(config_mod.router, prefix="/api/config")
+    application = FastAPI()
+    application.include_router(config_mod.router, prefix="/api/config")
+    application.dependency_overrides[provide_mcp_client] = lambda: None
+    return application
+
+
+@pytest.fixture()
+def client(app):
     return TestClient(app)
 
 
 @pytest.mark.unit
-def test_health_returns_shape_when_no_mcp_client(client, palace_dir, monkeypatch):
+def test_health_returns_shape_when_no_mcp_client(client, palace_dir):
     """No MCP client wired in → connected=false, no error, palace facts populated."""
-    import core.integrations.mcp.client as mcp_client_mod
-
-    monkeypatch.setattr(mcp_client_mod, "get_mcp_client", lambda: None)
 
     resp = client.get("/api/config/mempalace/health")
     assert resp.status_code == 200
@@ -70,11 +77,8 @@ def test_health_returns_shape_when_no_mcp_client(client, palace_dir, monkeypatch
 
 
 @pytest.mark.unit
-def test_health_counts_closed_cases(client, palace_dir, monkeypatch):
+def test_health_counts_closed_cases(client, palace_dir):
     """JSON files dropped in investigations/closed-cases/ should be counted."""
-    import core.integrations.mcp.client as mcp_client_mod
-
-    monkeypatch.setattr(mcp_client_mod, "get_mcp_client", lambda: None)
 
     closed = palace_dir / "investigations" / "closed-cases"
     closed.mkdir(parents=True)
@@ -95,9 +99,6 @@ def test_health_handles_missing_palace(client, tmp_path, monkeypatch):
     """If the palace path is unreachable, palace_exists must be False, not raise."""
     missing = tmp_path / "does-not-exist-xyz"
     monkeypatch.setenv("MEMPALACE_PALACE_PATH", str(missing))
-    import core.integrations.mcp.client as mcp_client_mod
-
-    monkeypatch.setattr(mcp_client_mod, "get_mcp_client", lambda: None)
 
     resp = client.get("/api/config/mempalace/health")
     assert resp.status_code == 200
@@ -109,11 +110,10 @@ def test_health_handles_missing_palace(client, tmp_path, monkeypatch):
 
 
 @pytest.mark.unit
-def test_health_surfaces_mcp_error(client, palace_dir, monkeypatch):
+def test_health_surfaces_mcp_error(app, client, palace_dir):
     """When the MCP client reports mempalace as connected with no error,
     the endpoint should reflect that. When disconnected with a last_error
     the error string must propagate so operators see the real failure."""
-    import core.integrations.mcp.client as mcp_client_mod
 
     class FakeClient:
         def get_connection_status(self):
@@ -122,7 +122,7 @@ def test_health_surfaces_mcp_error(client, palace_dir, monkeypatch):
         def get_last_error(self, name):
             return "stdio process exited with code 1" if name == "mempalace" else None
 
-    monkeypatch.setattr(mcp_client_mod, "get_mcp_client", lambda: FakeClient())
+    app.dependency_overrides[provide_mcp_client] = lambda: FakeClient()
 
     resp = client.get("/api/config/mempalace/health")
     data = resp.json()
@@ -131,9 +131,8 @@ def test_health_surfaces_mcp_error(client, palace_dir, monkeypatch):
 
 
 @pytest.mark.unit
-def test_health_connected_path(client, palace_dir, monkeypatch):
+def test_health_connected_path(app, client, palace_dir):
     """Happy path — MCP says connected, no error string surfaced."""
-    import core.integrations.mcp.client as mcp_client_mod
 
     class FakeClient:
         def get_connection_status(self):
@@ -142,7 +141,7 @@ def test_health_connected_path(client, palace_dir, monkeypatch):
         def get_last_error(self, name):
             return None
 
-    monkeypatch.setattr(mcp_client_mod, "get_mcp_client", lambda: FakeClient())
+    app.dependency_overrides[provide_mcp_client] = lambda: FakeClient()
 
     resp = client.get("/api/config/mempalace/health")
     data = resp.json()

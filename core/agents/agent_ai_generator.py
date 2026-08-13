@@ -3,13 +3,16 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from core.integrations.mcp.registry import MCPRegistry
+
 logger = logging.getLogger(__name__)
 
 
 class AgentAIGenerator:
     """Generates / refines draft custom agent configurations from natural language."""
 
-    def __init__(self) -> None:
+    def __init__(self, mcp_registry: Optional[MCPRegistry] = None) -> None:
+        self._mcp_registry = mcp_registry
         self._mcp_tool_names_cache: Optional[List[str]] = None
 
     async def generate(
@@ -229,9 +232,7 @@ class AgentAIGenerator:
         if self._mcp_tool_names_cache is not None:
             return self._mcp_tool_names_cache
         try:
-            from core.integrations.mcp.registry import get_mcp_registry
-
-            registry = get_mcp_registry()
+            registry = self._mcp_registry or MCPRegistry()
             names = list(registry.get_tool_names() or [])
         except Exception as e:
             logger.debug(f"MCP registry unavailable: {e}")
@@ -302,14 +303,3 @@ class AgentAIGenerator:
             "max_tokens": max_tokens,
             "enable_thinking": bool(draft.get("enable_thinking") or False),
         }
-
-
-_generator: Optional[AgentAIGenerator] = None
-
-
-def get_agent_ai_generator() -> AgentAIGenerator:
-    """Return the singleton AgentAIGenerator instance."""
-    global _generator
-    if _generator is None:
-        _generator = AgentAIGenerator()
-    return _generator

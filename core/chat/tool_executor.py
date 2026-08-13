@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class ToolExecutor:
-    def __init__(self) -> None:
+    def __init__(self, mcp_client=None) -> None:
+        self._mcp_client = mcp_client
         self.skill_tool_index: Dict[str, Any] = {}
 
     # ------------------------------------------------------------------
@@ -197,11 +198,8 @@ class ToolExecutor:
             else:
                 server_name = None
                 actual_tool_name = tool_name
-                from core.integrations.mcp.client import get_mcp_client
-
-                mcp_client = get_mcp_client()
-                if mcp_client:
-                    for srv_name, tools in mcp_client.tools_cache.items():
+                if self._mcp_client:
+                    for srv_name, tools in self._mcp_client.tools_cache.items():
                         if any(t["name"] == tool_name for t in tools):
                             server_name = srv_name
                             break
@@ -211,11 +209,8 @@ class ToolExecutor:
                 continue
 
             try:
-                from core.integrations.mcp.client import get_mcp_client
-
-                mcp_client = get_mcp_client()
-                if mcp_client:
-                    raw = await mcp_client.call_tool(
+                if self._mcp_client:
+                    raw = await self._mcp_client.call_tool(
                         server_name, actual_tool_name, arguments, timeout=30.0
                     )
                     if isinstance(raw, dict):

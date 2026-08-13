@@ -20,7 +20,9 @@ from core.agents.builtins import ORCHESTRATOR_ACTOR
 # interactive OpenAI agent, workflows) shares one policy. Aliased to the
 # historical name so call sites — and the test that patches
 # ``daemon.agent_runner._get_tool_tier`` — stay unchanged.
+from core.integrations.mcp.registry import MCPRegistry
 from core.integrations.mcp.tool_manager import get_tool_tier as _get_tool_tier
+from core.response.approval_service import ApprovalService
 
 
 def _default_thinking_budget() -> int:
@@ -162,9 +164,19 @@ WORKDIR_TOOLS = [
 class AgentRunner:
     """Manages the pool of running sub-agent tasks."""
 
-    def __init__(self, config: OrchestratorConfig, workdir_mgr: WorkdirManager):
+    def __init__(
+        self,
+        config: OrchestratorConfig,
+        workdir_mgr: WorkdirManager,
+        approvals: Optional[ApprovalService] = None,
+        mcp_client=None,
+        mcp_registry: Optional[MCPRegistry] = None,
+    ):
         self.config = config
         self.workdir = workdir_mgr
+        self._approvals = approvals or ApprovalService()
+        self._mcp_client = mcp_client
+        self._mcp_registry = mcp_registry or MCPRegistry()
         self._active_agents: Dict[str, asyncio.Task] = {}
         self._semaphore = asyncio.Semaphore(config.max_concurrent_agents)
         self._claude_service = None
@@ -191,6 +203,8 @@ class AgentRunner:
                     use_agent_sdk=False,
                     enable_thinking=True,
                     thinking_budget=_default_thinking_budget(),
+                    mcp_client=self._mcp_client,
+                    mcp_registry=self._mcp_registry,
                 )
                 logger.info("AgentRunner: Claude service initialized")
             except Exception as e:
@@ -846,10 +860,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
             pass
 
         try:
-            from core.integrations.mcp.registry import get_mcp_registry
-
-            registry = get_mcp_registry()
-            mcp_schemas = registry.get_all_tools()
+            mcp_schemas = self._mcp_registry.get_all_tools()
             if mcp_schemas:
                 backend_names = {t["name"] for t in all_tools}
                 for tool in mcp_schemas:
@@ -1242,9 +1253,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
                 pass
 
         try:
-            from core.integrations.mcp.client import get_mcp_client
-
-            client = get_mcp_client()
+            client = self._mcp_client
             if client:
                 server_name = None
                 actual_tool_name = tool_name
@@ -1306,9 +1315,9 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
     ) -> str:
         """Create an approval request and put the agent into waiting_approval state."""
         try:
-            from core.response.approval_service import ActionType, get_approval_service
+            from core.response.approval_service import ActionType
 
-            service = get_approval_service()
+            service = self._approvals
 
             try:
                 action_type = ActionType(tool_name)
@@ -1390,9 +1399,9 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
             return None
 
         try:
-            from core.response.approval_service import ActionStatus, get_approval_service
+            from core.response.approval_service import ActionStatus
 
-            service = get_approval_service()
+            service = self._approvals
             action = service.get_action(action_id)
 
             if action is None:
@@ -1490,9 +1499,7 @@ Do NOT repeat tool calls you've already made unless checking for updates."""
             except Exception:
                 pass
         try:
-            from core.integrations.mcp.client import get_mcp_client
-
-            client = get_mcp_client()
+            client = self._mcp_client
             if client:
                 result = await client.call_tool(tool_name, tool_input)
                 if result is not None:
