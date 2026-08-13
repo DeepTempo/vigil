@@ -366,23 +366,17 @@ async def reload_servers(
     """
     _require_mcp_admin(current_user)
     logger.info("User %s requested MCP server reload", current_user.user_id)
-    try:
-        svc = _service()
-        # Reinitialise servers dict in place so the MCPClient's reference
-        # to this same instance keeps seeing the new catalog.
-        svc.servers.clear()
-        svc._initialize_servers()
+    svc = _service()
+    # Reinitialise servers dict in place so the MCPClient's reference
+    # to this same instance keeps seeing the new catalog.
+    svc.servers.clear()
+    svc._initialize_servers()
 
-        new_servers = list(svc.servers.keys())
+    new_servers = list(svc.servers.keys())
 
-        return {
-            "success": True,
-            "message": "MCP servers reloaded successfully",
-            "total_servers": len(new_servers),
-            "servers": new_servers,
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to reload MCP servers: {str(e)}"
-        )
+    return {
+        "success": True,
+        "message": "MCP servers reloaded successfully",
+        "total_servers": len(new_servers),
+        "servers": new_servers,
+    }

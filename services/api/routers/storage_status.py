@@ -313,11 +313,7 @@ def init_schema(current_user: User = Depends(get_current_active_user)):
     if before["state"] == "unknown":
         raise HTTPException(status_code=409, detail="Cannot inspect the target schema.")
 
-    try:
-        db_manager.create_tables()
-    except Exception as e:
-        logger.error("Schema init failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Schema init failed: {e}")
+    db_manager.create_tables()
     logger.info("Provisioned Vigil schema into empty database")
     return {"success": True, "message": "Schema created", **db_manager.schema_report()}
 

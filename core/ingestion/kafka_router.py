@@ -105,11 +105,7 @@ async def get_kafka_config() -> Dict[str, Any]:
     """Return the persisted Kafka config, falling back to defaults."""
     from core.storage.config_service import get_config_service
 
-    try:
-        stored = get_config_service().get_system_config(SYSTEMCONFIG_KEY) or {}
-    except Exception as e:
-        logger.error("Failed to read kafka config: %s", e)
-        raise HTTPException(500, f"Failed to read kafka config: {e}")
+    stored = get_config_service().get_system_config(SYSTEMCONFIG_KEY) or {}
 
     merged = {**_default_config(), **(stored if isinstance(stored, dict) else {})}
     # SASL password is env-only; never return it from the API
@@ -123,21 +119,15 @@ async def put_kafka_config(body: KafkaConfigBody) -> Dict[str, Any]:
     from core.storage.config_service import get_config_service
 
     payload = body.model_dump()
-    try:
-        ok = get_config_service().set_system_config(
-            key=SYSTEMCONFIG_KEY,
-            value=payload,
-            description="Kafka ingestion settings",
-            config_type="ingestion",
-            change_reason="Updated via /api/kafka/config",
-        )
-        if not ok:
-            raise HTTPException(500, "Failed to save kafka config")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to write kafka config: %s", e)
-        raise HTTPException(500, f"Failed to save kafka config: {e}")
+    ok = get_config_service().set_system_config(
+        key=SYSTEMCONFIG_KEY,
+        value=payload,
+        description="Kafka ingestion settings",
+        config_type="ingestion",
+        change_reason="Updated via /api/kafka/config",
+    )
+    if not ok:
+        raise HTTPException(500, "Failed to save kafka config")
 
     return {"status": "ok", "config": payload}
 

@@ -108,72 +108,69 @@ async def clear_all_cases(
         raise HTTPException(
             status_code=403, detail="Permission denied: cases.delete required"
         )
-    try:
-        from core.storage.models import (
-            AIDecisionLog,
-            AttackLayer,
-            Case,
-            CaseAttachment,
-            CaseAuditLog,
-            CaseClosureInfo,
-            CaseComment,
-            CaseEscalation,
-            CaseEvidence,
-            CaseIOC,
-            CaseMetrics,
-            CaseNotification,
-            CaseRelationship,
-            CaseSLA,
-            CaseTask,
-            CaseWatcher,
-            Investigation,
-            SketchMapping,
-            case_findings,
-        )
+    from core.storage.models import (
+        AIDecisionLog,
+        AttackLayer,
+        Case,
+        CaseAttachment,
+        CaseAuditLog,
+        CaseClosureInfo,
+        CaseComment,
+        CaseEscalation,
+        CaseEvidence,
+        CaseIOC,
+        CaseMetrics,
+        CaseNotification,
+        CaseRelationship,
+        CaseSLA,
+        CaseTask,
+        CaseWatcher,
+        Investigation,
+        SketchMapping,
+        case_findings,
+    )
 
-        count = session.query(Case).count()
+    count = session.query(Case).count()
 
-        for model in (
-            CaseAttachment,
-            CaseClosureInfo,
-            CaseEscalation,
-            CaseEvidence,
-            CaseIOC,
-            CaseMetrics,
-            CaseNotification,
-            CaseRelationship,
-            CaseSLA,
-            CaseTask,
-            CaseWatcher,
-            CaseComment,
-        ):
-            session.query(model).delete(synchronize_session=False)
+    for model in (
+        CaseAttachment,
+        CaseClosureInfo,
+        CaseEscalation,
+        CaseEvidence,
+        CaseIOC,
+        CaseMetrics,
+        CaseNotification,
+        CaseRelationship,
+        CaseSLA,
+        CaseTask,
+        CaseWatcher,
+        CaseComment,
+    ):
+        session.query(model).delete(synchronize_session=False)
 
-        session.execute(case_findings.delete())
-        session.query(SketchMapping).filter(SketchMapping.case_id.isnot(None)).delete(
-            synchronize_session=False
-        )
-        session.query(AIDecisionLog).filter(AIDecisionLog.case_id.isnot(None)).delete(
-            synchronize_session=False
-        )
-        session.query(Investigation).filter(Investigation.case_id.isnot(None)).update(
-            {"case_id": None},
-            synchronize_session=False,
-        )
-        session.query(AttackLayer).filter(AttackLayer.case_id.isnot(None)).update(
-            {"case_id": None},
-            synchronize_session=False,
-        )
-        session.query(CaseAuditLog).delete(synchronize_session=False)
-        session.query(Case).delete(synchronize_session=False)
+    session.execute(case_findings.delete())
+    session.query(SketchMapping).filter(SketchMapping.case_id.isnot(None)).delete(
+        synchronize_session=False
+    )
+    session.query(AIDecisionLog).filter(AIDecisionLog.case_id.isnot(None)).delete(
+        synchronize_session=False
+    )
+    session.query(Investigation).filter(Investigation.case_id.isnot(None)).update(
+        {"case_id": None},
+        synchronize_session=False,
+    )
+    session.query(AttackLayer).filter(AttackLayer.case_id.isnot(None)).update(
+        {"case_id": None},
+        synchronize_session=False,
+    )
+    session.query(CaseAuditLog).delete(synchronize_session=False)
+    session.query(Case).delete(synchronize_session=False)
 
-        return {
-            "success": True,
-            "deleted": count,
-            "message": f"Deleted {count} cases and case-derived records",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to clear cases: {str(e)}")
+    return {
+        "success": True,
+        "deleted": count,
+        "message": f"Deleted {count} cases and case-derived records",
+    }
 
 
 @router.get("/{case_id}")
@@ -855,24 +852,21 @@ async def add_task(case_id: str, data: TaskAdd, session: UnitOfWorkSession):
     """Add task to case."""
     from core.storage.models import CaseTask
 
-    try:
-        task = CaseTask(
-            case_id=case_id,
-            title=data.title,
-            description=data.description,
-            assignee=data.assignee,
-            priority=data.priority,
-            status='pending',
-            due_date=data.due_date,
-            checklist_items=data.checklist_items or []
-        )
-        session.add(task)
-        # Flush so the read-back sees server defaults; the request's
-        # unit of work commits.
-        session.flush()
-        return CaseTaskSchema.dump(task)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add task: {str(e)}")
+    task = CaseTask(
+        case_id=case_id,
+        title=data.title,
+        description=data.description,
+        assignee=data.assignee,
+        priority=data.priority,
+        status='pending',
+        due_date=data.due_date,
+        checklist_items=data.checklist_items or []
+    )
+    session.add(task)
+    # Flush so the read-back sees server defaults; the request's
+    # unit of work commits.
+    session.flush()
+    return CaseTaskSchema.dump(task)
 
 
 @router.get("/{case_id}/tasks")
@@ -911,34 +905,31 @@ async def update_task(
     """Update task."""
     from core.storage.models import CaseTask
 
-    try:
-        task = session.query(CaseTask).filter(CaseTask.task_id == task_id).first()
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
-        
-        if data.title is not None:
-            task.title = data.title
-        if data.description is not None:
-            task.description = data.description
-        if data.status is not None:
-            task.status = data.status
-        if data.assignee is not None:
-            task.assignee = data.assignee
-        if data.priority is not None:
-            task.priority = data.priority
-        if data.due_date is not None:
-            task.due_date = data.due_date
-        if data.completed_at is not None:
-            task.completed_at = data.completed_at
-        if data.actual_hours is not None:
-            task.actual_hours = data.actual_hours
-        
-        # Flush so the read-back sees server defaults; the request's
-        # unit of work commits.
-        session.flush()
-        return CaseTaskSchema.dump(task)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update task: {str(e)}")
+    task = session.query(CaseTask).filter(CaseTask.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if data.title is not None:
+        task.title = data.title
+    if data.description is not None:
+        task.description = data.description
+    if data.status is not None:
+        task.status = data.status
+    if data.assignee is not None:
+        task.assignee = data.assignee
+    if data.priority is not None:
+        task.priority = data.priority
+    if data.due_date is not None:
+        task.due_date = data.due_date
+    if data.completed_at is not None:
+        task.completed_at = data.completed_at
+    if data.actual_hours is not None:
+        task.actual_hours = data.actual_hours
+    
+    # Flush so the read-back sees server defaults; the request's
+    # unit of work commits.
+    session.flush()
+    return CaseTaskSchema.dump(task)
 
 
 # Case Relationships
@@ -957,21 +948,18 @@ async def add_relationship(
     """Link related case."""
     from core.storage.models import CaseRelationship
 
-    try:
-        rel = CaseRelationship(
-            case_id=case_id,
-            related_case_id=data.related_case_id,
-            relationship_type=data.relationship_type,
-            created_by=data.created_by,
-            notes=data.notes
-        )
-        session.add(rel)
-        # Flush so the read-back sees server defaults; the request's
-        # unit of work commits.
-        session.flush()
-        return CaseRelationshipSchema.dump(rel)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add relationship: {str(e)}")
+    rel = CaseRelationship(
+        case_id=case_id,
+        related_case_id=data.related_case_id,
+        relationship_type=data.relationship_type,
+        created_by=data.created_by,
+        notes=data.notes
+    )
+    session.add(rel)
+    # Flush so the read-back sees server defaults; the request's
+    # unit of work commits.
+    session.flush()
+    return CaseRelationshipSchema.dump(rel)
 
 
 @router.get("/{case_id}/relationships")
@@ -1003,37 +991,34 @@ async def close_case(case_id: str, data: ClosureInfo, session: UnitOfWorkSession
     """Close case with closure metadata."""
     from core.storage.models import CaseClosureInfo, Case
 
-    try:
-        # Update case status
-        case = session.query(Case).filter(Case.case_id == case_id).first()
-        if not case:
-            raise HTTPException(status_code=404, detail="Case not found")
-        
-        case.status = 'closed'
-        
-        # Add closure info
-        closure = CaseClosureInfo(
-            case_id=case_id,
-            closure_category=data.closure_category,
-            closed_by=data.closed_by,
-            root_cause=data.root_cause,
-            lessons_learned=data.lessons_learned,
-            recommendations=data.recommendations,
-            executive_summary=data.executive_summary
-        )
-        session.add(closure)
-        
-        # Mark SLA resolution complete
-        from core.cases.case_sla_service import CaseSLAService
-        sla_service = CaseSLAService()
-        sla_service.mark_resolution_complete(case_id, session)
-        
-        # Flush so the read-back sees server defaults; the request's
-        # unit of work commits.
-        session.flush()
-        return {"success": True, "closure": CaseClosureInfoSchema.dump(closure)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to close case: {str(e)}")
+    # Update case status
+    case = session.query(Case).filter(Case.case_id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    case.status = 'closed'
+    
+    # Add closure info
+    closure = CaseClosureInfo(
+        case_id=case_id,
+        closure_category=data.closure_category,
+        closed_by=data.closed_by,
+        root_cause=data.root_cause,
+        lessons_learned=data.lessons_learned,
+        recommendations=data.recommendations,
+        executive_summary=data.executive_summary
+    )
+    session.add(closure)
+    
+    # Mark SLA resolution complete
+    from core.cases.case_sla_service import CaseSLAService
+    sla_service = CaseSLAService()
+    sla_service.mark_resolution_complete(case_id, session)
+    
+    # Flush so the read-back sees server defaults; the request's
+    # unit of work commits.
+    session.flush()
+    return {"success": True, "closure": CaseClosureInfoSchema.dump(closure)}
 
 
 # Case Escalation
