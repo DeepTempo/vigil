@@ -193,11 +193,9 @@ agentWorker:
       # Only used when redis.enabled=false AND redis.bitnami.enabled=false.
       # host:port form without scheme or password.
       redisAddress: ""
-      # Which Redis database to count the list in. Empty means the one the chart's
-      # own Redis is addressed on, so the scaler and the worker cannot disagree.
-      # Set it only alongside redis.external.url, to whatever database that URL
-      # names — a scaler counting the wrong one reads an empty queue and holds the
-      # Deployment at its floor while runs pile up.
+      # Empty means the database the chart's own Redis is addressed on. Set it only
+      # alongside redis.external.url, to whatever database that URL names -- a
+      # scaler counting the wrong one reads an empty queue and never scales up.
       databaseIndex: ""
   podAnnotations: {}
   nodeSelector: {}
@@ -230,17 +228,13 @@ agentServe:
     limits:
       cpu: 1000m
       memory: 1Gi
-  # No autoscaling block, and its absence is the decision rather than an omission.
-  # This process holds SSE streams open for minutes while they wait on a model, so
-  # an idle-looking box may be carrying hundreds of live conversations -- CPU reads
-  # near zero and an HPA would scale it down mid-answer. #635 asks that worker and
-  # serve scale independently, which separate replica counts satisfy honestly.
-  #
-  # The signal that would work is concurrent connections, which means exporting a
-  # custom metric and a pipeline to read it: its own piece of work. Left out
-  # entirely rather than shipped as `enabled: false`, because a flag that renders
-  # no HorizontalPodAutoscaler is a flag that quietly scales you to one replica
-  # when somebody believes it and turns it on.
+  # No autoscaling block, and its absence is the decision. This process holds SSE
+  # streams open for minutes, so an idle-looking box may be carrying hundreds of
+  # live conversations -- CPU reads near zero and an HPA would scale it down
+  # mid-answer. Separate replica counts satisfy #635's "scale independently"
+  # honestly; concurrent connections is the signal that would work, and that is a
+  # metrics-pipeline project. Left out rather than shipped as `enabled: false`,
+  # which would render no HPA and quietly scale to one when somebody turned it on.
   podAnnotations: {}
   nodeSelector: {}
   tolerations: []

@@ -192,15 +192,10 @@ export async function advance(
 // only place that knows the ledger stayed empty.
 //
 // A failure with a ledger behind it keeps its row -- that run is real and
-// unfinished -- but hands the claim back rather than sitting on it. Holding it
-// would defeat the retry policy the failure is meant to reach: a lease lasts
-// LEASE_TTL_MS and the first retry lands seconds later, so claim() would find the
-// row still owned, refuse it, and advance() would return having done nothing --
-// which BullMQ records as a *success*, retiring the job with the run stalled until
-// the sweeper notices. Released, the retry takes exactly the path a resume takes.
-//
-// Safe against a lost lease: release() is scoped to this owner, so a worker that
-// was already reclaimed matches no row and displaces nobody.
+// unfinished -- but hands the claim back. Holding it out the TTL would refuse the
+// retry that lands seconds later, and a refused claim returns quietly, so BullMQ
+// would retire the job as a success with the run stalled. release() is scoped to
+// this owner, so a worker already reclaimed displaces nobody.
 async function forget(state: State, leases: Leases, runId: string, owner: string): Promise<void> {
   if ((await state.latestSeq(runId)) === null) {
     await leases.finish(runId);
@@ -312,10 +307,7 @@ export interface Enqueue {
 // Retrying is safe rather than merely tolerable: advance() checks terminal first
 // and leases.claim is a conditional UPDATE, so a second attempt takes exactly the
 // path a sweeper resume takes.
-//
-// It also has to be *reachable*, which is forget()'s half of this: a retry lands
-// seconds after the failure and a lease lasts LEASE_TTL_MS, so a run whose claim
-// was still held would find the row taken and quietly do nothing.
+// Reachable because forget() hands the lease back; see there.
 export const RUN_ATTEMPTS = 3;
 export const RUN_BACKOFF = { type: "exponential", delay: 5_000 } as const;
 

@@ -92,10 +92,9 @@ export async function streamChat(state: State, request: ChatRequest, res: Server
 //
 // An unset token refuses everything, and that is now the only gate in the process.
 //
-// Compared over a digest rather than with ===, for the reason Python's authorise
-// gives: === returns on the first differing byte and the header is the caller's to
-// choose. Hashed rather than compared raw because timingSafeEqual throws on a
-// length mismatch, and the throw would leak the length it was meant to hide.
+// Over a digest rather than ===, which returns on the first differing byte.
+// Hashed because timingSafeEqual throws on a length mismatch, and the throw would
+// leak the length.
 function authorised(req: IncomingMessage): boolean {
   const expected = process.env["AGENT_INTERNAL_TOKEN"] ?? process.env["VIGIL_TOOLS_TOKEN"] ?? "";
   if (expected === "") return false;
@@ -192,9 +191,8 @@ export function serveReady(pool: pg.Pool): Ready {
 // the worker now, and a pool cannot be shared across processes.
 if (process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].split("/").pop() ?? "")) {
   const pool = new pg.Pool(poolConfig());
-  // Cached: /readyz is answered before the token check, so an unauthenticated
-  // caller can ask as often as it likes and each ask would otherwise take a
-  // connection out of the pool this process serves chat from.
+  // Cached: unauthenticated probes would otherwise take a connection each out of
+  // the pool this process serves chat from.
   const serving = chatServer(new LedgerRepository(pool), cachedReady(serveReady(pool))).listen(chatPort());
   const stop = () => {
     serving.close();

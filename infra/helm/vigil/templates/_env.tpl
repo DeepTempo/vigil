@@ -60,20 +60,11 @@ chart-templated).
 {{- end -}}
 
 {{/*
-Discrete Redis parts, added on top of vigil.env for the agent pods only.
-
-The same reasoning that keeps POSTGRES_* discrete rather than a DSN. Under
-Bitnami auth vigil.redis.url renders `redis://:$(REDIS_PASSWORD)@host:6379/0`,
-and the kubelet substitutes that variable verbatim — no URL-encoding. A password
-holding @ / : or # therefore produces a REDIS_URL that the agent's `new URL()`
-misparses or rejects, and it is the queue connection, so the worker never drains.
-
-Python is unaffected and keeps reading REDIS_URL; only the agent prefers these,
-and only when REDIS_HOST is set (services/agent/core/db.ts::redisConfig).
-
-Nothing is emitted for an external Redis supplied as a URL: there are no parts to
-name, so the agent falls back to REDIS_URL — which it now percent-decodes, so a
-correctly-escaped DSN works.
+Discrete Redis parts for the agent pods, for the reason vigil.env ships discrete
+POSTGRES_*: the kubelet substitutes $(REDIS_PASSWORD) into a URL unencoded, so one
+holding @ / : or # misparses. Only the agent reads these, and only when REDIS_HOST
+is set (services/agent/core/db.ts::redisConfig). Nothing is emitted for an external
+Redis given as a URL — there are no parts to name.
 */}}
 {{- define "vigil.agentRedisEnv" -}}
 {{- if .Values.redis.bitnami.enabled }}

@@ -321,17 +321,9 @@ expands from envFrom/env.
 {{- end -}}
 
 {{/*
-Which Redis database the chart's own Redis is addressed on.
-
-One definition because three places have to agree: the URL above, the discrete
-REDIS_DB the agent pods read, and the KEDA scaler's databaseIndex — a scaler
-counting a different database than the worker drains reports an empty queue and
-scales to the floor while runs pile up.
-
-Not a knob: the chart's Redis is Vigil's alone, so there is nothing to separate
-and a second database would only be somewhere to lose a queue. It also does not
-govern redis.external.url, whose database is whatever that URL names — set
-agentWorker.autoscaling.keda.databaseIndex to match when using one.
+One definition because three have to agree: the URL above, the agent pods' REDIS_DB
+and the KEDA scaler's databaseIndex — a scaler counting a different database reads
+an empty queue. Does not govern redis.external.url, whose database that URL names.
 */}}
 {{- define "vigil.redis.database" -}}
 0

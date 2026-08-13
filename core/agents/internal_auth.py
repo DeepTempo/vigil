@@ -23,8 +23,7 @@ TOKEN_SECRET = "AGENT_INTERNAL_TOKEN"
 # asserting "same box" -- a stronger statement, and one Kubernetes enforces.
 #
 # Which makes the refusal below load-bearing rather than defensive: it is now the
-# only thing between a reachable pod and an open endpoint. The request itself is no
-# longer read, which is why it is no longer a parameter.
+# only thing between a reachable pod and an open endpoint.
 def authorise(presented: Optional[str], what: str) -> None:
     expected = get_secret(TOKEN_SECRET)
     # Told apart deliberately: a deployment that never set the secret reads exactly
@@ -32,10 +31,8 @@ def authorise(presented: Optional[str], what: str) -> None:
     if not expected:
         logger.error("%s refused: %s is not configured", what, TOKEN_SECRET)
         raise HTTPException(status_code=503, detail=f"{TOKEN_SECRET} is not configured")
-    # compare_digest rather than !=, now that this is the only gate: a plain
-    # comparison returns on the first differing byte, and the header is attacker-
-    # chosen. Encoded because compare_digest refuses a str holding anything above
-    # U+00FF, which a header is free to carry.
+    # compare_digest rather than !=, which returns on the first differing byte.
+    # Encoded because it refuses a str holding anything above U+00FF.
     if not hmac.compare_digest(
         (presented or "").encode("utf-8", "surrogatepass"),
         f"Bearer {expected}".encode(),

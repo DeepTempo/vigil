@@ -21,11 +21,8 @@ metadata:
   labels:
     {{- include "vigil.componentLabels" (dict "context" . "component" "agent-serve") | nindent 4 }}
 spec:
-  {{- /* Unconditional, unlike agent-worker's. There is no agent-serve HPA to
-         hand the replica count to and deliberately so — see values.yaml, which
-         says why an autoscaler is the wrong instrument for a process holding SSE
-         streams. Guarding this on an autoscaling flag that renders no autoscaler
-         would silently drop the Deployment to Kubernetes' default of one. */}}
+  {{- /* Unconditional, unlike agent-worker's: there is no agent-serve HPA to hand
+         the count to, deliberately — see values.yaml. */}}
   replicas: {{ .Values.agentServe.replicaCount }}
   selector:
     matchLabels:
