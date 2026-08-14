@@ -34,34 +34,53 @@ export function remoteDispatch(options: RemoteOptions): ToolDispatch {
     invoke: async (tool: RegisteredTool, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> => {
       // The tool's timeout and the run's abort both end this call, so whichever
       // fires first does: a lost lease must not wait out a 30s tool.
+      //
+      // Wired by hand rather than with AbortSignal.any, which attaches to the
+      // run's signal on every call and lets go only when the composite is
+      // collected: one long run piles a listener per tool call onto the one
+      // signal until Node warns about it. This one unwires in the finally.
       const timeout = AbortSignal.timeout(tool.bounds.timeoutMs);
-      const timer = signal === undefined ? timeout : AbortSignal.any([timeout, signal]);
-      let response: Response;
-      try {
-        response = await call(options.url, {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${options.token}` },
-          body: JSON.stringify({
-            tool: tool.id,
-            args,
-            bounds: { max_rows: tool.bounds.maxRows, timeout_ms: tool.bounds.timeoutMs },
-          }),
-          signal: timer,
-        });
-      } catch (error) {
-        // The far side never answered, so nothing is known about the tool itself.
-        const timedOut = error instanceof Error && error.name === "TimeoutError";
-        if (timedOut) return { ok: false, failure: { kind: "timeout", timeoutMs: tool.bounds.timeoutMs } };
-        // An aborted run is not a tool that failed, so it is not recorded as one.
-        if (signal?.aborted === true) return unavailable("the run was aborted");
-        return unavailable(error instanceof Error ? error.message : String(error));
-      }
+      const halt = new AbortController();
+      const relay = (source: AbortSignal) => () => halt.abort(source.reason);
+      const onTimeout = relay(timeout);
+      const onAbort = signal === undefined ? undefined : relay(signal);
+      if (signal?.aborted === true) halt.abort(signal.reason);
+      timeout.addEventListener("abort", onTimeout, { once: true });
+      if (onAbort !== undefined) signal?.addEventListener("abort", onAbort, { once: true });
 
-      if (!response.ok) return unavailable(`the endpoint answered ${response.status}`);
+      // Unwired around the whole call, body included: reading the body is still
+      // work the run's abort should be able to stop.
       try {
-        return resultOf(await response.json());
-      } catch (error) {
-        return unavailable(error instanceof Error ? error.message : String(error));
+        let response: Response;
+        try {
+          response = await call(options.url, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: `Bearer ${options.token}` },
+            body: JSON.stringify({
+              tool: tool.id,
+              args,
+              bounds: { max_rows: tool.bounds.maxRows, timeout_ms: tool.bounds.timeoutMs },
+            }),
+            signal: halt.signal,
+          });
+        } catch (error) {
+          // The far side never answered, so nothing is known about the tool itself.
+          const timedOut = error instanceof Error && error.name === "TimeoutError";
+          if (timedOut) return { ok: false, failure: { kind: "timeout", timeoutMs: tool.bounds.timeoutMs } };
+          // An aborted run is not a tool that failed, so it is not recorded as one.
+          if (signal?.aborted === true) return unavailable("the run was aborted");
+          return unavailable(error instanceof Error ? error.message : String(error));
+        }
+
+        if (!response.ok) return unavailable(`the endpoint answered ${response.status}`);
+        try {
+          return resultOf(await response.json());
+        } catch (error) {
+          return unavailable(error instanceof Error ? error.message : String(error));
+        }
+      } finally {
+        timeout.removeEventListener("abort", onTimeout);
+        if (onAbort !== undefined) signal?.removeEventListener("abort", onAbort);
       }
     },
   };

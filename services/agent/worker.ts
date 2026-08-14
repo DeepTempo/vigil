@@ -383,6 +383,15 @@ async function handle(state: State, leases: Leases, job: RunJob, directives: Dir
   }
 }
 
+// How many runs one worker drives at once. Tunable because the right number is a
+// deployment's model quota divided by what a run asks of it, which this cannot know.
+export const DEFAULT_RUN_CONCURRENCY = 4;
+
+export function runConcurrency(): number {
+  const asked = Number(process.env["VIGIL_RUN_CONCURRENCY"]);
+  return Number.isInteger(asked) && asked > 0 ? asked : DEFAULT_RUN_CONCURRENCY;
+}
+
 export interface Running {
   worker: Worker<RunJob>;
   ledger: LedgerRepository;
@@ -406,8 +415,13 @@ export function startWorker(build: HarnessFactory = harnessFor): Running {
   // stalled sweep still retires a dead worker's job eventually, and the lease
   // refuses it if it comes back around.
   const directives = new DirectiveRepository(pool);
+  // BullMQ defaults to one, so a single hunt held the queue for its whole life and
+  // every other run waited it out. A run is almost entirely waiting on a model, so
+  // the ceiling is the provider's rate limit rather than this process's CPU -- the
+  // limiter already holds that line, and the lease keeps two workers off one run.
   const worker = new Worker<RunJob>(RUN_QUEUE, (job) => handle(ledger, leases, job.data, directives, build), {
     connection,
+    concurrency: runConcurrency(),
     lockDuration: LEASE_TTL_MS * 10,
   });
 

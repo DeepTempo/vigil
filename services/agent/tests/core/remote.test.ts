@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defineTool } from "../../contracts/tool.js";
 import type { ToolResult } from "../../contracts/tool.js";
+import { getEventListeners } from "node:events";
 import { remoteDispatch } from "../../core/remote.js";
 
 const TOOL = defineTool(
@@ -91,5 +92,40 @@ describe("the hop failing is not the tool failing", () => {
     const { fetch } = answering({ detail: "bad token" }, 401);
     const result = await dispatchTo(fetch).invoke(TOOL, {});
     expect(result).toEqual({ ok: false, failure: { kind: "unavailable", detail: "the endpoint answered 401" } });
+  });
+});
+
+// A run's signal outlives every tool call made under it, so anything attached
+// per call and left there accumulates for the life of the run.
+describe("the run's signal is not a place listeners accumulate", () => {
+  it("attaches for the call and lets go when it ends", async () => {
+    let during = -1;
+    const run = new AbortController();
+    const attached = () => getEventListeners(run.signal, "abort").length;
+    const fetch = (async () => {
+      during = attached();
+      return new Response(JSON.stringify({ rows: [], row_count: 0, source_system: "vigil" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof globalThis.fetch;
+
+    for (let call = 0; call < 20; call += 1) await dispatchTo(fetch).invoke(TOOL, {}, run.signal);
+
+    expect(during).toBe(1);
+    expect(attached()).toBe(0);
+  });
+
+  it("still stops a call the run aborted", async () => {
+    const fetch = (async (_url: string, init: RequestInit) =>
+      await new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      })) as unknown as typeof globalThis.fetch;
+
+    const run = new AbortController();
+    const inflight = dispatchTo(fetch).invoke(TOOL, {}, run.signal);
+    run.abort();
+
+    expect((await inflight).ok).toBe(false);
   });
 });

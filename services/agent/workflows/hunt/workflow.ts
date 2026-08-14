@@ -74,7 +74,11 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
   );
 
   for (;;) {
-    if (options.signal?.aborted === true) return await end(harness, options, ledger, "aborted", "the worker lost its lease");
+    // Handing the run back, not ending it. This signal fires for exactly one
+    // reason -- renewal found another worker holding the lease -- so that worker
+    // is driving the run now, and a terminal written here would end the run it is
+    // in the middle of. An operator's abort is a directive and terminates above.
+    if (options.signal?.aborted === true) return report(ledger, "aborted", "the worker lost its lease");
     try {
       const iteration = await controller.advanceIteration();
       // The controller buffers an iteration and the caller makes it durable: a

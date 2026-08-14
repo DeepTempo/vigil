@@ -4,7 +4,9 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { LedgerRepository } from "../../ledger/repository.js";
 import { LeaseRepository } from "../../ledger/leases.js";
-import { advance } from "../../worker.js";
+import { advance, resolveSpec } from "../../worker.js";
+import { runHunt } from "../../workflows/hunt/workflow.js";
+import { archFor } from "../../arch/registry.js";
 import { InProcessDirectiveQueue } from "../../workflows/hunt/directives.js";
 import type { RunJob } from "../../contracts/job.js";
 import { isLead, respondingProvider } from "../support/responding-provider.js";
@@ -149,6 +151,28 @@ describe("a hunt started through the queue", () => {
     const terminal = await ledger.terminal(runId);
     expect(terminal?.outcome).toBe("budget_exhausted");
     expect((await ledger.read(runId)).at(-1)?.kind).toBe("terminal");
+  });
+
+  // The signal fires for exactly one reason: renewal found another worker holding
+  // the lease. Writing a terminal here would end the run that worker is driving.
+  it("hands a run back on a lost lease rather than ending it", async () => {
+    const job = startJob(runId);
+    const spec = await resolveSpec(job as Extract<typeof job, { reason: "start" }>);
+    const halted = AbortSignal.abort();
+    const build = huntHarness();
+
+    const outcome = await runHunt(build("hunt", spec, ledger, undefined, undefined) as never, {
+      run_id: runId,
+      spec,
+      actions: archFor("hunt").actions,
+      queue: new InProcessDirectiveQueue(),
+      started_by: "test",
+      signal: halted,
+    });
+
+    expect(outcome.status).toBe("aborted");
+    // The run is still open, so the worker that took the lease can carry it on.
+    expect(await ledger.terminal(runId)).toBeNull();
   });
 
   // The run event is written once. A second attempt on a settled run must not
