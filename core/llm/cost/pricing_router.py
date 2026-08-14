@@ -42,6 +42,7 @@ async def rates(
 
     from core.llm.providers.registry import get_registry
 
+    provider_type, model_id = _priced_as(provider_type, model_id)
     registry = get_registry()
     input_per_token, output_per_token = registry.get_cost_rates(model_id, provider_type)
     cache_read, cache_write = registry.get_cache_rates(model_id, provider_type)
@@ -57,3 +58,18 @@ async def rates(
         "cache_write": cache_write,
         "source": registry.get_pricing_source(model_id, provider_type),
     }
+
+
+# The agent layer calls one gateway and says so, but a gateway bills nothing of
+# its own: the catalog is keyed by whoever actually served the model. Resolved
+# here because this is where the catalog lives, and asking the agent to know
+# would be the second copy of it this module exists to prevent.
+def _priced_as(provider_type: str, model_id: str) -> tuple[str, str]:
+    from core.llm.providers.registry import _PRICED_PROVIDERS, infer_provider_type
+
+    named, _, bare = model_id.partition("/")
+    if bare and named.lower() in _PRICED_PROVIDERS:
+        return named.lower(), bare
+    if provider_type in _PRICED_PROVIDERS:
+        return provider_type, model_id
+    return infer_provider_type(model_id), model_id

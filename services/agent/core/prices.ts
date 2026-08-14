@@ -62,11 +62,19 @@ export function httpPrices(options: PricesOptions): Prices {
   };
 }
 
+// What the catalog says when nothing matched. Its rates are zeros, and they are a
+// gap rather than a price -- the one distinction cost_usd null exists to carry.
+const UNKNOWN = "unknown";
+
 // A malformed answer prices nothing rather than pricing wrongly: a missing rate read
 // as zero would silently under-bill every call for that model.
 export function ratesOf(body: unknown): Rates | null {
   const raw = body as Record<string, unknown> | null;
   if (raw === null || typeof raw !== "object") return null;
+  // Before the rates, because they parse: four valid zeros under this source are
+  // exactly the free-looking call the ledger must never record as free. `zero` is
+  // the other thing entirely -- a self-hosted model that genuinely costs nothing.
+  if (raw["source"] === UNKNOWN) return null;
 
   const rate = (field: string): number | null => {
     const value = raw[field];
