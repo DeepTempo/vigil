@@ -92,6 +92,14 @@ class WorkflowDefinition:
                     seen.append(tool)
         return seen
 
+    # Which loop drives this definition. compose walks the phases in order; hunt
+    # runs the hypothesis loop over what the definition states. Declared, because
+    # a definition that states hypotheses is asking for a different thing.
+    @property
+    def run_kind(self) -> str:
+        declared = self.metadata.get("run_kind")
+        return str(declared) if declared else COMPOSE_RUN_KIND
+
     @property
     def use_case(self) -> str:
         return self.metadata.get("use_case", "")
@@ -356,7 +364,9 @@ class WorkflowsService:
 
         job = build_start_job(
             run_id=run_id,
-            run_kind=COMPOSE_RUN_KIND,
+            # The definition's, not a constant: threat-hunt drives the hypothesis
+            # loop and the other four walk their phases, from one entry point.
+            run_kind=workflow.run_kind,
             request={
                 # A reference, not a path: the agent layer asks for the resolved
                 # layers at run start, so an edited definition reaches the next run.

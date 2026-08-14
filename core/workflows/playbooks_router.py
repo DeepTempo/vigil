@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from core.agents.internal_auth import authorise
 from core.routing import Auth, RouterMeta
-from core.workflows.playbook_resolver import UnknownPlaybook, resolve
+from core.workflows.playbook_resolver import UnknownPlaybook, resolve, resolve_hunt
 
 router = APIRouter()
 
@@ -32,6 +32,15 @@ class ResolvedPlaybook(BaseModel):
     config: str
 
 
+def _resolver_for(workflow_id: str):
+    from core.workflows.workflows_service import get_workflows_service
+
+    definition = get_workflows_service().get_workflow(workflow_id)
+    if definition is None:
+        raise UnknownPlaybook(f"no such workflow: {workflow_id}")
+    return resolve_hunt if definition.run_kind == "hunt" else resolve
+
+
 @router.get("/{workflow_id}", response_model=ResolvedPlaybook)
 def get_playbook(
     workflow_id: str,
@@ -39,8 +48,10 @@ def get_playbook(
 ) -> ResolvedPlaybook:
     authorise(authorization, "playbook resolution")
 
+    # The definition says which loop drives it, and the two loops read different
+    # sections: a compose run wants phases, a hunt wants beliefs to test.
     try:
-        playbook, config = resolve(workflow_id)
+        playbook, config = _resolver_for(workflow_id)(workflow_id)
     except UnknownPlaybook as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
 

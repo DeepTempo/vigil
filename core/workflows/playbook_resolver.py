@@ -235,6 +235,85 @@ def resolve(workflow_id: str, model: Optional[str] = None) -> Tuple[str, str]:
     return _dump(playbook), _dump(config)
 
 
+# What the threathunt arch asks for, by capability. Duplicated across the language
+# boundary for the same reason RUN_KINDS is, and held to it by a ratchet.
+HUNT_CAPABILITIES = ("findings_search", "similar_findings", "telemetry_search", "indicator_lookup")
+
+# A hunt is bounded by iterations rather than phases, and each one costs a lead
+# turn, its workers and the critic. Wider than a compose run of the same size.
+HUNT_BUDGETS = {"max_calls": 24, "max_cost_usd": 10.0, "max_wall_ms": 1_800_000}
+
+# The null hypothesis on the board from the start. Without it the benign
+# explanation is only ever an objection, never a competing claim -- which is the
+# whole protection against a loop that searches until it finds something.
+HUNT_HYPOTHESIS_LOOP = True
+
+
+def _strings(value: Any) -> List[str]:
+    if isinstance(value, str):
+        return [value]
+    return [str(item) for item in value or [] if str(item).strip()]
+
+
+# The two layers a hunt run needs. Same tools and the same dump as a compose one;
+# what differs is that a hunt states beliefs to test where a compose states steps.
+def resolve_hunt(workflow_id: str, model: Optional[str] = None) -> Tuple[str, str]:
+    from core.workflows.workflows_service import get_workflows_service
+
+    definition = get_workflows_service().get_workflow(workflow_id)
+    if definition is None:
+        raise UnknownPlaybook(f"no such workflow: {workflow_id}")
+
+    hypotheses = _strings(definition.metadata.get("hypotheses"))
+    # Refused rather than run: a hunt with nothing to test would open a ledger,
+    # spend a lead turn and conclude having tested nothing.
+    if not hypotheses:
+        raise UnknownPlaybook(f"{workflow_id} declares no hypotheses; there is nothing to test")
+
+    playbook = {
+        "name": definition.name,
+        "description": definition.description,
+        "use_case": definition.use_case,
+        "trigger_examples": list(definition.trigger_examples),
+        "objectives": _strings(definition.metadata.get("objectives")),
+        "scope": dict(definition.metadata.get("scope") or {}),
+        "directives": dict(definition.metadata.get("directives") or {}),
+        "hypotheses": hypotheses,
+        "attack_techniques": _strings(definition.metadata.get("attack_techniques")),
+        "data_domains": _strings(definition.metadata.get("data_domains")),
+        "narrative": definition.body,
+    }
+
+    config = {
+        "model": model or DEFAULT_MODEL,
+        "budgets": dict(HUNT_BUDGETS),
+        "runtime": DEFAULT_RUNTIME,
+        "tools": _bound_capabilities(list(HUNT_CAPABILITIES), _tool_catalogue()) + [_expand_tool()],
+        # The hunt gates on its own checkpoint classes, which are a property of
+        # what it is about to conclude rather than of a tool it happens to call.
+        "approvals": [],
+        "thresholds": {},
+        "hypothesis_loop": HUNT_HYPOTHESIS_LOOP,
+    }
+
+    return _dump(playbook), _dump(config)
+
+
+# Local, because the answer is the run's own ledger. Declared here so the lead's
+# granted expand resolves to something rather than posting to a backend.
+def _expand_tool() -> Dict[str, Any]:
+    return {
+        "id": "expand",
+        "kind": "local",
+        "description": "Return the raw payloads behind evidence ids from this run's own record.",
+        "parameters": {
+            "type": "object",
+            "required": ["evidence_ids"],
+            "properties": {"evidence_ids": {"type": "array", "items": {"type": "string"}}},
+        },
+    }
+
+
 # Block style and no aliases: the agent layer parses this, and a YAML anchor would
 # arrive as a shared reference nobody on that side asked for.
 def _dump(document: Dict[str, Any]) -> str:

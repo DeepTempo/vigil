@@ -8,6 +8,23 @@ trigger_examples:
   - "Validate whether this DeepTempo C2 alert is real by checking all available threat intel for the public IP"
   - "Hunt for APT28 credential harvesting techniques"
   - "Search for signs of data exfiltration in the last 24 hours"
+# The hypothesis loop, not a phase chain: the lead decides what to test next from
+# what the evidence has done to each belief, and a phase order cannot express that.
+run_kind: hunt
+
+# What this hunt is out to test. Stated here rather than inferred from a prompt,
+# so the run's premise is something a person wrote and review can see.
+hypotheses:
+  - "A host is beaconing to attacker-controlled infrastructure on a regular interval"
+  - "Credentials taken from that host have been reused elsewhere in the estate"
+attack_techniques:
+  - T1071.001
+  - T1078
+data_domains:
+  - network
+  - authentication
+  - endpoint
+
 objectives:
   - "State a hypothesis and the scope that would test it"
   - "Characterise the network and artifact evidence bearing on it"
