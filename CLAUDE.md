@@ -47,7 +47,8 @@ vigil/
 │       ├── components/   # Cross-console components (auth, setup)
 │       ├── services/     # Axios API client services
 │       └── contexts/     # React Context (auth, theme)
-├── tools/                # MCP tool implementations (15+ integrations)
+├── tools/                # The 10 MCP tools, one stdio server each (plus the
+│                         #   local-only url_analysis) — see tools/README.md
 ├── mcp-servers/          # Git submodule: MCP server implementations
 ├── deeptempo-core/       # Git submodule: core AI/detection library
 ├── core/                 # Shared library: capability domains + a storage/platform tier; API routers colocate at core/<domain>/*_router.py
@@ -276,7 +277,7 @@ Business logic lives in `services/`, not in API route handlers. A router lives w
 
 ### MCP Tool Access
 
-Agents access external tools through the MCP protocol. Tool definitions live in `mcp-config.json`. New integrations go in `tools/` as MCP server implementations. The `services/mcp_service.py` coordinates tool access.
+Agents access external tools through the MCP protocol. Tool definitions live in `mcp-config.json`, which spawns each in-repo server as its own `python3` subprocess. `tools/` holds the 10 tools (see [tools/README.md](tools/README.md) for the inventory and the outbound-HTTP conventions); a vendor with a slice under `core/integrations/` keeps its server there as part of that slice, not as one of the tools; the rest of the 40 entries are external servers. `services/mcp_service.py` coordinates tool access.
 
 ### Database
 
@@ -391,7 +392,9 @@ No registration step — discovery mounts every module that exports a `router` a
 
 ### New MCP Integration
 
-1. Implement the MCP server in `tools/your_tool.py` or `mcp-servers/`
+1. Implement the MCP server in `tools/your_tool.py` (or
+   `core/integrations/<vendor>/tool.py` if the vendor already has a slice, or
+   `mcp-servers/`) — `tools/README.md` has the HTTP conventions
 2. Add the server definition to `mcp-config.json`
 3. Expose via `services/mcp_service.py` if needed
 4. Document in `docs/INTEGRATIONS.md`

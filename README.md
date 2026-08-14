@@ -356,7 +356,7 @@ vigil/
 ├── clients/web/       # React + Tailwind frontend
 ├── contrib/           # Community tools: auto-contributor, benchmarking
 ├── mcp-servers/       # MCP server implementations (30+)
-├── tools/             # Additional tool implementations
+├── tools/             # The 10 MCP tools, one stdio server each
 ├── infra/             # Docker Compose, Helm chart, DB init SQL
 ├── docs/              # Documentation
 └── data/schemas/      # JSON validation schemas

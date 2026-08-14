@@ -431,7 +431,9 @@ Settings > Integrations > Custom Integration Builder:
 1. Upload API documentation
 2. AI generates MCP server code
 3. Review and test
-4. Deploy to `tools/` directory
+4. Deploy to the `tools/` directory — or, if the vendor already has a slice
+   under `core/integrations/`, to `core/integrations/<vendor>/tool.py`. Either
+   way follow the conventions in [`tools/README.md`](../tools/README.md)
 
 ## CloudCurrent VStrike (Network Topology Fusion)
 
