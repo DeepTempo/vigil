@@ -581,7 +581,7 @@ async def on_startup(ctx: Dict[str, Any]):
 
     claude_service = ClaudeService(
         use_backend_tools=True,
-        use_mcp_tools=True,
+        use_mcp_tools=False,
         use_agent_sdk=False,
         enable_thinking=True,
         thinking_budget=8000,

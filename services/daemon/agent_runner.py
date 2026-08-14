@@ -20,6 +20,7 @@ from core.agents.builtins import ORCHESTRATOR_ACTOR
 # interactive OpenAI agent, workflows) shares one policy. Aliased to the
 # historical name so call sites — and the test that patches
 # ``daemon.agent_runner._get_tool_tier`` — stay unchanged.
+from core.integrations.mcp.client import process_mcp_client
 from core.integrations.mcp.registry import MCPRegistry
 from core.integrations.mcp.tool_manager import get_tool_tier as _get_tool_tier
 from core.response.approval_service import ApprovalService
@@ -175,7 +176,9 @@ class AgentRunner:
         self.config = config
         self.workdir = workdir_mgr
         self._approvals = approvals or ApprovalService()
-        self._mcp_client = mcp_client
+        self._mcp_client = (
+            mcp_client if mcp_client is not None else process_mcp_client()
+        )
         self._mcp_registry = mcp_registry or MCPRegistry()
         self._active_agents: Dict[str, asyncio.Task] = {}
         self._semaphore = asyncio.Semaphore(config.max_concurrent_agents)

@@ -279,7 +279,8 @@ Use the get_case tool first to retrieve full details, then investigate all assoc
             use_backend_tools=True,
             use_mcp_tools=True,  # Enable MCP tools for dynamic enrichment
             use_agent_sdk=request.use_agent_sdk,
-            enable_thinking=agent.enable_thinking
+            enable_thinking=agent.enable_thinking,
+            mcp_registry=registry,
         )
         
         if not claude_service.has_api_key():

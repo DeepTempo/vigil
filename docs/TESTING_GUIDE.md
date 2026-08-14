@@ -404,9 +404,19 @@ claude = ClaudeService(mcp_client=fake_client, mcp_registry=MCPRegistry())
 
 `MCPClient` owns persistent stdio child processes that only its creator closes,
 so exactly one may exist per process. The owner installs it
-(`set_process_mcp_client`) and `process_mcp_client()` returns it. Before any
-owner starts — which is the case in a plain unit test — it returns `None`, so
-importing the harness never spawns child processes. To supply a fake, pass
+(`set_process_mcp_client`) and `process_mcp_client()` returns it.
+
+"One per process, installed by the owner" only holds if the processes are
+enumerated. There are three, and two of them own a client:
+
+| Process | Owns an MCPClient? |
+|---|---|
+| API (`services/api/main.py` lifespan) | yes |
+| Daemon (`services/daemon/main.py` `_init_components`) | yes |
+| ARQ llm-worker (`python -m services.worker`) | **no** — it runs with `use_mcp_tools=False` and reaches data through backend tools |
+
+Before any owner starts — which is the case in a plain unit test — it returns
+`None`, so importing the harness never spawns child processes. To supply a fake, pass
 `mcp_client=` to the constructor or override `provide_mcp_client`; only reach
 for `set_process_mcp_client` when the code under test resolves the process slot
 directly.

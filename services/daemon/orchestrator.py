@@ -67,6 +67,7 @@ from services.daemon.plan_generator import (
 )
 from services.daemon.shared_intel import SharedIntelligence
 from services.daemon.workdir import WorkdirManager
+from core.integrations.mcp.client import process_mcp_client
 from core.response.approval_service import ApprovalService
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,9 @@ class Orchestrator:
         self._enabled = config.enabled
         self._shutdown_event: Optional[asyncio.Event] = None
         self._approvals = approvals or ApprovalService()
-        self._mcp_client = mcp_client
+        self._mcp_client = (
+            mcp_client if mcp_client is not None else process_mcp_client()
+        )
 
         self.workdir = WorkdirManager(config.workdir_base)
         self.shared_intel = SharedIntelligence()
@@ -107,7 +110,7 @@ class Orchestrator:
             config,
             self.workdir,
             approvals=self._approvals,
-            mcp_client=mcp_client,
+            mcp_client=self._mcp_client,
         )
 
         self.investigation_queue: asyncio.Queue = asyncio.Queue()
