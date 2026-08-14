@@ -83,7 +83,7 @@ faker>=22.0.0
 respx>=0.21.0  # httpx mocking — required by tests/unit/test_elastic_service.py
 
 # Job Queue (ARQ + Redis)
-arq>=0.27.0
+arq>=0.28.0
 redis>=5.0.0
 
 # Agent-layer queue, on one wire format with the agent package's npm bullmq.
