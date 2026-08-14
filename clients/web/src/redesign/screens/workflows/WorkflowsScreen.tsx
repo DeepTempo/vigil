@@ -8,7 +8,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { EmptyState, Popup, activateOnKey } from '../../shared/ui'
 import { Markdown } from '../../shared/Markdown'
-import { prettyHandle, type Workflow, type AgentTemplate } from '../../data/appData'
+import { type Workflow, type AgentTemplate } from '../../data/appData'
 import { useWorkflows, useAgents, useAgentMeta, useSkills } from './useWorkflowsData'
 import { workflowApi, agentsApi, findingsApi, casesApi, type GeneratedAgentDraft } from '../../../services/api'
 import { skillsApi, SKILL_CATEGORIES, type SkillCategory, type SkillDraft } from '../../../services/skillsApi'
@@ -18,7 +18,7 @@ import type { ScreenProps } from '../../shared/types'
 
 type WfTab = 'workflows' | 'agents' | 'skills'
 
-export default function WorkflowsScreen({ openChat, goSettings }: ScreenProps) {
+export default function WorkflowsScreen({ goSettings }: ScreenProps) {
   const [tab, setTab] = useState<WfTab>('workflows')
   const tabs: [WfTab, string][] = [
     ['workflows', 'Workflows'],
@@ -42,7 +42,7 @@ export default function WorkflowsScreen({ openChat, goSettings }: ScreenProps) {
           ))}
         </div>
       </div>
-      {tab === 'workflows' && <WorkflowCatalog openChat={openChat} goSettings={goSettings} />}
+      {tab === 'workflows' && <WorkflowCatalog goSettings={goSettings} />}
       {tab === 'agents' && <AgentsTab />}
       {tab === 'skills' && <SkillsTab />}
     </>
@@ -84,7 +84,7 @@ function AgentSequence({ agents }: { agents: string[] }) {
 /* ---------------- Workflows catalog ---------------- */
 type WfModal = { kind: 'run' | 'history' | 'edit' | 'delete' | 'details'; wf: Workflow }
 
-function WorkflowCatalog({ openChat, goSettings }: { openChat: (prompt?: string) => void; goSettings: ScreenProps['goSettings'] }) {
+function WorkflowCatalog({ goSettings }: { goSettings: ScreenProps['goSettings'] }) {
   const { rows, phase, error, reload } = useWorkflows()
   const [q, setQ] = useState('')
   const [modal, setModal] = useState<WfModal | null>(null)
@@ -162,7 +162,7 @@ function WorkflowCatalog({ openChat, goSettings }: { openChat: (prompt?: string)
         </div>
       )}
       {modal?.kind === 'details' && <DetailsModal wf={modal.wf} onClose={close} />}
-      {modal?.kind === 'run' && <RunModal wf={modal.wf} openChat={openChat} onClose={close} />}
+      {modal?.kind === 'run' && <RunModal wf={modal.wf} onClose={close} onStarted={() => setModal({ kind: 'history', wf: modal.wf })} />}
       {modal?.kind === 'history' && <HistoryModal wf={modal.wf} onClose={close} />}
       {modal?.kind === 'edit' && <EditModal wf={modal.wf} onClose={close} onSaved={() => { close(); reload() }} />}
       {modal?.kind === 'delete' && <DeleteModal wf={modal.wf} onClose={close} onDeleted={() => { close(); reload() }} />}
@@ -337,26 +337,16 @@ function DetailsModal({ wf, onClose }: { wf: Workflow; onClose: () => void }) {
   )
 }
 
-/** Compose the chat prompt that runs a workflow (mirrors the old app's
-    buildSkillPrompt — the run happens as a streamed chat conversation). */
-function buildRunPrompt(wf: Workflow, p: { finding_id?: string; case_id?: string; context?: string; hypothesis?: string }): string {
-  const seq = wf.agents.map((a) => prettyHandle(a)).join(' → ')
-  let prompt = `Please execute the **${wf.name}** workflow.\n\n`
-  if (seq) prompt += `**Agent sequence:** ${seq}\n\n`
-  if (p.finding_id) prompt += `**Target Finding:** ${p.finding_id}\n`
-  if (p.case_id) prompt += `**Target Case:** ${p.case_id}\n`
-  if (p.hypothesis) prompt += `**Hunt Hypothesis:** ${p.hypothesis}\n`
-  if (p.context) prompt += `**Context:** ${p.context}\n`
-  return prompt.trim()
-}
-
-/** Run a workflow — collects a target, then sends it to the Vigil chat where
-    the response streams (matching the old app's "launch in chat" behavior). */
-function RunModal({ wf, openChat, onClose }: { wf: Workflow; openChat: (prompt?: string) => void; onClose: () => void }) {
+/** Run a workflow — collects a target, then starts it on the agent layer. The
+    run is enqueued and answers with an id, so this hands off to History, which
+    already reports phases, beliefs and whatever the run is waiting on. */
+function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: () => void; onClose: () => void }) {
   const [findingId, setFindingId] = useState('')
   const [caseId, setCaseId] = useState('')
   const [context, setContext] = useState('')
   const [hypothesis, setHypothesis] = useState('')
+  const [starting, setStarting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   // Suggestions for the ID fields, fetched from the live findings/cases lists.
   const [findingOpts, setFindingOpts] = useState<{ id: string; label: string }[]>([])
   const [caseOpts, setCaseOpts] = useState<{ id: string; label: string }[]>([])
@@ -382,17 +372,25 @@ function RunModal({ wf, openChat, onClose }: { wf: Workflow; openChat: (prompt?:
     ...(context.trim() && { context: context.trim() }),
     ...(hypothesis.trim() && { hypothesis: hypothesis.trim() }),
   }
-  const canRun = Object.keys(params).length > 0
+  const canRun = Object.keys(params).length > 0 && !starting
 
-  const run = () => {
-    openChat(buildRunPrompt(wf, params))
-    onClose()
+  const run = async () => {
+    setStarting(true)
+    setError(null)
+    try {
+      await workflowApi.execute(wf.id, params)
+      onStarted()
+    } catch (e) {
+      setError(errMsg(e))
+      setStarting(false)
+    }
   }
 
   return (
     <Popup open onClose={onClose} title={`Run · ${wf.name}`}>
       <div className="flex flex-col gap-3.5">
-        <p className="text-[12.5px] text-tx-3 leading-[1.5]">Provide at least one target, then run it in the Vigil chat — the agents stream their work there. Findings and cases drive the investigation; context and hypothesis steer hunts.</p>
+        <p className="text-[12.5px] text-tx-3 leading-[1.5]">Provide at least one target, then start the run — the agents work it on the server and History reports where it got to. Findings and cases drive the investigation; context and hypothesis steer hunts.</p>
+        {error && <div className="text-[12.5px] leading-[1.5]" style={{ color: 'var(--crit)' }}>{error}</div>}
         <ComboField label="Finding ID" value={findingId} onChange={setFindingId} placeholder="f-20260614-3b5c585e" options={findingOpts} hint={findingOpts.length ? `${findingOpts.length} recent findings — start typing to filter.` : undefined} />
         <ComboField label="Case ID" value={caseId} onChange={setCaseId} placeholder="case-2026-0142" options={caseOpts} />
         <Field label="Context" value={context} onChange={setContext} placeholder="Active ransomware on HOST-42…" textarea />
@@ -400,7 +398,7 @@ function RunModal({ wf, openChat, onClose }: { wf: Workflow; openChat: (prompt?:
         <div className="flex justify-end gap-2.5 pt-1">
           <button className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary" disabled={!canRun} style={{ opacity: canRun ? 1 : 0.5 }} onClick={run}>
-            <Icon name="send" /> Run in chat
+            <Icon name="play" /> {starting ? 'Starting…' : 'Run workflow'}
           </button>
         </div>
       </div>
