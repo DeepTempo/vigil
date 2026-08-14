@@ -23,8 +23,11 @@ export function internalToken(): string {
 
 // One per process, not one per run. A client per run opens its own connection pool
 // and reuses no keep-alive; a limiter per run means N runs get N times the rate.
+// /v1 is Bifrost's OpenAI-format surface and BIFROST_URL names the gateway, not
+// that surface: core/llm/router/router.py appends the same suffix to the same
+// variable. Without it every call reaches the gateway root and answers 405.
 const client = new OpenAI({
-  baseURL: process.env["BIFROST_URL"] ?? "http://bifrost:8080",
+  baseURL: `${(process.env["BIFROST_URL"] ?? "http://bifrost:8080").replace(/\/+$/, "")}/v1`,
   apiKey: process.env["BIFROST_API_KEY"] ?? "unused",
 });
 
