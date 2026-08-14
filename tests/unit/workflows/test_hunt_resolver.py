@@ -27,13 +27,14 @@ class TestThePlaybookLayer:
     # model inferred from a prompt -- which is what the null hypothesis guards.
     def test_carries_the_hypotheses_the_definition_states(self, resolved):
         playbook, _ = resolved
-        assert playbook["hypotheses"]
-        assert all(isinstance(one, str) and one.strip() for one in playbook["hypotheses"])
+        stated = playbook["hypotheses"]
+        assert stated
+        assert all(isinstance(one, str) and one.strip() for one in stated)
 
     def test_carries_the_sections_the_hunt_owns(self, resolved):
         playbook, _ = resolved
         for section in ("hypotheses", "attack_techniques", "data_domains"):
-            assert section in playbook, f"the hunt arch owns {section} and would read nothing"
+            assert section in playbook, f"the arch owns {section} and reads nothing"
 
     # phases belong to the other loop. A hunt decides what to do next from what
     # the evidence did to each belief, so a step order would say nothing.
@@ -45,7 +46,8 @@ class TestThePlaybookLayer:
 class TestTheConfigLayer:
     def test_binds_the_capabilities_the_arch_asks_for(self, resolved):
         _, config = resolved
-        provided = {tool.get("provides") for tool in config["tools"] if tool.get("provides")}
+        tools = config["tools"]
+        provided = {one.get("provides") for one in tools if one.get("provides")}
         # Only what this deployment carries: one it has no tool for is dropped,
         # which is the point of binding rather than naming.
         assert provided
@@ -64,6 +66,23 @@ class TestTheConfigLayer:
 
 
 class TestRefusals:
+    # A hunt has no phases, so the compose guard would refuse every one of them
+    # before the resolver was ever reached.
+    def test_a_hunt_is_refused_for_nothing_to_test_not_for_no_phases(self):
+        from core.workflows.workflows_service import (WorkflowDefinition,
+                                                      _nothing_to_run)
+
+        def _hunt(**extra):
+            return WorkflowDefinition(
+                workflow_id="h",
+                metadata={"run_kind": "hunt", **extra},
+                body="",
+                file_path="",
+            )
+
+        assert _nothing_to_run(_hunt(hypotheses=["something to test"])) == ""
+        assert _nothing_to_run(_hunt()) == "hypotheses"
+
     # Refused rather than run: a hunt with nothing to test opens a ledger, spends
     # a lead turn and concludes having tested nothing.
     def test_refuses_a_definition_with_nothing_to_test(self, monkeypatch):

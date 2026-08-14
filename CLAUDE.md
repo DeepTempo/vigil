@@ -14,7 +14,12 @@ This file provides guidance for AI assistants (Claude Code and similar tools) wo
   mitre_analyst, forensics, threat_intel, compliance, malware_analyst,
   network_analyst, auto_responder. (The README says "12" — it omits
   `auto_responder`.)
-- **Workflows** — Multi-agent orchestrated playbooks (Incident Response, Full Investigation, Threat Hunt, Forensic Analysis)
+- **Workflows** — Multi-agent orchestrated playbooks (Incident Response, Full
+  Investigation, Threat Hunt, Forensic Analysis, Cloud Incident). Four are
+  **compose** playbooks and walk their `phases:` in order. `threat-hunt` declares
+  `run_kind: hunt` and runs the **hypothesis loop** instead — a Hunt Lead picks
+  each move from what the evidence did to each belief, so its `phases:` block is
+  a dispatch roster rather than an order.
 - **Integrations** — 40 MCP servers in `mcp-config.json` (Splunk, CrowdStrike, VirusTotal, Shodan, Timesketch, Jira, Slack, etc.). Count only dict-valued keys: the `mcpServers` object also holds 7 `_comment_*` string keys used as section separators.
 
 **Ports:**
@@ -396,9 +401,15 @@ No registration step — discovery mounts every module that exports a `router` a
 
 ### New Workflow
 
-1. Create `workflows/your-workflow/WORKFLOW.md` following existing format
+1. Create `core/workflows/definitions/your-workflow/WORKFLOW.md` following existing format
 2. Define agent sequence, tools, and phase instructions
 3. Register in workflow service if needed
+
+For a hypothesis-driven hunt instead of a phase chain, declare `run_kind: hunt`
+and state `hypotheses` (required — a hunt with nothing to test is refused),
+`attack_techniques` and `data_domains`. `playbook_resolver.resolve_hunt()` binds
+the capabilities `services/agent/arch/threathunt.yaml` declares to whatever tools
+the deployment carries, dropping any it has none for.
 
 ### New API Endpoint
 

@@ -13,7 +13,8 @@ from core.workflows.playbook_resolver import CAPABILITIES, HUNT_CAPABILITIES
 
 pytestmark = pytest.mark.unit
 
-ARCH = Path(__file__).resolve().parents[3] / "services" / "agent" / "arch" / "threathunt.yaml"
+ROOT = Path(__file__).resolve().parents[3]
+ARCH = ROOT / "services" / "agent" / "arch" / "threathunt.yaml"
 
 
 def _needs_in_arch() -> set[str]:
@@ -21,7 +22,8 @@ def _needs_in_arch() -> set[str]:
     for line in ARCH.read_text().splitlines():
         match = re.match(r"\s*needs:\s*\[(.*)\]\s*$", line)
         if match:
-            declared.update(name.strip() for name in match.group(1).split(",") if name.strip())
+            names = match.group(1).split(",")
+            declared.update(one.strip() for one in names if one.strip())
     return declared
 
 
@@ -48,3 +50,17 @@ def test_the_resolver_emits_nothing_the_arch_does_not_ask_for():
 def test_every_capability_names_at_least_one_candidate():
     empty = [name for name in HUNT_CAPABILITIES if not CAPABILITIES.get(name)]
     assert not empty, f"capabilities with no candidate tool: {empty}"
+
+
+# The definition's phases block is the roster of who the lead may dispatch, and the
+# arch is what they actually are. A name in one and not the other reads as a
+# worker that can be asked for and never answers.
+def test_the_definition_rosters_the_workers_the_arch_carries():
+    import yaml
+
+    from core.workflows.workflows_service import get_workflows_service
+
+    arch = yaml.safe_load(ARCH.read_text())
+    rostered = get_workflows_service().get_workflow("threat-hunt").agents
+
+    assert set(rostered) == set(arch["roles"]["workers"])

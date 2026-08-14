@@ -19,6 +19,12 @@ HUNT_RUN_KIND = "hunt"
 WORKFLOW_SCHEME = "workflow:"
 
 
+def _nothing_to_run(workflow: "WorkflowDefinition") -> str:
+    if workflow.run_kind == HUNT_RUN_KIND:
+        return "" if workflow.metadata.get("hypotheses") else "hypotheses"
+    return "" if workflow.phases else "phases"
+
+
 # Real YAML rather than the regex reader this replaced. That reader could not carry
 # a phase list, and PyYAML has been a declared dependency the whole time it avoided it.
 def _parse_yaml_frontmatter(content: str) -> Dict[str, Any]:
@@ -340,11 +346,13 @@ class WorkflowsService:
         if not workflow:
             return {"success": False, "error": f"Workflow not found: {workflow_id}"}
         # Caught here as well as in the resolver, so a definition with nothing to
-        # run is refused before it leaves a run record behind.
-        if not workflow.phases:
+        # run is refused before it leaves a run record behind. The two loops read
+        # different sections, so they are empty in different ways.
+        missing = _nothing_to_run(workflow)
+        if missing:
             return {
                 "success": False,
-                "error": f"Workflow declares no phases: {workflow_id}",
+                "error": f"Workflow declares no {missing}: {workflow_id}",
             }
 
         workflow_dict = workflow.to_dict(include_body=False)
