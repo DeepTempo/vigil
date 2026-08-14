@@ -119,6 +119,13 @@ def _update(status: str, checkpoint: Optional[str] = None):
     )
 
 
+def _services():
+    from core.response.approval_service import ApprovalService
+    from core.workflows.workflow_run_service import WorkflowRunService
+
+    return WorkflowRunService(), ApprovalService()
+
+
 class TestPhaseApprovalAcrossTheBridge:
     def test_a_waiting_phase_pauses_the_run_and_raises_an_approval(
         self, clean_tables, internal
@@ -129,7 +136,9 @@ class TestPhaseApprovalAcrossTheBridge:
 
         token = internal
         run_id = _run()
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
 
         run = WorkflowRunService().get_run(run_id)
         assert run["status"] == "paused"
@@ -150,8 +159,12 @@ class TestPhaseApprovalAcrossTheBridge:
 
         token = internal
         run_id = _run()
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
 
         pending = ApprovalService().list_actions(
             status=ActionStatus.PENDING, workflow_run_id=run_id
@@ -162,12 +175,13 @@ class TestPhaseApprovalAcrossTheBridge:
         self, clean_tables, internal
     ):
         from core.response.approval_service import ActionStatus, ApprovalService
-        from core.workflows.run_bridge_router import (list_decisions,
-                                                      record_phase)
+        from core.workflows.run_bridge_router import list_decisions, record_phase
 
         token = internal
         run_id = _run()
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
 
         service = ApprovalService()
         action = service.list_actions(
@@ -175,7 +189,7 @@ class TestPhaseApprovalAcrossTheBridge:
         )[0]
         service.approve_action(action.action_id, approved_by="tester")
 
-        decisions = list_decisions(run_id, token).decisions
+        decisions = list_decisions(run_id, token, _services()[1]).decisions
         assert len(decisions) == 1
         assert decisions[0].checkpoint_id == "chk-phase-2"
         assert decisions[0].answer == "approve"
@@ -183,20 +197,23 @@ class TestPhaseApprovalAcrossTheBridge:
 
     def test_a_rejection_comes_back_carrying_its_reason(self, clean_tables, internal):
         from core.response.approval_service import ActionStatus, ApprovalService
-        from core.workflows.run_bridge_router import (list_decisions,
-                                                      record_phase)
+        from core.workflows.run_bridge_router import list_decisions, record_phase
 
         token = internal
         run_id = _run()
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
 
         service = ApprovalService()
         action = service.list_actions(
             status=ActionStatus.PENDING, workflow_run_id=run_id
         )[0]
-        service.reject_action(action.action_id, reason="too risky", rejected_by="tester")
+        service.reject_action(
+            action.action_id, reason="too risky", rejected_by="tester"
+        )
 
-        decisions = list_decisions(run_id, token).decisions
+        decisions = list_decisions(run_id, token, _services()[1]).decisions
         assert len(decisions) == 1
         assert decisions[0].answer == "reject"
         assert decisions[0].text == "too risky"
@@ -204,14 +221,15 @@ class TestPhaseApprovalAcrossTheBridge:
     def test_an_undecided_run_hands_back_nothing_to_journal(
         self, clean_tables, internal
     ):
-        from core.workflows.run_bridge_router import (list_decisions,
-                                                      record_phase)
+        from core.workflows.run_bridge_router import list_decisions, record_phase
 
         token = internal
         run_id = _run()
-        record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
 
-        assert list_decisions(run_id, token).decisions == []
+        assert list_decisions(run_id, token, _services()[1]).decisions == []
 
     def test_a_completed_phase_leaves_the_run_running(self, clean_tables, internal):
         from core.workflows.run_bridge_router import record_phase
@@ -219,7 +237,7 @@ class TestPhaseApprovalAcrossTheBridge:
 
         token = internal
         run_id = _run()
-        record_phase(run_id, _update("completed"), token)
+        record_phase(run_id, _update("completed"), token, *_services())
 
         run_service = WorkflowRunService()
         assert run_service.get_run(run_id)["status"] == "running"
@@ -228,8 +246,7 @@ class TestPhaseApprovalAcrossTheBridge:
         assert phases[0]["status"] == "completed"
 
     def test_the_outcome_finalises_the_run(self, clean_tables, internal):
-        from core.workflows.run_bridge_router import (TerminalUpdate,
-                                                      record_terminal)
+        from core.workflows.run_bridge_router import TerminalUpdate, record_terminal
         from core.workflows.workflow_run_service import WorkflowRunService
 
         token = internal
@@ -238,6 +255,7 @@ class TestPhaseApprovalAcrossTheBridge:
             run_id,
             TerminalUpdate(outcome="completed", reason="all 2 phases ran", summary="s"),
             token,
+            _services()[0],
         )
 
         run = WorkflowRunService().get_run(run_id)
