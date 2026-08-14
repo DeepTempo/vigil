@@ -52,10 +52,14 @@ describe("declaring a tool local", () => {
     expect(tool?.id).toBe("expand");
   });
 
-  // The mistake this catches is one step later than an unknown kind: it would
-  // register, be granted to a role, and then answer nothing at all.
-  it("refuses a local tool no implementation was supplied for", () => {
-    expect(() => toolsFrom([SPEC], {})).toThrow(SpecError);
+  // harnessFor builds a registry before the run is known, so it supplies no
+  // locals: the tool registers and refuses at call time, and the workflow that
+  // owns it replaces this one once it has the run in hand.
+  it("registers a local nothing supplied, and fails it at call time", async () => {
+    const [tool] = toolsFrom([SPEC], {});
+    expect(tool?.id).toBe("expand");
+    const result = await tool!.invoke({ evidence_ids: ["e1"] });
+    expect(result.ok).toBe(false);
   });
 
   it("still refuses a kind nothing implements", () => {

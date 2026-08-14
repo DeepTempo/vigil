@@ -12,6 +12,13 @@ function unreachable(id: string): ToolResult {
   return { ok: false, failure: { kind: "unavailable", detail: `${id} has no local implementation; it resolves remotely` } };
 }
 
+// A local whose answer needs the run in hand, which harnessFor does not have: the
+// workflow that owns one rebuilds the registry once it does. Registered rather than
+// refused so the run reaches that rebuild, and failing rather than silent if it never does.
+function unsupplied(id: string): ToolResult {
+  return { ok: false, failure: { kind: "unavailable", detail: `${id} is local and this registry supplied no implementation for it` } };
+}
+
 // The far side owns the implementation, so this carries only what the registry and
 // the model need: what it is called, what it does, and what it takes.
 export function remoteTool(spec: ToolSpec): RegisteredTool {
@@ -48,8 +55,7 @@ export function toolsFrom(
   return specs.map((spec) => {
     if (spec.kind === REMOTE) return remoteTool(spec);
     if (spec.kind === LOCAL) {
-      const execute = locals[spec.id];
-      if (execute === undefined) throw new SpecError(`tool ${spec.id} is declared local, and this run supplied no implementation for it`);
+      const execute = locals[spec.id] ?? (async () => unsupplied(spec.id));
       return localTool(spec, execute, boundsOf(spec));
     }
     throw new SpecError(`tool ${spec.id} declares kind ${spec.kind}, which no adapter implements`);
