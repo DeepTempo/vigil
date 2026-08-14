@@ -117,6 +117,29 @@ describe("a hunt started through the queue", () => {
     expect((await ledger.read(runId)).at(-1)?.kind).toBe("terminal");
   });
 
+  // Only compose was handed a mirror, so a finished hunt never reported its
+  // outcome and the console's workflow_runs row stayed running forever.
+  it("reports its terminal to the backend, not only to the ledger", async () => {
+    const posted: { url: string; body: unknown }[] = [];
+    const real = globalThis.fetch;
+    process.env["VIGIL_RUNS_URL"] = "http://backend/internal/runs";
+    // Setting the variable turns the answers reader on too, and that one GETs.
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (init?.body !== undefined) posted.push({ url: String(url), body: JSON.parse(String(init.body)) });
+      return { ok: true, status: 200, json: async () => ({ decisions: [] }) } as Response;
+    }) as unknown as typeof globalThis.fetch;
+
+    try {
+      await run(runId);
+    } finally {
+      globalThis.fetch = real;
+      delete process.env["VIGIL_RUNS_URL"];
+    }
+
+    const terminal = posted.find((one) => one.url.endsWith(`${runId}/terminal`));
+    expect(terminal?.body).toMatchObject({ outcome: "completed" });
+  });
+
   // Compose, lead and tally all end on outcome.refusal; the hunt threw instead,
   // so a run that spent its allowance stayed "running" forever and the watchdog
   // re-enqueued it every sweep to be refused again.

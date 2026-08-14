@@ -236,7 +236,15 @@ function workerName(): string {
 // run that reached terminal is nobody's; one that parked stays on the list and is
 // looked at again when its interval passes or the console pulls it forward.
 async function settle(state: State, leases: Leases, job: RunJob, spec: RunSpec, owner: string): Promise<void> {
-  if ((await state.terminal(job.run_id)) !== null) {
+  const terminal = await state.terminal(job.run_id);
+  if (terminal !== null) {
+    // Only compose was ever handed a mirror, so every other kind reached its end
+    // with nobody to tell: the console read workflow_runs and showed a finished
+    // hunt as running forever, with no duration and no cost. Off the terminal
+    // this already read, so one place reports for every kind there is.
+    if (job.run_kind !== "compose") {
+      await mirrorFor().terminal(job.run_id, terminal.outcome, terminal.reason, "");
+    }
     await reap(leases, job.run_id);
     return;
   }
