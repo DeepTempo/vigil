@@ -1,5 +1,6 @@
 import { defineTool, type RegisteredTool, type ToolBounds, type ToolResult } from "../contracts/tool.js";
 import { SpecError, type ToolSpec } from "../core/spec.js";
+import { LOCAL, localTool, type LocalExecutor } from "./local.js";
 
 export const REMOTE = "remote";
 
@@ -20,11 +21,6 @@ export function remoteTool(spec: ToolSpec): RegisteredTool {
   const parameters = spec["parameters"];
   if (typeof parameters !== "object" || parameters === null) throw new SpecError(`tool ${spec.id} needs a parameters schema`);
 
-  const bounds: ToolBounds = {
-    maxRows: typeof spec["max_rows"] === "number" ? spec["max_rows"] : DEFAULT_BOUNDS.maxRows,
-    timeoutMs: typeof spec["timeout_ms"] === "number" ? spec["timeout_ms"] : DEFAULT_BOUNDS.timeoutMs,
-  };
-
   return defineTool(
     {
       id: spec.id,
@@ -32,15 +28,30 @@ export function remoteTool(spec: ToolSpec): RegisteredTool {
       parameters: parameters as Record<string, unknown>,
       execute: async () => unreachable(spec.id),
     },
-    bounds,
+    boundsOf(spec),
   );
 }
 
-// One place a declared tool becomes a registered one. An unimplemented kind throws
-// here, at startup, rather than being granted to a role that then cannot call it.
-export function toolsFrom(specs: readonly ToolSpec[]): RegisteredTool[] {
+export function boundsOf(spec: ToolSpec): ToolBounds {
+  return {
+    maxRows: typeof spec["max_rows"] === "number" ? spec["max_rows"] : DEFAULT_BOUNDS.maxRows,
+    timeoutMs: typeof spec["timeout_ms"] === "number" ? spec["timeout_ms"] : DEFAULT_BOUNDS.timeoutMs,
+  };
+}
+
+// One place a declared tool becomes a registered one. An unimplemented kind, or a
+// local one nothing supplied, throws here rather than answering nothing later.
+export function toolsFrom(
+  specs: readonly ToolSpec[],
+  locals: Readonly<Record<string, LocalExecutor>> = {},
+): RegisteredTool[] {
   return specs.map((spec) => {
-    if (spec.kind !== REMOTE) throw new SpecError(`tool ${spec.id} declares kind ${spec.kind}, which no adapter implements`);
-    return remoteTool(spec);
+    if (spec.kind === REMOTE) return remoteTool(spec);
+    if (spec.kind === LOCAL) {
+      const execute = locals[spec.id];
+      if (execute === undefined) throw new SpecError(`tool ${spec.id} is declared local, and this run supplied no implementation for it`);
+      return localTool(spec, execute, boundsOf(spec));
+    }
+    throw new SpecError(`tool ${spec.id} declares kind ${spec.kind}, which no adapter implements`);
   });
 }

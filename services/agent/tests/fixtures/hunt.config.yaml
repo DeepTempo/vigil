@@ -29,9 +29,11 @@ tools:
       required: [sql]
     max_rows: 200
     timeout_ms: 30000
+  # local, not remote: the answer is this run's own ledger, which the backend
+  # has never seen.
   - id: expand
-    kind: remote
-    description: Expand an entity into the entities it is related to.
+    kind: local
+    description: return the raw payloads behind evidence ids
     parameters:
       type: object
       properties:

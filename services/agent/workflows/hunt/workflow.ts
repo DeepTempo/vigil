@@ -9,6 +9,10 @@ import { HuntAlreadyTerminal, HuntController, HuntParked, resumeHunt, startHunt 
 import { createEnricher, type Tool } from "./enrich.js";
 import type { HuntKinds } from "./ledger.js";
 import type { DirectiveQueue } from "./ports.js";
+import { expandFrom } from "./expand.js";
+import { registryOf } from "../../core/registry.js";
+import { toolsFrom } from "../../tools/remote.js";
+import { grantsOf } from "../lead/workflow.js";
 
 export interface HuntOptions {
   run_id: string;
@@ -48,14 +52,24 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
     return { status: "completed", reason: error.message, iterations: 0 };
   }
 
-  const ports = { harness, spec: options.spec, run_id, actions: options.actions, ...(options.signal === undefined ? {} : { signal: options.signal }) };
+  // The registry harnessFor built resolved every tool remotely, which cannot serve
+  // one whose answer is this run's own ledger. Rebuilt here, where the run is known.
+  const scoped: Harness<HuntKinds> = {
+    ...harness,
+    registry: registryOf(
+      toolsFrom(options.spec.tools, { expand: expandFrom(harness.state, run_id) }),
+      grantsOf(options.spec),
+    ),
+  };
+
+  const ports = { harness: scoped, spec: options.spec, run_id, actions: options.actions, ...(options.signal === undefined ? {} : { signal: options.signal }) };
   const controller = new HuntController(
     ledger,
     decisionProvider(ports),
     workerDispatcher(ports),
     options.spec.dispatch,
     spec.sections?.["digest"] as never,
-    createEnricher(spec, enrichmentTools(harness, options.spec)),
+    createEnricher(spec, enrichmentTools(scoped, options.spec)),
     disconfirmationCritic(ports),
   );
 
