@@ -45,20 +45,17 @@ jobs:
           uv venv
           uv pip install flake8 black isort mypy import-linter
 
-      # Advisory until the tree is clean: these three report 2383 flake8
-      # violations and 124 unformatted files today, so making them gate is a
-      # separate change that has to land the cleanup with it.
+      # These gate now. Advisory is how the tree drifted to 2383 flake8
+      # violations and 124 unformatted files while CI stayed green, which the
+      # commit below clears. setup.cfg is the one config; black needs no flags.
       - name: Run flake8
-        run: uv run flake8 services/ core/ --max-line-length=120 --exclude=venv,__pycache__
-        continue-on-error: true
+        run: uv run flake8 services/ core/
 
       - name: Run black
-        run: uv run black --check services/ core/ --exclude=venv
-        continue-on-error: true
+        run: uv run black --check services/ core/
 
       - name: Run isort
         run: uv run isort --check-only services/ core/
-        continue-on-error: true
 
       # Still advisory: the annotation backlog is real work, not a formatting pass.
       - name: Run mypy
