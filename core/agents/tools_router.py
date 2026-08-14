@@ -11,6 +11,7 @@ from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
 
 from core.agents.internal_auth import authorise
+from core.agents.mcp_tools import MCPFailure, execute_mcp_tool
 from core.agents.tool_registry import execute_backend_tool
 from core.routing import Auth, RouterMeta
 
@@ -86,10 +87,19 @@ def _bounded(args: Dict[str, Any], max_rows: int) -> Dict[str, Any]:
     return {**args, "limit": max_rows}
 
 
+# Backend tools first, then the MCP servers. One ceiling governs both, so a tool
+# does not get a second timeout by virtue of living on the other side.
 async def _run(body: InvokeRequest) -> Tuple[Any, bool]:
+    seconds = body.bounds.timeout_ms / 1000
+    args = _bounded(body.args, body.bounds.max_rows)
+
+    result, handled = await asyncio.wait_for(
+        execute_backend_tool(body.tool, args), timeout=seconds
+    )
+    if handled:
+        return result, True
     return await asyncio.wait_for(
-        execute_backend_tool(body.tool, _bounded(body.args, body.bounds.max_rows)),
-        timeout=body.bounds.timeout_ms / 1000,
+        execute_mcp_tool(body.tool, args, seconds), timeout=seconds
     )
 
 
@@ -104,6 +114,12 @@ async def invoke(
         result, handled = await _run(body)
     except asyncio.TimeoutError:
         return _failure("timeout", timeoutMs=body.bounds.timeout_ms)
+    # An MCP server that could not be reached is a gap in visibility, not a defect
+    # in the call, and the hunt records the two differently.
+    except MCPFailure as exc:
+        if exc.kind == "timeout":
+            return _failure("timeout", timeoutMs=body.bounds.timeout_ms)
+        return _failure(exc.kind, detail=exc.detail)
     except TypeError as exc:
         if _is_bad_arguments(exc):
             return _failure("invalid_args", detail=str(exc))

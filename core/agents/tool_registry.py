@@ -194,6 +194,27 @@ def _decided(action: Any, verb: str) -> Args:
     return {"error": f"Action not found or cannot be {verb}"}
 
 
+# The local indicator database, fed by the threat-feed poller. A miss is returned
+# as a row: an indicator no feed knows is a finding, not an empty answer.
+def _indicator_lookup(args: Args) -> Any:
+    from core.threat_intel.threat_feed_service import lookup_indicators
+
+    values = args.get("values") or ([args["value"]] if args.get("value") else [])
+    if not values:
+        raise TypeError("lookup_indicators is missing a required argument: values")
+
+    indicator_type = args.get("indicator_type", "ip")
+    hits = lookup_indicators(indicator_type, [str(v) for v in values])
+    return [
+        {"indicator_type": indicator_type, "indicator_value": value, "known": value in hits, **(hits.get(value) or {})}
+        for value in values
+    ]
+
+
+_INTEL_TOOLS: Dict[str, Callable[[Args], Any]] = {
+    "lookup_indicators": _indicator_lookup,
+}
+
 _APPROVAL_TOOLS: Dict[str, Callable[[Any, Args], Any]] = {
     "list_pending_approvals": lambda service, args: [
         asdict(action)
@@ -256,6 +277,9 @@ async def execute_backend_tool(
         if handler is None:
             return {"error": f"Unknown tool: {tool_name}"}, True
         return await handler(**args), True
+
+    if tool_name in _INTEL_TOOLS:
+        return _INTEL_TOOLS[tool_name](args), True
 
     if tool_name in _APPROVAL_TOOLS:
         from core.response.approval_service import ApprovalService
