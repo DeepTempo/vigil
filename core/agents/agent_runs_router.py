@@ -76,6 +76,12 @@ async def start_run(request: StartRunRequest) -> StartRunResponse:
     if request.overrides is not None:
         payload["overrides"] = request.overrides
 
+    # approval_actions.workflow_run_id references workflow_runs, so a run with no
+    # row there cannot raise an answerable checkpoint: the announce 500s and the
+    # parked run waits out max_park_ms with nobody able to see it. Best-effort,
+    # like every other write to that table -- the ledger is the record.
+    _begin_run_row(run_id, request)
+
     job = build_start_job(
         run_id=run_id,
         run_kind=request.run_kind,
@@ -90,6 +96,26 @@ async def start_run(request: StartRunRequest) -> StartRunResponse:
         raise HTTPException(status_code=503, detail="run queue unavailable") from exc
 
     return StartRunResponse(run_id=run_id, job_id=job_id)
+
+
+# The playbook reference names the workflow when there is one; a run started from
+# file paths is named for the loop it runs, which is all the console needs to list it.
+def _begin_run_row(run_id: str, request: StartRunRequest) -> None:
+    from core.workflows.workflow_run_service import WorkflowRunService
+
+    # The scheme the agent layer resolves against /internal/playbooks
+    # (services/agent/core/playbooks.ts::WORKFLOW_SCHEME).
+    scheme = "workflow:"
+    named = request.playbook.removeprefix(scheme).strip()
+    workflow_id = named if request.playbook.startswith(scheme) else request.run_kind
+    WorkflowRunService().begin_run(
+        workflow_id=workflow_id,
+        workflow_name=workflow_id,
+        workflow_source="agent",
+        trigger_context={"run_kind": request.run_kind, "prompt": request.prompt},
+        triggered_by="api",
+        run_id=run_id,
+    )
 
 
 # Reports from state the worker persisted, using only the two permitted reads.
