@@ -22,5 +22,5 @@
     "declaration": false
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "tests", "vitest.config.ts"]
+  "exclude": ["node_modules", "dist", "tests", "scripts", "vitest.config.ts"]
 }
