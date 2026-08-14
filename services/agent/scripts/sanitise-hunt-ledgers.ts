@@ -197,7 +197,12 @@ const AWS_ACCOUNT = /\b\d{12}\b/g;
 // Any home or user directory, not only the .duckdb these runs happened to name:
 // the gate rejects all of them, so the sanitiser has to reach all of them. The
 // trailing separator is required -- the analysts write "~" for "approximately".
-const LOCAL_PATH = /(?:(?:~|\/Users|\/home)\/|C:\\Users\\)[^\s"',;)]*/gi;
+//
+// The `~` branch must also start at a boundary. This pass runs before ENCODED,
+// and `~` is what splits the MAPI entry ids below -- so a blob containing "~/"
+// was bitten in half here, and the head that survived was short of ENCODED's 40.
+// The gate caught it as a path, which is what it looks like once the tail is gone.
+const LOCAL_PATH = /(?:(?<![A-Za-z0-9+/~])~\/|(?:\/Users|\/home)\/|C:\\Users\\)[^\s"',;)]*/gi;
 
 // Encoded blobs carry values no substitution can reach -- one of these decodes to
 // a real address. `~` is included because the MAPI entry ids in this data are split

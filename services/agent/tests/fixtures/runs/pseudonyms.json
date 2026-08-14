@@ -8,8 +8,8 @@
     "hash": 15,
     "ip": 223,
     "process": 37,
-    "url": 15,
     "user": 7,
+    "url": 15,
     "token": 81,
     "mac": 6
   },
@@ -1606,66 +1606,6 @@
       "type": "process",
       "to": "whoami"
     },
-    "e46dc8760c14af34": {
-      "type": "url",
-      "to": "/p0001"
-    },
-    "7fe6886102591272": {
-      "type": "url",
-      "to": "http://host0002.example.com/p0002"
-    },
-    "22ac04a454afeb36": {
-      "type": "url",
-      "to": "http://host0003.example.com/p0003"
-    },
-    "e7fa37ca0cdccb98": {
-      "type": "url",
-      "to": "http://host0004.example.com/p0004"
-    },
-    "76ba10383ba867bd": {
-      "type": "url",
-      "to": "http://host0005.example.com/p0005"
-    },
-    "6563ce6d91aa7081": {
-      "type": "url",
-      "to": "http://host0006.example.com/p0006"
-    },
-    "4956c50ae1352677": {
-      "type": "url",
-      "to": "http://host0007.example.com/p0007"
-    },
-    "e58620ef3ab2d483": {
-      "type": "url",
-      "to": "http://host0008.example.com/p0008"
-    },
-    "6ac583ebf8af8a60": {
-      "type": "url",
-      "to": "http://host0009.example.com/p0009"
-    },
-    "5f331c96945b6033": {
-      "type": "url",
-      "to": "https://host0010.example.com/p0010"
-    },
-    "be6d1da54ba2bf7d": {
-      "type": "url",
-      "to": "https://host0011.example.com/p0011"
-    },
-    "5586faaf7b6818c2": {
-      "type": "url",
-      "to": "https://host0012.example.com/p0012"
-    },
-    "5014145908b9fed1": {
-      "type": "url",
-      "to": "https://host0013.example.com/p0013"
-    },
-    "324df801451118d5": {
-      "type": "url",
-      "to": "https://host0014.example.com/p0014"
-    },
-    "aeab7fd2a230acd8": {
-      "type": "url",
-      "to": "https://host0015.example.com/p0015"
-    },
     "998f19cd3d7f6d8c": {
       "type": "user",
       "to": "[\"cisco anyconnect vpn agent for windows 4.6.01098\",\"anyconnect agent 4.6.01098\"]"
@@ -1693,6 +1633,66 @@
     "760bec3f6b90564f": {
       "type": "user",
       "to": "tomcat8"
+    },
+    "e46dc8760c14af34": {
+      "type": "url",
+      "to": "/p0001"
+    },
+    "7fe6886102591272": {
+      "type": "url",
+      "to": "http://10.128.0.13/p0002"
+    },
+    "22ac04a454afeb36": {
+      "type": "url",
+      "to": "http://10.128.0.13/p0003"
+    },
+    "e7fa37ca0cdccb98": {
+      "type": "url",
+      "to": "http://10.128.0.13:8080/p0004"
+    },
+    "76ba10383ba867bd": {
+      "type": "url",
+      "to": "http://192.0.2.213:3333/p0005"
+    },
+    "6563ce6d91aa7081": {
+      "type": "url",
+      "to": "http://192.0.2.213:443/p0006"
+    },
+    "4956c50ae1352677": {
+      "type": "url",
+      "to": "http://host0014.example.com/p0007"
+    },
+    "e58620ef3ab2d483": {
+      "type": "url",
+      "to": "http://host0046.example.com/p0008"
+    },
+    "6ac583ebf8af8a60": {
+      "type": "url",
+      "to": "http://host0092.example.com/p0009"
+    },
+    "5f331c96945b6033": {
+      "type": "url",
+      "to": "https://192.0.2.213:443/p0010"
+    },
+    "be6d1da54ba2bf7d": {
+      "type": "url",
+      "to": "https://host0034.example.com/p0011"
+    },
+    "5586faaf7b6818c2": {
+      "type": "url",
+      "to": "https://host0034.example.com/p0012"
+    },
+    "5014145908b9fed1": {
+      "type": "url",
+      "to": "https://host0038.example.com/p0013"
+    },
+    "324df801451118d5": {
+      "type": "url",
+      "to": "https://host0038.example.com/p0014"
+    },
+    "aeab7fd2a230acd8": {
+      "type": "url",
+      "to": "https://host0038.example.com/p0015"
     },
     "c96ea8df70c0e110": {
       "type": "token",
