@@ -196,6 +196,7 @@ export async function advance(
     await journalAnswers(state, job.run_id, job.run_kind, answersFor());
 
     if (await abandonIfParkedOut(state, leases, job, spec)) return;
+    if (latest !== null) await markResumed(state, job, owner, latest);
     await drive(state, job, spec, build, halt.signal, directives);
     await settle(state, leases, job, spec, owner);
   } catch (error) {
@@ -223,6 +224,18 @@ async function forget(state: State, leases: Leases, runId: string, owner: string
     return;
   }
   await leases.release(runId, owner, 0);
+}
+
+// Where a run was picked back up, so a crash and its recovery are readable rather
+// than a silent gap. Skipped when the last event is itself a resume: a parked run
+// is swept on every interval, and a mark per sweep would say nothing happened
+// several hundred times.
+async function markResumed(state: State, job: RunJob, owner: string, latest: number): Promise<void> {
+  const [last] = await state.read(job.run_id, { since: latest - 1 });
+  if (last?.kind === "resumed") return;
+  await state.append(job.run_id, [
+    { run_id: job.run_id, run_kind: job.run_kind, kind: "resumed", payload: { worker: owner, enqueued_by: job.enqueued_by } } as never,
+  ]);
 }
 
 export const LOST_LEASE = "the lease was reclaimed by another worker";

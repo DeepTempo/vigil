@@ -120,6 +120,28 @@ describe("a run reaches its workflow", () => {
     await expect(advance(ledger, leases, resumeJob(runId), scriptedHarness(CONCLUDE))).rejects.toThrow(/has no ledger/);
   });
 
+  // A resume left no trace at all, so a run that crashed and recovered was
+  // indistinguishable from one that never stopped.
+  it("marks where a run was picked back up, and by whom", async () => {
+    await openLedger(runId);
+
+    await advance(ledger, leases, resumeJob(runId), scriptedHarness(CONCLUDE));
+    const marks = (await ledger.read(runId)).filter((event) => event.kind === "resumed");
+
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.payload).toMatchObject({ enqueued_by: "watchdog" });
+  });
+
+  // A parked run is swept every interval. A mark per sweep would report several
+  // hundred resumes of a run that never moved, which is worse than none.
+  it("leaves one mark for a stall it made no progress through", async () => {
+    await openLedger(runId);
+    await advance(ledger, leases, resumeJob(runId), scriptedHarness([])).catch(() => {});
+    await advance(ledger, leases, resumeJob(runId), scriptedHarness([])).catch(() => {});
+
+    expect((await ledger.read(runId)).filter((event) => event.kind === "resumed")).toHaveLength(1);
+  });
+
   // Nothing summed the spend events, so every finished run reported a dash where
   // its cost belongs. A call nobody could price adds nothing rather than a zero.
   it("sums what a run spent from its own spend events", async () => {
@@ -133,6 +155,25 @@ describe("a run reaches its workflow", () => {
     expect(await spentOn(ledger, runId)).toBeCloseTo(0.75);
   });
 });
+
+// A ledger a worker opened and did not finish, which is what a resume finds.
+async function openLedger(id: string): Promise<void> {
+  await ledger.append(id, [
+    {
+      run_id: id,
+      run_kind: "investigate",
+      kind: "run",
+      payload: {
+        run_kind: "investigate",
+        spec: await resolveSpec(startJob(id)),
+        budgets: { max_calls: 0, max_cost_usd: 0, max_wall_ms: 600_000, max_park_ms: 604_800_000 },
+        seed: id,
+        tenant_id: null,
+        started_by: "crashed-worker",
+      },
+    },
+  ]);
+}
 
 function spend(cost: number | null): Record<string, unknown> {
   return {

@@ -107,7 +107,7 @@ describe("the Tool port cannot be opted out of", () => {
 
 describe("event kinds are closed", () => {
   it("recognises exactly the domain-free set", () => {
-    expect(RUN_EVENT_KINDS).toHaveLength(8);
+    expect(RUN_EVENT_KINDS).toHaveLength(9);
     expect(isRunEventKind("terminal")).toBe(true);
     expect(isRunEventKind("hypothesis")).toBe(false);
   });

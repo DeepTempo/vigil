@@ -132,6 +132,10 @@ export function fold(events: readonly HuntEvent[]): Projection {
       case "patch":
         applyPatch(view, event.payload, event.seq);
         break;
+      // Where the run was picked back up, which is the worker's history and not
+      // the hunt's: no belief moved because a process restarted.
+      case "resumed":
+        break;
       case "finalize":
       case "spend":
         // Neither is state. The report is derived from the fold, so the fold must
