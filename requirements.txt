@@ -19,11 +19,11 @@ ijson>=3.2.0
 anthropic>=0.45.0
 claude-agent-sdk>=0.1.0
 openai>=1.40.0
-# HTTP client for every integration client. Arrives transitively via
-# anthropic/openai; pinned so we don't rely on someone else's graph.
+# HTTP client for every integration client and MCP tool server. Arrives
+# transitively via anthropic/openai; pinned so we don't rely on someone
+# else's graph.
 httpx>=0.27.0
-# No longer used by any integration client — still needed by scripts/,
-# tests, and the MCP servers under tools/.
+# No longer used by any application code — only the scripts/ utilities.
 requests>=2.31.0
 urllib3>=2.0.0
 boto3>=1.34.0
@@ -52,7 +52,8 @@ pgvector>=0.3.0  # pgvector column type + <=> ANN for finding embeddings
 # proxy block). sshtunnel only loaded when the operator picks an SSH
 # tunnel. SOCKS5 via HTTPS_PROXY / ALL_PROXY needs a per-library backend:
 # httpx cannot use pysocks, so both are required — socksio for the
-# integration clients, pysocks for the requests callers in scripts/tools.
+# integration clients and MCP tool servers, pysocks for the requests
+# callers left in scripts/.
 sshtunnel>=0.4.0
 pysocks>=1.7.1
 socksio>=1.0.0
