@@ -37,10 +37,10 @@ jobs:
           - 5432:5432
     
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -58,7 +58,7 @@ jobs:
           DATABASE_URL: postgresql://test:test@localhost:5432/deeptempo_test
       
       - name: Upload coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           file: ./coverage.xml
           flags: nightly
@@ -72,10 +72,10 @@ jobs:
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -91,7 +91,7 @@ jobs:
           pytest tests/ -m performance --benchmark-only --benchmark-json=benchmark.json || true
       
       - name: Store benchmark results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results
           path: benchmark.json
@@ -104,7 +104,7 @@ jobs:
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       
       - name: Run pip-audit
         run: |
@@ -112,7 +112,7 @@ jobs:
           pip-audit -r requirements.txt --format json --output pip-audit.json || true
       
       - name: Upload audit results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: security-audit
           path: pip-audit.json
@@ -135,7 +135,7 @@ jobs:
     if: failure() && github.repository == 'Vigil-SOC/vigil'
     steps:
       - name: Notify Slack
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v4
         with:
           payload: |
             {
