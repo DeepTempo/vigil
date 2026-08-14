@@ -73,7 +73,7 @@ def test_waf_block_ip_posts_correct_payload():
     fake.content = b"{}"
     fake.json.return_value = {"success": True, "result": {"id": "rule-1"}}
 
-    with patch.object(cf.requests, "post", return_value=fake) as posted:
+    with patch.object(cf.httpx, "post", return_value=fake) as posted:
         out = cf._waf_block_ip(
             api_token="tok",
             account_id="acct-1",
@@ -95,7 +95,7 @@ def test_gateway_block_domain_builds_traffic_filter():
     fake.status_code = 200
     fake.content = b"{}"
     fake.json.return_value = {"success": True, "result": {"id": "gw-1"}}
-    with patch.object(cf.requests, "post", return_value=fake) as posted:
+    with patch.object(cf.httpx, "post", return_value=fake) as posted:
         out = cf._gateway_block_domain(
             api_token="tok",
             account_id="acct-1",
