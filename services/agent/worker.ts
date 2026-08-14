@@ -412,9 +412,11 @@ export function startWorker(build: HarnessFactory = harnessFor): Running {
   // enqueues it.
   const producer = new Queue<RunJob>(RUN_QUEUE, { connection });
   const sweeping = setInterval(() => {
-    void sweepOnce(leases, producer).catch(() => {
+    void sweepOnce(leases, producer).catch((error: unknown) => {
       // A sweep that could not read the table tries again next tick. Throwing here
-      // would take the process down with every run on it.
+      // would take the process down with every run on it. Said out loud because a
+      // watchdog failing every tick looks exactly like one with nothing to do.
+      console.warn(`sweep failed: ${error instanceof Error ? error.message : String(error)}`);
     });
   }, SWEEP_EVERY_MS);
 

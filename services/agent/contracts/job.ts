@@ -36,6 +36,10 @@ export type RunJob =
 
 // jobId = run_id for a start, so a double POST dedupes in BullMQ. A resume takes a
 // fresh id and does not dedupe: run-level exclusion is the lease's, which is stronger.
+//
+// Joined with a dash for the same reason RUN_QUEUE holds no colon: BullMQ refuses a
+// custom id containing one, and the sweeper's add is the only caller -- a throw there
+// means no parked or crashed run is ever resumed.
 export function jobIdFor(job: RunJob, attempt: string): string {
-  return job.reason === "start" ? job.run_id : `${job.run_id}:${attempt}`;
+  return job.reason === "start" ? job.run_id : `${job.run_id}-${attempt}`;
 }
