@@ -172,8 +172,13 @@ PROXY_SUPPORTED: frozenset[str] = frozenset(
 )
 
 
-def _resolve_env_var(integration_id: str, field_name: str) -> str:
-    """Resolve the secrets-store key for one integration field."""
+def env_var_for(integration_id: str, field_name: str) -> str:
+    """Resolve the env-var name for one integration field, overrides included.
+
+    The rule cannot depend on whether the field is a secret: the resolver reads
+    non-secret fields out of the same env channel, so a field named here has
+    one name everywhere or the two halves drift.
+    """
     overrides = _ENV_VAR_OVERRIDES.get(integration_id, {})
     return overrides.get(field_name) or default_env_var(integration_id, field_name)
 
@@ -206,7 +211,7 @@ def _build_registry() -> Dict[str, Dict[str, str]]:
     integration_ids = set(_secret_fields()) | PROXY_SUPPORTED
     return {
         integration_id: {
-            field: _resolve_env_var(integration_id, field)
+            field: env_var_for(integration_id, field)
             for field in _fields_for(integration_id)
         }
         for integration_id in integration_ids

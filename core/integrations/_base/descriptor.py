@@ -55,7 +55,6 @@ class IntegrationField:
     """
 
     name: str
-    env_suffix: Optional[str] = None
     secret: bool = False
     value_type: str = "str"
 

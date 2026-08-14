@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterable, Mapping, Optional
 
 from core.config import get_integration_config
 from core.integrations._base.descriptor import IntegrationDescriptor, IntegrationField
-from core.integrations.integration_secrets import default_env_var, secret_fields_for
+from core.integrations.integration_secrets import env_var_for, secret_fields_for
 from core.secrets import get_secret
 
 
@@ -39,7 +39,7 @@ def _resolve(
         else:
             value = stored.get(field.name)
             if value is None or value == "":
-                value = get_secret(default_env_var(integration_id, field.name))
+                value = get_secret(env_var_for(integration_id, field.name))
         resolved[field.name] = field.coerce(value)
     return resolved
 
