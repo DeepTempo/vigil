@@ -69,6 +69,15 @@ function huntHarness(): HarnessFactory {
   });
 }
 
+// A pool with nothing left, so the first beginCall refuses and no model is reached.
+function spentHarness(): HarnessFactory {
+  const base = huntHarness();
+  return (kind, spec, state, memory, seed) => ({
+    ...base(kind, spec, state, memory, seed),
+    budget: budgetOf({ ...spec.budgets, max_calls: 0 }, unmeteredQuota),
+  });
+}
+
 async function run(id: string, build: HarnessFactory = huntHarness()): Promise<void> {
   await advance(ledger, leases, startJob(id), build, new InProcessDirectiveQueue());
 }
@@ -105,6 +114,17 @@ describe("a hunt started through the queue", () => {
 
     const terminal = await ledger.terminal(runId);
     expect(terminal).not.toBeNull();
+    expect((await ledger.read(runId)).at(-1)?.kind).toBe("terminal");
+  });
+
+  // Compose, lead and tally all end on outcome.refusal; the hunt threw instead,
+  // so a run that spent its allowance stayed "running" forever and the watchdog
+  // re-enqueued it every sweep to be refused again.
+  it("ends a run that spent its allowance as budget_exhausted", async () => {
+    await run(runId, spentHarness());
+
+    const terminal = await ledger.terminal(runId);
+    expect(terminal?.outcome).toBe("budget_exhausted");
     expect((await ledger.read(runId)).at(-1)?.kind).toBe("terminal");
   });
 

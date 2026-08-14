@@ -2,7 +2,7 @@ import { announceOpen, noAnnounce, type Announce } from "../../core/checkpoints.
 import type { Harness } from "../../core/loop.js";
 import type { RunOutcome } from "../../contracts/events.js";
 import type { RunSpec } from "../../core/spec.js";
-import { disconfirmationCritic, decisionProvider, workerDispatcher } from "./adapters.js";
+import { BudgetRefused, disconfirmationCritic, decisionProvider, workerDispatcher } from "./adapters.js";
 import { huntSpec } from "./config.js";
 import { pendingCheckpoints } from "./checkpoints.js";
 import { HuntAlreadyTerminal, HuntController, HuntParked, resumeHunt, startHunt } from "./controller.js";
@@ -89,6 +89,13 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
       if (error instanceof HuntParked) {
         await ledger.flush();
         return await parked(harness, options, ledger, error.message);
+      }
+      // A run that spent its allowance has ended, not failed to start. Without a
+      // terminal it stays "running" to the API and the watchdog re-enqueues it
+      // every sweep to refuse the same call again.
+      if (error instanceof BudgetRefused) {
+        await ledger.flush();
+        return await end(harness, options, ledger, "budget_exhausted", error.message);
       }
       if (error instanceof HuntAlreadyTerminal) return report(ledger, "completed", error.message);
       throw error;

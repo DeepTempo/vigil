@@ -67,7 +67,10 @@ export function decisionProvider(options: AdapterOptions): DecisionProvider {
       const outcome = await drain(
         streamTurn<Decision, HuntKinds>(turnFor(options, "lead", lead, renderDigest(digest)), options.harness),
       );
-      if (outcome.value === null) throw new SpecError(`the lead emitted no decision: ${outcome.reason}`);
+      if (outcome.value === null) {
+        if (outcome.refusal !== null) throw new BudgetRefused(outcome.reason);
+        throw new SpecError(`the lead emitted no decision: ${outcome.reason}`);
+      }
 
       return {
         decision: outcome.value,
@@ -105,6 +108,11 @@ function evidenceFrom(answer: WorkerAnswer): WorkerEvidence[] {
     } as WorkerEvidence;
   });
 }
+
+// The pool refused another call, which is nothing like a lead that emitted badly:
+// the run spent what it was given and is over. Its own error because the hunt loop
+// ends on it, the way compose, lead and tally all end on outcome.refusal.
+export class BudgetRefused extends Error {}
 
 // A failure is a result, not a throw: a worker that burned tokens and then died
 // still spent them, and the controller records the gap either way.
