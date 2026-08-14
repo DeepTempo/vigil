@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import requests
+import httpx
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -41,7 +41,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             tid = args.get("task_id")
             if not tid:
                 return result({"error": "task_id required"})
-            resp = requests.get(f"https://api.any.run/v1/analysis/{tid}", headers=headers, timeout=60)
+            resp = httpx.get(f"https://api.any.run/v1/analysis/{tid}", headers=headers, timeout=60)
             resp.raise_for_status()
             data = resp.json()
             return result({"task_id": tid, "status": data.get("status"), "analysis": data.get("data", {})})
@@ -50,7 +50,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             h = args.get("hash")
             if not h:
                 return result({"error": "hash required"})
-            resp = requests.get(f"https://api.any.run/v1/tasks", headers=headers,
+            resp = httpx.get(f"https://api.any.run/v1/tasks", headers=headers,
                 params={"hash": h}, timeout=30)
             resp.raise_for_status()
             data = resp.json()

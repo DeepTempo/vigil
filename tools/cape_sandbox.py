@@ -15,7 +15,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-import requests
+import httpx
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 import mcp.server.stdio
@@ -231,7 +231,7 @@ async def handle_call_tool(name: str, arguments: Optional[dict]):
             if file_path:
                 with open(file_path, "rb") as fh:
                     files = {"file": (os.path.basename(file_path), fh)}
-                    resp = requests.post(
+                    resp = httpx.post(
                         f"{base}/apiv2/tasks/create/file/",
                         headers=headers,
                         files=files,
@@ -246,7 +246,7 @@ async def handle_call_tool(name: str, arguments: Optional[dict]):
                 import base64
 
                 files = {"file": (filename, base64.b64decode(file_b64))}
-                resp = requests.post(
+                resp = httpx.post(
                     f"{base}/apiv2/tasks/create/file/",
                     headers=headers,
                     files=files,
@@ -268,7 +268,7 @@ async def handle_call_tool(name: str, arguments: Optional[dict]):
             data = {"url": target}
             if args.get("timeout"):
                 data["timeout"] = str(args["timeout"])
-            resp = requests.post(
+            resp = httpx.post(
                 f"{base}/apiv2/tasks/create/url/",
                 headers=headers,
                 data=data,
@@ -281,7 +281,7 @@ async def handle_call_tool(name: str, arguments: Optional[dict]):
             tid = args.get("task_id")
             if not tid:
                 return result({"error": "task_id required"})
-            resp = requests.get(
+            resp = httpx.get(
                 f"{base}/apiv2/tasks/get/report/{tid}/",
                 headers=headers,
                 timeout=REPORT_TIMEOUT,
@@ -293,7 +293,7 @@ async def handle_call_tool(name: str, arguments: Optional[dict]):
             tid = args.get("task_id")
             if not tid:
                 return result({"error": "task_id required"})
-            resp = requests.get(
+            resp = httpx.get(
                 f"{base}/apiv2/tasks/get/report/{tid}/",
                 headers=headers,
                 timeout=REPORT_TIMEOUT,
@@ -319,7 +319,7 @@ async def handle_call_tool(name: str, arguments: Optional[dict]):
         if name == "cape_list_tasks":
             limit = int(args.get("limit", 20))
             offset = int(args.get("offset", 0))
-            resp = requests.get(
+            resp = httpx.get(
                 f"{base}/apiv2/tasks/list/{limit}/{offset}/",
                 headers=headers,
                 timeout=DEFAULT_TIMEOUT,
@@ -334,7 +334,7 @@ async def handle_call_tool(name: str, arguments: Optional[dict]):
             # CAPE search endpoint accepts md5/sha1/sha256 paths.
             # Probe sha256 first, then md5 as fallback.
             for hash_type in ("sha256", "md5"):
-                resp = requests.get(
+                resp = httpx.get(
                     f"{base}/apiv2/tasks/search/{hash_type}/{h}/",
                     headers=headers,
                     timeout=DEFAULT_TIMEOUT,
@@ -357,7 +357,7 @@ async def handle_call_tool(name: str, arguments: Optional[dict]):
             tid = args.get("task_id")
             if not tid:
                 return result({"error": "task_id required"})
-            resp = requests.get(
+            resp = httpx.get(
                 f"{base}/apiv2/tasks/status/{tid}/",
                 headers=headers,
                 timeout=DEFAULT_TIMEOUT,
@@ -367,7 +367,9 @@ async def handle_call_tool(name: str, arguments: Optional[dict]):
 
         return result({"error": f"Unknown tool: {name}"})
 
-    except requests.HTTPError as e:
+    # HTTPStatusError, not HTTPError: the parent also catches transport errors,
+    # which belong to the handler below.
+    except httpx.HTTPStatusError as e:
         return result(
             {
                 "error": f"CAPE HTTP error: {e}",

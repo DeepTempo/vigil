@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import requests
+import httpx
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -33,7 +33,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
     
     def lookup_ip(ip):
         try:
-            resp = requests.get(f"http://ip-api.com/json/{ip}", timeout=10)
+            resp = httpx.get(f"http://ip-api.com/json/{ip}", timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
                 if data.get("status") == "success":

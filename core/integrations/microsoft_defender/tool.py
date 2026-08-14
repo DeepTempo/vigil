@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import requests
+import httpx
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -24,7 +24,7 @@ def get_token():
     if not all([tenant, client_id, client_secret]):
         return None
     try:
-        resp = requests.post(f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
+        resp = httpx.post(f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
             data={
                 "grant_type": "client_credentials", "client_id": client_id,
                 "client_secret": client_secret, "scope": "https://api.securitycenter.microsoft.com/.default"
@@ -59,7 +59,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
     
     try:
         if name == "mde_get_alerts":
-            resp = requests.get(f"{base}/alerts", headers=headers,
+            resp = httpx.get(f"{base}/alerts", headers=headers,
                 params={"$top": args.get("limit", 20)}, timeout=30)
             resp.raise_for_status()
             alerts = [{
@@ -72,7 +72,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             mid = args.get("machine_id")
             if not mid:
                 return result({"error": "machine_id required"})
-            resp = requests.get(f"{base}/machines/{mid}", headers=headers, timeout=30)
+            resp = httpx.get(f"{base}/machines/{mid}", headers=headers, timeout=30)
             resp.raise_for_status()
             return result({"machine": resp.json()})
         
@@ -81,7 +81,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             comment = args.get("comment")
             if not mid or not comment:
                 return result({"error": "machine_id and comment required"})
-            resp = requests.post(f"{base}/machines/{mid}/isolate", headers=headers,
+            resp = httpx.post(f"{base}/machines/{mid}/isolate", headers=headers,
                 json={"Comment": comment, "IsolationType": "Full"}, timeout=30)
             resp.raise_for_status()
             return result({"success": True, "machine_id": mid, "action": "isolated"})

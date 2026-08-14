@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import requests
+import httpx
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -48,7 +48,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             value = args.get("value")
             if not value:
                 return result({"error": "value required"})
-            resp = requests.post(f"{url}/attributes/restSearch", headers=headers, 
+            resp = httpx.post(f"{url}/attributes/restSearch", headers=headers, 
                 json={"value": value}, timeout=30, verify=config.get('verify_ssl', True))
             resp.raise_for_status()
             data = resp.json()
@@ -57,7 +57,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
         
         elif name == "misp_get_events":
             limit = args.get("limit", 10)
-            resp = requests.post(f"{url}/events/restSearch", headers=headers,
+            resp = httpx.post(f"{url}/events/restSearch", headers=headers,
                 json={"limit": limit, "returnFormat": "json"}, timeout=30, verify=config.get('verify_ssl', True))
             resp.raise_for_status()
             data = resp.json()

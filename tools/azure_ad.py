@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import requests
+import httpx
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -24,7 +24,7 @@ def get_token():
     if not all([tenant, client_id, client_secret]):
         return None
     try:
-        resp = requests.post(f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
+        resp = httpx.post(f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
             data={
                 "grant_type": "client_credentials", "client_id": client_id,
                 "client_secret": client_secret, "scope": "https://graph.microsoft.com/.default"
@@ -61,7 +61,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             user = args.get("user")
             if not user:
                 return result({"error": "user required"})
-            resp = requests.get(f"https://graph.microsoft.com/v1.0/users/{user}", headers=headers, timeout=30)
+            resp = httpx.get(f"https://graph.microsoft.com/v1.0/users/{user}", headers=headers, timeout=30)
             if resp.status_code == 404:
                 return result({"user": user, "found": False})
             resp.raise_for_status()
@@ -75,7 +75,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             uid = args.get("user_id")
             if not uid:
                 return result({"error": "user_id required"})
-            resp = requests.patch(f"https://graph.microsoft.com/v1.0/users/{uid}",
+            resp = httpx.patch(f"https://graph.microsoft.com/v1.0/users/{uid}",
                 headers=headers, json={"accountEnabled": False}, timeout=30)
             resp.raise_for_status()
             return result({"success": True, "user_id": uid, "action": "disabled"})
@@ -84,7 +84,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             params = {"$top": args.get("limit", 20)}
             if user := args.get("user"):
                 params["$filter"] = f"userPrincipalName eq '{user}'"
-            resp = requests.get("https://graph.microsoft.com/v1.0/auditLogs/signIns",
+            resp = httpx.get("https://graph.microsoft.com/v1.0/auditLogs/signIns",
                 headers=headers, params=params, timeout=30)
             resp.raise_for_status()
             logs = resp.json().get("value", [])

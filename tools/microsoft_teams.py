@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import requests
+import httpx
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -46,7 +46,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
         colors = {"low": "00FF00", "medium": "FFFF00", "high": "FFA500", "critical": "FF0000"}
         
         try:
-            resp = requests.post(webhook, json={
+            resp = httpx.post(webhook, json={
                 "@type": "MessageCard", "@context": "http://schema.org/extensions",
                 "themeColor": colors.get(sev, "808080"),
                 "summary": title,

@@ -11,7 +11,7 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
-import requests
+import httpx
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -248,7 +248,7 @@ def _waf_block_ip(
         "configuration": {"target": "ip", "value": ip},
         "notes": reason[:1024],
     }
-    resp = requests.post(
+    resp = httpx.post(
         f"{CF_API_BASE}/accounts/{account_id}/firewall/access_rules/rules",
         headers=_headers(api_token),
         json=payload,
@@ -273,7 +273,7 @@ def _waf_unblock_ip(
         return {"error": "rule_id required"}
     if not account_id:
         return {"error": "account_id required"}
-    resp = requests.delete(
+    resp = httpx.delete(
         f"{CF_API_BASE}/accounts/{account_id}/firewall/access_rules/rules/{rule_id}",
         headers=_headers(api_token),
         timeout=DEFAULT_TIMEOUT,
@@ -306,7 +306,7 @@ def _gateway_block_domain(
         "traffic": f'any(dns.domains[*] in {{"{domain}"}}) or http.host == "{domain}"',
         "enabled": True,
     }
-    resp = requests.post(
+    resp = httpx.post(
         f"{CF_API_BASE}/accounts/{account_id}/gateway/rules",
         headers=_headers(api_token),
         json=payload,
@@ -333,7 +333,7 @@ def _access_revoke_session(
         return {"error": "email required"}
     if not account_id:
         return {"error": "account_id required for Access session revoke"}
-    resp = requests.post(
+    resp = httpx.post(
         f"{CF_API_BASE}/accounts/{account_id}/access/organizations/revoke_user",
         headers=_headers(api_token),
         json={"email": email},
@@ -359,7 +359,7 @@ def _lookup_ip_threat(
         return {"error": "ip required"}
     if not account_id:
         return {"error": "account_id required"}
-    resp = requests.get(
+    resp = httpx.get(
         f"{CF_API_BASE}/accounts/{account_id}/firewall/access_rules/rules",
         headers=_headers(api_token),
         params={"configuration.target": "ip", "configuration.value": ip, "per_page": 50},
@@ -392,7 +392,7 @@ def _lookup_domain_threat(
         return {"error": "domain required"}
     if not account_id:
         return {"error": "account_id required"}
-    resp = requests.get(
+    resp = httpx.get(
         f"{CF_API_BASE}/accounts/{account_id}/gateway/categories",
         headers=_headers(api_token),
         timeout=DEFAULT_TIMEOUT,

@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import requests
+import httpx
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -44,7 +44,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             if not ip:
                 return result({"error": "ip required"})
             # Add to EDL or address group
-            resp = requests.get(f"{url}/api/", params={
+            resp = httpx.get(f"{url}/api/", params={
                 "type": "config", "action": "set", "key": api_key,
                 "xpath": f"/config/devices/entry/vsys/entry[@name='vsys1']/address/entry[@name='blocked-{ip}']",
                 "element": f"<ip-netmask>{ip}/32</ip-netmask><description>Blocked: {args.get('reason', 'security')}</description>"
@@ -52,7 +52,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             return result({"success": resp.status_code == 200, "ip": ip, "action": "blocked"})
         
         elif name == "pan_get_threats":
-            resp = requests.get(f"{url}/api/", params={
+            resp = httpx.get(f"{url}/api/", params={
                 "type": "log", "log-type": "threat", "key": api_key, "nlogs": args.get("limit", 20)
             }, verify=config.get('verify_ssl', True), timeout=30)
             # Parse XML response (simplified)

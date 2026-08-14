@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import requests
+import httpx
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -48,7 +48,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             ip = args.get("ip")
             if not ip:
                 return result({"error": "ip required"})
-            resp = requests.get(f"{base}/indicators/IPv4/{ip}/general", headers=headers, timeout=30)
+            resp = httpx.get(f"{base}/indicators/IPv4/{ip}/general", headers=headers, timeout=30)
             resp.raise_for_status()
             data = resp.json()
             return result({
@@ -60,7 +60,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             domain = args.get("domain")
             if not domain:
                 return result({"error": "domain required"})
-            resp = requests.get(f"{base}/indicators/domain/{domain}/general", headers=headers, timeout=30)
+            resp = httpx.get(f"{base}/indicators/domain/{domain}/general", headers=headers, timeout=30)
             resp.raise_for_status()
             data = resp.json()
             return result({
@@ -72,7 +72,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             h = args.get("hash")
             if not h:
                 return result({"error": "hash required"})
-            resp = requests.get(f"{base}/indicators/file/{h}/general", headers=headers, timeout=30)
+            resp = httpx.get(f"{base}/indicators/file/{h}/general", headers=headers, timeout=30)
             resp.raise_for_status()
             data = resp.json()
             return result({
@@ -81,7 +81,9 @@ async def handle_call_tool(name: str, arguments: dict | None):
             })
         
         return result({"error": f"Unknown tool: {name}"})
-    except requests.exceptions.HTTPError as e:
+    # HTTPStatusError, not HTTPError: the parent also catches transport errors,
+    # which belong to the handler below.
+    except httpx.HTTPStatusError as e:
         return result({"error": "API error", "status": e.response.status_code if hasattr(e, 'response') else None})
     except Exception as e:
         return result({"error": str(e)})

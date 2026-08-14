@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import requests
+import httpx
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -41,7 +41,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             h = args.get("hash")
             if not h:
                 return result({"error": "hash required"})
-            resp = requests.post("https://www.hybrid-analysis.com/api/v2/search/hash", headers=headers,
+            resp = httpx.post("https://www.hybrid-analysis.com/api/v2/search/hash", headers=headers,
                 data={"hash": h}, timeout=30)
             resp.raise_for_status()
             data = resp.json()
@@ -51,7 +51,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             jid = args.get("job_id")
             if not jid:
                 return result({"error": "job_id required"})
-            resp = requests.get(f"https://www.hybrid-analysis.com/api/v2/report/{jid}/summary", headers=headers, timeout=30)
+            resp = httpx.get(f"https://www.hybrid-analysis.com/api/v2/report/{jid}/summary", headers=headers, timeout=30)
             resp.raise_for_status()
             return result({"job_id": jid, "report": resp.json()})
         
