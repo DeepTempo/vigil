@@ -486,9 +486,25 @@ interface WfPhase {
   cost_usd?: number | null
   error?: string | null
 }
+/** A hunt reports beliefs and where each stands; it has no phases to report against. */
+interface HuntStanding {
+  hypothesis_id: string
+  statement: string
+  status: string
+  attack_technique?: string | null
+  resolution_reason?: string | null
+}
+interface HuntView {
+  status: string
+  iteration: number
+  evidence_count: number
+  hypotheses: HuntStanding[]
+  open_checkpoint?: { question: string } | null
+}
 interface WfRunDetail extends WfRun {
   result_summary?: string | null
   phases?: WfPhase[]
+  hunt?: HuntView | null
 }
 
 /** A run row that lazily fetches its full detail (getRun) when expanded. */
@@ -570,11 +586,47 @@ function RunDetail({ d }: { d: WfRunDetail }) {
           </table>
         </div>
       )}
-      {!d.error && !d.result_summary && !d.phases?.length && (
+      {d.hunt && <HuntStandings hunt={d.hunt} />}
+      {!d.error && !d.result_summary && !d.phases?.length && !d.hunt && (
         <div className="muted" style={{ padding: '10px 4px' }}>No additional detail recorded for this run.</div>
       )}
     </div>
   )
+}
+
+/** What a hunt has tested and how each belief stands — its equivalent of phase rows. */
+function HuntStandings({ hunt }: { hunt: HuntView }) {
+  return (
+    <div className="modal-section" style={{ marginTop: 12 }}>
+      <h4>Hypotheses</h4>
+      <div className="muted text-[11.5px] mb-2">
+        Iteration {hunt.iteration} · {hunt.evidence_count} piece{hunt.evidence_count === 1 ? '' : 's'} of evidence
+        {hunt.open_checkpoint && ` · waiting: ${hunt.open_checkpoint.question}`}
+      </div>
+      {hunt.hypotheses.length === 0 && <div className="muted" style={{ padding: '4px 0' }}>No hypotheses on the board yet.</div>}
+      {hunt.hypotheses.length > 0 && (
+        <table className="tbl">
+          <thead><tr><th>Statement</th><th>Technique</th><th>Standing</th></tr></thead>
+          <tbody>
+            {hunt.hypotheses.map((h) => (
+              <tr key={h.hypothesis_id}>
+                <td>{h.statement}{h.resolution_reason && <div className="muted text-[11px]">{h.resolution_reason}</div>}</td>
+                <td className="muted">{h.attack_technique || '—'}</td>
+                <td><span style={{ color: hypothesisColor(h.status) }}>{h.status}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+function hypothesisColor(s: string): string {
+  if (s === 'proven' || s === 'handed_off') return 'var(--crit)'
+  if (s === 'disproven') return 'var(--ok)'
+  if (s === 'parked' || s === 'inconclusive') return 'var(--tx-2)'
+  return 'var(--med)' // active
 }
 
 function runStatusColor(s: string): string {

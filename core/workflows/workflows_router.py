@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from core.agents.projections import read_projection
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()
@@ -363,7 +364,20 @@ async def get_workflow_run(run_id: str):
     if not row:
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
     row["phases"] = run_service.list_phases(run_id)
+    if _is_hunt(row.get("workflow_id")):
+        row["hunt"] = await read_projection(run_id)
     return row
+
+
+# A hunt writes no phase rows: it has beliefs to report, not steps. The agent
+# layer owns them, so they are read from it rather than folded here.
+def _is_hunt(workflow_id: Optional[str]) -> bool:
+    from core.workflows.workflows_service import HUNT_RUN_KIND, get_workflows_service
+
+    if not workflow_id:
+        return False
+    definition = get_workflows_service().get_workflow(str(workflow_id))
+    return definition is not None and definition.run_kind == HUNT_RUN_KIND
 
 
 @router.post("/workflows/runs/{run_id}/resume")

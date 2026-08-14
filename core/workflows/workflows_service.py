@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # What a workflow definition runs as, and how a job names one. Both belong to the
 # agent layer's vocabulary, so they are stated here once rather than inline.
 COMPOSE_RUN_KIND = "compose"
+HUNT_RUN_KIND = "hunt"
 WORKFLOW_SCHEME = "workflow:"
 
 

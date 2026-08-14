@@ -1,5 +1,5 @@
 import type { SpendPayload } from "../../contracts/budget.js";
-import type { AgentEvent, CheckpointPayload, ResolutionPayload, TerminalPayload } from "../../contracts/events.js";
+import { openCheckpoint, type AgentEvent, type CheckpointPayload, type OpenCheckpoint, type ResolutionPayload, type TerminalPayload } from "../../contracts/events.js";
 import type { DecisionPayload, FindingPayload, LeadKinds } from "./workflow.js";
 
 // What a reader outside this process is told about a run -- deliberately not the
@@ -14,17 +14,8 @@ export interface LeadProjection {
   cost_usd: number | null;
   decisions: DecisionPayload[];
   findings: FindingPayload[];
-  // The one a resolution must answer for the run to go on. Null while nothing is
-  // parked, which is the only question a supervisor actually asks of a run.
+  // Null while nothing is parked, which is what a supervisor is actually asking.
   open_checkpoint: OpenCheckpoint | null;
-}
-
-export interface OpenCheckpoint {
-  checkpoint_id: string;
-  checkpoint_class: string;
-  question: string;
-  raised_at: string;
-  context: Record<string, unknown>;
 }
 
 export function leadProjection(runId: string, events: readonly AgentEvent<LeadKinds>[]): LeadProjection {
@@ -77,11 +68,6 @@ export function leadProjection(runId: string, events: readonly AgentEvent<LeadKi
     cost_usd: cost,
     decisions,
     findings,
-    open_checkpoint: open === null ? null : opened(open),
+    open_checkpoint: open === null ? null : openCheckpoint(open),
   };
-}
-
-function opened(checkpoint: CheckpointPayload): OpenCheckpoint {
-  const { checkpoint_id, checkpoint_class, question, raised_at } = checkpoint;
-  return { checkpoint_id, checkpoint_class, question, raised_at, context: checkpoint.context ?? {} };
 }

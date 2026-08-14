@@ -73,6 +73,21 @@ export interface CheckpointPayload {
   context?: Record<string, unknown>;
 }
 
+// The one a resolution must answer for a run to go on -- the only question a
+// supervisor actually asks of one, so every projection reports it the same way.
+export interface OpenCheckpoint {
+  checkpoint_id: string;
+  checkpoint_class: string;
+  question: string;
+  raised_at: string;
+  context: Record<string, unknown>;
+}
+
+export function openCheckpoint(checkpoint: CheckpointPayload): OpenCheckpoint {
+  const { checkpoint_id, checkpoint_class, question, raised_at } = checkpoint;
+  return { checkpoint_id, checkpoint_class, question, raised_at, context: checkpoint.context ?? {} };
+}
+
 // The resolution event is what unblocks a run, and nothing else does.
 export interface ResolutionPayload {
   checkpoint_id: string;

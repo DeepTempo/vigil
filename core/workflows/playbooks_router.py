@@ -33,12 +33,12 @@ class ResolvedPlaybook(BaseModel):
 
 
 def _resolver_for(workflow_id: str):
-    from core.workflows.workflows_service import get_workflows_service
+    from core.workflows.workflows_service import HUNT_RUN_KIND, get_workflows_service
 
     definition = get_workflows_service().get_workflow(workflow_id)
     if definition is None:
         raise UnknownPlaybook(f"no such workflow: {workflow_id}")
-    return resolve_hunt if definition.run_kind == "hunt" else resolve
+    return resolve_hunt if definition.run_kind == HUNT_RUN_KIND else resolve
 
 
 @router.get("/{workflow_id}", response_model=ResolvedPlaybook)

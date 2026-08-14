@@ -4,6 +4,7 @@ import type { Notes } from "../core/memory.js";
 import type { State } from "../core/seams.js";
 import { SpecError, type Owned } from "../core/spec.js";
 import type { HuntKinds } from "../workflows/hunt/ledger.js";
+import { huntProjection } from "../workflows/hunt/projection.js";
 import { huntNotes } from "../workflows/hunt/recall.js";
 import { leadProjection } from "../workflows/lead/projection.js";
 import type { LeadKinds } from "../workflows/lead/workflow.js";
@@ -38,6 +39,7 @@ const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
     // Retyped here because this entry is the one place that already knows the
     // kind, the same trade the worker makes when it hands a ledger to a workflow.
     notes: (state, runId) => huntNotes(state as unknown as State<HuntKinds>, runId),
+    projection: (runId, events) => huntProjection(runId, events as readonly AgentEvent<HuntKinds>[]),
   },
   investigate: {
     arch: packaged("investigate.yaml"),
