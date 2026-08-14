@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from core.agents.internal_auth import authorise
 from core.deps import provide_approvals, provide_workflow_runs
 from core.response.approval_service import ApprovalService
-from core.response.checkpoints import raise_for_checkpoint
+from core.response.checkpoints import raise_for_checkpoint, withdraw_for_run
 from core.routing import Auth, RouterMeta
 from core.workflows.workflow_run_service import WorkflowRunService
 
@@ -123,8 +123,15 @@ def record_terminal(
     update: TerminalUpdate,
     authorization: Optional[str] = Header(default=None),
     run_service: WorkflowRunService = Depends(provide_workflow_runs),
+    approvals: ApprovalService = Depends(provide_approvals),
 ) -> None:
     authorise(authorization, "run outcome")
+
+    withdraw_for_run(
+        run_id,
+        f"the run ended before this was answered: {update.reason or update.outcome}",
+        approvals,
+    )
 
     run_service.finalize_run(
         run_id,

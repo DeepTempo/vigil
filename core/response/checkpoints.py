@@ -55,3 +55,21 @@ def raise_for_checkpoint(
     )
     logger.info("raised approval for %s at checkpoint %s", run_id, checkpoint_id)
     return True
+
+
+# A run that ended is not waiting for anything, and nothing withdrew its question:
+# the approvals queue kept filling with questions whose run was over, until a real
+# one was buried in them. Rejected rather than deleted, because who asked and why
+# it went unanswered is the record.
+def withdraw_for_run(run_id: str, reason: str, approvals=None) -> int:
+    from core.response.approval_service import ActionStatus, ApprovalService
+
+    service = approvals or ApprovalService()
+    open_ones = service.list_actions(
+        status=ActionStatus.PENDING, workflow_run_id=run_id
+    )
+    for action in open_ones:
+        service.reject_action(action.action_id, reason, rejected_by="agent")
+    if open_ones:
+        logger.info("withdrew %d unanswered approvals for %s", len(open_ones), run_id)
+    return len(open_ones)

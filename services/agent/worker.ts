@@ -297,14 +297,13 @@ async function abandonIfParkedOut(state: State, leases: Leases, job: RunJob, spe
   if (waited === null || waited < spec.budgets.max_park_ms) return false;
 
   const days = (waited / 86_400_000).toFixed(1);
+  const reason = `parked ${days} days without an answer`;
   await state.append(job.run_id, [
-    {
-      run_id: job.run_id,
-      run_kind: job.run_kind,
-      kind: "terminal",
-      payload: { outcome: "abandoned", reason: `parked ${days} days without an answer` },
-    },
+    { run_id: job.run_id, run_kind: job.run_kind, kind: "terminal", payload: { outcome: "abandoned", reason } },
   ]);
+  // This path returns before settle, so nobody reported it: the console showed the
+  // run paused forever and its question stayed in the approvals queue for good.
+  await mirrorFor().terminal(job.run_id, { outcome: "abandoned", reason, summary: "" });
   await reap(leases, job.run_id);
   return true;
 }
