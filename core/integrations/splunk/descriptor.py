@@ -16,8 +16,8 @@ SPLUNK = register_descriptor(
             IntegrationField("server_url"),
             IntegrationField("username"),
             IntegrationField("password", secret=True),
-            IntegrationField("verify_ssl"),
-            IntegrationField("lookback_hours"),
+            IntegrationField("verify_ssl", value_type="bool"),
+            IntegrationField("lookback_hours", value_type="int"),
         ),
     )
 )

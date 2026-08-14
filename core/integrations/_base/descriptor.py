@@ -15,16 +15,62 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 _SLICES_DIR = Path(__file__).resolve().parent.parent
+
+_TRUTHY = {"true", "1", "yes", "on"}
+
+
+def _to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in _TRUTHY
+
+
+def _to_int(value: Any) -> Optional[int]:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+_COERCERS: Dict[str, Callable[[Any], Any]] = {
+    "str": lambda value: value,
+    "bool": _to_bool,
+    "int": _to_int,
+}
 
 
 @dataclass(frozen=True)
 class IntegrationField:
+    """One configurable value: its name, whether it is secret, its type.
+
+    ``value_type`` exists because the two config channels disagree on typing.
+    The Settings form stores JSON, so a checkbox arrives as a real ``bool``;
+    the env channel — an ``mcp-config.json`` ``env`` block, or ``get_secret``
+    — is strings all the way down. Undeclared, ``VERIFY_SSL=false`` reaches
+    ``requests(verify=...)`` as the string ``"false"``, which is not a flag
+    but a CA-bundle path that does not exist.
+    """
+
     name: str
     env_suffix: Optional[str] = None
     secret: bool = False
+    value_type: str = "str"
+
+    def __post_init__(self) -> None:
+        if self.value_type not in _COERCERS:
+            raise ValueError(
+                f"{self.name}: unknown value_type {self.value_type!r}, "
+                f"expected one of {sorted(_COERCERS)}"
+            )
+
+    def coerce(self, value: Any) -> Any:
+        """Apply the declared type. ``None`` stays ``None`` — unset is not false."""
+        if value is None:
+            return value
+        return _COERCERS[self.value_type](value)
 
 
 @dataclass(frozen=True)
@@ -56,6 +102,7 @@ class IntegrationDescriptor:
 
 _REGISTRY: Dict[str, IntegrationDescriptor] = {}
 _discovered = False
+_discovering = False
 
 
 def register_descriptor(descriptor: IntegrationDescriptor) -> IntegrationDescriptor:
@@ -66,19 +113,27 @@ def register_descriptor(descriptor: IntegrationDescriptor) -> IntegrationDescrip
 def _discover() -> None:
     """Import every vendor slice's descriptor module exactly once.
 
-    The flag is set before the loop so a descriptor that reaches back into this
-    module can't recurse. Import errors propagate: a broken descriptor should
-    fail loudly rather than leave a vendor silently unregistered.
+    ``_discovering`` guards re-entry so a descriptor that reaches back into
+    this module can't recurse; ``_discovered`` is only set once the sweep
+    completes. Import errors propagate: a broken descriptor should fail loudly
+    rather than leave a vendor silently unregistered. Marking the sweep done up
+    front would do exactly that — a caller that swallows the error would pin a
+    partial registry in place for the life of the process, and every secret
+    field belonging to a missing vendor would then be persisted in plaintext.
     """
-    global _discovered
-    if _discovered:
+    global _discovered, _discovering
+    if _discovered or _discovering:
         return
-    _discovered = True
-    for path in sorted(_SLICES_DIR.glob("*/descriptor.py")):
-        package = path.parent.name
-        if package.startswith("_"):
-            continue
-        importlib.import_module(f"core.integrations.{package}.descriptor")
+    _discovering = True
+    try:
+        for path in sorted(_SLICES_DIR.glob("*/descriptor.py")):
+            package = path.parent.name
+            if package.startswith("_"):
+                continue
+            importlib.import_module(f"core.integrations.{package}.descriptor")
+        _discovered = True
+    finally:
+        _discovering = False
 
 
 def get_descriptor(integration_id: str) -> Optional[IntegrationDescriptor]:

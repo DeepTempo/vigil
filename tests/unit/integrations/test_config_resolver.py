@@ -22,6 +22,16 @@ from core.integrations.integration_secrets import secret_fields_for, split_secre
 
 _DESCRIPTORS = sorted(iter_descriptors(), key=lambda d: d.id)
 
+# Strings whatever the declared type: that is what the env channel hands the
+# resolver, and coercing it is the resolver's job.
+_SAMPLES = {
+    "str": lambda name: f"stored-{name}",
+    "bool": lambda _: "true",
+    "int": lambda _: "7",
+}
+
+_EXPECTED = {"str": str, "bool": bool, "int": int}
+
 
 @pytest.fixture
 def seeded(monkeypatch):
@@ -30,9 +40,9 @@ def seeded(monkeypatch):
     def _seed(descriptor):
         secret_names = set(descriptor.secret_fields)
         stored = {
-            name: f"stored-{name}"
-            for name in descriptor.field_names
-            if name not in secret_names
+            field.name: _SAMPLES[field.value_type](field.name)
+            for field in descriptor.fields
+            if field.name not in secret_names
         }
         secrets = {
             env_key: f"secret-{field}"
@@ -56,8 +66,18 @@ def test_every_declared_field_resolves(descriptor, seeded):
     resolved = resolve(descriptor)
 
     assert set(resolved) == set(descriptor.field_names)
-    empty = [name for name, value in resolved.items() if not value]
+    empty = [n for n, value in resolved.items() if value is None or value == ""]
     assert not empty, f"{descriptor.id}: fields resolved to nothing: {empty}"
+
+    wrong_type = {
+        f.name: type(resolved[f.name]).__name__
+        for f in descriptor.fields
+        if not isinstance(resolved[f.name], _EXPECTED[f.value_type])
+    }
+    assert not wrong_type, (
+        f"{descriptor.id}: fields reached the server with the wrong type: "
+        f"{wrong_type} — this is how the string 'false' became a CA-bundle path"
+    )
 
 
 @pytest.mark.unit

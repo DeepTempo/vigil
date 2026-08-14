@@ -20,9 +20,28 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, Mapping, Optional
 
 from core.config import get_integration_config
-from core.integrations._base.descriptor import IntegrationDescriptor
+from core.integrations._base.descriptor import IntegrationDescriptor, IntegrationField
 from core.integrations.integration_secrets import default_env_var, secret_fields_for
 from core.secrets import get_secret
+
+
+def _resolve(
+    integration_id: str, fields: Iterable[IntegrationField]
+) -> Dict[str, Optional[Any]]:
+    stored: Mapping[str, Any] = get_integration_config(integration_id) or {}
+    secret_keys = secret_fields_for(integration_id)
+
+    resolved: Dict[str, Optional[Any]] = {}
+    for field in fields:
+        env_key = secret_keys.get(field.name)
+        if env_key is not None:
+            value = get_secret(env_key)
+        else:
+            value = stored.get(field.name)
+            if value is None or value == "":
+                value = get_secret(default_env_var(integration_id, field.name))
+        resolved[field.name] = field.coerce(value)
+    return resolved
 
 
 def resolve_fields(
@@ -33,26 +52,17 @@ def resolve_fields(
     A non-secret falls back to ``get_secret`` when the stored config has no
     value: that is the channel an ``mcp-config.json`` ``env`` block feeds, and
     it keeps env-configured servers working without a raw environment read.
-    """
-    stored: Mapping[str, Any] = get_integration_config(integration_id) or {}
-    secret_keys = secret_fields_for(integration_id)
 
-    resolved: Dict[str, Optional[Any]] = {}
-    for name in field_names:
-        env_key = secret_keys.get(name)
-        if env_key is not None:
-            resolved[name] = get_secret(env_key)
-            continue
-        value = stored.get(name)
-        if value is None or value == "":
-            value = get_secret(default_env_var(integration_id, name))
-        resolved[name] = value
-    return resolved
+    Values come back as stored, uncoerced: there is no descriptor here to say
+    what type each field should be. A caller that has one should use
+    ``resolve``.
+    """
+    return _resolve(integration_id, (IntegrationField(n) for n in field_names))
 
 
 def resolve(descriptor: IntegrationDescriptor) -> Dict[str, Optional[Any]]:
-    """Resolve every field the descriptor declares."""
-    return resolve_fields(descriptor.id, descriptor.field_names)
+    """Resolve every field the descriptor declares, typed as it declares it."""
+    return _resolve(descriptor.id, descriptor.fields)
 
 
 def missing(config: Mapping[str, Any], *required: str) -> tuple[str, ...]:

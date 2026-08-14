@@ -5,8 +5,8 @@ sandbox — the actively maintained fork of Cuckoo. This MCP server wraps the
 CAPEv2 REST API so SOC agents can submit files/URLs for detonation and
 retrieve behavioral reports, IOCs, and PCAPs.
 
-Config comes from ``~/.vigil/integrations_config.json`` under the
-``cape_sandbox`` key — fields: ``url``, ``api_key``.
+Config comes from the descriptor: ``url`` from the stored integration config
+under the ``cape-sandbox`` id, ``api_key`` from the encrypted secrets store.
 """
 
 import asyncio

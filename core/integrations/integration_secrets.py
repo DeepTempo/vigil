@@ -23,8 +23,10 @@ uses it to:
    back to the frontend.
 
 When you add a new integration that has password-typed fields in
-``clients/web/src/config/integrations.ts``, add a tuple entry to
-``_SECRET_FIELDS`` below. The default ``<INTEGRATION_ID>_<FIELD>``
+``clients/web/src/config/integrations.ts``, mark those fields ``secret=True``
+on the vendor's descriptor; the map below derives itself from the descriptors,
+and only a Catalog Entry with no code behind it is listed literally in
+``_CATALOG_ONLY_SECRET_FIELDS``. The default ``<INTEGRATION_ID>_<FIELD>``
 convention is built automatically; add an ``_ENV_VAR_OVERRIDES`` entry
 only when the consumer reads the secret under a non-canonical name
 (e.g. CrowdStrike's official MCP server reads ``FALCON_*``).

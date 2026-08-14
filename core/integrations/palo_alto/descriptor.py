@@ -14,7 +14,7 @@ PALO_ALTO = register_descriptor(
         fields=(
             IntegrationField("hostname"),
             IntegrationField("api_key", secret=True),
-            IntegrationField("verify_ssl"),
+            IntegrationField("verify_ssl", value_type="bool"),
         ),
     )
 )

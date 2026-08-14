@@ -18,7 +18,7 @@ ELASTIC = register_descriptor(
             IntegrationField("password", secret=True),
             IntegrationField("kibana_url"),
             IntegrationField("index_pattern"),
-            IntegrationField("verify_ssl"),
+            IntegrationField("verify_ssl", value_type="bool"),
         ),
     )
 )

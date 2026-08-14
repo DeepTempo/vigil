@@ -18,7 +18,7 @@ VSTRIKE = register_descriptor(
             # it stays in the encrypted store.
             IntegrationField("username", secret=True),
             IntegrationField("password", secret=True),
-            IntegrationField("verify_ssl"),
+            IntegrationField("verify_ssl", value_type="bool"),
         ),
     )
 )
