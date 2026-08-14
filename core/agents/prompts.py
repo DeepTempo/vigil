@@ -54,7 +54,7 @@ Memory tool quick reference:
 """
 
 
-def _memory_palace_section() -> str:
+def _memory_palace_section(mcp_client=None) -> str:
     """Return the memory-palace prompt block, or '' if mempalace isn't
     connected (#129).
 
@@ -65,9 +65,9 @@ def _memory_palace_section() -> str:
     that don't work, which is the status quo we already tolerate.
     """
     try:
-        from core.integrations.mcp.client import get_mcp_client
+        from core.integrations.mcp.client import process_mcp_client
 
-        client = get_mcp_client()
+        client = mcp_client if mcp_client is not None else process_mcp_client()
         if client is None:
             return _MEMORY_PALACE_BLOCK
         status = client.get_connection_status() or {}
@@ -127,7 +127,7 @@ Use MCP tools (server_tool format):
 
 
 def render_base_prompt(
-    role: str, extra_principles: str = "", methodology: str = ""
+    role: str, extra_principles: str = "", methodology: str = "", mcp_client=None
 ) -> str:
     """Render BASE_PROMPT with the given fragments. Shared by built-in + custom.
 
@@ -140,5 +140,5 @@ def render_base_prompt(
         role=role,
         extra_principles=extra_principles or "",
         methodology=methodology or "",
-        memory_operations=_memory_palace_section(),
+        memory_operations=_memory_palace_section(mcp_client),
     )

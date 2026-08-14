@@ -39,7 +39,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
     url = config.get('url')
     if not api_key or not url:
         return result({"error": "MISP not configured"})
-    
+
     args = arguments or {}
     headers = {"Authorization": api_key, "Accept": "application/json", "Content-Type": "application/json"}
     
@@ -49,7 +49,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             if not value:
                 return result({"error": "value required"})
             resp = requests.post(f"{url}/attributes/restSearch", headers=headers, 
-                json={"value": value}, timeout=30, verify=False)
+                json={"value": value}, timeout=30, verify=config.get('verify_ssl', True))
             resp.raise_for_status()
             data = resp.json()
             attrs = data.get("response", {}).get("Attribute", [])
@@ -58,7 +58,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
         elif name == "misp_get_events":
             limit = args.get("limit", 10)
             resp = requests.post(f"{url}/events/restSearch", headers=headers,
-                json={"limit": limit, "returnFormat": "json"}, timeout=30, verify=False)
+                json={"limit": limit, "returnFormat": "json"}, timeout=30, verify=config.get('verify_ssl', True))
             resp.raise_for_status()
             data = resp.json()
             events = data.get("response", [])

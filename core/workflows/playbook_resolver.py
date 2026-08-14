@@ -4,11 +4,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import yaml
 
 from core.llm.defaults import DEFAULT_MODEL
+
+if TYPE_CHECKING:
+    from core.integrations.mcp.registry import MCPRegistry
+    from core.workflows.workflows_service import WorkflowsService
 
 logger = logging.getLogger(__name__)
 
@@ -29,22 +33,22 @@ EMIT_ATTEMPTS = 2
 REMOTE = "remote"
 
 
-def _tool_catalogue() -> Dict[str, Dict[str, Any]]:
+def _tool_catalogue(registry: Optional["MCPRegistry"]) -> Dict[str, Dict[str, Any]]:
     from core.llm.tool_schemas import ALL_TOOLS
 
     catalogue = {tool["name"]: tool for tool in ALL_TOOLS if tool.get("name")}
     # The integrations this deployment carries, as tools with the same shape. A
     # server that is not connected reports nothing, so it binds nothing.
-    for tool in _mcp_catalogue():
+    for tool in _mcp_catalogue(registry):
         catalogue.setdefault(tool["name"], tool)
     return catalogue
 
 
-def _mcp_catalogue() -> List[Dict[str, Any]]:
+def _mcp_catalogue(registry: Optional["MCPRegistry"]) -> List[Dict[str, Any]]:
+    if registry is None:
+        return []
     try:
-        from core.integrations.mcp.registry import get_mcp_registry
-
-        return get_mcp_registry().get_all_tools()
+        return registry.get_all_tools()
     except Exception as exc:  # noqa: BLE001
         logger.debug("MCP registry unavailable while resolving tools: %s", exc)
         return []
@@ -153,8 +157,10 @@ def _phases_of(definition: Any) -> List[Dict[str, Any]]:
 
 # Only what some step may actually call. A catalogue handed to the registry would
 # widen every grant to everything, which is the opposite of deny-by-default.
-def _tools_of(phases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    catalogue = _tool_catalogue()
+def _tools_of(
+    phases: List[Dict[str, Any]], registry: Optional["MCPRegistry"]
+) -> List[Dict[str, Any]]:
+    catalogue = _tool_catalogue(registry)
     wanted: List[str] = []
     for phase in phases:
         for tool in phase["tools"]:
@@ -192,11 +198,17 @@ def _drop_missing(phases: List[Dict[str, Any]], declared: List[str]) -> None:
         phase["tools"] = [tool for tool in phase["tools"] if tool in declared]
 
 
-def resolve(workflow_id: str, model: Optional[str] = None) -> Tuple[str, str]:
+def resolve(
+    workflow_id: str,
+    model: Optional[str] = None,
+    workflows: Optional["WorkflowsService"] = None,
+    registry: Optional["MCPRegistry"] = None,
+) -> Tuple[str, str]:
     """Return the playbook and config layers for ``workflow_id``, as YAML text."""
-    from core.workflows.workflows_service import get_workflows_service
+    from core.integrations.mcp.registry import MCPRegistry
+    from core.workflows.workflows_service import WorkflowsService
 
-    definition = get_workflows_service().get_workflow(workflow_id)
+    definition = (workflows or WorkflowsService()).get_workflow(workflow_id)
     if definition is None:
         raise UnknownPlaybook(f"no such workflow: {workflow_id}")
 
@@ -206,7 +218,7 @@ def resolve(workflow_id: str, model: Optional[str] = None) -> Tuple[str, str]:
     if not phases:
         raise UnknownPlaybook(f"{workflow_id} declares no phases; there is nothing to run")
 
-    tools = _tools_of(phases)
+    tools = _tools_of(phases, registry)
     _drop_missing(phases, [tool["id"] for tool in tools])
 
     playbook = {
@@ -257,10 +269,16 @@ def _strings(value: Any) -> List[str]:
 
 # The two layers a hunt run needs. Same tools and the same dump as a compose one;
 # what differs is that a hunt states beliefs to test where a compose states steps.
-def resolve_hunt(workflow_id: str, model: Optional[str] = None) -> Tuple[str, str]:
-    from core.workflows.workflows_service import get_workflows_service
+def resolve_hunt(
+    workflow_id: str,
+    model: Optional[str] = None,
+    workflows: Optional["WorkflowsService"] = None,
+    registry: Optional["MCPRegistry"] = None,
+) -> Tuple[str, str]:
+    from core.integrations.mcp.registry import MCPRegistry
+    from core.workflows.workflows_service import WorkflowsService
 
-    definition = get_workflows_service().get_workflow(workflow_id)
+    definition = (workflows or WorkflowsService()).get_workflow(workflow_id)
     if definition is None:
         raise UnknownPlaybook(f"no such workflow: {workflow_id}")
 
@@ -288,7 +306,7 @@ def resolve_hunt(workflow_id: str, model: Optional[str] = None) -> Tuple[str, st
         "model": model or DEFAULT_MODEL,
         "budgets": dict(HUNT_BUDGETS),
         "runtime": DEFAULT_RUNTIME,
-        "tools": _bound_capabilities(list(HUNT_CAPABILITIES), _tool_catalogue()) + [_expand_tool()],
+        "tools": _bound_capabilities(list(HUNT_CAPABILITIES), _tool_catalogue(registry)) + [_expand_tool()],
         # The hunt gates on its own checkpoint classes, which are a property of
         # what it is about to conclude rather than of a tool it happens to call.
         "approvals": [],

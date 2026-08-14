@@ -59,7 +59,8 @@ def app():
     os.environ["DEV_MODE"] = "false"
     get_settings.cache_clear()
     try:
-        yield TestClient(backend_main.app)
+        with TestClient(backend_main.app) as c:
+            yield c
     finally:
         auth_module.DEV_MODE = prev
         if prev_env is None:

@@ -9,13 +9,16 @@ import { EmptyState, Field, Popup, Select, TextInput } from '../../shared/ui'
 import { useDetectionRules, type AddSourcePayload, type DetectionSource } from './useSettings'
 import type { SectionProps } from './types'
 
-const FORMAT_COLORS: Record<string, string> = {
-  sigma: '#2196f3',
-  splunk: '#4caf50',
-  elastic: '#ff9800',
-  kql: '#9c27b0',
-  auto: '#607d8b',
-}
+// Rule formats come back from the detection-rules API as free-form strings, so
+// the lookup has to admit a miss rather than claim every string has a colour.
+const FORMAT_COLORS = new Map([
+  ['sigma', '#2196f3'],
+  ['splunk', '#4caf50'],
+  ['elastic', '#ff9800'],
+  ['kql', '#9c27b0'],
+  ['auto', '#607d8b'],
+])
+const formatColor = (format: string) => FORMAT_COLORS.get(format) ?? 'var(--tx-3)'
 
 const SOURCE_TYPE_OPTIONS = [
   { value: 'git', label: 'Git Repository' },
@@ -126,7 +129,7 @@ export default function DetectionRulesPanel({ notify }: SectionProps) {
             <div className="flex gap-2 flex-wrap mt-2">
               <span className="chip" style={{ color: 'var(--accent-2)' }}>{fmtNum(stats.total_rules)} total rules</span>
               {Object.entries(stats.by_format).map(([fmt, count]) => (
-                <span key={fmt} className="chip" style={{ color: FORMAT_COLORS[fmt] || 'var(--tx-3)' }}>
+                <span key={fmt} className="chip" style={{ color: formatColor(fmt) }}>
                   {fmt}: {fmtNum(count)}
                 </span>
               ))}
@@ -165,7 +168,7 @@ export default function DetectionRulesPanel({ notify }: SectionProps) {
                 </span>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <span className="chip" style={{ color: FORMAT_COLORS[s.format] || 'var(--tx-3)' }}>{s.format}</span>
+                <span className="chip" style={{ color: formatColor(s.format) }}>{s.format}</span>
                 <span className="chip">{fmtNum(s.rule_count)} rules</span>
               </div>
               {s.git_url && <div className="text-xs text-tx-3 break-all font-mono">{s.git_url}</div>}

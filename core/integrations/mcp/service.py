@@ -12,6 +12,8 @@ import os
 
 from core.secrets import get_secret
 from core.config import vigil_path
+from core.detections.detection_rules_service import DetectionRulesService
+from core.integrations.integration_bridge_service import IntegrationBridgeService
 
 logger = logging.getLogger(__name__)
 
@@ -212,10 +214,15 @@ class MCPService:
     _STATE_FILE = vigil_path("mcp_server_enabled.json")
     _STATE_WRITE_FILE = vigil_path("mcp_server_enabled.json", write=True)
     
-    def __init__(self, project_root: Optional[Path] = None):
+    def __init__(
+        self,
+        project_root: Optional[Path] = None,
+        integration_bridge: Optional[IntegrationBridgeService] = None,
+        detection_rules: Optional[DetectionRulesService] = None,
+    ):
         """
         Initialize the MCP service.
-        
+
         Args:
             project_root: Optional project root path. Defaults to the repo root,
                 which is where ``mcp-config.json`` and ``venv/`` live.
@@ -223,7 +230,9 @@ class MCPService:
         if project_root is None:
             # core/integrations/mcp/service.py -> repo root is four levels up.
             project_root = Path(__file__).resolve().parents[3]
-        
+
+        self._integration_bridge = integration_bridge or IntegrationBridgeService()
+        self._detection_rules = detection_rules or DetectionRulesService()
         self.project_root = Path(project_root)
         self.venv_path = self.project_root / "venv"
         
@@ -359,9 +368,7 @@ class MCPService:
         # Resolve ${<ID>_MCP_URL} placeholders from integration connectorUrls
         # (see derive_remote_mcp_env). Best-effort.
         try:
-            from core.integrations.integration_bridge_service import get_integration_bridge
-
-            get_integration_bridge().derive_remote_mcp_env()
+            self._integration_bridge.derive_remote_mcp_env()
         except Exception as e:  # pragma: no cover - defensive
             logger.debug("remote MCP env derivation skipped: %s", e)
 
@@ -446,10 +453,7 @@ class MCPService:
         
         # Add servers for enabled integrations using the integration bridge
         try:
-            from core.integrations.integration_bridge_service import get_integration_bridge
-            
-            bridge = get_integration_bridge()
-            enabled_servers = bridge.get_enabled_servers()
+            enabled_servers = self._integration_bridge.get_enabled_servers()
             
             # Get list of already loaded server names to avoid duplicates
             loaded_server_names = [s['name'] for s in server_configs]
@@ -464,7 +468,9 @@ class MCPService:
                 env_vars = server_info['env_vars']
                 
                 # Get module path for this integration
-                module_path = bridge.get_server_module_path(integration_id)
+                module_path = self._integration_bridge.get_server_module_path(
+                    integration_id
+                )
                 if not module_path:
                     logger.warning(f"No module path found for integration '{integration_id}'")
                     continue
@@ -505,10 +511,7 @@ class MCPService:
         newly added/removed rule sources without manual config editing.
         """
         try:
-            from core.detections.detection_rules_service import get_detection_rules_service
-            
-            detection_service = get_detection_rules_service()
-            dynamic_env = detection_service.get_mcp_env_vars()
+            dynamic_env = self._detection_rules.get_mcp_env_vars()
             
             if dynamic_env:
                 # Override static env vars with dynamic ones

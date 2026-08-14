@@ -7,11 +7,13 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Header
+from fastapi import Depends, APIRouter, Header
 from pydantic import BaseModel, Field
 
 from core.agents.internal_auth import authorise
 from core.agents.mcp_tools import MCPFailure, execute_mcp_tool
+from core.deps import provide_mcp_registry
+from core.integrations.mcp.registry import MCPRegistry
 from core.agents.tool_registry import execute_backend_tool
 from core.routing import Auth, RouterMeta
 
@@ -89,7 +91,7 @@ def _bounded(args: Dict[str, Any], max_rows: int) -> Dict[str, Any]:
 
 # Backend tools first, then the MCP servers. One ceiling governs both, so a tool
 # does not get a second timeout by virtue of living on the other side.
-async def _run(body: InvokeRequest) -> Tuple[Any, bool]:
+async def _run(body: InvokeRequest, registry: MCPRegistry) -> Tuple[Any, bool]:
     seconds = body.bounds.timeout_ms / 1000
     args = _bounded(body.args, body.bounds.max_rows)
 
@@ -99,7 +101,7 @@ async def _run(body: InvokeRequest) -> Tuple[Any, bool]:
     if handled:
         return result, True
     return await asyncio.wait_for(
-        execute_mcp_tool(body.tool, args, seconds), timeout=seconds
+        execute_mcp_tool(body.tool, args, seconds, registry), timeout=seconds
     )
 
 
@@ -107,11 +109,12 @@ async def _run(body: InvokeRequest) -> Tuple[Any, bool]:
 async def invoke(
     body: InvokeRequest,
     authorization: Optional[str] = Header(default=None),
+    registry: MCPRegistry = Depends(provide_mcp_registry),
 ) -> Dict[str, Any]:
     authorise(authorization, "tool invocation")
 
     try:
-        result, handled = await _run(body)
+        result, handled = await _run(body, registry)
     except asyncio.TimeoutError:
         return _failure("timeout", timeoutMs=body.bounds.timeout_ms)
     # An MCP server that could not be reached is a gap in visibility, not a defect

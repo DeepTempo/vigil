@@ -16,14 +16,17 @@ const SEVERITY_OPTIONS = [
   { value: 'critical', label: 'Critical only' },
 ]
 
-const SOURCE_LABELS: Record<string, string> = {
-  splunk: 'Splunk',
-  crowdstrike: 'CrowdStrike Falcon',
-  azure_sentinel: 'Azure Sentinel',
-  aws_security_hub: 'AWS Security Hub',
-  microsoft_defender: 'Microsoft Defender',
-  elastic: 'Elastic Security',
-}
+// Source ids come from the backend's federation config, which can carry sources
+// this list has never heard of — hence a lookup that can miss, falling back to
+// the raw id at the call site.
+const SOURCE_LABELS = new Map([
+  ['splunk', 'Splunk'],
+  ['crowdstrike', 'CrowdStrike Falcon'],
+  ['azure_sentinel', 'Azure Sentinel'],
+  ['aws_security_hub', 'AWS Security Hub'],
+  ['microsoft_defender', 'Microsoft Defender'],
+  ['elastic', 'Elastic Security'],
+])
 
 function formatRelative(iso: string | null): string {
   if (!iso) return 'never'
@@ -150,7 +153,7 @@ export default function FederationSection({ notify }: SectionProps) {
               <tr key={s.source_id}>
                 <td>
                   <div className="flex flex-col">
-                    <span>{SOURCE_LABELS[s.source_id] || s.source_id}</span>
+                    <span>{SOURCE_LABELS.get(s.source_id) ?? s.source_id}</span>
                     <span className="text-xs text-tx-3">
                       {s.source_id}
                       {!s.is_configured && ' · not configured'}

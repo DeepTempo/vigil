@@ -85,9 +85,7 @@ class TestRefusals:
 
     # Refused rather than run: a hunt with nothing to test opens a ledger, spends
     # a lead turn and concludes having tested nothing.
-    def test_refuses_a_definition_with_nothing_to_test(self, monkeypatch):
-        import core.workflows.workflows_service as service
-
+    def test_refuses_a_definition_with_nothing_to_test(self):
         class _Empty:
             metadata: dict = {}
             name = "x"
@@ -96,11 +94,12 @@ class TestRefusals:
             trigger_examples: list = []
             body = ""
 
-        monkeypatch.setattr(
-            service.get_workflows_service(), "get_workflow", lambda _id: _Empty()
-        )
+        class _Workflows:
+            def get_workflow(self, _id):
+                return _Empty()
+
         with pytest.raises(UnknownPlaybook, match="no hypotheses"):
-            resolve_hunt("threat-hunt")
+            resolve_hunt("threat-hunt", workflows=_Workflows())
 
     def test_refuses_a_workflow_that_does_not_exist(self):
         with pytest.raises(UnknownPlaybook):

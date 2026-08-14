@@ -7,12 +7,15 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, Field
 
 from core.agents.internal_auth import authorise
+from core.deps import provide_approvals, provide_workflow_runs
+from core.response.approval_service import ApprovalService
 from core.response.checkpoints import raise_for_checkpoint
 from core.routing import Auth, RouterMeta
+from core.workflows.workflow_run_service import WorkflowRunService
 
 router = APIRouter()
 
@@ -79,12 +82,11 @@ def record_phase(
     run_id: str,
     update: PhaseUpdate,
     authorization: Optional[str] = Header(default=None),
+    run_service: WorkflowRunService = Depends(provide_workflow_runs),
+    approvals: ApprovalService = Depends(provide_approvals),
 ) -> None:
-    from core.workflows.workflow_run_service import get_workflow_run_service
-
     authorise(authorization, "run progress")
 
-    run_service = get_workflow_run_service()
     now = datetime.utcnow()
     run_service.upsert_phase(
         run_id,
@@ -104,7 +106,7 @@ def record_phase(
     run_service.set_status(run_id, RUN_STATUS.get(update.status, "running"))
 
     if update.status == WAITING and update.checkpoint_id:
-        _raise_approval(run_id, update)
+        _raise_approval(run_id, update, approvals)
 
 
 @router.post("/{run_id}/terminal", status_code=204)
@@ -112,12 +114,11 @@ def record_terminal(
     run_id: str,
     update: TerminalUpdate,
     authorization: Optional[str] = Header(default=None),
+    run_service: WorkflowRunService = Depends(provide_workflow_runs),
 ) -> None:
-    from core.workflows.workflow_run_service import get_workflow_run_service
-
     authorise(authorization, "run outcome")
 
-    get_workflow_run_service().finalize_run(
+    run_service.finalize_run(
         run_id,
         status="completed" if update.outcome == "completed" else "failed",
         result_summary=update.summary or None,
@@ -132,6 +133,7 @@ def record_checkpoint(
     run_id: str,
     raised: CheckpointRaised,
     authorization: Optional[str] = Header(default=None),
+    approvals: ApprovalService = Depends(provide_approvals),
 ) -> None:
     authorise(authorization, "run checkpoint")
 
@@ -148,6 +150,7 @@ def record_checkpoint(
             "run_kind": raised.run_kind,
             **(raised.context or {}),
         },
+        approvals=approvals,
     )
 
 
@@ -157,19 +160,18 @@ def record_checkpoint(
 def list_decisions(
     run_id: str,
     authorization: Optional[str] = Header(default=None),
+    approvals: ApprovalService = Depends(provide_approvals),
 ) -> Decisions:
-    from core.response.approval_service import (ActionStatus,
-                                                get_approval_service)
+    from core.response.approval_service import ActionStatus
 
     authorise(authorization, "run decisions")
 
-    service = get_approval_service()
     decided: List[Decision] = []
     for status, answer in (
         (ActionStatus.APPROVED, "approve"),
         (ActionStatus.REJECTED, "reject"),
     ):
-        for action in service.list_actions(status=status, workflow_run_id=run_id):
+        for action in approvals.list_actions(status=status, workflow_run_id=run_id):
             checkpoint = (action.parameters or {}).get("checkpoint_id")
             if not checkpoint:
                 continue
@@ -187,7 +189,9 @@ def list_decisions(
 
 # Named by the checkpoint the agent layer raised, so the decision travels back
 # addressed to the step that is waiting and to no other.
-def _raise_approval(run_id: str, update: PhaseUpdate) -> None:
+def _raise_approval(
+    run_id: str, update: PhaseUpdate, approvals: ApprovalService
+) -> None:
     raise_for_checkpoint(
         run_id=run_id,
         checkpoint_id=str(update.checkpoint_id),
@@ -196,4 +200,5 @@ def _raise_approval(run_id: str, update: PhaseUpdate) -> None:
         reason="The playbook marks this phase approval_required",
         parameters={"phase_id": update.phase_id, "agent_id": update.agent},
         phase_id=update.phase_id,
+        approvals=approvals,
     )

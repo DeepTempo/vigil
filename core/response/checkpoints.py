@@ -9,11 +9,10 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
-def pending_for(run_id: str, checkpoint_id: str):
-    from core.response.approval_service import (ActionStatus,
-                                                get_approval_service)
+def pending_for(run_id: str, checkpoint_id: str, approvals=None):
+    from core.response.approval_service import ActionStatus, ApprovalService
 
-    service = get_approval_service()
+    service = approvals or ApprovalService()
     for action in service.list_actions(
         status=ActionStatus.PENDING, workflow_run_id=run_id
     ):
@@ -33,13 +32,15 @@ def raise_for_checkpoint(
     reason: str,
     parameters: Optional[Dict[str, Any]] = None,
     phase_id: Optional[str] = None,
+    approvals=None,
 ) -> bool:
-    from core.response.approval_service import ActionType, get_approval_service
+    from core.response.approval_service import ActionType, ApprovalService
 
-    if pending_for(run_id, checkpoint_id) is not None:
+    service = approvals or ApprovalService()
+    if pending_for(run_id, checkpoint_id, service) is not None:
         return False
 
-    get_approval_service().create_action(
+    service.create_action(
         action_type=ActionType.WORKFLOW_PHASE,
         title=title,
         description=description,

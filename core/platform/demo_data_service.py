@@ -295,12 +295,3 @@ class DemoDataService:
         DemoDataService._initialized = False
         self._generate_demo_data()
         DemoDataService._initialized = True
-
-
-_demo_service = None
-
-def get_demo_service() -> DemoDataService:
-    global _demo_service
-    if _demo_service is None:
-        _demo_service = DemoDataService()
-    return _demo_service

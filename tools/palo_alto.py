@@ -35,7 +35,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
     api_key = config.get('api_key')
     if not url or not api_key:
         return result({"error": "Palo Alto not configured"})
-    
+
     args = arguments or {}
     
     try:
@@ -48,13 +48,13 @@ async def handle_call_tool(name: str, arguments: dict | None):
                 "type": "config", "action": "set", "key": api_key,
                 "xpath": f"/config/devices/entry/vsys/entry[@name='vsys1']/address/entry[@name='blocked-{ip}']",
                 "element": f"<ip-netmask>{ip}/32</ip-netmask><description>Blocked: {args.get('reason', 'security')}</description>"
-            }, verify=False, timeout=30)
+            }, verify=config.get('verify_ssl', True), timeout=30)
             return result({"success": resp.status_code == 200, "ip": ip, "action": "blocked"})
         
         elif name == "pan_get_threats":
             resp = requests.get(f"{url}/api/", params={
                 "type": "log", "log-type": "threat", "key": api_key, "nlogs": args.get("limit", 20)
-            }, verify=False, timeout=30)
+            }, verify=config.get('verify_ssl', True), timeout=30)
             # Parse XML response (simplified)
             return result({"success": True, "message": "Check Palo Alto console for threat logs"})
         

@@ -1,16 +1,27 @@
 """Bifrost management API helper.
 
-Bifrost exposes a REST admin API at ``${BIFROST_URL}/api/providers/{name}``
-that lets us update provider keys at runtime without a container restart.
-This module is the one place the backend talks to that API, so the flow
-is: user edits a key in the UI → ``llm_providers`` endpoint writes to the
-secrets manager → this module pushes the new value to Bifrost → Bifrost
-uses it for subsequent requests.
+Bifrost exposes a REST admin API that lets us update provider credentials at
+runtime without a container restart. This module is the one place the backend
+talks to that API, so the flow is: user edits a key in the UI →
+``llm_providers`` endpoint writes to the secrets manager → this module pushes
+the new value to Bifrost → Bifrost uses it for subsequent requests.
 
-The previous architecture had Bifrost read ``env.ANTHROPIC_API_KEY`` from
-its container env, which diverged from whatever the UI had written to the
-secrets manager under ``llm_provider_<id>_api_key``. Pushing via the API
-keeps a single source of truth in the secrets manager.
+The alternative would be letting Bifrost read ``env.ANTHROPIC_API_KEY`` from
+its container env, which diverges from whatever the UI wrote to the secrets
+manager under ``llm_provider_<id>_api_key``. Pushing via the API keeps a
+single source of truth in the secrets manager, and is why the seeded
+``config.json`` key is an empty placeholder rather than a real credential.
+
+Three properties of that API shape the code below, all learned the hard way:
+
+* **Keys are a subresource.** They live at ``/api/providers/{name}/keys``,
+  *not* on the ``/api/providers/{name}`` document — which returns no ``keys``
+  field at all.
+* **Secrets are masked on read** (``sk-a****key``) and a write that echoes the
+  mask is accepted with a 200, storing the mask as the credential. So values
+  are always re-read from the secrets store, never round-tripped.
+* **A key must carry a non-empty value.** There is no models-only update, and
+  clearing a credential means deleting the key rather than blanking it.
 """
 
 from __future__ import annotations
@@ -22,6 +33,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from core.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 5.0
@@ -38,71 +50,188 @@ def _bifrost_base_url() -> str:
     return get_settings().bifrost_url.rstrip("/")
 
 
-def _get_provider(name: str, client: httpx.Client) -> Optional[Dict[str, Any]]:
+# Providers whose Bifrost key is not an API secret we own. Ollama's key holds
+# a URL under ``ollama_key_config`` with an empty ``value``, and its allow-list
+# is the static wildcard, so there is nothing for us to push.
+_UNMANAGED_PROVIDER_TYPES = frozenset({"ollama"})
+
+# Read-only/derived fields Bifrost returns but rejects or ignores on write.
+# ``value`` is dropped separately — see the module docstring on masking.
+_KEY_READBACK_ONLY = frozenset({"id", "config_hash", "status", "description"})
+
+# Key ``status`` values observed from Bifrost that do not indicate a problem:
+# "success" means it listed models with the credential, "unknown" means it has
+# not checked yet. Anything else (e.g. "list_models_failed") gets a warning —
+# an unrecognized value is worth one line of noise, whereas guessing at extra
+# members here would silence the exact failure this check exists to catch.
+_KEY_STATUS_OK = frozenset({"success", "unknown"})
+
+
+def _keys_url(provider_name: str, key_id: Optional[str] = None) -> str:
+    base = f"{_bifrost_base_url()}/api/providers/{provider_name}/keys"
+    return f"{base}/{key_id}" if key_id else base
+
+
+def _get_provider_keys(
+    name: str, client: httpx.Client
+) -> Optional[List[Dict[str, Any]]]:
+    """Return ``name``'s configured keys, or None if the provider is absent.
+
+    An empty list means "provider exists, no keys yet" — distinct from None,
+    which is why callers branch on ``is None`` rather than truthiness.
+    """
     try:
-        r = client.get(
-            f"{_bifrost_base_url()}/api/providers/{name}", timeout=_DEFAULT_TIMEOUT
-        )
+        r = client.get(_keys_url(name), timeout=_DEFAULT_TIMEOUT)
         if r.status_code == 404:
             logger.debug("Bifrost: provider %s not configured", name)
             return None
         r.raise_for_status()
-        return r.json()
+        return r.json().get("keys") or []
     except Exception as e:
-        logger.warning("Bifrost: could not fetch provider %s: %s", name, e)
+        logger.warning("Bifrost: could not fetch keys for provider %s: %s", name, e)
         return None
 
 
-def push_provider_key(provider_name: str, key_value: str) -> bool:
-    """Update the first configured key on ``provider_name`` with ``key_value``.
+def _log_key_health(provider_name: str, payload: Dict[str, Any]) -> None:
+    """Log Bifrost's own verdict on a key it just accepted.
 
-    We take the current provider document, replace the key value with a
-    literal (``from_env: false``), and PUT it back. This is idempotent —
-    pushing the same value twice is a no-op from Anthropic's perspective.
-
-    Returns True on success. Any failure is logged and returns False so
-    the caller's CRUD flow never breaks on a Bifrost hiccup.
+    Bifrost validates the credential upstream on write and reports the result
+    on the response (e.g. ``status="list_models_failed"`` with
+    ``description="invalid x-api-key"``). A 2xx therefore means "stored", not
+    "works" — surface the difference rather than reporting a bad key as OK.
     """
-    if not provider_name:
+    status = payload.get("status")
+    if status and status not in _KEY_STATUS_OK:
+        logger.warning(
+            "Bifrost: provider %s key stored but reports status=%s (%s)",
+            provider_name,
+            status,
+            payload.get("description") or "no detail",
+        )
+
+
+def _upsert_provider_key(
+    provider_name: str,
+    client: httpx.Client,
+    *,
+    key_value: str,
+    models: Optional[List[str]] = None,
+) -> bool:
+    """Create or replace ``provider_name``'s key with ``key_value``.
+
+    ``key_value`` must be the real secret from the secrets store, never a
+    value read back from Bifrost (see the module docstring on masking).
+
+    ``models`` replaces the allow-list; omit it to carry the existing one
+    forward. There is no models-only update — every write carries the secret.
+    """
+    keys = _get_provider_keys(provider_name, client)
+    if keys is None:
         return False
-    with httpx.Client() as client:
-        prov = _get_provider(provider_name, client)
-        if prov is None:
-            return False
-        keys = prov.get("keys") or []
-        if not keys:
+
+    existing = keys[0] if keys else None
+    body: Dict[str, Any] = {
+        k: v for k, v in (existing or {}).items() if k not in _KEY_READBACK_ONLY
+    }
+    body.setdefault("name", f"default-{provider_name}-key")
+    body.setdefault("weight", 1)
+    body.setdefault("enabled", True)
+    body["value"] = {"value": key_value, "type": "plain_text"}
+    if models is not None:
+        body["models"] = models
+    body.setdefault("models", [])
+
+    verb = "PUT" if existing else "POST"
+    url = (
+        _keys_url(provider_name, existing["id"])
+        if existing
+        else _keys_url(provider_name)
+    )
+    try:
+        r = (
+            client.put(url, json=body, timeout=_DEFAULT_TIMEOUT)
+            if existing
+            else client.post(url, json=body, timeout=_DEFAULT_TIMEOUT)
+        )
+        if r.status_code >= 400:
             logger.warning(
-                "Bifrost: provider %s has no keys slot to update", provider_name
+                "Bifrost: %s %s returned %s: %s",
+                verb,
+                url,
+                r.status_code,
+                r.text[:200],
             )
             return False
-        # Update the first key. Bifrost's current config seeds exactly one
-        # key per provider; multi-key rotation is a separate feature.
-        keys[0]["value"] = {
-            "value": key_value,
-            "env_var": "",
-            "from_env": False,
-        }
         try:
-            r = client.put(
-                f"{_bifrost_base_url()}/api/providers/{provider_name}",
-                json=prov,
-                timeout=_DEFAULT_TIMEOUT,
+            _log_key_health(provider_name, r.json())
+        except Exception:  # noqa: BLE001 - health logging must never fail a write
+            pass
+        return True
+    except Exception as e:
+        logger.warning("Bifrost: %s %s failed: %s", verb, url, e)
+        return False
+
+
+def _delete_provider_keys(provider_name: str, client: httpx.Client) -> bool:
+    """Remove ``provider_name``'s keys — the only way to clear a credential.
+
+    Deleting is safe because ``_upsert_provider_key`` recreates the key from
+    nothing when one is next configured.
+    """
+    keys = _get_provider_keys(provider_name, client)
+    if keys is None:
+        return False
+    if not keys:
+        return True
+    ok = True
+    for key in keys:
+        try:
+            r = client.delete(
+                _keys_url(provider_name, key["id"]), timeout=_DEFAULT_TIMEOUT
             )
             if r.status_code >= 400:
                 logger.warning(
-                    "Bifrost: PUT /api/providers/%s returned %s: %s",
+                    "Bifrost: DELETE key %s on %s returned %s: %s",
+                    key.get("id"),
                     provider_name,
                     r.status_code,
                     r.text[:200],
                 )
-                return False
-            logger.info("Bifrost: pushed updated key for provider %s", provider_name)
-            return True
+                ok = False
         except Exception as e:
             logger.warning(
-                "Bifrost: PUT /api/providers/%s failed: %s", provider_name, e
+                "Bifrost: DELETE key %s on %s failed: %s",
+                key.get("id"),
+                provider_name,
+                e,
             )
-            return False
+            ok = False
+    return ok
+
+
+def push_provider_key(provider_name: str, key_value: str) -> bool:
+    """Set ``provider_name``'s Bifrost credential to ``key_value``.
+
+    Creates the key if the provider has none, otherwise replaces the existing
+    one in place. An empty ``key_value`` clears the credential by deleting the
+    key. The existing model allow-list is carried forward untouched.
+
+    Returns True on success. Any failure is logged and returns False so the
+    caller's CRUD flow never breaks on a Bifrost hiccup — callers that surface
+    the result to a user should report that False rather than swallow it.
+    """
+    if not provider_name:
+        return False
+    if provider_name in _UNMANAGED_PROVIDER_TYPES:
+        logger.debug("Bifrost: provider %s manages its own key", provider_name)
+        return True
+    with httpx.Client() as client:
+        if not key_value:
+            return _delete_provider_keys(provider_name, client)
+        ok = _upsert_provider_key(provider_name, client, key_value=key_value)
+        if ok:
+            logger.info("Bifrost: pushed updated key for provider %s", provider_name)
+        return ok
 
 
 def sync_all_provider_keys() -> Dict[str, bool]:
@@ -149,14 +278,21 @@ def sync_all_provider_keys() -> Dict[str, bool]:
     return results
 
 
-def sync_provider_models(provider_type: str, model_ids: list[str]) -> bool:
+def sync_provider_models(
+    provider_type: str, model_ids: list[str], *, key_value: Optional[str]
+) -> bool:
     """Update Bifrost's allow-list of routable models for ``provider_type``.
 
-    GETs the provider document, replaces ``keys[0].models`` with
-    ``model_ids``, and PUTs the result back. Empty lists are skipped —
-    wiping the allow-list to ``[]`` would cause Bifrost to reject every
-    subsequent LLM call for that provider, which we never want just
-    because an upstream API had a momentary hiccup.
+    Writes the allow-list through the provider's key, which is where Bifrost
+    stores it, so every such write carries the credential. ``key_value`` is
+    the caller's already-resolved secret for this provider type — it is passed
+    in rather than looked up here so that discovery and this sync can never
+    disagree about which secret backs a provider. A provider with no resolved
+    secret has no allow-list to sync.
+
+    Empty lists are skipped — wiping the allow-list to ``[]`` would cause
+    Bifrost to reject every subsequent LLM call for that provider, which we
+    never want just because an upstream API had a momentary hiccup.
     """
     if not provider_type:
         return False
@@ -167,58 +303,42 @@ def sync_provider_models(provider_type: str, model_ids: list[str]) -> bool:
             provider_type,
         )
         return False
-    # Self-hosted Ollama serves whatever the user pulled/built, so pin the
-    # allow-list to the wildcard rather than a finite discovered set.
-    if provider_type == "ollama":
-        normalized = ["*"]
-    else:
-        seen: set = set()
-        normalized = []
-        for mid in model_ids:
-            if not mid or mid in seen:
-                continue
-            seen.add(mid)
-            normalized.append(mid)
+    # Self-hosted Ollama serves whatever the user pulled/built, and its key
+    # holds a URL rather than a secret we own. The seeded wildcard already
+    # covers it, so there is nothing to write.
+    if provider_type in _UNMANAGED_PROVIDER_TYPES:
+        logger.debug(
+            "Bifrost sync: provider %s uses a static allow-list", provider_type
+        )
+        return True
+
+    seen: set = set()
+    normalized: List[str] = []
+    for mid in model_ids:
+        if not mid or mid in seen:
+            continue
+        seen.add(mid)
+        normalized.append(mid)
+
+    if not key_value:
+        logger.info(
+            "Bifrost sync: no resolved secret for provider %s — "
+            "skipping model allow-list sync",
+            provider_type,
+        )
+        return False
 
     with httpx.Client() as client:
-        prov = _get_provider(provider_type, client)
-        if prov is None:
-            return False
-        keys = prov.get("keys") or []
-        if not keys:
-            logger.warning(
-                "Bifrost: provider %s has no keys slot to update",
-                provider_type,
-            )
-            return False
-        keys[0]["models"] = normalized
-        try:
-            r = client.put(
-                f"{_bifrost_base_url()}/api/providers/{provider_type}",
-                json=prov,
-                timeout=_DEFAULT_TIMEOUT,
-            )
-            if r.status_code >= 400:
-                logger.warning(
-                    "Bifrost: PUT /api/providers/%s (models) returned %s: %s",
-                    provider_type,
-                    r.status_code,
-                    r.text[:200],
-                )
-                return False
+        ok = _upsert_provider_key(
+            provider_type, client, key_value=key_value, models=normalized
+        )
+        if ok:
             logger.info(
                 "Bifrost: synced %d models for provider %s",
                 len(normalized),
                 provider_type,
             )
-            return True
-        except Exception as e:
-            logger.warning(
-                "Bifrost: PUT /api/providers/%s (models) failed: %s",
-                provider_type,
-                e,
-            )
-            return False
+        return ok
 
 
 async def sync_all_provider_models() -> Dict[str, Any]:
@@ -308,6 +428,7 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
                     "provider_type": row.provider_type,
                     "base_url": row.base_url,
                     "api_key_ref": row.api_key_ref,
+                    "is_default": bool(row.is_default),
                     "config": dict(row.config or {}),
                 }
             )
@@ -322,14 +443,23 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
 
         type_union: List[str] = []
         type_seen: set = set()
+        # Bifrost holds one key per provider *type* while Vigil can hold
+        # several rows of that type, so the allow-list push below rides on a
+        # single row's secret. Prefer the default row, matching the survivor
+        # ``llm_providers._reconcile_bifrost_key_for_type`` would pick.
+        provider_rows.sort(key=lambda r: not r["is_default"])
+        type_key: Optional[str] = None
 
         for row_dict in provider_rows:
             row_ids: List[str] = []
             row_seen: set = set()
             upstream_ok = False
+            row_key = _resolve_row_key(row_dict)
+            if type_key is None:
+                type_key = row_key
 
             try:
-                meta = await _fetch_meta_for_row(row_dict, discovery)
+                meta = await _fetch_meta_for_row(row_dict, discovery, row_key)
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "sync_all_provider_models: discovery failed for %s (%s): %s",
@@ -383,7 +513,9 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
             bifrost_results[provider_type] = False
             continue
 
-        bifrost_results[provider_type] = sync_provider_models(provider_type, type_union)
+        bifrost_results[provider_type] = sync_provider_models(
+            provider_type, type_union, key_value=type_key
+        )
 
     if bifrost_results:
         ok = sum(1 for v in bifrost_results.values() if v)
@@ -399,35 +531,50 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
     }
 
 
-async def _fetch_meta_for_row(row_dict: Dict[str, Any], discovery) -> Optional[list]:
-    """Call the appropriate discovery function for one provider row.
+def _resolve_row_key(row_dict: Dict[str, Any]) -> Optional[str]:
+    """Resolve one provider row's plaintext secret, or None.
 
-    Returns ``None`` when the row isn't usable (e.g. no API key). The
-    caller logs and skips.
+    The row's own ``api_key_ref`` wins; the env-held names are a fallback for
+    deployments that never wrote a per-row ref. This is the single resolver
+    for both catalog discovery and the Bifrost allow-list push, so the two
+    cannot disagree about which secret backs a provider.
     """
     from core.secrets_manager import get_secret
 
     provider_type = row_dict["provider_type"]
-    base_url = row_dict.get("base_url")
     api_key_ref = row_dict.get("api_key_ref")
+
+    if api_key_ref:
+        try:
+            val = get_secret(api_key_ref)
+            if val:
+                return val
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("secret lookup for %s failed: %s", api_key_ref, exc)
+    if provider_type == "anthropic":
+        return get_secret("ANTHROPIC_API_KEY") or get_secret("CLAUDE_API_KEY")
+    if provider_type == "openai":
+        return get_secret("OPENAI_API_KEY")
+    return None
+
+
+async def _fetch_meta_for_row(
+    row_dict: Dict[str, Any], discovery, key: Optional[str] = None
+) -> Optional[list]:
+    """Call the appropriate discovery function for one provider row.
+
+    ``key`` is the row's resolved secret from ``_resolve_row_key``; it is
+    passed in so the caller can reuse it for the Bifrost push instead of
+    resolving twice.
+
+    Returns ``None`` when the row isn't usable (e.g. no API key). The
+    caller logs and skips.
+    """
+    provider_type = row_dict["provider_type"]
+    base_url = row_dict.get("base_url")
     config = row_dict.get("config") or {}
 
-    def _resolve_key() -> Optional[str]:
-        if api_key_ref:
-            try:
-                val = get_secret(api_key_ref)
-                if val:
-                    return val
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("secret lookup for %s failed: %s", api_key_ref, exc)
-        if provider_type == "anthropic":
-            return get_secret("ANTHROPIC_API_KEY") or get_secret("CLAUDE_API_KEY")
-        if provider_type == "openai":
-            return get_secret("OPENAI_API_KEY")
-        return None
-
     if provider_type == "anthropic":
-        key = _resolve_key()
         if not key:
             logger.info(
                 "Bifrost sync: no Anthropic key available for %s — skipping",
@@ -447,7 +594,7 @@ async def _fetch_meta_for_row(row_dict: Dict[str, Any], discovery) -> Optional[l
         # Without this, a self-hosted provider that discovers fine never syncs
         # into Bifrost. The caller wraps this in try/except and skips on error.
         return await discovery.fetch_openai_models(
-            _resolve_key(),
+            key,
             base_url=base_url,
             organization=config.get("organization"),
             allow_loopback=True,

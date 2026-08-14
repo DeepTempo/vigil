@@ -138,18 +138,6 @@ class MCPRegistry:
         }
 
 
-# Global singleton
-_mcp_registry: Optional[MCPRegistry] = None
-
-
-def get_mcp_registry() -> MCPRegistry:
-    """Get or create the global MCP registry instance."""
-    global _mcp_registry
-    if _mcp_registry is None:
-        _mcp_registry = MCPRegistry()
-    return _mcp_registry
-
-
 # Where the live MCP tool set comes from. This used to be a side effect of
 # constructing a ClaudeService: the tool loader populated the registry on its way
 # past, so two AI generators depended on somebody having built an LLM client
@@ -195,10 +183,10 @@ def _normalised(tool: Dict[str, Any]) -> Dict[str, Any]:
 # The disk cache is a warm-start artifact: a server can appear there and have
 # failed to connect this boot. Registering it anyway lets a model claim a
 # capability it cannot exercise (#129), so live connection state gates it.
-def populate_from_cache() -> int:
-    from core.integrations.mcp.client import get_mcp_client
+def populate_from_cache(registry: MCPRegistry) -> int:
+    from core.integrations.mcp.client import process_mcp_client
 
-    mcp_client = get_mcp_client()
+    mcp_client = process_mcp_client()
     tools_dict = _cached_tools()
     if not tools_dict and mcp_client is not None:
         tools_dict = getattr(mcp_client, "tools_cache", None) or {}
@@ -213,7 +201,6 @@ def populate_from_cache() -> int:
         except Exception as exc:  # noqa: BLE001
             logger.debug("Could not read MCP connection status: %s", exc)
 
-    registry = get_mcp_registry()
     registered = 0
     for name, tools in tools_dict.items():
         if connected and not connected.get(name, False):

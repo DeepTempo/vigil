@@ -414,12 +414,3 @@ class DetectionRulesService:
 
 
 # Global singleton
-_detection_rules_service: Optional[DetectionRulesService] = None
-
-
-def get_detection_rules_service() -> DetectionRulesService:
-    """Get or create the global DetectionRulesService instance."""
-    global _detection_rules_service
-    if _detection_rules_service is None:
-        _detection_rules_service = DetectionRulesService()
-    return _detection_rules_service

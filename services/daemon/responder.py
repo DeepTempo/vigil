@@ -5,6 +5,8 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 
+from core.response.approval_service import ApprovalService
+from core.response.autonomous_response_service import AutonomousResponseService
 from services.daemon.config import ResponseConfig, EscalationConfig
 
 logger = logging.getLogger(__name__)
@@ -12,16 +14,23 @@ logger = logging.getLogger(__name__)
 
 class AutonomousResponder:
     """Handles autonomous response actions with escalation."""
-    
-    def __init__(self, response_config: ResponseConfig, escalation_config: EscalationConfig):
+
+    def __init__(
+        self,
+        response_config: ResponseConfig,
+        escalation_config: EscalationConfig,
+        response_service: AutonomousResponseService,
+        approvals: ApprovalService,
+    ):
         self.response_config = response_config
         self.escalation_config = escalation_config
         self.input_queue: asyncio.Queue = asyncio.Queue()
-        
-        # Services (lazy loaded)
-        self._response_service = None
-        self._approval_service = None
-        
+
+        self._response_service = response_service
+        self._approval_service = approvals
+        if response_config.force_manual_approval:
+            self._approval_service.set_force_manual_approval(True)
+
         # Stats
         self.stats = {
             "evaluated": 0,
@@ -31,32 +40,10 @@ class AutonomousResponder:
             "errors": 0
         }
     
-    def _init_services(self):
-        """Initialize required services."""
-        try:
-            from core.response.autonomous_response_service import get_autonomous_response_service
-            self._response_service = get_autonomous_response_service()
-            logger.info("Autonomous response service initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize response service: {e}")
-        
-        try:
-            from core.response.approval_service import get_approval_service
-            self._approval_service = get_approval_service()
-            
-            # Apply force manual approval setting
-            if self.response_config.force_manual_approval:
-                self._approval_service.set_force_manual_approval(True)
-            
-            logger.info("Approval service initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize approval service: {e}")
-    
     async def run(self, shutdown_event: asyncio.Event):
         """Run the response handler loop."""
         logger.info("Autonomous responder starting...")
-        self._init_services()
-        
+
         # Start worker tasks
         workers = [
             asyncio.create_task(self._response_worker(shutdown_event)),
@@ -96,7 +83,7 @@ class AutonomousResponder:
         """Periodically execute approved actions."""
         while not shutdown_event.is_set():
             try:
-                if self._response_service and self.response_config.auto_response_enabled:
+                if self.response_config.auto_response_enabled:
                     # Execute approved actions
                     results = self._response_service.execute_approved_actions()
                     
@@ -314,10 +301,6 @@ class AutonomousResponder:
         entity_context: Dict[str, Any]
     ):
         """Create a response action (pending or auto-approved)."""
-        if not self._response_service:
-            logger.warning("Response service not available")
-            return
-        
         if self.response_config.dry_run:
             logger.info(f"[DRY RUN] Would create {action_type} action for finding {finding.get('finding_id')}")
             return

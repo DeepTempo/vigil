@@ -24,12 +24,15 @@ const PRIORITIES = [
   { value: 'medium', label: 'Medium' },
   { value: 'low', label: 'Low' },
 ]
-const PRIORITY_COLOR: Record<string, string> = {
-  critical: 'var(--crit)',
-  high: 'var(--high)',
-  medium: 'var(--med)',
-  low: 'var(--ok)',
-}
+// Priorities arrive from the API as free-form strings, so the lookup has to
+// admit a miss rather than claim every string resolves to a colour.
+const PRIORITY_COLOR = new Map([
+  ['critical', 'var(--crit)'],
+  ['high', 'var(--high)'],
+  ['medium', 'var(--med)'],
+  ['low', 'var(--ok)'],
+])
+const priorityColor = (priority: string) => PRIORITY_COLOR.get(priority) ?? 'var(--tx-2)'
 
 interface FormState {
   name: string
@@ -215,7 +218,7 @@ export default function SlaPoliciesSection({ notify }: SectionProps) {
                   {p.name}
                   {p.description && <div className="text-xs text-tx-3 mt-0.5">{p.description}</div>}
                 </td>
-                <td><span className="tag" style={{ color: PRIORITY_COLOR[String(p.priority_level)] || 'var(--tx-2)' }}>{p.priority_level}</span></td>
+                <td><span className="tag" style={{ color: priorityColor(String(p.priority_level)) }}>{p.priority_level}</span></td>
                 <td className="muted">{p.response_time_hours}h</td>
                 <td className="muted">{p.resolution_time_hours}h</td>
                 <td>{p.is_default ? <span className="status closed"><Icon name="check2" size={12} /> Default</span> : <span className="muted">—</span>}</td>
@@ -242,7 +245,7 @@ export default function SlaPoliciesSection({ notify }: SectionProps) {
           <Field label="Description"><TextInput value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
           <Field label="Priority" hint={editing ? 'Priority level is fixed after creation.' : undefined}>
             {editing ? (
-              <span className="tag" style={{ color: PRIORITY_COLOR[form.priority_level] || 'var(--tx-2)' }}>{form.priority_level}</span>
+              <span className="tag" style={{ color: priorityColor(form.priority_level) }}>{form.priority_level}</span>
             ) : (
               <Select value={form.priority_level} options={PRIORITIES} onSelect={(v) => setForm({ ...form, priority_level: v })} />
             )}

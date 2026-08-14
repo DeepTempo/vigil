@@ -93,9 +93,9 @@ def internal(monkeypatch):
 
 
 def _run(workflow_id: str = "test-phase-001") -> str:
-    from core.workflows.workflow_run_service import get_workflow_run_service
+    from core.workflows.workflow_run_service import WorkflowRunService
 
-    run_id = get_workflow_run_service().begin_run(
+    run_id = WorkflowRunService().begin_run(
         workflow_id=workflow_id,
         workflow_name="Test Phased Workflow",
         workflow_source="file",
@@ -123,20 +123,18 @@ class TestPhaseApprovalAcrossTheBridge:
     def test_a_waiting_phase_pauses_the_run_and_raises_an_approval(
         self, clean_tables, internal
     ):
-        from core.response.approval_service import (ActionStatus,
-                                                    get_approval_service)
+        from core.response.approval_service import ActionStatus, ApprovalService
         from core.workflows.run_bridge_router import record_phase
-        from core.workflows.workflow_run_service import \
-            get_workflow_run_service
+        from core.workflows.workflow_run_service import WorkflowRunService
 
         token = internal
         run_id = _run()
         record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
 
-        run = get_workflow_run_service().get_run(run_id)
+        run = WorkflowRunService().get_run(run_id)
         assert run["status"] == "paused"
 
-        pending = get_approval_service().list_actions(
+        pending = ApprovalService().list_actions(
             status=ActionStatus.PENDING, workflow_run_id=run_id
         )
         assert len(pending) == 1
@@ -147,8 +145,7 @@ class TestPhaseApprovalAcrossTheBridge:
         self, clean_tables, internal
     ):
         """A resume re-reports the step it is still waiting on."""
-        from core.response.approval_service import (ActionStatus,
-                                                    get_approval_service)
+        from core.response.approval_service import ActionStatus, ApprovalService
         from core.workflows.run_bridge_router import record_phase
 
         token = internal
@@ -156,7 +153,7 @@ class TestPhaseApprovalAcrossTheBridge:
         record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
         record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
 
-        pending = get_approval_service().list_actions(
+        pending = ApprovalService().list_actions(
             status=ActionStatus.PENDING, workflow_run_id=run_id
         )
         assert len(pending) == 1
@@ -164,8 +161,7 @@ class TestPhaseApprovalAcrossTheBridge:
     def test_an_approval_comes_back_as_a_decision_the_ledger_can_take(
         self, clean_tables, internal
     ):
-        from core.response.approval_service import (ActionStatus,
-                                                    get_approval_service)
+        from core.response.approval_service import ActionStatus, ApprovalService
         from core.workflows.run_bridge_router import (list_decisions,
                                                       record_phase)
 
@@ -173,7 +169,7 @@ class TestPhaseApprovalAcrossTheBridge:
         run_id = _run()
         record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
 
-        service = get_approval_service()
+        service = ApprovalService()
         action = service.list_actions(
             status=ActionStatus.PENDING, workflow_run_id=run_id
         )[0]
@@ -186,8 +182,7 @@ class TestPhaseApprovalAcrossTheBridge:
         assert decisions[0].actor == "tester"
 
     def test_a_rejection_comes_back_carrying_its_reason(self, clean_tables, internal):
-        from core.response.approval_service import (ActionStatus,
-                                                    get_approval_service)
+        from core.response.approval_service import ActionStatus, ApprovalService
         from core.workflows.run_bridge_router import (list_decisions,
                                                       record_phase)
 
@@ -195,7 +190,7 @@ class TestPhaseApprovalAcrossTheBridge:
         run_id = _run()
         record_phase(run_id, _update("pending_approval", "chk-phase-2"), token)
 
-        service = get_approval_service()
+        service = ApprovalService()
         action = service.list_actions(
             status=ActionStatus.PENDING, workflow_run_id=run_id
         )[0]
@@ -220,14 +215,13 @@ class TestPhaseApprovalAcrossTheBridge:
 
     def test_a_completed_phase_leaves_the_run_running(self, clean_tables, internal):
         from core.workflows.run_bridge_router import record_phase
-        from core.workflows.workflow_run_service import \
-            get_workflow_run_service
+        from core.workflows.workflow_run_service import WorkflowRunService
 
         token = internal
         run_id = _run()
         record_phase(run_id, _update("completed"), token)
 
-        run_service = get_workflow_run_service()
+        run_service = WorkflowRunService()
         assert run_service.get_run(run_id)["status"] == "running"
         phases = run_service.list_phases(run_id)
         assert [p["phase_id"] for p in phases] == ["phase-2"]
@@ -236,8 +230,7 @@ class TestPhaseApprovalAcrossTheBridge:
     def test_the_outcome_finalises_the_run(self, clean_tables, internal):
         from core.workflows.run_bridge_router import (TerminalUpdate,
                                                       record_terminal)
-        from core.workflows.workflow_run_service import \
-            get_workflow_run_service
+        from core.workflows.workflow_run_service import WorkflowRunService
 
         token = internal
         run_id = _run()
@@ -247,24 +240,22 @@ class TestPhaseApprovalAcrossTheBridge:
             token,
         )
 
-        run = get_workflow_run_service().get_run(run_id)
+        run = WorkflowRunService().get_run(run_id)
         assert run["status"] == "completed"
         assert run["result_summary"] == "s"
 
 
 class TestApprovalActionWorkflowLinkage:
     def test_create_action_persists_workflow_linkage(self, clean_tables):
-        from core.response.approval_service import (ActionType,
-                                                    get_approval_service)
-        from core.workflows.workflow_run_service import \
-            get_workflow_run_service
+        from core.response.approval_service import ActionType, ApprovalService
+        from core.workflows.workflow_run_service import WorkflowRunService
 
-        run_id = get_workflow_run_service().begin_run(
+        run_id = WorkflowRunService().begin_run(
             workflow_id="test-phase-linkage",
             workflow_name="Linkage",
         )
         assert run_id is not None
-        svc = get_approval_service()
+        svc = ApprovalService()
         action = svc.create_action(
             action_type=ActionType.WORKFLOW_PHASE,
             title="phase approval",

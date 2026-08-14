@@ -5,13 +5,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 # What a failure here is, in the taxonomy contracts/tool.ts declares. unavailable
 # is a visibility gap the hunt reasons over; backend_error is a defect. Keeping
 # them apart is the whole reason this returns a kind rather than a string.
+if TYPE_CHECKING:
+    from core.integrations.mcp.registry import MCPRegistry
+
 UNAVAILABLE = "unavailable"
 TIMEOUT = "timeout"
 BACKEND_ERROR = "backend_error"
@@ -92,11 +95,8 @@ def _text_of(result: Dict[str, Any]) -> str:
 # the name, which is the caller's cue to report it as the defect it is -- a tool
 # nothing implements is not a gap in visibility.
 async def execute_mcp_tool(
-    tool_name: str, args: Dict[str, Any], timeout_s: float
+    tool_name: str, args: Dict[str, Any], timeout_s: float, registry: "MCPRegistry"
 ) -> Tuple[Any, bool]:
-    from core.integrations.mcp.registry import get_mcp_registry
-
-    registry = get_mcp_registry()
     servers = registry.get_active_servers()
     if not servers:
         return None, False

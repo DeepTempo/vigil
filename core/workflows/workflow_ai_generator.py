@@ -11,13 +11,22 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from core.integrations.mcp.registry import MCPRegistry
+from core.workflows.workflows_service import WorkflowsService
+
 logger = logging.getLogger(__name__)
 
 
 class WorkflowAIGenerator:
     """Generates draft workflow definitions from natural-language descriptions."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        workflows: Optional[WorkflowsService] = None,
+        mcp_registry: Optional[MCPRegistry] = None,
+    ):
+        self._workflows = workflows
+        self._mcp_registry = mcp_registry
         self._mcp_tool_names_cache: Optional[List[str]] = None
 
     async def generate(self, description: str) -> Dict[str, Any]:
@@ -174,9 +183,7 @@ class WorkflowAIGenerator:
         if self._mcp_tool_names_cache is not None:
             return self._mcp_tool_names_cache
         try:
-            from core.integrations.mcp.registry import get_mcp_registry
-
-            registry = get_mcp_registry()
+            registry = self._mcp_registry or MCPRegistry()
             names = list(registry.get_tool_names() or [])
         except Exception as e:
             logger.debug(f"MCP registry unavailable: {e}")
@@ -186,9 +193,7 @@ class WorkflowAIGenerator:
 
     def _exemplars_context(self) -> str:
         try:
-            from core.workflows.workflows_service import get_workflows_service
-
-            service = get_workflows_service()
+            service = self._workflows or WorkflowsService()
             workflows = service.list_workflows()
         except Exception as e:
             logger.debug(f"Could not load existing workflows: {e}")
@@ -245,14 +250,3 @@ class WorkflowAIGenerator:
             "phases": phases,
             "graph_layout": {},
         }
-
-
-_generator: Optional[WorkflowAIGenerator] = None
-
-
-def get_workflow_ai_generator() -> WorkflowAIGenerator:
-    """Get the singleton WorkflowAIGenerator instance."""
-    global _generator
-    if _generator is None:
-        _generator = WorkflowAIGenerator()
-    return _generator

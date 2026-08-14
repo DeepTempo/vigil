@@ -9,8 +9,10 @@ the paused run; rejecting cancels it with the supplied reason.
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from core.deps import provide_approvals
+from core.response.approval_service import ApprovalService
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()
@@ -92,12 +94,10 @@ async def list_approvals(
         description="Restrict to approvals linked to this workflow run.",
     ),
     limit: int = Query(default=100, ge=1, le=500),
+    service: ApprovalService = Depends(provide_approvals),
 ):
     """List approval actions, newest first."""
-    from core.response.approval_service import (
-        ActionStatus,
-        get_approval_service,
-    )
+    from core.response.approval_service import ActionStatus
 
     status_enum: Optional[ActionStatus] = None
     if status:
@@ -106,7 +106,6 @@ async def list_approvals(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
 
-    service = get_approval_service()
     actions = service.list_actions(
         status=status_enum,
         workflow_run_id=workflow_run_id,
@@ -119,38 +118,40 @@ async def list_approvals(
 
 
 @router.get("/approvals/pending")
-async def list_pending_approvals() -> Dict[str, List[Dict[str, Any]]]:
+async def list_pending_approvals(
+    service: ApprovalService = Depends(provide_approvals),
+) -> Dict[str, List[Dict[str, Any]]]:
     """Shortcut: only actions with ``status=pending`` and
     ``requires_approval=True``. Used by the AI Decisions approvals tab."""
-    from core.response.approval_service import get_approval_service
-
-    service = get_approval_service()
     actions = service.list_pending_approvals()
     return {"actions": [_pending_to_dict(a) for a in actions]}
 
 
 @router.get("/approvals/{action_id}")
-async def get_approval(action_id: str):
+async def get_approval(
+    action_id: str,
+    service: ApprovalService = Depends(provide_approvals),
+):
     """Fetch a single approval action."""
-    from core.response.approval_service import get_approval_service
-
-    action = get_approval_service().get_action(action_id)
+    action = service.get_action(action_id)
     if action is None:
         raise HTTPException(status_code=404, detail=f"Approval not found: {action_id}")
     return _pending_to_dict(action)
 
 
 @router.post("/approvals/{action_id}/approve")
-async def approve_action(action_id: str, request: ApproveRequest):
+async def approve_action(
+    action_id: str,
+    request: ApproveRequest,
+    service: ApprovalService = Depends(provide_approvals),
+):
     """Approve a pending action.
 
     If the action is linked to a paused workflow run, the run resumes
     automatically and the resume result is included in the response.
     """
-    from core.response.approval_service import get_approval_service
     from core.workflows.run_resume import resume_run
 
-    service = get_approval_service()
     action = service.get_action(action_id)
     if action is None:
         raise HTTPException(status_code=404, detail=f"Approval not found: {action_id}")
@@ -174,16 +175,18 @@ async def approve_action(action_id: str, request: ApproveRequest):
 
 
 @router.post("/approvals/{action_id}/reject")
-async def reject_action(action_id: str, request: RejectRequest):
+async def reject_action(
+    action_id: str,
+    request: RejectRequest,
+    service: ApprovalService = Depends(provide_approvals),
+):
     """Reject a pending action.
 
     If the action is linked to a paused workflow run, the run is
     cancelled with the supplied reason.
     """
-    from core.response.approval_service import get_approval_service
     from core.workflows.run_resume import resume_run
 
-    service = get_approval_service()
     action = service.get_action(action_id)
     if action is None:
         raise HTTPException(status_code=404, detail=f"Approval not found: {action_id}")

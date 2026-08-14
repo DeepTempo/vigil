@@ -410,17 +410,3 @@ class IntegrationBridgeService:
 
 
 # Global instance
-_bridge_service = None
-
-
-def get_integration_bridge() -> IntegrationBridgeService:
-    """
-    Get the global integration bridge service instance.
-
-    Returns:
-        IntegrationBridgeService instance
-    """
-    global _bridge_service
-    if _bridge_service is None:
-        _bridge_service = IntegrationBridgeService()
-    return _bridge_service

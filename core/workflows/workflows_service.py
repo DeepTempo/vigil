@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from core.agents.queue import new_run_id
+from core.workflows.custom_workflow_service import CustomWorkflowService
+from core.workflows.workflow_run_service import WorkflowRunService
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +212,12 @@ def _render_custom_workflow_body(
 class WorkflowsService:
     """Service for discovering, parsing, and executing workflow definitions."""
 
-    def __init__(self, workflows_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        workflows_dir: Optional[Path] = None,
+        custom_workflows: Optional[CustomWorkflowService] = None,
+        workflow_runs: Optional[WorkflowRunService] = None,
+    ):
         """
         Initialize workflows service.
 
@@ -222,6 +229,8 @@ class WorkflowsService:
             workflows_dir = Path(__file__).resolve().parent / "definitions"
 
         self.workflows_dir = Path(workflows_dir)
+        self._custom_workflows = custom_workflows or CustomWorkflowService()
+        self._workflow_runs = workflow_runs or WorkflowRunService()
         self._cache: Dict[str, WorkflowDefinition] = {}
         self._cache_loaded_at: Optional[datetime] = None
 
@@ -274,10 +283,7 @@ class WorkflowsService:
     def _get_custom_workflow(self, workflow_id: str) -> Optional[WorkflowDefinition]:
         """Fetch a single custom workflow from the database by ID."""
         try:
-            from core.workflows.custom_workflow_service import \
-                get_custom_workflow_service
-
-            raw = get_custom_workflow_service().get(workflow_id)
+            raw = self._custom_workflows.get(workflow_id)
         except Exception as e:
             logger.debug(f"Custom workflow lookup failed for {workflow_id}: {e}")
             return None
@@ -288,10 +294,7 @@ class WorkflowsService:
     def _list_custom_workflows(self) -> List[WorkflowDefinition]:
         """List active custom workflows from the database."""
         try:
-            from core.workflows.custom_workflow_service import \
-                get_custom_workflow_service
-
-            rows = get_custom_workflow_service().list(active_only=True)
+            rows = self._custom_workflows.list(active_only=True)
         except Exception as e:
             logger.debug(f"Custom workflow listing failed: {e}")
             return []
@@ -339,8 +342,6 @@ class WorkflowsService:
         agent layer mirrors as each phase completes.
         """
         from core.agents.queue import build_start_job, enqueue_run
-        from core.workflows.workflow_run_service import \
-            get_workflow_run_service
 
         workflow = self.get_workflow(workflow_id)
         if not workflow:
@@ -356,7 +357,7 @@ class WorkflowsService:
             }
 
         workflow_dict = workflow.to_dict(include_body=False)
-        run_service = get_workflow_run_service()
+        run_service = self._workflow_runs
         # One id for one run: the workflow run record and the agent ledger are two
         # views of the same thing, so a mirrored phase needs no id translation.
         run_id = run_service.begin_run(
@@ -485,15 +486,3 @@ class WorkflowsService:
             )
 
         return "\n\n".join(parts)
-
-
-# Singleton instance
-_workflows_service: Optional[WorkflowsService] = None
-
-
-def get_workflows_service() -> WorkflowsService:
-    """Get singleton WorkflowsService instance."""
-    global _workflows_service
-    if _workflows_service is None:
-        _workflows_service = WorkflowsService()
-    return _workflows_service

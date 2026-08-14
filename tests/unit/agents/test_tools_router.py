@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from core.agents import internal_auth, tools_router
 from core.agents.mcp_tools import MCPFailure
+from core.integrations.mcp.registry import MCPRegistry
 
 BOUNDS = {"max_rows": 2, "timeout_ms": 500}
 AUTH = {"Authorization": "Bearer shhh"}
@@ -15,6 +16,9 @@ AUTH = {"Authorization": "Bearer shhh"}
 def client(monkeypatch):
     monkeypatch.setattr(internal_auth, "get_secret", lambda name: "shhh")
     app = FastAPI()
+    # The provider reads the instance the owner put on app.state (#659); a bare
+    # app has none, and every request would fail before reaching the gate.
+    app.state.mcp_registry = MCPRegistry()
     app.include_router(tools_router.router, prefix=tools_router.ROUTER_META.prefix)
     # No `client=` address: nothing reads the peer since ADR 0014.
     return TestClient(app)
@@ -159,7 +163,7 @@ def _no_backend(monkeypatch):
 
 
 def _mcp(monkeypatch, result=None, handled=True, error=None):
-    async def fake(name, args, timeout_s):
+    async def fake(name, args, timeout_s, registry):
         if error is not None:
             raise error
         return result, handled
@@ -182,7 +186,7 @@ class TestMCPFallthrough:
     def test_does_not_reach_mcp_when_the_backend_handled_it(self, client, monkeypatch):
         _answers(monkeypatch, [{"finding_id": "f-1"}])
 
-        def _boom(name, args, timeout_s):
+        def _boom(name, args, timeout_s, registry):
             raise AssertionError("MCP was called for a backend tool")
 
         monkeypatch.setattr(tools_router, "execute_mcp_tool", _boom)

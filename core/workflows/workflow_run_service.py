@@ -256,14 +256,3 @@ class WorkflowRunService:
         except SQLAlchemyError as e:
             logger.warning("Error listing phases for run %s: %s", run_id, e)
             return []
-
-
-_service: Optional[WorkflowRunService] = None
-
-
-def get_workflow_run_service() -> WorkflowRunService:
-    """Process-wide singleton."""
-    global _service
-    if _service is None:
-        _service = WorkflowRunService()
-    return _service

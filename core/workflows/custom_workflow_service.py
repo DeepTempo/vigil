@@ -187,14 +187,3 @@ class CustomWorkflowService:
             wf.updated_at = datetime.utcnow()
         logger.info(f"Soft-deleted custom workflow: {workflow_id}")
         return True
-
-
-_service: Optional[CustomWorkflowService] = None
-
-
-def get_custom_workflow_service() -> CustomWorkflowService:
-    """Get the singleton CustomWorkflowService instance."""
-    global _service
-    if _service is None:
-        _service = CustomWorkflowService()
-    return _service

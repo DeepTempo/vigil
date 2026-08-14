@@ -67,6 +67,8 @@ from services.daemon.plan_generator import (count_steps,
                                             generate_plan, select_workflow)
 from services.daemon.shared_intel import SharedIntelligence
 from services.daemon.workdir import WorkdirManager
+from core.integrations.mcp.client import process_mcp_client
+from core.response.approval_service import ApprovalService
 
 logger = logging.getLogger(__name__)
 
@@ -88,10 +90,19 @@ def _inv_as_dict(inv):
 class Orchestrator:
     """Master agent that manages autonomous SOC investigations."""
 
-    def __init__(self, config: OrchestratorConfig):
+    def __init__(
+        self,
+        config: OrchestratorConfig,
+        approvals: Optional[ApprovalService] = None,
+        mcp_client=None,
+    ):
         self.config = config
         self._enabled = config.enabled
         self._shutdown_event: Optional[asyncio.Event] = None
+        self._approvals = approvals or ApprovalService()
+        self._mcp_client = (
+            mcp_client if mcp_client is not None else process_mcp_client()
+        )
 
         self.workdir = WorkdirManager(config.workdir_base)
         self.shared_intel = SharedIntelligence()
@@ -846,10 +857,9 @@ class Orchestrator:
     async def _create_approval_action(self, inv_id: str, action: Dict):
         """Create an approval action for proposed response."""
         try:
-            from core.response.approval_service import (ActionType,
-                                                        get_approval_service)
+            from core.response.approval_service import ActionType
 
-            service = get_approval_service()
+            service = self._approvals
 
             action_str = action.get("action", "unknown")
             try:
@@ -1139,9 +1149,7 @@ class Orchestrator:
 
             if case_a and case_b and case_a != case_b:
                 try:
-                    from core.integrations.mcp.client import get_mcp_client
-
-                    client = get_mcp_client()
+                    client = self._mcp_client
                     if client:
                         await client.call_tool(
                             "link_related_cases",

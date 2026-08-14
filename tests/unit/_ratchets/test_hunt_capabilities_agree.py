@@ -58,9 +58,9 @@ def test_every_capability_names_at_least_one_candidate():
 def test_the_definition_rosters_the_workers_the_arch_carries():
     import yaml
 
-    from core.workflows.workflows_service import get_workflows_service
+    from core.workflows.workflows_service import WorkflowsService
 
     arch = yaml.safe_load(ARCH.read_text())
-    rostered = get_workflows_service().get_workflow("threat-hunt").agents
+    rostered = WorkflowsService().get_workflow("threat-hunt").agents
 
     assert set(rostered) == set(arch["roles"]["workers"])

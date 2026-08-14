@@ -1190,13 +1190,12 @@ export function useDarktrace() {
   }, [reloadKey])
 
   const save = useCallback((next: DarktraceConfig) => {
-    const payload: {
-      enabled: boolean
-      url: string
-      max_body_kb: number
-      webhook_secret?: string
-    } = { enabled: next.enabled, url: next.url, max_body_kb: next.max_body_kb }
-    if (next.webhook_secret) payload.webhook_secret = next.webhook_secret
+    // Only send webhook_secret when the user actually entered one — a blank
+    // would otherwise overwrite the stored secret.
+    const base = { enabled: next.enabled, url: next.url, max_body_kb: next.max_body_kb }
+    const payload = next.webhook_secret
+      ? { ...base, webhook_secret: next.webhook_secret }
+      : base
     return configApi.setDarktrace(payload).then(() => setConfig((prev) => ({ ...prev, webhook_secret: '', configured: true })))
   }, [])
 

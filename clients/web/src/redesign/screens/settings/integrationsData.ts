@@ -12,14 +12,14 @@ import type { IntegrationMetadata } from '../../../config/integrationSchema'
 export const HIDDEN_MCP_SERVERS = new Set(['mempalace', 'splunk-selfhosted'])
 
 /** MCP server name → integration metadata id (where they differ). */
-export const SERVER_TO_INTEGRATION: Record<string, string> = {
+export const SERVER_TO_INTEGRATION = new Map(Object.entries({
   'aws-security': 'aws-security-hub',
   'gcp-scc': 'gcp-security',
-}
+}))
 
 /** Resolve the credential-bearing integration metadata for an MCP server. */
 export function getIntegrationForServer(serverName: string): IntegrationMetadata | undefined {
-  const id = SERVER_TO_INTEGRATION[serverName] || serverName
+  const id = SERVER_TO_INTEGRATION.get(serverName) ?? serverName
   return getAllIntegrations().find((i) => i.id === id)
 }
 
@@ -34,11 +34,11 @@ export const WIP_SERVERS = new Set([
 /** Card-title overrides for `prettyServerName`. Fix casing/branding here rather
  *  than renaming the server id, which is load-bearing (mcp-config.json, backend
  *  registration, persisted enabled-state store). */
-export const SERVER_DISPLAY_NAMES: Record<string, string> = {
+export const SERVER_DISPLAY_NAMES = new Map(Object.entries({
   loglm: 'LogLM',
   'deeptempo-findings': 'Findings & Cases',
   'tempo-flow': 'Agent Workflows',
-}
+}))
 
 export interface McpCategory {
   label: string
@@ -61,7 +61,7 @@ export const MCP_CATEGORIES: McpCategory[] = [
   { label: 'Sandbox / Analysis', servers: ['joe-sandbox', 'hybrid-analysis', 'anyrun', 'url-analysis', 'ip-geolocation'] },
 ]
 
-export const SERVER_DESCRIPTIONS: Record<string, string> = {
+export const SERVER_DESCRIPTIONS = new Map(Object.entries({
   'deeptempo-findings': 'Core findings and case management. Required for the investigation workflow, case creation, and findings display.',
   'tempo-flow': 'Orchestrates multi-step agent workflows and playbook execution. Required for automated investigation chains.',
   approval: 'Human-in-the-loop approval queue for response actions (isolate host, block IP, etc.). Prevents the AI from taking destructive actions without analyst review.',
@@ -95,7 +95,7 @@ export const SERVER_DESCRIPTIONS: Record<string, string> = {
   anyrun: 'Interactive malware sandbox for real-time analysis with process monitoring and network capture.',
   'url-analysis': 'Analyze suspicious URLs for phishing indicators, redirects, and malicious content.',
   'ip-geolocation': 'Look up geographic location, ISP, and organization info for IP addresses during investigations.',
-}
+}))
 
 /** "aws-security" → "AWS Security" */
 export function prettyServerName(name: string): string {

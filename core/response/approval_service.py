@@ -685,14 +685,3 @@ class ApprovalService:
                 action_id,
             )
         return log_entry
-
-
-_approval_service: Optional[ApprovalService] = None
-
-
-def get_approval_service() -> ApprovalService:
-    """Get singleton ApprovalService instance."""
-    global _approval_service
-    if _approval_service is None:
-        _approval_service = ApprovalService()
-    return _approval_service

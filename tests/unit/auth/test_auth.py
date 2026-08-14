@@ -1,13 +1,12 @@
 """
 Unit tests for authentication building blocks.
 
-These tests replace tests/broken_tests/test_auth.py, which was pinned to
-an old AuthService API (create_access_token / decode_token / has_permission)
-that no longer exists. The tests here match the current methods:
-generate_jwt_token / verify_jwt_token / check_permission.
+These cover the pure/static AuthService pieces: hash_password /
+verify_password / generate_jwt_token / verify_jwt_token, plus the
+password-history helper.
 
 DB-touching flows (authenticate_user, check_permission) are covered by
-integration tests; here we stay with the pure/static pieces.
+integration tests.
 """
 
 import os

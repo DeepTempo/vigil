@@ -72,6 +72,10 @@ logger = logging.getLogger(__name__)
 from core.chat.context_manager import ContextManager  # noqa: E402
 # Sub-module imports (lazy to avoid circular deps at module load)
 from core.chat.session_manager import SessionManager  # noqa: E402
+from core.detections.detection_rules_service import \
+    DetectionRulesService  # noqa: E402
+from core.integrations.mcp.client import process_mcp_client  # noqa: E402
+from core.integrations.mcp.registry import MCPRegistry  # noqa: E402
 
 
 class ClaudeService:
@@ -85,6 +89,9 @@ class ClaudeService:
         enable_thinking: bool = False,
         thinking_budget: int = 10000,
         provider_api_key_ref: Optional[str] = None,
+        mcp_client=None,
+        mcp_registry: Optional[MCPRegistry] = None,
+        detection_rules: Optional[DetectionRulesService] = None,
     ):
         """One completion at a time. Tools and the loop live in the agent layer.
 
@@ -95,6 +102,10 @@ class ClaudeService:
                 Anthropic provider row (GH #88). When set, _load_api_key reads
                 this secret first before the legacy CLAUDE_API_KEY fallback chain.
         """
+        self._mcp_client = mcp_client if mcp_client is not None else process_mcp_client()
+        self._mcp_registry = mcp_registry or MCPRegistry()
+        self._detection_rules = detection_rules or DetectionRulesService()
+
         self.client: Optional[Anthropic] = None
         self.async_client: Optional[AsyncAnthropic] = None
         self.api_key: Optional[str] = None
