@@ -131,10 +131,9 @@ def record_terminal(
 def record_checkpoint(
     run_id: str,
     raised: CheckpointRaised,
-    request: Request,
     authorization: Optional[str] = Header(default=None),
 ) -> None:
-    authorise(request, authorization, "run checkpoint")
+    authorise(authorization, "run checkpoint")
 
     # Idempotent per checkpoint inside raise_for_checkpoint, because a parked run
     # is announced on every sweep and would otherwise queue the question each time.

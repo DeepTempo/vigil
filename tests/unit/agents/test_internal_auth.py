@@ -1,5 +1,5 @@
-# The one gate every /internal endpoint shares. A loopback check used to stand in
-# front of it and refused every containerised caller before the token was read.
+# The one gate every /internal endpoint shares, and since ADR 0014 the only one:
+# a loopback check stood in front of it and refused every containerised caller.
 
 from __future__ import annotations
 
@@ -11,29 +11,34 @@ from core.agents.internal_auth import TOKEN_SECRET, authorise
 pytestmark = pytest.mark.unit
 
 
-class _Request:
-    client = None
-
-
 @pytest.fixture()
 def configured(monkeypatch):
-    monkeypatch.setattr("core.agents.internal_auth.get_secret", lambda name: "s3cret" if name == TOKEN_SECRET else None)
+    monkeypatch.setattr(
+        "core.agents.internal_auth.get_secret",
+        lambda name: "s3cret" if name == TOKEN_SECRET else None,
+    )
 
 
+# The agent worker is its own pod, so its address is never 127.0.0.1 and nothing
+# but the token can carry the call.
 def test_a_matching_token_is_accepted(configured):
-    authorise(_Request(), "Bearer s3cret", "test")
+    authorise("Bearer s3cret", "test")
 
 
-# The case the loopback check broke: the agent worker is its own pod, so its
-# address is never 127.0.0.1 and the token has to be what carries the call.
-def test_a_caller_off_loopback_is_accepted_with_the_token(configured):
-    authorise(_Request(), "Bearer s3cret", "test")
-
-
-@pytest.mark.parametrize("presented", [None, "", "Bearer wrong", "s3cret", "Bearer s3cre"])
+@pytest.mark.parametrize(
+    "presented", [None, "", "Bearer wrong", "s3cret", "Bearer s3cre"]
+)
 def test_anything_else_is_refused(configured, presented):
     with pytest.raises(HTTPException) as raised:
-        authorise(_Request(), presented, "test")
+        authorise(presented, "test")
+    assert raised.value.status_code == 401
+
+
+# A token holding anything above U+00FF would throw out of compare_digest rather
+# than be refused, and a 500 on a bad credential is a different answer.
+def test_a_token_outside_latin_1_is_refused_rather_than_raised(configured):
+    with pytest.raises(HTTPException) as raised:
+        authorise("Bearer €", "test")
     assert raised.value.status_code == 401
 
 
@@ -42,5 +47,5 @@ def test_anything_else_is_refused(configured, presented):
 def test_an_unconfigured_secret_is_told_apart_from_a_bad_one(monkeypatch):
     monkeypatch.setattr("core.agents.internal_auth.get_secret", lambda name: None)
     with pytest.raises(HTTPException) as raised:
-        authorise(_Request(), "Bearer anything", "test")
+        authorise("Bearer anything", "test")
     assert raised.value.status_code == 503
