@@ -6,7 +6,8 @@ from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
-from core.config import get_integration_config
+from core.integrations._base.config import missing, resolve
+from core.integrations.palo_alto.descriptor import PALO_ALTO
 
 logger = logging.getLogger(__name__)
 server = Server("palo-alto")
@@ -30,11 +31,17 @@ async def handle_list_tools():
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None):
-    config = get_integration_config('palo_alto')
-    url = config.get('url')
+    config = resolve(PALO_ALTO)
     api_key = config.get('api_key')
-    if not url or not api_key:
+    if missing(config, 'hostname', 'api_key'):
         return result({"error": "Palo Alto not configured"})
+
+    # The Settings form collects a hostname; PAN-OS is reached over HTTPS.
+    host = str(config.get('hostname')).rstrip('/')
+    url = host if host.startswith(('http://', 'https://')) else f"https://{host}"
+    # resolve() always returns every declared field, so a .get(k, True) default
+    # would never fire — verify_ssl is present-but-None when unset.
+    verify = True if config.get('verify_ssl') is None else config.get('verify_ssl')
 
     args = arguments or {}
     
@@ -48,13 +55,13 @@ async def handle_call_tool(name: str, arguments: dict | None):
                 "type": "config", "action": "set", "key": api_key,
                 "xpath": f"/config/devices/entry/vsys/entry[@name='vsys1']/address/entry[@name='blocked-{ip}']",
                 "element": f"<ip-netmask>{ip}/32</ip-netmask><description>Blocked: {args.get('reason', 'security')}</description>"
-            }, verify=config.get('verify_ssl', True), timeout=30)
+            }, verify=verify, timeout=30)
             return result({"success": resp.status_code == 200, "ip": ip, "action": "blocked"})
         
         elif name == "pan_get_threats":
             resp = requests.get(f"{url}/api/", params={
                 "type": "log", "log-type": "threat", "key": api_key, "nlogs": args.get("limit", 20)
-            }, verify=config.get('verify_ssl', True), timeout=30)
+            }, verify=verify, timeout=30)
             # Parse XML response (simplified)
             return result({"success": True, "message": "Check Palo Alto console for threat logs"})
         

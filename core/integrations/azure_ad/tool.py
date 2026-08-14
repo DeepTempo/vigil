@@ -6,7 +6,8 @@ from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
-from core.config import get_integration_config
+from core.integrations._base.config import resolve
+from core.integrations.azure_ad.descriptor import AZURE_AD
 
 logger = logging.getLogger(__name__)
 server = Server("azure-ad")
@@ -17,7 +18,7 @@ def result(data):
 
 
 def get_token():
-    config = get_integration_config('azure_ad')
+    config = resolve(AZURE_AD)
     tenant = config.get('tenant_id')
     client_id = config.get('client_id')
     client_secret = config.get('client_secret')

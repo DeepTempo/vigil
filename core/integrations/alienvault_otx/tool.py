@@ -6,7 +6,8 @@ from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
-from core.config import get_integration_config
+from core.integrations._base.config import resolve
+from core.integrations.alienvault_otx.descriptor import ALIENVAULT_OTX
 
 logger = logging.getLogger(__name__)
 server = Server("alienvault-otx")
@@ -17,7 +18,7 @@ def result(data):
 
 
 def get_config():
-    return get_integration_config('alienvault_otx')
+    return resolve(ALIENVAULT_OTX)
 
 
 @server.list_tools()

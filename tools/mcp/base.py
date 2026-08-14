@@ -30,21 +30,11 @@ def error_response(message: str, **extra) -> str:
     return json_response({"error": message, **extra})
 
 
-def get_config(integration_id: str) -> dict:
-    from core.config import get_integration_config
-
-    return get_integration_config(integration_id)
-
-
 def create_server(name: str) -> FastMCP:
     return FastMCP(name)
 
 
-def require_api_key(config: dict, service_name: str) -> tuple[str | None, str | None]:
-    api_key = config.get("api_key")
-    if not api_key:
-        return None, error_response(
-            f"{service_name} not configured",
-            message=f"Configure {service_name} API key in Settings > Integrations",
-        )
-    return api_key, None
+# There is deliberately no config/credential helper here. These servers talk to
+# Vigil's own services and hold no vendor credentials; an Integration reads its
+# config through core.integrations._base.config.resolve, which knows that
+# get_integration_config never returns a secret.

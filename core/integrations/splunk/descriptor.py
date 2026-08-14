@@ -10,7 +10,8 @@ SPLUNK = register_descriptor(
     IntegrationDescriptor(
         id="splunk",
         category="SIEM",
-        mcp_server_name="splunk-server",
+        # Two servers: the official one and the self-hosted one Vigil ships.
+        mcp_server_names=("splunk", "splunk-selfhosted"),
         fields=(
             IntegrationField("server_url"),
             IntegrationField("username"),

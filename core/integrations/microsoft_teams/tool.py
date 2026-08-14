@@ -6,7 +6,8 @@ from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
-from core.config import get_integration_config
+from core.integrations._base.config import resolve
+from core.integrations.microsoft_teams.descriptor import MICROSOFT_TEAMS
 
 logger = logging.getLogger(__name__)
 server = Server("microsoft-teams")
@@ -29,7 +30,7 @@ async def handle_list_tools():
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None):
-    config = get_integration_config('microsoft_teams')
+    config = resolve(MICROSOFT_TEAMS)
     webhook = config.get('webhook_url')
     if not webhook:
         return result({"error": "Microsoft Teams not configured"})

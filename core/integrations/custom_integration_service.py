@@ -236,7 +236,11 @@ Please analyze this documentation and generate:
    - Complete, production-ready MCP server implementation
    - Follow the Vigil SOC patterns
    - Include proper error handling
-   - Use config_utils.py for configuration loading
+   - Load configuration with
+     `from core.integrations._base.config import missing, resolve_fields`, then
+     `resolve_fields("<integration-id>", ["field", ...])`. Never read a
+     credential from `get_integration_config` — secrets are stripped before
+     that store is written, so it always returns None for them.
    - Define tools based on the API's capabilities
    - Each tool should have a clear name, description, and input schema
 

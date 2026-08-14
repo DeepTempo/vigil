@@ -17,7 +17,9 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
 
-from core.config import get_integration_config, is_integration_enabled
+from core.config import is_integration_enabled
+from core.integrations._base.config import resolve
+from core.integrations.cloudflare.descriptor import CLOUDFLARE
 
 logger = logging.getLogger(__name__)
 server = Server("cloudflare")
@@ -33,7 +35,7 @@ def _result(data: Dict[str, Any]):
 def _config() -> Optional[Dict[str, Any]]:
     if not is_integration_enabled("cloudflare"):
         return None
-    cfg = get_integration_config("cloudflare") or {}
+    cfg = resolve(CLOUDFLARE)
     if not cfg.get("api_token"):
         return None
     return cfg
@@ -58,11 +60,19 @@ async def handle_list_tools():
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "ip": {"type": "string", "description": "IPv4/IPv6 address or CIDR"},
+                    "ip": {
+                        "type": "string",
+                        "description": "IPv4/IPv6 address or CIDR",
+                    },
                     "reason": {"type": "string"},
                     "mode": {
                         "type": "string",
-                        "enum": ["block", "challenge", "js_challenge", "managed_challenge"],
+                        "enum": [
+                            "block",
+                            "challenge",
+                            "js_challenge",
+                            "managed_challenge",
+                        ],
                         "default": "block",
                     },
                 },
@@ -145,13 +155,15 @@ async def handle_list_tools():
 async def handle_call_tool(name: str, arguments: dict | None):
     cfg = _config()
     if cfg is None:
-        return _result({
-            "error": "cloudflare_integration_disabled",
-            "message": (
-                "Cloudflare integration is not configured. Enable it in "
-                "Settings → Integrations and provide an API token."
-            ),
-        })
+        return _result(
+            {
+                "error": "cloudflare_integration_disabled",
+                "message": (
+                    "Cloudflare integration is not configured. Enable it in "
+                    "Settings → Integrations and provide an API token."
+                ),
+            }
+        )
 
     api_token = cfg["api_token"]
     account_id = cfg.get("account_id")
@@ -362,7 +374,11 @@ def _lookup_ip_threat(
     resp = requests.get(
         f"{CF_API_BASE}/accounts/{account_id}/firewall/access_rules/rules",
         headers=_headers(api_token),
-        params={"configuration.target": "ip", "configuration.value": ip, "per_page": 50},
+        params={
+            "configuration.target": "ip",
+            "configuration.value": ip,
+            "per_page": 50,
+        },
         timeout=DEFAULT_TIMEOUT,
     )
     data = resp.json() if resp.content else {}

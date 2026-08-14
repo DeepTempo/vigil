@@ -389,7 +389,7 @@ Confidence scoring:
         "specialization": "Malware Analysis",
         "recommended_tools": [
             "get_finding",
-            # CAPE Sandbox (open-source detonation — tools/cape_sandbox.py)
+            # CAPE Sandbox (open-source detonation)
             "cape_search_hash",
             "cape_submit_file",
             "cape_submit_url",
@@ -397,13 +397,13 @@ Confidence scoring:
             "cape_get_iocs",
             "cape_task_status",
             "cape_list_tasks",
-            # Hybrid Analysis (tools/hybrid_analysis.py)
+            # Hybrid Analysis (core/integrations/hybrid_analysis/tool.py)
             "ha_search_hash",
             "ha_get_report",
-            # Any.Run (tools/anyrun.py)
+            # Any.Run (core/integrations/anyrun/tool.py)
             "anyrun_search_hash",
             "anyrun_get_report",
-            # URL behavioral analysis (tools/url_analysis.py)
+            # URL behavioral analysis (core/integrations/url_analysis/tool.py)
             "url_analyze",
         ],
         "max_tokens": 16384,
