@@ -10,7 +10,7 @@ always applied: NULL columns surface as empty containers, Numeric columns as
 plain floats, and datetimes as ``datetime.isoformat()`` output.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Any, Iterable, Optional
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, PlainSerializer
@@ -35,12 +35,21 @@ def _as_plain_list(value: Any) -> Any:
     return value
 
 
+# The columns behind these are `timestamp without time zone` holding UTC, so a
+# naive value's offset is known and merely unwritten. Stamped before serializing
+# because a reader parsing one without it lands in its own zone instead --
+# JavaScript's Date does exactly that, which put every run in the console's
+# history off by the viewer's offset. An aware value already says so.
+def _iso_utc(value: datetime) -> str:
+    return (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).isoformat()
+
+
 # ``datetime`` serialized to JSON by Pydantic renders UTC as "...Z", while the
 # established contract is isoformat()'s "...+00:00". Serialize explicitly so
 # the two never diverge.
 IsoDateTime = Annotated[
     datetime,
-    PlainSerializer(lambda v: v.isoformat(), return_type=str, when_used="json"),
+    PlainSerializer(_iso_utc, return_type=str, when_used="json"),
 ]
 
 OptDateTime = Optional[IsoDateTime]
