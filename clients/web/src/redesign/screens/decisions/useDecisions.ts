@@ -191,6 +191,11 @@ export interface ApprovalAction {
   parameters?: Record<string, unknown>
 }
 
+// Polled, because a parked run is waiting on a person and nothing else tells
+// them: a question raised after the tab was opened used to sit there unseen
+// until someone happened to reload.
+const APPROVALS_POLL_MS = 20_000
+
 export function usePendingApprovals() {
   const [actions, setActions] = useState<ApprovalAction[]>([])
   const [phase, setPhase] = useState<Phase>('loading')
@@ -200,22 +205,28 @@ export function usePendingApprovals() {
 
   useEffect(() => {
     let cancelled = false
-    setPhase('loading')
     setError(null)
-    approvalsApi
-      .listPending()
-      .then((res) => {
-        if (cancelled) return
-        setActions((res.data?.actions || []) as ApprovalAction[])
-        setPhase('ready')
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setError(errMsg(e, 'Failed to load approvals'))
-        setPhase('error')
-      })
+    const tick = () =>
+      approvalsApi
+        .listPending()
+        .then((res) => {
+          if (cancelled) return
+          setActions((res.data?.actions || []) as ApprovalAction[])
+          setPhase('ready')
+        })
+        .catch((e) => {
+          if (cancelled) return
+          // A poll that failed is not an empty queue: keep what was last shown
+          // rather than reporting that nothing is waiting.
+          setError(errMsg(e, 'Failed to load approvals'))
+          setPhase((p) => (p === 'ready' ? p : 'error'))
+        })
+
+    void tick()
+    const timer = setInterval(tick, APPROVALS_POLL_MS)
     return () => {
       cancelled = true
+      clearInterval(timer)
     }
   }, [reloadKey])
 

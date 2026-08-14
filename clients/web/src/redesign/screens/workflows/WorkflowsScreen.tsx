@@ -6,7 +6,7 @@
    ============================================================ */
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
-import { EmptyState, Popup, activateOnKey } from '../../shared/ui'
+import { EmptyState, Popup, TextInput, activateOnKey } from '../../shared/ui'
 import { Markdown } from '../../shared/Markdown'
 import { type Workflow, type AgentTemplate } from '../../data/appData'
 import { useWorkflows, useAgents, useAgentMeta, useSkills } from './useWorkflowsData'
@@ -505,21 +505,41 @@ interface WfRunDetail extends WfRun {
   hunt?: HuntView | null
 }
 
+// A run in flight moves on its own. Fetched once, the panel showed the iteration
+// the run happened to be on when it was opened and never moved again.
+const RUN_POLL_MS = 5_000
+const IN_FLIGHT = ['running', 'paused', 'pending']
+
 /** A run row that lazily fetches its full detail (getRun) when expanded. */
 function RunRow({ run }: { run: WfRun }) {
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<WfRunDetail | null>(null)
   const [dphase, setDphase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
 
+  const load = useCallback(
+    () =>
+      workflowApi
+        .getRun(run.run_id)
+        .then((res) => { setDetail(res.data as WfRunDetail); setDphase('ready') })
+        .catch(() => setDphase((p) => (p === 'ready' ? p : 'error'))),
+    [run.run_id],
+  )
+
+  // Stops on its own when the run reaches a terminal status: a finished run has
+  // nothing further to report, and the row would otherwise poll for the session.
+  const live = open && IN_FLIGHT.includes(detail?.status ?? run.status)
+  useEffect(() => {
+    if (!live) return
+    const timer = setInterval(() => { void load() }, RUN_POLL_MS)
+    return () => clearInterval(timer)
+  }, [live, load])
+
   const toggle = () => {
     const next = !open
     setOpen(next)
     if (next && dphase === 'idle') {
       setDphase('loading')
-      workflowApi
-        .getRun(run.run_id)
-        .then((res) => { setDetail(res.data as WfRunDetail); setDphase('ready') })
-        .catch(() => setDphase('error'))
+      void load()
     }
   }
 
@@ -541,7 +561,7 @@ function RunRow({ run }: { run: WfRun }) {
           <td colSpan={6}>
             {dphase === 'loading' && <div className="muted" style={{ padding: '10px 4px' }}>Loading run detail…</div>}
             {dphase === 'error' && <div className="muted" style={{ padding: '10px 4px' }}>Couldn’t load run detail.</div>}
-            {dphase === 'ready' && detail && <RunDetail d={detail} />}
+            {dphase === 'ready' && detail && <RunDetail d={detail} onSteered={load} />}
           </td>
         </tr>
       )}
@@ -549,10 +569,11 @@ function RunRow({ run }: { run: WfRun }) {
   )
 }
 
-function RunDetail({ d }: { d: WfRunDetail }) {
+function RunDetail({ d, onSteered }: { d: WfRunDetail; onSteered: () => void }) {
   const agentMeta = useAgentMeta()
   return (
     <div className="run-detail">
+      {IN_FLIGHT.includes(d.status) && <Steer runId={d.run_id} hunt={!!d.hunt} onSteered={onSteered} />}
       {d.error && (
         <div className="modal-section" style={{ marginTop: 4 }}>
           <h4 style={{ color: 'var(--crit)' }}>Error</h4>
@@ -588,6 +609,52 @@ function RunDetail({ d }: { d: WfRunDetail }) {
       {!d.error && !d.result_summary && !d.phases?.length && !d.hunt && (
         <div className="muted" style={{ padding: '10px 4px' }}>No additional detail recorded for this run.</div>
       )}
+    </div>
+  )
+}
+
+/** Steer a run that is still going. Queued for the worker holding the ledger,
+ *  which is what turns a directive into an event on it — so nothing here is
+ *  instant, and the panel re-reads rather than claiming the run obeyed. */
+function Steer({ runId, hunt, onSteered }: { runId: string; hunt: boolean; onSteered: () => void }) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [said, setSaid] = useState<string | null>(null)
+
+  const send = (kind: string, text: string) => {
+    setBusy(kind)
+    setSaid(null)
+    workflowApi
+      .steer(runId, kind, text)
+      .then(() => { setSaid(`${kind} queued`); setNote(''); onSteered() })
+      .catch((e) => setSaid(errMsg(e)))
+      .finally(() => setBusy(null))
+  }
+
+  // abort and note apply to any run; a hunt is the only kind with beliefs to
+  // extend or a verdict to be told to reach.
+  const kinds = hunt ? ['abort', 'conclude', 'extend'] : ['abort']
+
+  return (
+    <div className="modal-section" style={{ marginTop: 4 }}>
+      <h4>Steer</h4>
+      <div className="flex gap-2 items-center flex-wrap">
+        {kinds.map((kind) => (
+          <button key={kind} className="btn ghost" disabled={busy !== null} onClick={() => send(kind, note.trim())}>
+            {kind}
+          </button>
+        ))}
+        <TextInput
+          className="grow"
+          placeholder="A note for the run — sent with the button you press, or on its own."
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <button className="btn ghost" disabled={busy !== null || !note.trim()} onClick={() => send('note', note.trim())}>
+          note
+        </button>
+      </div>
+      {said && <div className="muted text-[11.5px] mt-2">{said}</div>}
     </div>
   )
 }

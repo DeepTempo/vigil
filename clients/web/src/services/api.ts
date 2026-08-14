@@ -1155,6 +1155,11 @@ export const workflowApi = {
     api.get(`/workflows/${id}/runs`, { params }),
   getRun: (runId: string) => api.get(`/workflows/runs/${runId}`),
 
+  // Steer a run that is already going. Queued rather than journalled: the worker
+  // holding the ledger is what turns a directive into an event on it.
+  steer: (runId: string, kind: string, text = '') =>
+    api.post(`/agent-runs/${runId}/directives`, { kind, text }),
+
   // Custom (database-backed) CRUD
   listCustom: (activeOnly: boolean = true) =>
     api.get('/workflows/custom', { params: { active_only: activeOnly } }),

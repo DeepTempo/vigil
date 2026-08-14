@@ -19,6 +19,7 @@ import UserMenu from './shell/UserMenu'
 import ErrorBoundary from './shell/ErrorBoundary'
 import { ToastProvider } from './shell/toast'
 import { useDesktopNotifications } from './shell/useDesktopNotifications'
+import { usePendingApprovals } from './screens/decisions/useDecisions'
 import { RedesignThemeProvider, useSocTheme } from './shell/theme'
 import type { ScreenGoOptions, ScreenProps, SettingsSectionKey } from './shared/types'
 import DashboardScreen from './screens/dashboard/DashboardScreen'
@@ -169,6 +170,9 @@ function SocConsoleInner() {
   // fire desktop notifications for newly-arrived findings (gated by the General
   // `show_notifications` setting + browser permission)
   useDesktopNotifications()
+  // A parked run is waiting on a person, and the rail is the only thing on screen
+  // from every other view. Without it the question sat in a tab nobody opened.
+  const parked = usePendingApprovals().actions.length
   // nav rail collapsed (icons only) vs. expanded (icons + labels); sticky
   const [railExpanded, setRailExpanded] = useState<boolean>(() => {
     try {
@@ -303,15 +307,17 @@ function SocConsoleInner() {
           }).map((n) => {
             const [icon, label, key] = n
             const active = valid && key === current
+            const waiting = key === 'decisions' ? parked : 0
             return (
               <button
                 key={label}
                 className={`nav-btn${active ? ' active' : ''}`}
                 onClick={key ? () => go(key) : undefined}
-                aria-label={label}
+                aria-label={waiting ? `${label} (${waiting} waiting)` : label}
               >
                 <Icon name={icon} />
                 <span className="nav-label">{label}</span>
+                {waiting > 0 && <span className="nav-count">{waiting > 99 ? '99+' : waiting}</span>}
                 <span className="tip">{label}</span>
               </button>
             )
