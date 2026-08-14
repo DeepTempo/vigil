@@ -36,6 +36,14 @@ WAITING = "pending_approval"
 # the only one that says anything about the run as a whole.
 RUN_STATUS = {WAITING: "paused", "running": "running", "completed": "running"}
 
+# A run nobody stopped and nothing broke. Aborted and abandoned both read as
+# crashes under "failed", and only one of the three is worth paging over.
+TERMINAL_STATUS = {
+    "completed": "completed",
+    "aborted": "cancelled",
+    "abandoned": "cancelled",
+}
+
 
 class PhaseUpdate(BaseModel):
     phase_id: str
@@ -135,7 +143,7 @@ def record_terminal(
 
     run_service.finalize_run(
         run_id,
-        status="completed" if update.outcome == "completed" else "failed",
+        status=TERMINAL_STATUS.get(update.outcome, "failed"),
         result_summary=update.summary or None,
         error=None if update.outcome == "completed" else update.reason,
         cost_usd=update.cost_usd,
