@@ -324,13 +324,7 @@ async def on_startup(ctx: Dict[str, Any]):
 
     from core.llm.harness.claude import ClaudeService
 
-    claude_service = ClaudeService(
-        use_backend_tools=True,
-        use_mcp_tools=False,
-        use_agent_sdk=False,
-        enable_thinking=True,
-        thinking_budget=8000,
-    )
+    claude_service = ClaudeService(enable_thinking=True, thinking_budget=8000)
     ctx["claude_service"] = claude_service
     # A cap on calls in flight, not a rate limit: the rate is Bifrost's, and
     # how a client answers its refusals is core.llm.gateway_retry's.
