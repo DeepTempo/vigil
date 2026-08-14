@@ -17,9 +17,10 @@ runtime:
 # the same thing: playbook_resolver.py emits id, kind, description and parameters
 # and nothing else, so these fixtures are shaped like what a deployment produces.
 tools:
-  - id: duckdb_query
+  - id: splunk_search
     kind: remote
-    description: Run a read-only SQL query against the records warehouse.
+    provides: telemetry_search
+    description: search the raw telemetry in the SIEM's own query language
     parameters:
       type: object
       properties:
@@ -37,30 +38,34 @@ tools:
     parameters:
       type: object
       properties:
-        entity:
-          type: string
-          description: The entity to expand.
-      required: [entity]
-  - id: intel_lookup
+        evidence_ids: { type: array, items: { type: string } }
+  - id: search_findings
     kind: remote
-    description: Look an indicator up in the threat intelligence feeds.
+    provides: findings_search
+    description: search the findings detection has already scored
     parameters:
       type: object
       properties:
-        indicator:
-          type: string
-          description: The IP, domain or hash to look up.
-      required: [indicator]
-  - id: web_intel
+        query: { type: string }
+        severity: { type: string }
+  - id: nearest_neighbors
     kind: remote
-    description: Search the open web for reporting on an indicator or campaign.
+    provides: similar_findings
+    description: findings whose embeddings sit closest to a given one
     parameters:
       type: object
+      required: [finding_id]
       properties:
-        query:
-          type: string
-          description: What to search the web for.
-      required: [query]
+        finding_id: { type: string }
+  - id: lookup_indicators
+    kind: remote
+    provides: indicator_lookup
+    description: look observables up in the indicator database
+    parameters:
+      type: object
+      required: [values]
+      properties:
+        values: { type: array, items: { type: string } }
 
 approvals: []
 

@@ -32,7 +32,72 @@ REMOTE = "remote"
 def _tool_catalogue() -> Dict[str, Dict[str, Any]]:
     from core.llm.tool_schemas import ALL_TOOLS
 
-    return {tool["name"]: tool for tool in ALL_TOOLS if tool.get("name")}
+    catalogue = {tool["name"]: tool for tool in ALL_TOOLS if tool.get("name")}
+    # The integrations this deployment carries, as tools with the same shape. A
+    # server that is not connected reports nothing, so it binds nothing.
+    for tool in _mcp_catalogue():
+        catalogue.setdefault(tool["name"], tool)
+    return catalogue
+
+
+def _mcp_catalogue() -> List[Dict[str, Any]]:
+    try:
+        from core.integrations.mcp.registry import get_mcp_registry
+
+        return get_mcp_registry().get_all_tools()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("MCP registry unavailable while resolving tools: %s", exc)
+        return []
+
+
+# What an arch means when it asks for a capability, in the order a deployment
+# should prefer. First one present wins; none present drops the capability.
+CAPABILITIES: Dict[str, Tuple[str, ...]] = {
+    "telemetry_search": (
+        "splunk_search",
+        "elastic_search",
+        "azure-sentinel_query",
+        "gcp-secops_search",
+        "crowdstrike_query",
+    ),
+    "indicator_lookup": (
+        "lookup_indicators",
+        "virustotal_lookup",
+        "alienvault-otx_indicator",
+        "misp_search",
+    ),
+    "findings_search": ("search_findings",),
+    "similar_findings": ("nearest_neighbors",),
+}
+
+
+# The tools that answer each capability the arch asked for, bound to what this
+# deployment reports. provides is what the agent layer matches a role's needs on.
+def _bound_capabilities(
+    needs: List[str], catalogue: Dict[str, Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    bound: List[Dict[str, Any]] = []
+    for capability in needs:
+        for candidate in CAPABILITIES.get(capability, ()):
+            entry = catalogue.get(candidate)
+            if entry is None:
+                continue
+            bound.append(
+                {
+                    "id": candidate,
+                    "kind": REMOTE,
+                    "provides": capability,
+                    "description": entry.get("description", ""),
+                    "parameters": entry.get("input_schema") or {},
+                }
+            )
+            break
+        else:
+            logger.warning(
+                "no tool in this deployment provides %s; roles needing it lose it",
+                capability,
+            )
+    return bound
 
 
 # An agent's prompt is rendered now rather than read from a file: the memory-palace

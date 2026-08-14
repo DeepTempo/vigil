@@ -26,6 +26,9 @@ export interface RoleSpec {
   // it was, so a typo cannot quietly turn a role conversational.
   output_schema: Record<string, unknown> | null;
   tools: string[];
+  // What the role needs, rather than what this deployment happens to call it. An
+  // arch is versioned and shared, so it names a capability and the config binds it.
+  needs: string[];
 }
 
 export const PROSE = "prose";
@@ -305,6 +308,7 @@ function parseRole(raw: unknown, name: string): RoleSpec {
     description: str(record["description"]),
     output_schema: declared === PROSE ? null : asRecord(declared, `roles.${name}.output_schema`),
     tools: strings(record["tools"], `roles.${name}.tools`),
+    needs: strings(record["needs"], `roles.${name}.needs`),
   };
 }
 
@@ -500,12 +504,40 @@ export interface SpecSources {
   prompt?: string;
 }
 
+// What each capability the arch asks for is called here. One nothing provides is
+// dropped rather than fatal: the deployment loses that tool and the run goes on.
+function providersOf(tools: readonly ToolSpec[]): Map<string, string[]> {
+  const byCapability = new Map<string, string[]>();
+  for (const tool of tools) {
+    const provides = tool["provides"];
+    if (typeof provides !== "string" || provides === "") continue;
+    byCapability.set(provides, [...(byCapability.get(provides) ?? []), tool.id]);
+  }
+  return byCapability;
+}
+
+function bindCapabilities(roles: Roles, tools: readonly ToolSpec[]): Roles {
+  const providers = providersOf(tools);
+  const bind = (role: RoleSpec): RoleSpec => {
+    const granted = role.needs.flatMap((capability) => providers.get(capability) ?? []);
+    const merged = [...new Set([...role.tools, ...granted])];
+    return merged.length === role.tools.length ? role : { ...role, tools: merged };
+  };
+
+  return {
+    ...(roles.lead === undefined ? {} : { lead: bind(roles.lead) }),
+    ...(roles.critic === undefined ? {} : { critic: bind(roles.critic) }),
+    workers: Object.fromEntries(Object.entries(roles.workers).map(([id, role]) => [id, bind(role)])),
+  };
+}
+
 // The one place the three layers converge, over parsed layers rather than files:
 // a playbook an operator never wrote to disk converges here on the same terms.
 export function assembleSpec(sources: SpecSources): RunSpec {
   const { arch, playbook, config } = sources;
+  const bound = bindCapabilities(arch.roles, config.tools);
   const declared = new Set(config.tools.map((tool) => tool.id));
-  const roles = applyDirectives(arch.roles, playbook.directives, declared);
+  const roles = applyDirectives(bound, playbook.directives, declared);
   const staffed = Object.keys(roles.workers).length > 0;
 
   // The roster and the worker-id constraint are the lead's alone. Without one

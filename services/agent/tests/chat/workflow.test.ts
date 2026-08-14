@@ -135,7 +135,7 @@ describe("the conversation is the run", () => {
 
 describe("what the workflow refuses", () => {
   it("refuses an arch whose lead answers in JSON", () => {
-    const spec = { ...specOf(), roles: { workers: {}, lead: { prompt: "x", description: "", output_schema: {}, tools: [] } } };
+    const spec = { ...specOf(), roles: { workers: {}, lead: { prompt: "x", description: "", output_schema: {}, tools: [], needs: [] } } };
     const stream = runChat(harnessOf([]), { run_id: RUN, spec, turns: ASKED });
     return expect(stream.next()).rejects.toThrow(SpecError);
   });
