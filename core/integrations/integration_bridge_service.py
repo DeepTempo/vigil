@@ -3,16 +3,10 @@
 import json
 import logging
 import os
-from typing import Dict, Optional
-from core.config import vigil_path
+from typing import Dict, Optional, Tuple
 
-from core.integrations.aws_security_hub.descriptor import AWS_SECURITY_HUB
-from core.integrations.azure_sentinel.descriptor import AZURE_SENTINEL
-from core.integrations.crowdstrike.descriptor import CROWDSTRIKE
-from core.integrations.jira.descriptor import JIRA
-from core.integrations.microsoft_defender.descriptor import MICROSOFT_DEFENDER
-from core.integrations.slack.descriptor import SLACK
-from core.integrations.splunk.descriptor import SPLUNK
+from core.config import vigil_path
+from core.integrations._base.descriptor import get_descriptor, iter_descriptors
 
 logger = logging.getLogger(__name__)
 
@@ -47,79 +41,15 @@ _PROXY_FORM_FIELDS = frozenset(
 class IntegrationBridgeService:
     """Bridges integration configs to MCP server configurations."""
 
-    # Map integration IDs (frontend) to MCP server names (backend)
-    INTEGRATION_TO_SERVER_MAP = {
-        # Threat Intelligence
-        "virustotal": "virustotal-server",
-        "alienvault-otx": "alienvault-otx-server",
-        "shodan": "shodan-server",
-        "misp": "misp-server",
-        "url-analysis": "url-analysis-server",
-        "ip-geolocation": "ip-geolocation-server",
-        # EDR/XDR
-        CROWDSTRIKE.id: CROWDSTRIKE.mcp_server_name,
-        "sentinelone": "sentinelone-server",
-        "carbon-black": "carbon-black-server",
-        MICROSOFT_DEFENDER.id: MICROSOFT_DEFENDER.mcp_server_name,
-        # SIEM
-        SPLUNK.id: SPLUNK.mcp_server_name,
-        AZURE_SENTINEL.id: AZURE_SENTINEL.mcp_server_name,
-        # Cloud Security
-        AWS_SECURITY_HUB.id: AWS_SECURITY_HUB.mcp_server_name,
-        "gcp-security": "gcp-security-server",
-        # Identity & Access
-        "okta": "okta-server",
-        "azure-ad": "azure-ad-server",
-        # Network Security
-        "palo-alto": "palo-alto-server",
-        # Incident Management
-        JIRA.id: JIRA.mcp_server_name,
-        # Communications
-        SLACK.id: SLACK.mcp_server_name,
-        "pagerduty": "pagerduty-server",
-        "microsoft-teams": "microsoft-teams-server",
-        # Sandbox Analysis
-        "hybrid-analysis": "hybrid-analysis-server",
-        "joe-sandbox": "joe-sandbox-server",
-        "anyrun": "anyrun-server",
-        "cape-sandbox": "cape-sandbox-server",
-        "cape_sandbox": "cape-sandbox-server",
-    }
+    @staticmethod
+    def server_names_for(integration_id: str) -> Tuple[str, ...]:
+        """MCP server names backing an integration, straight from its descriptor.
 
-    # Map integration field names to environment variable names
-    # These are common patterns - specific integrations may need custom mappings
-    FIELD_TO_ENV_MAP = {
-        "api_key": "API_KEY",
-        "api_token": "API_TOKEN",
-        "api_secret": "API_SECRET",
-        "access_key": "ACCESS_KEY",
-        "secret_key": "SECRET_KEY",
-        "client_id": "CLIENT_ID",
-        "client_secret": "CLIENT_SECRET",
-        "username": "USERNAME",
-        "password": "PASSWORD",
-        "server_url": "SERVER_URL",
-        "api_url": "API_URL",
-        "base_url": "BASE_URL",
-        "url": "URL",
-        "hostname": "HOSTNAME",
-        "tenant_id": "TENANT_ID",
-        "workspace_id": "WORKSPACE_ID",
-        "region": "REGION",
-        "domain": "DOMAIN",
-        "org_key": "ORG_KEY",
-        "organization_id": "ORGANIZATION_ID",
-        "project_id": "PROJECT_ID",
-        "verify_ssl": "VERIFY_SSL",
-        "port": "PORT",
-        "access_key_id": "ACCESS_KEY_ID",
-        "secret_access_key": "SECRET_ACCESS_KEY",
-        "credentials_json": "CREDENTIALS_JSON",
-        "integration_key": "INTEGRATION_KEY",
-        "webhook_url": "WEBHOOK_URL",
-        "bot_token": "BOT_TOKEN",
-        "default_channel": "DEFAULT_CHANNEL",
-    }
+        Previously a hand-written map whose every literal carried an invented
+        ``-server`` suffix that matched no real ``mcp-config.json`` key.
+        """
+        descriptor = get_descriptor(integration_id)
+        return descriptor.mcp_server_names if descriptor else ()
 
     def __init__(self):
         """Initialize the integration bridge service."""
@@ -146,53 +76,6 @@ class IntegrationBridgeService:
         except Exception as e:
             logger.error(f"Error loading integration config: {e}")
             return {"enabled_integrations": [], "integrations": {}}
-
-    def get_enabled_servers(self) -> Dict[str, Dict]:
-        """
-        Get MCP server configurations for all enabled integrations.
-
-        Returns:
-            Dict mapping server names to their configurations with env vars
-            Example: {
-                'virustotal-server': {
-                    'integration_id': 'virustotal',
-                    'env_vars': {'VIRUSTOTAL_API_KEY': 'xxx'}
-                }
-            }
-        """
-        config = self.load_integration_config()
-        enabled = config.get("enabled_integrations", [])
-        integrations = config.get("integrations", {})
-
-        servers = {}
-
-        for integration_id in enabled:
-            # Check if this integration has a corresponding MCP server
-            server_name = self.INTEGRATION_TO_SERVER_MAP.get(integration_id)
-            if not server_name:
-                logger.debug(f"No MCP server mapped for integration: {integration_id}")
-                continue
-
-            # Get integration configuration
-            integration_config = integrations.get(integration_id, {})
-            if not integration_config:
-                logger.warning(
-                    f"No configuration found for enabled integration: {integration_id}"
-                )
-                continue
-
-            # Convert integration config to environment variables
-            env_vars = self._config_to_env_vars(integration_id, integration_config)
-
-            servers[server_name] = {
-                "integration_id": integration_id,
-                "env_vars": env_vars,
-                "config": integration_config,
-            }
-
-            logger.info(f"Prepared server config for {server_name} ({integration_id})")
-
-        return servers
 
     def derive_remote_mcp_env(self) -> Dict[str, str]:
         """Derive a ``<UPPER_ID>_MCP_URL`` env var from each configured
@@ -262,7 +145,7 @@ class IntegrationBridgeService:
                 field_value = "true" if field_value else "false"
 
             # Convert field name to env var name
-            env_name = self.FIELD_TO_ENV_MAP.get(field_name, field_name.upper())
+            env_name = field_name.upper()
 
             # Add prefix and set value
             full_env_name = f"{prefix}_{env_name}"
@@ -292,8 +175,8 @@ class IntegrationBridgeService:
             return {}
 
         try:
-            from core.storage.db_proxy import ProxyConfig, child_env_for_proxy
             from core.integrations.integration_secrets import secret_fields_for
+            from core.storage.db_proxy import ProxyConfig, child_env_for_proxy
         except ImportError:  # pragma: no cover - defensive
             return {}
 
@@ -357,7 +240,8 @@ class IntegrationBridgeService:
 
         is_enabled = integration_id in config.get("enabled_integrations", [])
         has_config = integration_id in config.get("integrations", {})
-        has_server = integration_id in self.INTEGRATION_TO_SERVER_MAP
+        server_names = self.server_names_for(integration_id)
+        has_server = bool(server_names)
 
         status = {
             "enabled": is_enabled,
@@ -367,7 +251,7 @@ class IntegrationBridgeService:
         }
 
         if has_server:
-            status["server_name"] = self.INTEGRATION_TO_SERVER_MAP[integration_id]
+            status["server_names"] = list(server_names)
 
         return status
 
@@ -379,7 +263,7 @@ class IntegrationBridgeService:
             Dictionary mapping integration IDs to their status
         """
         config = self.load_integration_config()
-        all_integrations = set(self.INTEGRATION_TO_SERVER_MAP.keys())
+        all_integrations = {d.id for d in iter_descriptors() if d.mcp_server_names}
         all_integrations.update(config.get("integrations", {}).keys())
 
         statuses = {}
@@ -387,26 +271,3 @@ class IntegrationBridgeService:
             statuses[integration_id] = self.get_integration_status(integration_id)
 
         return statuses
-
-    def get_server_module_path(self, integration_id: str) -> Optional[str]:
-        """
-        Get the Python module path for an integration's MCP server.
-
-        Args:
-            integration_id: Integration identifier
-
-        Returns:
-            Module path string or None
-        """
-        server_name = self.INTEGRATION_TO_SERVER_MAP.get(integration_id)
-        if not server_name:
-            return None
-
-        # Convert server name to module name
-        # Example: 'virustotal-server' -> 'virustotal'
-        tool_name = server_name.replace("-server", "").replace("-", "_")
-
-        return f"tools.{tool_name}"
-
-
-# Global instance

@@ -6,7 +6,8 @@ from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
-from core.config import get_integration_config
+from core.integrations._base.config import missing, resolve
+from core.integrations.carbon_black.descriptor import CARBON_BLACK
 
 logger = logging.getLogger(__name__)
 server = Server("carbon-black")
@@ -34,14 +35,17 @@ async def handle_list_tools():
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None):
-    config = get_integration_config('carbon_black')
+    config = resolve(CARBON_BLACK)
     url = config.get('url')
-    token = config.get('api_token')
     org_key = config.get('org_key')
-    if not url or not token or not org_key:
+    if missing(config, 'url', 'api_id', 'api_key', 'org_key'):
         return result({"error": "Carbon Black not configured"})
-    
+
     args = arguments or {}
+    # CBC authenticates with the API Secret Key and API ID joined by a slash.
+    # This read a single `api_token` the Settings form never collects, so the
+    # header was always "None".
+    token = f"{config.get('api_key')}/{config.get('api_id')}"
     headers = {"X-Auth-Token": token, "Content-Type": "application/json"}
     
     try:

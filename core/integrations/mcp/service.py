@@ -451,52 +451,6 @@ class MCPService:
             logger.warning("mcp-config.json not found, using default servers")
             server_configs = self._get_default_servers(python_exe_str, project_path_str)
         
-        # Add servers for enabled integrations using the integration bridge
-        try:
-            enabled_servers = self._integration_bridge.get_enabled_servers()
-            
-            # Get list of already loaded server names to avoid duplicates
-            loaded_server_names = [s['name'] for s in server_configs]
-            
-            for server_name, server_info in enabled_servers.items():
-                # Skip if already loaded from mcp-config.json
-                if server_name in loaded_server_names:
-                    logger.info(f"Server '{server_name}' already loaded from mcp-config.json, skipping dynamic load")
-                    continue
-                
-                integration_id = server_info['integration_id']
-                env_vars = server_info['env_vars']
-                
-                # Get module path for this integration
-                module_path = self._integration_bridge.get_server_module_path(
-                    integration_id
-                )
-                if not module_path:
-                    logger.warning(f"No module path found for integration '{integration_id}'")
-                    continue
-                
-                # Prepare environment variables
-                env = env_vars.copy()
-                env["PYTHONPATH"] = project_path_str
-                
-                # Create server configuration
-                server_config = {
-                    "name": server_name,
-                    "command": python_exe_str,
-                    "args": ["-m", module_path],
-                    "cwd": project_path_str,
-                    "env": env,
-                    "server_type": "stdio"
-                }
-                
-                server_configs.append(server_config)
-                logger.info(f"Loaded dynamic integration server: {server_name} for '{integration_id}'")
-        
-        except ImportError as e:
-            logger.warning(f"Could not import integration bridge service: {e}")
-        except Exception as e:
-            logger.warning(f"Error loading dynamic integration servers: {e}")
-        
         # Dynamically update security-detections server env vars from DetectionRulesService
         for config in server_configs:
             if config["name"] == "security-detections":

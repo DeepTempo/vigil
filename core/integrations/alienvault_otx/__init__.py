@@ -1,0 +1,1 @@
+"""alienvault-otx integration slice."""

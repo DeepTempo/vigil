@@ -300,7 +300,7 @@ Tools: `anyrun_get_report`, `anyrun_search`, `anyrun_get_iocs`
 ### CAPE Sandbox
 
 Open-source Cuckoo fork for on-prem detonation. Vigil ships an MCP client
-(`tools/cape_sandbox.py`) that talks to an existing CAPE deployment over
+(`core/integrations/cape_sandbox/tool.py`) that talks to an existing CAPE deployment over
 its REST API — Vigil does **not** host CAPE itself. CAPE requires KVM and
 Windows guest VMs, so it's typically deployed on bare metal, not inside
 Docker Desktop.
@@ -431,7 +431,7 @@ Settings > Integrations > Custom Integration Builder:
 1. Upload API documentation
 2. AI generates MCP server code
 3. Review and test
-4. Deploy to `tools/` directory
+4. Saved to `~/.vigil/custom_integrations/<id>_server.py`
 
 ## CloudCurrent VStrike (Network Topology Fusion)
 

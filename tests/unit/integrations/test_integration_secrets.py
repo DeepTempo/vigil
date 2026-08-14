@@ -137,8 +137,10 @@ def test_every_audited_integration_is_registered():
         "shodan",
         "misp",
         "gcp-threat-intel",
-        "url-analysis",
-        "ip-geolocation",
+        # url-analysis and ip-geolocation deliberately absent: both registered an
+        # api_key neither server ever read (url-analysis makes no network call at
+        # all; ip-geolocation uses the ip-api.com free tier). Registering a
+        # credential nothing consumes only creates an orphan in the secrets store.
         "crowdstrike",
         "sentinelone",
         "carbon-black",

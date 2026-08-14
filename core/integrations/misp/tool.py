@@ -6,7 +6,8 @@ from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 import mcp.server.stdio
-from core.config import get_integration_config
+from core.integrations._base.config import missing, resolve
+from core.integrations.misp.descriptor import MISP
 
 logger = logging.getLogger(__name__)
 server = Server("misp")
@@ -17,7 +18,7 @@ def result(data):
 
 
 def get_config():
-    return get_integration_config('misp')
+    return resolve(MISP)
 
 
 @server.list_tools()
@@ -37,7 +38,10 @@ async def handle_call_tool(name: str, arguments: dict | None):
     config = get_config()
     api_key = config.get('api_key')
     url = config.get('url')
-    if not api_key or not url:
+    # resolve() always returns every declared field, so a .get(k, True) default
+    # would never fire — verify_ssl is present-but-None when unset.
+    verify = True if config.get('verify_ssl') is None else config.get('verify_ssl')
+    if missing(config, 'url', 'api_key'):
         return result({"error": "MISP not configured"})
 
     args = arguments or {}
@@ -49,7 +53,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             if not value:
                 return result({"error": "value required"})
             resp = requests.post(f"{url}/attributes/restSearch", headers=headers, 
-                json={"value": value}, timeout=30, verify=config.get('verify_ssl', True))
+                json={"value": value}, timeout=30, verify=verify)
             resp.raise_for_status()
             data = resp.json()
             attrs = data.get("response", {}).get("Attribute", [])
@@ -58,7 +62,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
         elif name == "misp_get_events":
             limit = args.get("limit", 10)
             resp = requests.post(f"{url}/events/restSearch", headers=headers,
-                json={"limit": limit, "returnFormat": "json"}, timeout=30, verify=config.get('verify_ssl', True))
+                json={"limit": limit, "returnFormat": "json"}, timeout=30, verify=verify)
             resp.raise_for_status()
             data = resp.json()
             events = data.get("response", [])

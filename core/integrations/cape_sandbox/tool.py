@@ -5,8 +5,8 @@ sandbox — the actively maintained fork of Cuckoo. This MCP server wraps the
 CAPEv2 REST API so SOC agents can submit files/URLs for detonation and
 retrieve behavioral reports, IOCs, and PCAPs.
 
-Config comes from ``~/.vigil/integrations_config.json`` under the
-``cape_sandbox`` key — fields: ``url``, ``api_key``.
+Config comes from the descriptor: ``url`` from the stored integration config
+under the ``cape-sandbox`` id, ``api_key`` from the encrypted secrets store.
 """
 
 import asyncio
@@ -21,7 +21,8 @@ from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 import mcp.types as types
 
-from core.config import get_integration_config
+from core.integrations._base.config import resolve
+from core.integrations.cape_sandbox.descriptor import CAPE_SANDBOX
 
 logger = logging.getLogger(__name__)
 server = Server("cape-sandbox")
@@ -38,11 +39,15 @@ def result(data: Any) -> List[types.TextContent]:
 
 
 def _load_config() -> Dict[str, str]:
-    """Return CAPE config, falling back to env vars for container deployments."""
-    config = get_integration_config("cape_sandbox") or {}
-    url = config.get("url") or os.getenv("CAPE_SANDBOX_URL", "").rstrip("/")
-    api_key = config.get("api_key") or os.getenv("CAPE_SANDBOX_API_KEY", "")
-    return {"url": url.rstrip("/") if url else "", "api_key": api_key}
+    """Return CAPE config.
+
+    The env fallback for container deployments is no longer spelled out here:
+    ``resolve`` already falls through to ``CAPE_SANDBOX_URL`` /
+    ``CAPE_SANDBOX_API_KEY`` when the Settings store has no value.
+    """
+    config = resolve(CAPE_SANDBOX)
+    url = config.get("url") or ""
+    return {"url": url.rstrip("/"), "api_key": config.get("api_key") or ""}
 
 
 def _headers(api_key: str) -> Dict[str, str]:
