@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { LedgerRepository } from "../../ledger/repository.js";
 import { LeaseRepository } from "../../ledger/leases.js";
-import { advance, resolveSpec } from "../../worker.js";
+import { advance, resolveSpec, spentOn } from "../../worker.js";
 import type { RunJob } from "../../contracts/job.js";
 import type { ScriptedTurn } from "../support/scripted-provider.js";
 import { scriptedHarness } from "../support/scripted-harness.js";
@@ -119,4 +119,28 @@ describe("a run reaches its workflow", () => {
   it("refuses to resume a run that has no ledger", async () => {
     await expect(advance(ledger, leases, resumeJob(runId), scriptedHarness(CONCLUDE))).rejects.toThrow(/has no ledger/);
   });
+
+  // Nothing summed the spend events, so every finished run reported a dash where
+  // its cost belongs. A call nobody could price adds nothing rather than a zero.
+  it("sums what a run spent from its own spend events", async () => {
+    await advance(ledger, leases, startJob(runId), scriptedHarness(CONCLUDE));
+    await ledger.append(runId, [
+      { run_id: runId, run_kind: "hunt", kind: "spend", payload: spend(0.25) },
+      { run_id: runId, run_kind: "hunt", kind: "spend", payload: spend(0.5) },
+      { run_id: runId, run_kind: "hunt", kind: "spend", payload: spend(null) },
+    ] as never);
+
+    expect(await spentOn(ledger, runId)).toBeCloseTo(0.75);
+  });
 });
+
+function spend(cost: number | null): Record<string, unknown> {
+  return {
+    model_id: "m",
+    provider_type: "p",
+    role: "lead",
+    tokens: { input: 1, output: 1 },
+    cost_usd: cost,
+    pricing_source: cost === null ? null : "exact",
+  };
+}

@@ -10,6 +10,7 @@ import { poolConfig, redisConfig } from "./core/db.js";
 import { healthPort, healthServer } from "./core/health.js";
 import { jobIdFor, RUN_QUEUE, JOB_SCHEMA_VERSION, type RunJob } from "./contracts/job.js";
 import type { AgentEvent, CheckpointPayload, ResolutionPayload, RunKind, RunPayload } from "./contracts/events.js";
+import type { SpendPayload } from "./contracts/budget.js";
 import {
   LEASE_TTL_MS,
   PARK_EVERY_MS,
@@ -243,7 +244,13 @@ async function settle(state: State, leases: Leases, job: RunJob, spec: RunSpec, 
     // hunt as running forever, with no duration and no cost. Off the terminal
     // this already read, so one place reports for every kind there is.
     if (job.run_kind !== "compose") {
-      await mirrorFor().terminal(job.run_id, terminal.outcome, terminal.reason, "");
+      await mirrorFor().terminal(job.run_id, {
+        outcome: terminal.outcome,
+        reason: terminal.reason,
+        summary: terminal.summary ?? "",
+        cost_usd: await spentOn(state, job.run_id),
+        handoffs: terminal.handoffs ?? [],
+      });
     }
     await reap(leases, job.run_id);
     return;
@@ -251,11 +258,21 @@ async function settle(state: State, leases: Leases, job: RunJob, spec: RunSpec, 
   await leases.release(job.run_id, owner, Math.min(PARK_EVERY_MS, spec.budgets.max_park_ms));
 }
 
+// What the run cost, summed from the spend events every kind writes. Nothing was
+// summing them, so a finished run showed a dash where its dollars should be.
+// A call nobody could price contributes nothing rather than a fabricated zero.
+export async function spentOn(state: State, runId: string): Promise<number> {
+  const events = (await state.read(runId)) as readonly AgentEvent<Record<never, never>>[];
+  return events
+    .filter((event) => event.kind === "spend")
+    .reduce((total, event) => total + ((event.payload as SpendPayload).cost_usd ?? 0), 0);
+}
+
 // A run that dies before it journals a terminal leaves its record open, and a
 // resolution failure dies before there is a ledger to journal one onto.
 async function abandon(job: RunJob, error: unknown): Promise<void> {
   if (job.run_kind !== "compose") return;
-  await mirrorFor().terminal(job.run_id, "failed", error instanceof Error ? error.message : String(error), "");
+  await mirrorFor().terminal(job.run_id, { outcome: "failed", reason: error instanceof Error ? error.message : String(error), summary: "" });
 }
 
 // A checkpoint nobody answered for max_park_ms. Saying so beats leaving the run

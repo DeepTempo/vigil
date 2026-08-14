@@ -94,6 +94,7 @@ class WorkflowRunService:
         status: str,
         result_summary: Optional[str] = None,
         error: Optional[str] = None,
+        cost_usd: Optional[float] = None,
     ) -> bool:
         """Mark a run terminal. ``status`` must be one of the check-
         constrained values: completed | failed | cancelled."""
@@ -117,6 +118,8 @@ class WorkflowRunService:
                     row.result_summary = result_summary[:50_000]
                 if error is not None:
                     row.error = str(error)[:5_000]
+                if cost_usd is not None:
+                    row.total_cost_usd = cost_usd
                 if row.started_at is not None:
                     delta = now - row.started_at
                     row.duration_ms = int(delta.total_seconds() * 1000)

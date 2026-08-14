@@ -119,6 +119,18 @@ export interface PatchPayload {
 export interface TerminalPayload {
   outcome: RunOutcome;
   reason: string;
+  // What the run leaves behind. Written by the workflow, because only it knows
+  // what its deliverable is, and read from here by whoever reports the run out.
+  summary?: string;
+  handoffs?: TerminalHandoff[];
+}
+
+// Work the run finished by giving away, each carrying the document it hands over
+// rather than a pointer to one: the receiver has no access to this ledger.
+export interface TerminalHandoff {
+  case_id: string;
+  title: string;
+  markdown: string;
 }
 
 export interface RunEventPayloads {

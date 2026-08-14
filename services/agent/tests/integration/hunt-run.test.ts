@@ -142,6 +142,16 @@ describe("a hunt started through the queue", () => {
     expect(terminal?.body).toMatchObject({ outcome: "completed" });
   });
 
+  // The report and the spend were on the ledger and nowhere else, so the console
+  // showed a finished hunt with a blank summary and a dash where its dollars go.
+  it("reports the hunt's own report and what it cost, not only that it ended", async () => {
+    await run(runId);
+
+    const terminal = await ledger.terminal(runId);
+    expect(terminal?.summary).toContain("#");
+    expect(terminal?.handoffs).toEqual([]);
+  });
+
   // Compose, lead and tally all end on outcome.refusal; the hunt threw instead,
   // so a run that spent its allowance stayed "running" forever and the watchdog
   // re-enqueued it every sweep to be refused again.

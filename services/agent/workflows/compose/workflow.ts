@@ -274,7 +274,7 @@ async function end(
   const ledger = await readLedger(harness.state, options.run_id);
   const event: Event = { run_id: options.run_id, run_kind: "compose", kind: "terminal", payload: { outcome, reason } };
   await append(harness.state, options.run_id, [event]);
-  await mirror.terminal(options.run_id, outcome, reason, summarise(ledger.answers));
+  await mirror.terminal(options.run_id, { outcome, reason, summary: summarise(ledger.answers) });
   return { ...progress(options.spec, ledger.done.size), status: outcome, reason, pending: null };
 }
 

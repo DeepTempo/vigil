@@ -1,4 +1,4 @@
-import type { ResolutionPayload, RunOutcome } from "../../contracts/events.js";
+import type { ResolutionPayload, RunOutcome, TerminalHandoff } from "../../contracts/events.js";
 import { httpAnswers } from "../../core/answers.js";
 
 // Where a run's progress goes for a human to read, and where a human's answer
@@ -18,6 +18,16 @@ export interface PhaseUpdate {
   question?: string;
 }
 
+// How a run ended, as the console records it. summary is the deliverable, cost is
+// what it took, and handoffs are the case files it wants someone else to pick up.
+export interface TerminalResult {
+  outcome: RunOutcome;
+  reason: string;
+  summary: string;
+  cost_usd?: number;
+  handoffs?: TerminalHandoff[];
+}
+
 // decisions is the only inbound direction: a human answers over there, and this
 // side journals what comes back, so the ledger keeps its single writer.
 export interface Mirror {
@@ -25,7 +35,7 @@ export interface Mirror {
   // a run; a gate nobody can see or answer stops it for good.
   readonly answerable: boolean;
   phase(runId: string, update: PhaseUpdate): Promise<void>;
-  terminal(runId: string, outcome: RunOutcome, reason: string, summary: string): Promise<void>;
+  terminal(runId: string, result: TerminalResult): Promise<void>;
   decisions(runId: string): Promise<ResolutionPayload[]>;
 }
 
@@ -63,7 +73,7 @@ export function httpMirror(options: MirrorOptions): Mirror {
   return {
     answerable: true,
     phase: (runId, update) => post(`/${encodeURIComponent(runId)}/phases`, update),
-    terminal: (runId, outcome, reason, summary) => post(`/${encodeURIComponent(runId)}/terminal`, { outcome, reason, summary }),
+    terminal: (runId, result) => post(`/${encodeURIComponent(runId)}/terminal`, result),
     decisions: httpAnswers(options),
   };
 }

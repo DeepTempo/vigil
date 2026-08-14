@@ -50,10 +50,18 @@ class PhaseUpdate(BaseModel):
     question: Optional[str] = None
 
 
+class TerminalHandoff(BaseModel):
+    case_id: str
+    title: str
+    markdown: str = ""
+
+
 class TerminalUpdate(BaseModel):
     outcome: str
     reason: str = ""
     summary: str = ""
+    cost_usd: Optional[float] = None
+    handoffs: List[TerminalHandoff] = Field(default_factory=list)
 
 
 class CheckpointRaised(BaseModel):
@@ -123,7 +131,27 @@ def record_terminal(
         status="completed" if update.outcome == "completed" else "failed",
         result_summary=update.summary or None,
         error=None if update.outcome == "completed" else update.reason,
+        cost_usd=update.cost_usd,
     )
+
+    for handoff in update.handoffs:
+        _open_case(run_id, handoff)
+
+
+# A run that ended by handing work over opens the case that receives it. The agent
+# layer holds no case table, so the document travels and this side files it.
+def _open_case(run_id: str, handoff: TerminalHandoff) -> None:
+    from core.storage.database_data_service import DatabaseDataService
+
+    try:
+        DatabaseDataService().create_case(
+            title=handoff.title[:200],
+            finding_ids=[],
+            priority="high",
+            description=handoff.markdown,
+        )
+    except Exception:  # noqa: BLE001 — the run ended either way
+        logger.exception("could not open %s handed off by %s", handoff.case_id, run_id)
 
 
 # A run parked on a checkpoint, as a question in the approvals inbox. Only the
