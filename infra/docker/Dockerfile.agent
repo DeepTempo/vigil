@@ -48,10 +48,19 @@ LABEL org.opencontainers.image.version="${VIGIL_VERSION}"
 
 WORKDIR /app
 
-# No apt layer: bullmq and pg are pure JavaScript. The Python images need
-# libpq5 only because psycopg is a C extension.
+# Nothing here needs apt except the base image's own gnutls, which ships two
+# fixable CRITICALs (CVE-2026-33845, CVE-2026-42010). Pinned because hadolint
+# asks for it; Trivy is what says when the pin has gone stale.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgnutls30=3.7.9-2+deb12u7 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY services/agent/package.json services/agent/package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+# npm leaves with the install that needed it: nothing invokes it at runtime, and
+# its bundled tar is the image's third fixable CRITICAL (CVE-2026-59873).
+RUN npm ci --omit=dev \
+    && npm cache clean --force \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 COPY --from=build /build/dist ./dist
 
