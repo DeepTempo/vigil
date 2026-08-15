@@ -1,10 +1,12 @@
 import json
 import logging
+import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, List, Optional
 
-from pydantic import field_validator
+from pydantic import ValidationError, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -258,6 +260,23 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def _format_validation_error(exc: ValidationError) -> str:
+    details = []
+    for error in exc.errors():
+        loc = ".".join(str(part) for part in error.get("loc", ()))
+        msg = error.get("msg", "invalid value")
+        details.append(f"{loc}: {msg}" if loc else msg)
+    return "; ".join(details) or str(exc).replace("\n", " ")
+
+
+def validate_settings_or_exit() -> Settings:
+    try:
+        return get_settings()
+    except ValidationError as exc:
+        print(f"configuration error: {_format_validation_error(exc)}", file=sys.stderr)
+        sys.exit(os.EX_CONFIG)
 
 
 def is_demo_mode() -> bool:

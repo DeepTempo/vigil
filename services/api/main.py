@@ -19,6 +19,10 @@ project_root = str(_repo_root)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from core.config import get_settings, validate_settings_or_exit
+
+validate_settings_or_exit()
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -32,7 +36,6 @@ from services.api.middleware.security_headers import SecurityHeadersMiddleware
 
 from services.api.discovery import mount_routers
 from services.api.middleware.auth import get_current_active_user
-from core.config import get_settings
 from core.platform.monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
 
 # Single source of truth for the "require an authenticated active user"

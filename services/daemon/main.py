@@ -1,16 +1,21 @@
 """SOC Daemon - Main entry point and orchestration."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import signal
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 # Add the repo root to sys.path (this file is services/daemon/main.py).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from services.daemon.config import DaemonConfig
+from core.config import validate_settings_or_exit
+
+if TYPE_CHECKING:
+    from services.daemon.config import DaemonConfig
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +24,11 @@ class SOCDaemon:
     """Main daemon orchestrator for autonomous SOC operations."""
     
     def __init__(self, config: Optional[DaemonConfig] = None):
-        self.config = config or DaemonConfig.from_env()
+        if config is None:
+            from services.daemon.config import DaemonConfig
+
+            config = DaemonConfig.from_env()
+        self.config = config
         self.config.setup_logging()
 
         # Initialize OTEL telemetry after logging is set up
@@ -202,6 +211,9 @@ class SOCDaemon:
 
 def main():
     """Entry point for the daemon."""
+    validate_settings_or_exit()
+    from services.daemon.config import DaemonConfig
+
     config = DaemonConfig.from_env()
     daemon = SOCDaemon(config)
     
