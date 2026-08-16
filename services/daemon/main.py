@@ -164,7 +164,7 @@ class SOCDaemon:
 
         if self._llm_worker_manager:
             tasks.append(asyncio.create_task(self._llm_worker_manager.run(self._shutdown_event)))
-            logger.info("LLM Worker Manager started (controls worker subprocess via DB toggle)")
+            logger.info("LLM Worker Manager started (runs ARQ llm worker while daemon is up)")
 
         if self._metrics_server:
             tasks.append(asyncio.create_task(self._metrics_server.run(self._shutdown_event)))

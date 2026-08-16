@@ -1,5 +1,7 @@
-# Supervises the ARQ worker as a child process of the daemon: polls the
-# orchestrator.settings enabled flag and starts, stops or restarts to match it.
+# Supervises the ARQ worker as a child process of the daemon. The worker drains
+# the arq:llm queue for ALL LLM traffic (chat, AI insights, agent runner, daemon
+# triage), not just autonomous orchestration, so it runs unconditionally while
+# the daemon runs — matching foreground, docker-compose and the Helm chart.
 
 import asyncio
 import logging
@@ -15,54 +17,29 @@ PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
 # The -m entrypoint, shared with compose, the Helm Deployment and start.sh.
 WORKER_MODULE = "services.worker"
 
-_POLL_INTERVAL = 5
-
 
 class LLMWorkerManager:
     def __init__(self):
         self._process: subprocess.Popen | None = None
-        self._enabled = False
 
     async def run(self, shutdown_event: asyncio.Event):
         logger.info("LLM Worker Manager started")
 
-        while not shutdown_event.is_set():
-            self._sync_enabled_from_db()
+        if not self._is_running():
+            self._start_worker()
 
-            if self._enabled and not self._is_running():
+        while not shutdown_event.is_set():
+            if not self._is_running():
+                logger.warning("LLM Worker exited unexpectedly — restarting")
                 self._start_worker()
-            elif not self._enabled and self._is_running():
-                self._stop_worker()
 
             try:  # sleep, but wake immediately on shutdown
-                await asyncio.wait_for(shutdown_event.wait(), timeout=_POLL_INTERVAL)
+                await asyncio.wait_for(shutdown_event.wait(), timeout=5)
             except asyncio.TimeoutError:
                 pass
 
         self._stop_worker()
         logger.info("LLM Worker Manager shutdown complete")
-
-    def _sync_enabled_from_db(self):
-        try:
-            from core.storage.connection import get_db_manager
-            from core.storage.models import SystemConfig
-
-            with get_db_manager().session_scope() as session:
-                cfg = (
-                    session.query(SystemConfig)
-                    .filter_by(key="orchestrator.settings")
-                    .first()
-                )
-                if cfg and isinstance(cfg.value, dict):
-                    db_enabled = bool(cfg.value.get("enabled", False))
-                    if db_enabled != self._enabled:
-                        self._enabled = db_enabled
-                        logger.info(
-                            "LLM Worker %s (synced from DB)",
-                            "ENABLED" if db_enabled else "DISABLED",
-                        )
-        except Exception:
-            pass  # DB not ready yet — keep previous state
 
     def _start_worker(self):
         # Exports the parent env into a child process; not a config read.
