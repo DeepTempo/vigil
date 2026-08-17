@@ -1,0 +1,70 @@
+"""Resolve a Vendor Slice's configuration from its descriptor.
+
+The one way an MCP server reads its own config. Non-secret fields come from the
+stored integration config; secret fields come from the encrypted store, keyed by
+the same names ``integration_secrets`` writes them under.
+
+Reading a credential straight from ``get_integration_config`` cannot work:
+``split_secrets`` strips every registered secret field before anything is
+persisted, so the credential is never in the JSON or the DB. Several servers did
+exactly that and silently ran with ``None`` — this module exists so no server has
+to know the rule.
+
+``resolve`` is the descriptor-driven entry point. ``resolve_fields`` takes an
+explicit field list for callers with no descriptor, such as a generated custom
+integration.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, Iterable, Mapping, Optional
+
+from core.config import get_integration_config
+from core.integrations._base.descriptor import IntegrationDescriptor, IntegrationField
+from core.integrations.integration_secrets import env_var_for, secret_fields_for
+from core.secrets import get_secret
+
+
+def _resolve(
+    integration_id: str, fields: Iterable[IntegrationField]
+) -> Dict[str, Optional[Any]]:
+    stored: Mapping[str, Any] = get_integration_config(integration_id) or {}
+    secret_keys = secret_fields_for(integration_id)
+
+    resolved: Dict[str, Optional[Any]] = {}
+    for field in fields:
+        env_key = secret_keys.get(field.name)
+        if env_key is not None:
+            value = get_secret(env_key)
+        else:
+            value = stored.get(field.name)
+            if value is None or value == "":
+                value = get_secret(env_var_for(integration_id, field.name))
+        resolved[field.name] = field.coerce(value)
+    return resolved
+
+
+def resolve_fields(
+    integration_id: str, field_names: Iterable[str]
+) -> Dict[str, Optional[Any]]:
+    """Resolve named fields for an integration, secrets included.
+
+    A non-secret falls back to ``get_secret`` when the stored config has no
+    value: that is the channel an ``mcp-config.json`` ``env`` block feeds, and
+    it keeps env-configured servers working without a raw environment read.
+
+    Values come back as stored, uncoerced: there is no descriptor here to say
+    what type each field should be. A caller that has one should use
+    ``resolve``.
+    """
+    return _resolve(integration_id, (IntegrationField(n) for n in field_names))
+
+
+def resolve(descriptor: IntegrationDescriptor) -> Dict[str, Optional[Any]]:
+    """Resolve every field the descriptor declares, typed as it declares it."""
+    return _resolve(descriptor.id, descriptor.fields)
+
+
+def missing(config: Mapping[str, Any], *required: str) -> tuple[str, ...]:
+    """Which of ``required`` resolved to nothing — the 'not configured' check."""
+    return tuple(name for name in required if not config.get(name))

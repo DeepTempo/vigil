@@ -17,9 +17,8 @@ from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 from arq.jobs import DeserializationError
 
-from core.llm.defaults import DEFAULT_MODEL
-
 from core.config import get_settings
+from core.llm.defaults import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -171,96 +170,6 @@ class LLMGateway:
                 exc,
             )
             raise RuntimeError(f"LLM job result deserialization failed: {exc}") from exc
-
-    async def submit_investigation(
-        self,
-        inv_id: str,
-        prompt: str,
-        *,
-        model: str = DEFAULT_MODEL,
-        max_tokens: int = 4096,
-        enable_thinking: bool = True,
-        thinking_budget: int = 8000,
-        tools: Optional[List[Dict]] = None,
-        timeout: int = 180,
-        provider_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Enqueue an investigation LLM call (medium priority).
-
-        Returns the full response dict including token counts so the
-        agent runner can track cost.
-        """
-        job = await self._pool.enqueue_job(
-            "llm_call",
-            messages=[{"role": "user", "content": prompt}],
-            model=model,
-            max_tokens=max_tokens,
-            session_id=f"inv:{inv_id}",
-            system_prompt=None,
-            enable_thinking=enable_thinking,
-            thinking_budget=thinking_budget,
-            tools=tools,
-            temperature=None,
-            provider_id=provider_id,
-            traceparent=self._get_traceparent(),
-            _queue_name=QUEUE_NAME,
-        )
-        try:
-            return await job.result(timeout=timeout)
-        except DeserializationError as exc:
-            logger.error(
-                "arq job result deserialization failed for investigation job: %s", exc
-            )
-            raise RuntimeError(f"LLM job result deserialization failed: {exc}") from exc
-
-    async def submit_investigation_turn(
-        self,
-        inv_id: str,
-        messages: List[Dict],
-        *,
-        model: str = DEFAULT_MODEL,
-        max_tokens: int = 16000,
-        enable_thinking: bool = True,
-        thinking_budget: int = 8000,
-        tools: Optional[List[Dict]] = None,
-        timeout: int = 180,
-        agent_id: Optional[str] = None,
-        provider_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Enqueue a multi-turn investigation call with explicit messages.
-
-        Used by AgentRunner's tool-use loop where messages contain
-        assistant + tool_result turns.
-        """
-        job = await self._pool.enqueue_job(
-            "llm_call_raw",
-            messages=messages,
-            model=model,
-            max_tokens=max_tokens,
-            enable_thinking=enable_thinking,
-            thinking_budget=thinking_budget,
-            tools=tools,
-            temperature=None,
-            provider_id=provider_id,
-            traceparent=self._get_traceparent(),
-            investigation_id=inv_id,
-            agent_id=agent_id,
-            _queue_name=QUEUE_NAME,
-        )
-        try:
-            return await job.result(timeout=timeout)
-        except DeserializationError as exc:
-            logger.error(
-                "arq deserialization error for investigation_turn [inv=%s job=%s]: %s — "
-                "likely the worker raised an unserializable exception (e.g. APIStatusError). "
-                "Check llm-worker logs for the real error.",
-                inv_id, getattr(job, "job_id", "?"), exc,
-                exc_info=True,
-            )
-            raise RuntimeError(
-                f"LLM worker returned an undeserializable result for {inv_id} "
-                f"(check llm-worker logs): {exc}"
-            ) from exc
 
     async def submit_chat(
         self,

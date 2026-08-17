@@ -62,6 +62,17 @@ jobs:
       - name: Run import-linter
         run: lint-imports
 
+      # One tool-calling loop, and it is in TypeScript (#632). Gates for the same
+      # reason: each new loop looks reasonable alone, and there were five.
+      - name: Run one-loop gate
+        run: python scripts/check_one_loop.py
+
+      # No comment block over two lines in the agent layer. Advisory for now: #661
+      # landed 33 that predate the gate, and they are its author's to rule on.
+      - name: Run comment-style gate
+        run: python scripts/check_comment_style.py
+        continue-on-error: true
+
   lint-frontend:
     name: Lint Frontend
     if: github.repository == 'Vigil-SOC/vigil'
@@ -98,6 +109,75 @@ jobs:
           dockerfile: infra/docker/Dockerfile.backend
           ignore: DL3008,DL3009
         continue-on-error: true
+
+      # Not continue-on-error, and no ignores: the agent image is clean today
+      # (#635) and installs no apt packages, so the two rules waived above have
+      # nothing to say about it. Advisory here would only let it rot.
+      - name: Run hadolint (agent)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: infra/docker/Dockerfile.agent
+
+  # ============================================================================
+  # Agent Image — build, scan, smoke test
+  # ============================================================================
+  # Separate from build-images below, which pushes to a registry and is disabled.
+  # This one builds locally and throws the image away, so it can run on every PR
+  # and answer the three questions #635 asks of the image: does it build, is it
+  # clean, does it start.
+  build-agent-image:
+    name: Agent Image
+    if: github.repository == 'Vigil-SOC/vigil'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build agent image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile.agent
+          push: false
+          load: true            # into the runner's docker, for the steps below
+          tags: vigil-agent:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy — report HIGH and CRITICAL
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: vigil-agent:ci
+          format: table
+          severity: HIGH,CRITICAL
+
+      # The gate is narrower than the report on purpose. An unfixed CVE in the
+      # base image is not something this repo can act on, and failing every PR
+      # on one teaches people to ignore the job.
+      - name: Trivy — fail on fixable CRITICAL
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: vigil-agent:ci
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      # Loads both entry points without running either: the main blocks guard on
+      # process.argv[1], which --eval leaves undefined. That is the whole point --
+      # it proves every import resolves inside the image (the failure mode that
+      # typecheck cannot see, since tsc reads .ts and node runs the emitted .js)
+      # without needing a Postgres or a Redis to connect to.
+      - name: Smoke test — both entry points load
+        run: |
+          docker run --rm vigil-agent:ci \
+            node --input-type=module -e "
+              await import('/app/dist/worker.js');
+              await import('/app/dist/serve.js');
+              console.log('agent ok');
+            "
 
   # ============================================================================
   # Unit Tests
@@ -170,6 +250,68 @@ jobs:
         working-directory: clients/web
         run: npm run test:run
 
+  # The agent layer is a second Node package with its own manifest, so it needs
+  # its own job -- the frontend job above is scoped to frontend/. Node 20 rather
+  # than NODE_VERSION because services/agent/package.json requires it.
+  test-agent-layer:
+    name: Unit Tests - Agent Layer
+    if: github.repository == 'Vigil-SOC/vigil'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: agent_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    env:
+      DATABASE_URL: postgres://test:test@localhost:5432/agent_test
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/agent/package-lock.json
+
+      - name: Install dependencies
+        working-directory: services/agent
+        run: npm ci
+
+      - name: Apply agent-layer schema
+        run: |
+          PGPASSWORD=test psql -h localhost -p 5432 -U test -d agent_test \
+            -f infra/database/init/19_agent_ledger.sql \
+            -f infra/database/init/20_agent_directives.sql \
+            -f infra/database/init/21_agent_run_leases.sql
+
+      - name: Typecheck
+        working-directory: services/agent
+        run: npm run typecheck
+
+      - name: Run unit tests
+        working-directory: services/agent
+        run: npm test
+
   # ============================================================================
   # Integration Tests
   # ============================================================================
@@ -191,6 +333,17 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
+      # The walking-skeleton test enqueues onto BullMQ and spawns the TypeScript
+      # worker, so this job needs Redis and Node as well as Postgres.
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
     env:
       TESTING: "true"
       DEV_MODE: "true"
@@ -200,6 +353,8 @@ jobs:
       POSTGRES_USER: test
       POSTGRES_PASSWORD: test
       POSTGRES_DB: deeptempo_test
+      DATABASE_URL: postgresql://test:test@localhost:5432/deeptempo_test
+      REDIS_URL: redis://localhost:6379/0
 
     steps:
       - uses: actions/checkout@v5
@@ -211,6 +366,17 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/agent/package-lock.json
+
+      - name: Install agent-layer dependencies
+        working-directory: services/agent
+        run: npm ci
 
       - name: Install dependencies
         run: |
@@ -225,6 +391,16 @@ jobs:
       - name: Initialize schema
         run: |
           python -c "from core.storage.connection import init_database; init_database()"
+
+      # The agent layer's tables are raw SQL with no ORM model, deliberately:
+      # Python makes two reads against the ledger and a model invites writes.
+      # init_database() builds from the models, so it creates none of them.
+      - name: Apply agent-layer schema
+        run: |
+          PGPASSWORD=test psql -h localhost -p 5432 -U test -d deeptempo_test \
+            -f infra/database/init/19_agent_ledger.sql \
+            -f infra/database/init/20_agent_directives.sql \
+            -f infra/database/init/21_agent_run_leases.sql
 
       - name: Run integration tests
         run: |

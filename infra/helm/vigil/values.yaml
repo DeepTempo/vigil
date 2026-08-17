@@ -148,6 +148,100 @@ llmWorker:
   extraEnv: []
 
 # -----------------------------------------------------------------------------
+# Agent worker — the TypeScript BullMQ consumer. Runs alongside llmWorker, not
+# instead of it; see agent-worker-deployment.yaml for what has to go first.
+# -----------------------------------------------------------------------------
+agentWorker:
+  enabled: true
+  replicaCount: 2
+  # Its own Node image — unlike llmWorker it cannot share the backend's.
+  image:
+    repository: ""   # defaults to <registry>/<namespace>-agent
+    tag: ""
+    pullPolicy: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  autoscaling:
+    # CPU-based HPA (classic). Mutually exclusive with keda.enabled.
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    # KEDA ScaledObject — scales on actual Redis queue depth.
+    # Requires KEDA installed in the cluster (https://keda.sh).
+    keda:
+      enabled: false
+      # Must be >= 1: nothing promotes BullMQ's delayed jobs into the waiting
+      # list except a running worker. The template clamps it.
+      minReplicas: 2
+      maxReplicas: 20
+      # Seconds of zero queue activity before scaling down. Keep high to avoid
+      # thrash when the queue is bursty.
+      cooldownPeriod: 300
+      # How often KEDA polls Redis for the queue depth.
+      pollingInterval: 15
+      # BullMQ's waiting list for RUN_QUEUE (services/agent/contracts/job.ts).
+      # Not "agent-runs": that is the queue name, not the Redis key.
+      queueName: "bull:agent-runs:wait"
+      # KEDA scales one replica per listLength items queued.
+      listLength: "5"
+      # Only used when redis.enabled=false AND redis.bitnami.enabled=false.
+      # host:port form without scheme or password.
+      redisAddress: ""
+      # Empty means the database the chart's own Redis is addressed on. Set it only
+      # alongside redis.external.url, to whatever database that URL names -- a
+      # scaler counting the wrong one reads an empty queue and never scales up.
+      databaseIndex: ""
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+
+# -----------------------------------------------------------------------------
+# Agent serve — the same image as agentWorker, running the other entry point:
+# chat over SSE and the run projections a supervisor reads. Separate from the
+# worker because the two scale on unrelated signals (#635).
+# -----------------------------------------------------------------------------
+agentServe:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ""   # defaults to <registry>/<namespace>-agent, same as agentWorker
+    tag: ""
+    pullPolicy: ""
+  service:
+    # The backend reaches this at AGENT_URL, computed from the Service name.
+    port: 6989
+  # An SSE stream can sit on one model call for minutes, and dropping it loses
+  # the conversation rather than retrying it. Long enough for a turn to finish.
+  terminationGracePeriodSeconds: 120
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  # No autoscaling block, and its absence is the decision. This process holds SSE
+  # streams open for minutes, so an idle-looking box may be carrying hundreds of
+  # live conversations -- CPU reads near zero and an HPA would scale it down
+  # mid-answer. Separate replica counts satisfy #635's "scale independently"
+  # honestly; concurrent connections is the signal that would work, and that is a
+  # metrics-pipeline project. Left out rather than shipped as `enabled: false`,
+  # which would render no HPA and quietly scale to one when somebody turned it on.
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+
+# -----------------------------------------------------------------------------
 # In-chart Postgres (set postgresql.enabled=false to use an external DB)
 # -----------------------------------------------------------------------------
 postgresql:
@@ -311,6 +405,9 @@ dbInit:
     - 16_llm_budgets.sql
     - 17_loglm_setup.sql
     - 18_agent_decision_ids.sql
+    - 19_agent_ledger.sql
+    - 20_agent_directives.sql
+    - 21_agent_run_leases.sql
   resources:
     requests:
       cpu: 50m
@@ -410,6 +507,12 @@ secrets:
   # Required when DEV_MODE=false (see env.example). Generate with:
   #   python -c "import secrets; print(secrets.token_urlsafe(64))"
   jwtSecretKey: ""
+
+  # Shared secret the agent worker presents on the /internal endpoints. Required
+  # to run a workflow: without it every /internal call answers 503. The worker
+  # must be given the same value. Generate with:
+  #   python -c "import secrets; print(secrets.token_urlsafe(48))"
+  agentInternalToken: ""
 
   # Optional data-source integrations.
   splunkPassword: ""
@@ -706,6 +809,17 @@ networkPolicies:
     # cluster-internal only. Add your SIEM/EDR outbound IPs here to let them
     # push findings.
     webhookAllowFrom: []
+  agentServe:
+    # agent-serve answers chat and run projections, and its probes ride the same
+    # port. Ingress rules are OR'd, so allowing probes from any namespace also
+    # opens that port to every pod in the cluster — leaving the bearer token as
+    # the only gate (ADR 0014).
+    #
+    # True by default because a kubelet probe comes from the node, not a pod, and
+    # whether a CNI lets that past a pod-selector rule varies; a probe blocked by
+    # policy takes the Deployment down. Set false on Calico or Cilium, which
+    # permit node-sourced health checks — then only the backend can reach it.
+    allowProbesFromAnyNamespace: true
 
 # -----------------------------------------------------------------------------
 # Development utilities (issue #117) — off by default, not for production

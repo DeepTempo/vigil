@@ -98,12 +98,21 @@ def test_missing_action_is_a_404(app):
     assert resp.status_code == 404
 
 
+# The agent layer owns the resume now: this side hands the decision over and that
+# side journals it, so the WorkflowsService phase loop is no longer what runs.
 @pytest.mark.unit
-def test_approving_a_workflow_linked_action_resumes_the_run(app):
+def test_approving_a_workflow_linked_action_resumes_the_run(app, monkeypatch):
+    from core.workflows import run_resume
+
+    resumed = []
+
+    async def _resume(run_id, action_id, actor):
+        resumed.append((run_id, action_id, actor))
+        return {"status": "completed"}
+
+    monkeypatch.setattr(run_resume, "resume_run", _resume)
     approvals = StubApprovals(actions=[_action(workflow_run_id="wfr-1")])
-    workflows = StubWorkflows()
     app.dependency_overrides[provide_approvals] = lambda: approvals
-    app.dependency_overrides[provide_workflows] = lambda: workflows
 
     resp = TestClient(app).post(
         "/api/approvals/ACT-1/approve", json={"approved_by": "tester"}
@@ -111,8 +120,7 @@ def test_approving_a_workflow_linked_action_resumes_the_run(app):
 
     assert resp.status_code == 200
     assert approvals.approved == [("ACT-1", "tester")]
-    # The run resumed through the injected WorkflowsService, not a real one.
-    assert workflows.resumed == [("wfr-1", "approved", {"approved_by": "tester"})]
+    assert resumed == [("wfr-1", "ACT-1", "tester")]
     assert resp.json()["resume_result"]["status"] == "completed"
 
 

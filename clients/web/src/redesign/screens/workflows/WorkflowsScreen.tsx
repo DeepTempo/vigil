@@ -6,9 +6,9 @@
    ============================================================ */
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
-import { EmptyState, Popup, activateOnKey } from '../../shared/ui'
+import { EmptyState, Popup, TextInput, activateOnKey } from '../../shared/ui'
 import { Markdown } from '../../shared/Markdown'
-import { prettyHandle, type Workflow, type AgentTemplate } from '../../data/appData'
+import { type Workflow, type AgentTemplate } from '../../data/appData'
 import { useWorkflows, useAgents, useAgentMeta, useSkills } from './useWorkflowsData'
 import { workflowApi, agentsApi, findingsApi, casesApi, type GeneratedAgentDraft } from '../../../services/api'
 import { skillsApi, SKILL_CATEGORIES, type SkillCategory, type SkillDraft } from '../../../services/skillsApi'
@@ -18,7 +18,7 @@ import type { ScreenProps } from '../../shared/types'
 
 type WfTab = 'workflows' | 'agents' | 'skills'
 
-export default function WorkflowsScreen({ openChat, goSettings }: ScreenProps) {
+export default function WorkflowsScreen({ goSettings }: ScreenProps) {
   const [tab, setTab] = useState<WfTab>('workflows')
   const tabs: [WfTab, string][] = [
     ['workflows', 'Workflows'],
@@ -42,7 +42,7 @@ export default function WorkflowsScreen({ openChat, goSettings }: ScreenProps) {
           ))}
         </div>
       </div>
-      {tab === 'workflows' && <WorkflowCatalog openChat={openChat} goSettings={goSettings} />}
+      {tab === 'workflows' && <WorkflowCatalog goSettings={goSettings} />}
       {tab === 'agents' && <AgentsTab />}
       {tab === 'skills' && <SkillsTab />}
     </>
@@ -84,7 +84,7 @@ function AgentSequence({ agents }: { agents: string[] }) {
 /* ---------------- Workflows catalog ---------------- */
 type WfModal = { kind: 'run' | 'history' | 'edit' | 'delete' | 'details'; wf: Workflow }
 
-function WorkflowCatalog({ openChat, goSettings }: { openChat: (prompt?: string) => void; goSettings: ScreenProps['goSettings'] }) {
+function WorkflowCatalog({ goSettings }: { goSettings: ScreenProps['goSettings'] }) {
   const { rows, phase, error, reload } = useWorkflows()
   const [q, setQ] = useState('')
   const [modal, setModal] = useState<WfModal | null>(null)
@@ -162,7 +162,7 @@ function WorkflowCatalog({ openChat, goSettings }: { openChat: (prompt?: string)
         </div>
       )}
       {modal?.kind === 'details' && <DetailsModal wf={modal.wf} onClose={close} />}
-      {modal?.kind === 'run' && <RunModal wf={modal.wf} openChat={openChat} onClose={close} />}
+      {modal?.kind === 'run' && <RunModal wf={modal.wf} onClose={close} onStarted={() => setModal({ kind: 'history', wf: modal.wf })} />}
       {modal?.kind === 'history' && <HistoryModal wf={modal.wf} onClose={close} />}
       {modal?.kind === 'edit' && <EditModal wf={modal.wf} onClose={close} onSaved={() => { close(); reload() }} />}
       {modal?.kind === 'delete' && <DeleteModal wf={modal.wf} onClose={close} onDeleted={() => { close(); reload() }} />}
@@ -337,26 +337,16 @@ function DetailsModal({ wf, onClose }: { wf: Workflow; onClose: () => void }) {
   )
 }
 
-/** Compose the chat prompt that runs a workflow (mirrors the old app's
-    buildSkillPrompt — the run happens as a streamed chat conversation). */
-function buildRunPrompt(wf: Workflow, p: { finding_id?: string; case_id?: string; context?: string; hypothesis?: string }): string {
-  const seq = wf.agents.map((a) => prettyHandle(a)).join(' → ')
-  let prompt = `Please execute the **${wf.name}** workflow.\n\n`
-  if (seq) prompt += `**Agent sequence:** ${seq}\n\n`
-  if (p.finding_id) prompt += `**Target Finding:** ${p.finding_id}\n`
-  if (p.case_id) prompt += `**Target Case:** ${p.case_id}\n`
-  if (p.hypothesis) prompt += `**Hunt Hypothesis:** ${p.hypothesis}\n`
-  if (p.context) prompt += `**Context:** ${p.context}\n`
-  return prompt.trim()
-}
-
-/** Run a workflow — collects a target, then sends it to the Vigil chat where
-    the response streams (matching the old app's "launch in chat" behavior). */
-function RunModal({ wf, openChat, onClose }: { wf: Workflow; openChat: (prompt?: string) => void; onClose: () => void }) {
+/** Run a workflow — collects a target, then starts it on the agent layer. The
+    run is enqueued and answers with an id, so this hands off to History, which
+    already reports phases, beliefs and whatever the run is waiting on. */
+function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: () => void; onClose: () => void }) {
   const [findingId, setFindingId] = useState('')
   const [caseId, setCaseId] = useState('')
   const [context, setContext] = useState('')
   const [hypothesis, setHypothesis] = useState('')
+  const [starting, setStarting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   // Suggestions for the ID fields, fetched from the live findings/cases lists.
   const [findingOpts, setFindingOpts] = useState<{ id: string; label: string }[]>([])
   const [caseOpts, setCaseOpts] = useState<{ id: string; label: string }[]>([])
@@ -382,17 +372,25 @@ function RunModal({ wf, openChat, onClose }: { wf: Workflow; openChat: (prompt?:
     ...(context.trim() && { context: context.trim() }),
     ...(hypothesis.trim() && { hypothesis: hypothesis.trim() }),
   }
-  const canRun = Object.keys(params).length > 0
+  const canRun = Object.keys(params).length > 0 && !starting
 
-  const run = () => {
-    openChat(buildRunPrompt(wf, params))
-    onClose()
+  const run = async () => {
+    setStarting(true)
+    setError(null)
+    try {
+      await workflowApi.execute(wf.id, params)
+      onStarted()
+    } catch (e) {
+      setError(errMsg(e))
+      setStarting(false)
+    }
   }
 
   return (
     <Popup open onClose={onClose} title={`Run · ${wf.name}`}>
       <div className="flex flex-col gap-3.5">
-        <p className="text-[12.5px] text-tx-3 leading-[1.5]">Provide at least one target, then run it in the Vigil chat — the agents stream their work there. Findings and cases drive the investigation; context and hypothesis steer hunts.</p>
+        <p className="text-[12.5px] text-tx-3 leading-[1.5]">Provide at least one target, then start the run — the agents work it on the server and History reports where it got to. Findings and cases drive the investigation; context and hypothesis steer hunts.</p>
+        {error && <div className="text-[12.5px] leading-[1.5]" style={{ color: 'var(--crit)' }}>{error}</div>}
         <ComboField label="Finding ID" value={findingId} onChange={setFindingId} placeholder="f-20260614-3b5c585e" options={findingOpts} hint={findingOpts.length ? `${findingOpts.length} recent findings — start typing to filter.` : undefined} />
         <ComboField label="Case ID" value={caseId} onChange={setCaseId} placeholder="case-2026-0142" options={caseOpts} />
         <Field label="Context" value={context} onChange={setContext} placeholder="Active ransomware on HOST-42…" textarea />
@@ -400,7 +398,7 @@ function RunModal({ wf, openChat, onClose }: { wf: Workflow; openChat: (prompt?:
         <div className="flex justify-end gap-2.5 pt-1">
           <button className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary" disabled={!canRun} style={{ opacity: canRun ? 1 : 0.5 }} onClick={run}>
-            <Icon name="send" /> Run in chat
+            <Icon name="play" /> {starting ? 'Starting…' : 'Run workflow'}
           </button>
         </div>
       </div>
@@ -486,10 +484,31 @@ interface WfPhase {
   cost_usd?: number | null
   error?: string | null
 }
+/** A hunt reports beliefs and where each stands; it has no phases to report against. */
+interface HuntStanding {
+  hypothesis_id: string
+  statement: string
+  status: string
+  attack_technique?: string | null
+  resolution_reason?: string | null
+}
+interface HuntView {
+  status: string
+  iteration: number
+  evidence_count: number
+  hypotheses: HuntStanding[]
+  open_checkpoint?: { question: string } | null
+}
 interface WfRunDetail extends WfRun {
   result_summary?: string | null
   phases?: WfPhase[]
+  hunt?: HuntView | null
 }
+
+// A run in flight moves on its own. Fetched once, the panel showed the iteration
+// the run happened to be on when it was opened and never moved again.
+const RUN_POLL_MS = 5_000
+const IN_FLIGHT = ['running', 'paused', 'pending']
 
 /** A run row that lazily fetches its full detail (getRun) when expanded. */
 function RunRow({ run }: { run: WfRun }) {
@@ -497,15 +516,30 @@ function RunRow({ run }: { run: WfRun }) {
   const [detail, setDetail] = useState<WfRunDetail | null>(null)
   const [dphase, setDphase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
 
+  const load = useCallback(
+    () =>
+      workflowApi
+        .getRun(run.run_id)
+        .then((res) => { setDetail(res.data as WfRunDetail); setDphase('ready') })
+        .catch(() => setDphase((p) => (p === 'ready' ? p : 'error'))),
+    [run.run_id],
+  )
+
+  // Stops on its own when the run reaches a terminal status: a finished run has
+  // nothing further to report, and the row would otherwise poll for the session.
+  const live = open && IN_FLIGHT.includes(detail?.status ?? run.status)
+  useEffect(() => {
+    if (!live) return
+    const timer = setInterval(() => { void load() }, RUN_POLL_MS)
+    return () => clearInterval(timer)
+  }, [live, load])
+
   const toggle = () => {
     const next = !open
     setOpen(next)
     if (next && dphase === 'idle') {
       setDphase('loading')
-      workflowApi
-        .getRun(run.run_id)
-        .then((res) => { setDetail(res.data as WfRunDetail); setDphase('ready') })
-        .catch(() => setDphase('error'))
+      void load()
     }
   }
 
@@ -527,7 +561,7 @@ function RunRow({ run }: { run: WfRun }) {
           <td colSpan={6}>
             {dphase === 'loading' && <div className="muted" style={{ padding: '10px 4px' }}>Loading run detail…</div>}
             {dphase === 'error' && <div className="muted" style={{ padding: '10px 4px' }}>Couldn’t load run detail.</div>}
-            {dphase === 'ready' && detail && <RunDetail d={detail} />}
+            {dphase === 'ready' && detail && <RunDetail d={detail} onSteered={load} />}
           </td>
         </tr>
       )}
@@ -535,10 +569,11 @@ function RunRow({ run }: { run: WfRun }) {
   )
 }
 
-function RunDetail({ d }: { d: WfRunDetail }) {
+function RunDetail({ d, onSteered }: { d: WfRunDetail; onSteered: () => void }) {
   const agentMeta = useAgentMeta()
   return (
     <div className="run-detail">
+      {IN_FLIGHT.includes(d.status) && <Steer runId={d.run_id} hunt={!!d.hunt} onSteered={onSteered} />}
       {d.error && (
         <div className="modal-section" style={{ marginTop: 4 }}>
           <h4 style={{ color: 'var(--crit)' }}>Error</h4>
@@ -570,11 +605,93 @@ function RunDetail({ d }: { d: WfRunDetail }) {
           </table>
         </div>
       )}
-      {!d.error && !d.result_summary && !d.phases?.length && (
+      {d.hunt && <HuntStandings hunt={d.hunt} />}
+      {!d.error && !d.result_summary && !d.phases?.length && !d.hunt && (
         <div className="muted" style={{ padding: '10px 4px' }}>No additional detail recorded for this run.</div>
       )}
     </div>
   )
+}
+
+/** Steer a run that is still going. Queued for the worker holding the ledger,
+ *  which is what turns a directive into an event on it — so nothing here is
+ *  instant, and the panel re-reads rather than claiming the run obeyed. */
+function Steer({ runId, hunt, onSteered }: { runId: string; hunt: boolean; onSteered: () => void }) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [said, setSaid] = useState<string | null>(null)
+
+  const send = (kind: string, text: string) => {
+    setBusy(kind)
+    setSaid(null)
+    workflowApi
+      .steer(runId, kind, text)
+      .then(() => { setSaid(`${kind} queued`); setNote(''); onSteered() })
+      .catch((e) => setSaid(errMsg(e)))
+      .finally(() => setBusy(null))
+  }
+
+  // abort and note apply to any run; a hunt is the only kind with beliefs to
+  // extend or a verdict to be told to reach.
+  const kinds = hunt ? ['abort', 'conclude', 'extend'] : ['abort']
+
+  return (
+    <div className="modal-section" style={{ marginTop: 4 }}>
+      <h4>Steer</h4>
+      <div className="flex gap-2 items-center flex-wrap">
+        {kinds.map((kind) => (
+          <button key={kind} className="btn ghost" disabled={busy !== null} onClick={() => send(kind, note.trim())}>
+            {kind}
+          </button>
+        ))}
+        <TextInput
+          className="grow"
+          placeholder="A note for the run — sent with the button you press, or on its own."
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <button className="btn ghost" disabled={busy !== null || !note.trim()} onClick={() => send('note', note.trim())}>
+          note
+        </button>
+      </div>
+      {said && <div className="muted text-[11.5px] mt-2">{said}</div>}
+    </div>
+  )
+}
+
+/** What a hunt has tested and how each belief stands — its equivalent of phase rows. */
+function HuntStandings({ hunt }: { hunt: HuntView }) {
+  return (
+    <div className="modal-section" style={{ marginTop: 12 }}>
+      <h4>Hypotheses</h4>
+      <div className="muted text-[11.5px] mb-2">
+        Iteration {hunt.iteration} · {hunt.evidence_count} piece{hunt.evidence_count === 1 ? '' : 's'} of evidence
+        {hunt.open_checkpoint && ` · waiting: ${hunt.open_checkpoint.question}`}
+      </div>
+      {hunt.hypotheses.length === 0 && <div className="muted" style={{ padding: '4px 0' }}>No hypotheses on the board yet.</div>}
+      {hunt.hypotheses.length > 0 && (
+        <table className="tbl">
+          <thead><tr><th>Statement</th><th>Technique</th><th>Standing</th></tr></thead>
+          <tbody>
+            {hunt.hypotheses.map((h) => (
+              <tr key={h.hypothesis_id}>
+                <td>{h.statement}{h.resolution_reason && <div className="muted text-[11px]">{h.resolution_reason}</div>}</td>
+                <td className="muted">{h.attack_technique || '—'}</td>
+                <td><span style={{ color: hypothesisColor(h.status) }}>{h.status}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+function hypothesisColor(s: string): string {
+  if (s === 'proven' || s === 'handed_off') return 'var(--crit)'
+  if (s === 'disproven') return 'var(--ok)'
+  if (s === 'parked' || s === 'inconclusive') return 'var(--tx-2)'
+  return 'var(--med)' // active
 }
 
 function runStatusColor(s: string): string {

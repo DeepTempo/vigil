@@ -52,17 +52,17 @@ def test_config_returns_none_when_integration_disabled():
 
 def test_config_returns_none_when_token_missing():
     cf = _import_cloudflare_tool()
+    # The token comes from the secrets store via the descriptor-driven resolver,
+    # not from get_integration_config — that store never holds a secret.
     with patch.object(cf, "is_integration_enabled", return_value=True), patch.object(
-        cf, "get_integration_config", return_value={"account_id": "abc"}
+        cf, "resolve", return_value={"account_id": "abc", "api_token": None}
     ):
         assert cf._config() is None
 
 
 def test_waf_block_ip_requires_account_id():
     cf = _import_cloudflare_tool()
-    out = cf._waf_block_ip(
-        api_token="t", account_id=None, ip="1.2.3.4", reason="test"
-    )
+    out = cf._waf_block_ip(api_token="t", account_id=None, ip="1.2.3.4", reason="test")
     assert out == {"error": "account_id required for WAF IP Access Rules"}
 
 
@@ -151,7 +151,9 @@ def test_parse_stix_indicator_handles_or_pattern():
 def test_parse_stix_indicator_skips_non_indicator():
     from core.threat_intel.threat_feed_service import parse_stix_indicator
 
-    assert parse_stix_indicator({"type": "malware"}, source="x", collection_id=None) == []
+    assert (
+        parse_stix_indicator({"type": "malware"}, source="x", collection_id=None) == []
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +164,11 @@ def test_parse_stix_indicator_skips_non_indicator():
 def _load_webhook_module():
     spec = importlib.util.spec_from_file_location(
         "cloudflare_webhooks_under_test",
-        _REPO_ROOT / "core" / "integrations" / "cloudflare" / "cloudflare_webhooks_router.py",
+        _REPO_ROOT
+        / "core"
+        / "integrations"
+        / "cloudflare"
+        / "cloudflare_webhooks_router.py",
     )
     mod = importlib.util.module_from_spec(spec)
     sys.modules["cloudflare_webhooks_under_test"] = mod

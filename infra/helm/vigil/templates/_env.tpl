@@ -58,3 +58,28 @@ chart-templated).
       key: {{ .Values.redis.external.existingSecretKey | default "REDIS_URL" }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Discrete Redis parts for the agent pods, for the reason vigil.env ships discrete
+POSTGRES_*: the kubelet substitutes $(REDIS_PASSWORD) into a URL unencoded, so one
+holding @ / : or # misparses. Only the agent reads these, and only when REDIS_HOST
+is set (services/agent/core/db.ts::redisConfig). Nothing is emitted for an external
+Redis given as a URL — there are no parts to name.
+*/}}
+{{- define "vigil.agentRedisEnv" -}}
+{{- if .Values.redis.bitnami.enabled }}
+- name: REDIS_HOST
+  value: {{ .Values.redis.bitnami.fullnameOverride | default (printf "%s-redis-master" .Release.Name) | quote }}
+- name: REDIS_PORT
+  value: "6379"
+- name: REDIS_DB
+  value: {{ include "vigil.redis.database" . | quote }}
+{{- else if .Values.redis.enabled }}
+- name: REDIS_HOST
+  value: {{ include "vigil.redis.fullname" . | quote }}
+- name: REDIS_PORT
+  value: {{ .Values.redis.service.port | default 6379 | toString | quote }}
+- name: REDIS_DB
+  value: {{ include "vigil.redis.database" . | quote }}
+{{- end }}
+{{- end -}}

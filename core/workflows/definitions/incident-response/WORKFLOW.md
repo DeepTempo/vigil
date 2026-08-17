@@ -1,27 +1,103 @@
 ---
 name: incident-response
 description: "Respond to active security incidents with rapid triage, deep investigation, containment, and documentation. Follows NIST IR framework."
-agents:
-  - triage
-  - investigator
-  - responder
-  - reporter
-tools-used:
-  - get_finding
-  - list_findings
-  - nearest_neighbors
-  - search_detections
-  - create_approval_action
-  - update_case
-  - create_case
-  - get_case
-  - create_attack_layer
-use-case: "Active incident response -- an alert fires and the SOC needs to triage, investigate, contain, and document."
-trigger-examples:
+use_case: "Active incident response -- an alert fires and the SOC needs to triage, investigate, contain, and document."
+trigger_examples:
   - "Run incident response on finding f-20260215-abc123"
   - "We have an active incident -- ransomware detected on HOST-42"
   - "Respond to this critical alert"
   - "IR workflow for this phishing finding"
+objectives:
+  - "Classify the alert and decide whether it warrants response"
+  - "Establish root cause, attack vector and blast radius"
+  - "Contain the threat and plan eradication and recovery"
+  - "Produce an audit-ready record of what happened and what was done"
+phases:
+  - id: triage
+    agent: triage
+    name: "Triage & Classify"
+    tools: [get_finding, list_findings]
+    instructions: |
+      Rapidly assess the alert: severity scoring, false-positive check,
+      categorisation.
+
+      1. Fetch the finding via `get_finding` to retrieve full details
+      2. Assess severity based on anomaly score, data source, and MITRE techniques
+      3. Categorize the alert: malware, intrusion, policy violation,
+         reconnaissance, exfiltration, or false positive
+      4. Assign priority: Critical (immediate action), High (within 1hr),
+         Medium (queue), Low (monitor), False Positive (dismiss)
+      5. Make an escalation decision with reasoning
+
+      Hand on the severity score, alert category, priority level and escalation
+      decision. If you classify this as a false positive, say so plainly in the
+      handoff: the later steps are written expecting a real incident, and a
+      dismissal they cannot see reads exactly like a confirmed one.
+
+  - id: investigation
+    agent: investigator
+    name: "Deep Investigation"
+    tools: [get_finding, list_findings, nearest_neighbors, search_detections]
+    instructions: |
+      Root cause analysis, evidence collection, timeline reconstruction and
+      cross-source correlation.
+
+      1. Retrieve full finding details and related context
+      2. Use `nearest_neighbors` to find similar findings via embedding similarity
+      3. Search detection rules for matching patterns
+      4. Reconstruct the timeline of events
+      5. Identify all affected entities: IPs, hostnames, user accounts, file hashes
+      6. Determine the attack vector and root cause
+      7. Document the chain of evidence
+
+      Hand on the root cause, attack vector, affected entities, evidence chain,
+      related findings and timeline.
+
+  - id: response
+    agent: responder
+    name: "Contain & Respond"
+    tools: [create_approval_action, get_finding, update_case]
+    approval_required: true
+    instructions: |
+      NIST IR containment: isolate hosts, block IPs, revoke credentials, plan
+      remediation.
+
+      1. Review the investigation results and affected entities
+      2. Assess the blast radius -- what systems, users and data are at risk
+      3. Plan containment actions with confidence scores:
+         - 0.95-1.0: Critical threat (ransomware, active C2) -- auto-approve
+         - 0.85-0.94: High confidence (confirmed malware) -- quick review
+         - 0.70-0.84: Moderate (suspicious activity) -- human approval required
+         - Below 0.70: needs more investigation
+      4. Submit containment actions via `create_approval_action`
+      5. Define eradication steps (remove malware, patch vulnerabilities,
+         revoke credentials)
+      6. Plan recovery and monitoring
+
+      Hand on the containment actions with their confidence scores, the approval
+      requests raised, the remediation checklist and the blast-radius assessment.
+
+  - id: report
+    agent: reporter
+    name: "Document & Report"
+    tools: [get_case, list_findings, create_attack_layer]
+    instructions: |
+      Generate an audience-tailored incident report with executive summary,
+      technical detail and lessons learned.
+
+      1. Gather all data from the prior steps (case, findings, actions taken)
+      2. Generate a MITRE ATT&CK Navigator layer for the incident
+      3. Structure the report with audience-tailored sections:
+         - **Executive Summary:** business impact in plain language
+         - **Technical Details:** evidence chain for the security team
+         - **Timeline:** chronological event reconstruction
+         - **Actions Taken:** containment and response measures
+         - **Recommendations:** preventive measures and next steps
+         - **Lessons Learned:** what to improve
+
+      Where an earlier step reported a gap rather than an answer, name it. A
+      report that reads the same whether or not anyone could look is worse than
+      one that admits what was not covered.
 ---
 
 # Incident Response Workflow
@@ -34,81 +110,6 @@ Multi-agent incident response workflow following the NIST Incident Response fram
 - A finding has been flagged as critical or high severity
 - An active threat (malware, C2, data exfiltration) has been detected
 - You need end-to-end incident handling from triage to report
-
-## Agent Sequence
-
-### Phase 1: Triage & Classify (Triage Agent)
-
-**Purpose:** Rapid assessment of the alert -- severity scoring, false-positive check, categorization.
-
-**Tools:** `get_finding`, `list_findings`
-
-**Steps:**
-1. Fetch the finding via `get_finding` to retrieve full details
-2. Assess severity based on anomaly score, data source, and MITRE techniques
-3. Categorize the alert: malware, intrusion, policy violation, reconnaissance, exfiltration, or false positive
-4. Assign priority: Critical (immediate action), High (within 1hr), Medium (queue), Low (monitor), False Positive (dismiss)
-5. Make escalation decision with reasoning
-
-**Output:** Severity score, alert category, priority level, escalation decision
-
-**Short-circuit:** If classified as False Positive, skip to Phase 4 for a brief dismissal report.
-
-### Phase 2: Deep Investigation (Investigator Agent)
-
-**Purpose:** Root cause analysis, evidence collection, timeline reconstruction, cross-source correlation.
-
-**Tools:** `get_finding`, `list_findings`, `nearest_neighbors`, `search_detections`
-
-**Steps:**
-1. Retrieve full finding details and related context
-2. Use `nearest_neighbors` to find similar findings via embedding similarity
-3. Search detection rules for matching patterns
-4. Reconstruct timeline of events
-5. Identify all affected entities: IPs, hostnames, user accounts, file hashes
-6. Determine attack vector and root cause
-7. Document chain of evidence
-
-**Output:** Root cause, attack vector, affected entities (IPs/hosts/users), evidence chain, related findings, timeline
-
-### Phase 3: Contain & Respond (Responder Agent)
-
-**Purpose:** NIST IR containment -- isolate hosts, block IPs, revoke credentials, plan remediation.
-
-**Tools:** `create_approval_action`, `get_finding`, `update_case`
-
-**Steps:**
-1. Review investigation results and affected entities
-2. Assess blast radius -- what systems/users/data are at risk
-3. Plan containment actions with confidence scores:
-   - 0.95-1.0: Critical threat (ransomware, active C2) -- auto-approve
-   - 0.85-0.94: High confidence (confirmed malware) -- quick review
-   - 0.70-0.84: Moderate (suspicious activity) -- human approval required
-   - Below 0.70: Needs more investigation
-4. Submit containment actions via `create_approval_action`
-5. Define eradication steps (remove malware, patch vulnerabilities, revoke credentials)
-6. Plan recovery and monitoring
-
-**Output:** Containment actions with confidence scores, approval requests, remediation checklist, blast radius assessment
-
-### Phase 4: Document & Report (Reporter Agent)
-
-**Purpose:** Generate audience-tailored incident report with executive summary, technical details, and lessons learned.
-
-**Tools:** `get_case`, `list_findings`, `create_attack_layer`
-
-**Steps:**
-1. Gather all data from prior phases (case, findings, actions taken)
-2. Generate MITRE ATT&CK Navigator layer for the incident
-3. Structure report with audience-tailored sections:
-   - **Executive Summary:** Business impact in plain language
-   - **Technical Details:** Evidence chain for the security team
-   - **Timeline:** Chronological event reconstruction
-   - **Actions Taken:** Containment and response measures
-   - **Recommendations:** Preventive measures and next steps
-   - **Lessons Learned:** What to improve
-
-**Output:** Complete incident report, MITRE ATT&CK layer, event timeline, recommendations
 
 ## Example Invocation
 

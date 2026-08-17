@@ -12,6 +12,7 @@ ENV_EXAMPLE = Path(__file__).resolve().parents[3] / "env.example"
 NOT_SETTINGS = {
     # Credentials — the encrypted store owns these, read via get_secret so a
     # value saved in the UI wins over the environment.
+    "AGENT_INTERNAL_TOKEN",
     "ALIENVAULT_OTX_API_KEY",
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
@@ -89,6 +90,18 @@ NOT_SETTINGS = {
     "BIND_HOST",
     "GRAFANA_PASSWORD",
     "VITE_EXTENSION_ORIGIN_ALLOWLIST",
+    # Read by the TypeScript agent processes themselves, not by Settings.
+    "AGENT_HEALTH_PORT",
+    "AGENT_HTTP_PORT",
+    # The agent worker's Redis parts. Python has no equivalent -- it reads
+    # REDIS_URL, which is a Setting.
+    "REDIS_HOST",
+    "REDIS_PORT",
+    "REDIS_DB",
+    "VIGIL_PLAYBOOKS_URL",
+    "VIGIL_PRICING_URL",
+    "VIGIL_RUNS_URL",
+    "VIGIL_TOOLS_URL",
     # Bootstrap for the secrets manager itself, which cannot depend on Settings.
     "ENABLE_KEYRING",
     "SECRETS_BACKEND",
@@ -113,7 +126,9 @@ def _documented_keys() -> set:
 
 @pytest.mark.unit
 def test_every_setting_is_documented():
-    undocumented = sorted({n.upper() for n in Settings.model_fields} - _documented_keys())
+    undocumented = sorted(
+        {n.upper() for n in Settings.model_fields} - _documented_keys()
+    )
     assert not undocumented, (
         "Settings fields missing from env.example. Every knob must be "
         "discoverable there:\n  " + "\n  ".join(undocumented)

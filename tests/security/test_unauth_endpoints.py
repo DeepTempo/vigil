@@ -102,19 +102,7 @@ PROTECTED_ROUTES = [
         "/api/integrations/compatibility/install",
         {"integration_id": "misp"},
     ),
-    ("GET", "/api/claude/sdk-status", None),
     ("GET", "/api/claude/models", None),
-    (
-        "POST",
-        "/api/claude/chat",
-        {
-            "messages": [{"role": "user", "content": "auth gate test"}],
-            "max_tokens": 1,
-            "enable_thinking": False,
-            "streaming": False,
-            "use_agent_sdk": False,
-        },
-    ),
     (
         "POST",
         "/api/claude/chat/stream",
@@ -122,11 +110,6 @@ PROTECTED_ROUTES = [
             "messages": [{"role": "user", "content": "auth gate test"}],
             "max_tokens": 1,
         },
-    ),
-    (
-        "POST",
-        "/api/claude/agent/task",
-        {"task": "auth gate test only", "max_turns": 1, "allowed_tools": []},
     ),
     ("POST", "/api/claude/analyze-finding?finding_id=auth-gate-test", None),
     ("GET", "/api/webhooks/", None),
@@ -143,6 +126,15 @@ PROTECTED_ROUTES = [
     ("GET", "/api/integrations/vstrike/ui/networks", None),
     ("POST", "/api/integrations/vstrike/ui/iframe-token", None),
     ("GET", "/api/integrations/vstrike/topology/asset/test-asset", None),
+    # The agent layer's own surfaces. /api/* takes a session; /internal/* takes
+    # the shared secret, and answers the same way when it is not presented.
+    ("POST", "/api/agent-runs", {"run_kind": "hunt", "playbook": "p", "config": "c"}),
+    ("GET", "/api/agent-runs/9c1c2d3e-0000-4000-8000-000000000592", None),
+    (
+        "POST",
+        "/api/agent-runs/9c1c2d3e-0000-4000-8000-000000000592/directives",
+        {"kind": "note", "text": "auth gate test"},
+    ),
     # Routes that were on bare `router` (no auth) — fixed in issue #286.
     ("POST", "/api/integrations/vstrike/network-graph", {"network_id": "test"}),
     ("POST", "/api/integrations/vstrike/ui/legend-apply", {"legend_run_id": "test"}),
@@ -167,6 +159,49 @@ def test_unauthenticated_request_is_rejected(app, method, path, body):
         f"{method} {path} returned {response.status_code} "
         f"(body: {response.text[:200]})"
     )
+
+
+# The agent layer's /internal surfaces. Their gate is the shared secret rather than
+# a session, so the secret has to exist for the refusal to be about the caller: with
+# none configured every call answers 503, which is a different fact.
+INTERNAL_ROUTES = [
+    ("GET", "/internal/runs/run-auth-gate/decisions", None),
+    ("POST", "/internal/runs/run-auth-gate/terminal", {"outcome": "failed"}),
+    (
+        "POST",
+        "/internal/runs/run-auth-gate/checkpoints",
+        {"checkpoint_id": "apr-1", "checkpoint_class": "tool_approval", "question": "Approve?"},
+    ),
+    (
+        "POST",
+        "/internal/tools/invoke",
+        {"tool": "noop", "args": {}, "bounds": {"max_rows": 1, "timeout_ms": 1000}},
+    ),
+    ("GET", "/internal/pricing/rates?model_id=m&provider_type=p", None),
+]
+
+
+@pytest.mark.parametrize("method,path,body", INTERNAL_ROUTES)
+def test_internal_route_without_the_shared_secret_is_rejected(
+    app, monkeypatch, method, path, body
+):
+    from core.agents import internal_auth
+
+    monkeypatch.setattr(internal_auth, "get_secret", lambda name: "configured-secret")
+    response = app.request(method, path, json=body)
+    assert response.status_code == 401, (
+        f"{method} {path} returned {response.status_code} (body: {response.text[:200]})"
+    )
+
+
+@pytest.mark.parametrize("method,path,body", INTERNAL_ROUTES)
+def test_internal_route_says_so_when_no_secret_is_configured(
+    app, monkeypatch, method, path, body
+):
+    from core.agents import internal_auth
+
+    monkeypatch.setattr(internal_auth, "get_secret", lambda name: None)
+    assert app.request(method, path, json=body).status_code == 503
 
 
 def test_unauthenticated_claude_upload_file_is_rejected(app):

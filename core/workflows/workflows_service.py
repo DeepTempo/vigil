@@ -1,81 +1,46 @@
 """Workflows service for discovering, parsing, and executing WORKFLOW.md workflow definitions."""
 
-import asyncio
 import logging
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.integrations.mcp.registry import MCPRegistry
-from core.llm.defaults import DEFAULT_MODEL
-from core.response.approval_service import ActionType, ApprovalService
+import yaml
+
+from core.agents.queue import new_run_id
 from core.workflows.custom_workflow_service import CustomWorkflowService
 from core.workflows.workflow_run_service import WorkflowRunService
 
 logger = logging.getLogger(__name__)
 
+# What a workflow definition runs as, and how a job names one. Both belong to the
+# agent layer's vocabulary, so they are stated here once rather than inline.
+COMPOSE_RUN_KIND = "compose"
+HUNT_RUN_KIND = "hunt"
+WORKFLOW_SCHEME = "workflow:"
 
+
+def _nothing_to_run(workflow: "WorkflowDefinition") -> str:
+    if workflow.run_kind == HUNT_RUN_KIND:
+        return "" if workflow.metadata.get("hypotheses") else "hypotheses"
+    return "" if workflow.phases else "phases"
+
+
+# Real YAML rather than the regex reader this replaced. That reader could not carry
+# a phase list, and PyYAML has been a declared dependency the whole time it avoided it.
 def _parse_yaml_frontmatter(content: str) -> Dict[str, Any]:
-    """
-    Parse YAML frontmatter from a WORKFLOW.md file.
-
-    Uses simple regex parsing to avoid pyyaml dependency.
-    Handles strings, lists (both inline [...] and indented - item).
-    """
-    # Match frontmatter block: --- ... --- followed by newline, EOF, or content
     match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", content, re.DOTALL)
     if not match:
         return {}
 
-    frontmatter_text = match.group(1)
-    result = {}
-    current_key = None
-    current_list = None
+    try:
+        parsed = yaml.safe_load(match.group(1))
+    except yaml.YAMLError as exc:
+        logger.warning("unreadable workflow front matter: %s", exc)
+        return {}
 
-    for line in frontmatter_text.split("\n"):
-        # Skip empty lines and comments
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-
-        # Check for list continuation (indented "- item")
-        if current_key and current_list is not None and re.match(r"^\s+-\s+", line):
-            item = re.sub(r"^\s+-\s+", "", line).strip().strip('"').strip("'")
-            current_list.append(item)
-            result[current_key] = current_list
-            continue
-
-        # Key-value pair
-        kv_match = re.match(r"^(\S+):\s*(.*)", line)
-        if kv_match:
-            key = kv_match.group(1)
-            value = kv_match.group(2).strip()
-            current_key = key
-            current_list = None
-
-            if not value:
-                # Might be start of a list
-                current_list = []
-                result[key] = current_list
-            elif value.startswith("[") and value.endswith("]"):
-                # Inline list: [item1, item2, ...]
-                items = value[1:-1].split(",")
-                result[key] = [
-                    i.strip().strip('"').strip("'") for i in items if i.strip()
-                ]
-                current_list = None
-            elif value.startswith('"') and value.endswith('"'):
-                result[key] = value[1:-1]
-                current_list = None
-            elif value.startswith("'") and value.endswith("'"):
-                result[key] = value[1:-1]
-                current_list = None
-            else:
-                result[key] = value
-                current_list = None
-
-    return result
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _get_frontmatter_end(content: str) -> int:
@@ -112,26 +77,45 @@ class WorkflowDefinition:
         return self.metadata.get("description", "")
 
     @property
+    def phases(self) -> List[Dict[str, Any]]:
+        phases = self.metadata.get("phases") or []
+        return phases if isinstance(phases, list) else []
+
+    # Derived, never restated: the phase list already says which agents run and
+    # in what order, and a second copy is one edit away from disagreeing with it.
+    @property
     def agents(self) -> List[str]:
-        agents = self.metadata.get("agents", [])
-        if isinstance(agents, str):
-            return [a.strip() for a in agents.split(",")]
-        return agents
+        seen: List[str] = []
+        for phase in self.phases:
+            agent = (phase or {}).get("agent") or (phase or {}).get("agent_id")
+            if agent and agent not in seen:
+                seen.append(agent)
+        return seen
 
     @property
     def tools_used(self) -> List[str]:
-        tools = self.metadata.get("tools-used", [])
-        if isinstance(tools, str):
-            return [t.strip() for t in tools.split(",")]
-        return tools
+        seen: List[str] = []
+        for phase in self.phases:
+            for tool in (phase or {}).get("tools") or []:
+                if tool not in seen:
+                    seen.append(tool)
+        return seen
+
+    # Which loop drives this definition. compose walks the phases in order; hunt
+    # runs the hypothesis loop over what the definition states. Declared, because
+    # a definition that states hypotheses is asking for a different thing.
+    @property
+    def run_kind(self) -> str:
+        declared = self.metadata.get("run_kind")
+        return str(declared) if declared else COMPOSE_RUN_KIND
 
     @property
     def use_case(self) -> str:
-        return self.metadata.get("use-case", "")
+        return self.metadata.get("use_case", "")
 
     @property
     def trigger_examples(self) -> List[str]:
-        examples = self.metadata.get("trigger-examples", [])
+        examples = self.metadata.get("trigger_examples", [])
         if isinstance(examples, str):
             return [examples]
         return examples
@@ -163,23 +147,14 @@ def _custom_workflow_to_definition(wf: Dict[str, Any]) -> WorkflowDefinition:
     can consume it without changes.
     """
     phases = wf.get("phases") or []
-    agents: List[str] = []
-    tools: List[str] = []
-    for phase in phases:
-        agent_id = phase.get("agent_id")
-        if agent_id and agent_id not in agents:
-            agents.append(agent_id)
-        for tool in phase.get("tools", []) or []:
-            if tool not in tools:
-                tools.append(tool)
 
+    # The same key set a file-based playbook carries, so both resolve identically
+    # and agents/tools stay derived from the phases rather than stated beside them.
     metadata = {
         "name": wf.get("name", wf.get("workflow_id")),
         "description": wf.get("description", ""),
-        "agents": agents,
-        "tools-used": tools,
-        "use-case": wf.get("use_case", ""),
-        "trigger-examples": wf.get("trigger_examples") or [],
+        "use_case": wf.get("use_case", ""),
+        "trigger_examples": wf.get("trigger_examples") or [],
         "phases": phases,
     }
 
@@ -240,9 +215,7 @@ class WorkflowsService:
     def __init__(
         self,
         workflows_dir: Optional[Path] = None,
-        approvals: Optional[ApprovalService] = None,
         custom_workflows: Optional[CustomWorkflowService] = None,
-        mcp_registry: Optional[MCPRegistry] = None,
         workflow_runs: Optional[WorkflowRunService] = None,
     ):
         """
@@ -256,9 +229,7 @@ class WorkflowsService:
             workflows_dir = Path(__file__).resolve().parent / "definitions"
 
         self.workflows_dir = Path(workflows_dir)
-        self._approvals = approvals or ApprovalService()
         self._custom_workflows = custom_workflows or CustomWorkflowService()
-        self._mcp_registry = mcp_registry or MCPRegistry()
         self._workflow_runs = workflow_runs or WorkflowRunService()
         self._cache: Dict[str, WorkflowDefinition] = {}
         self._cache_loaded_at: Optional[datetime] = None
@@ -356,882 +327,88 @@ class WorkflowsService:
             return workflow.to_dict(include_body=include_body)
         return None
 
-    def build_execution_prompt(
-        self,
-        workflow: WorkflowDefinition,
-        target_context: str,
-        agent_profiles: Optional[Dict] = None,
-    ) -> str:
-        """
-        Build a composite prompt that instructs Claude to execute a workflow.
-
-        Embeds the workflow's full instructions plus relevant agent methodologies
-        into a single prompt for ClaudeService.run_agent_task().
-
-        Args:
-            workflow: The workflow definition to execute
-            target_context: Context about the target (finding details, case details, etc.)
-            agent_profiles: Optional dict of agent_id -> AgentProfile for embedding methodologies
-
-        Returns:
-            Composite prompt string
-        """
-        # Build agent methodology section
-        agent_section = ""
-        if agent_profiles:
-            agent_section = "\n\n## Agent Methodologies\n\n"
-            agent_section += "You will be executing this workflow by embodying each agent in sequence. "
-            agent_section += (
-                "Here are the methodologies for each agent you will use:\n\n"
-            )
-
-            for agent_id in workflow.agents:
-                profile = agent_profiles.get(agent_id)
-                if profile:
-                    agent_section += f"### {profile.name} ({agent_id})\n"
-                    agent_section += f"**Specialization:** {profile.specialization}\n"
-                    agent_section += f"**Description:** {profile.description}\n"
-                    # Extract methodology from system prompt
-                    methodology_match = re.search(
-                        r"<methodology>(.*?)</methodology>",
-                        profile.system_prompt,
-                        re.DOTALL,
-                    )
-                    if methodology_match:
-                        agent_section += (
-                            f"**Methodology:**\n{methodology_match.group(1).strip()}\n"
-                        )
-                    agent_section += "\n"
-
-        prompt = f"""# Execute Workflow: {workflow.name}
-
-## Workflow Description
-{workflow.description}
-
-## Target Context
-{target_context}
-
-## Workflow Instructions
-
-You are executing the **{workflow.name}** workflow. Follow each phase in order,
-using the specified tools to gather data and build context between phases.
-Pass the outputs of each phase as input context to the next phase.
-
-For each phase:
-1. Announce which phase you are starting and which agent role you are adopting
-2. Follow the agent's methodology for that phase
-3. Use the specified tools to gather data
-4. Summarize your findings before moving to the next phase
-5. When all phases are complete, provide a final consolidated summary
-
-{workflow.body}
-{agent_section}
-
-## Execution Rules
-
-- Execute ALL phases in order. Do not skip phases unless explicitly noted (e.g., false positive short-circuit).
-- For each phase, clearly label which agent role you are performing as.
-- Use available tools actively -- do not speculate when you can query.
-- Pass context between phases: findings from Phase 1 inform Phase 2, etc.
-- At the end, provide a structured summary of the entire workflow execution.
-"""
-        return prompt
-
+    # The whole of execution. The playbook decides the order, the agent layer runs
+    # it, and this enqueues the run and hands back the id the UI follows.
     async def execute_workflow(
         self,
         workflow_id: str,
         parameters: Dict[str, Any],
         triggered_by: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Execute a workflow as a playbook run.
+        """Start a workflow as a compose run on the agent layer.
 
-        Custom workflows with a structured ``phases`` list run phase-
-        by-phase so ``approval_required`` can actually block execution
-        (#128). File-based workflows without structured phases fall
-        back to the legacy one-shot composite prompt — there's nothing
-        to gate on.
-
-        Returns an execution result dict. If a phase pauses on
-        approval, the response shape is
-        ``{success: True, status: "paused", run_id,
-           pending_approval_action_id, paused_at_phase}`` and the caller
-        (or the Approvals UI) must call ``resume_workflow`` once a
-        decision is made.
+        Returns ``{success, status: "queued", run_id, job_id}``. Progress
+        and the outcome are read back through the run record, which the
+        agent layer mirrors as each phase completes.
         """
+        from core.agents.queue import build_start_job, enqueue_run
+
         workflow = self.get_workflow(workflow_id)
         if not workflow:
             return {"success": False, "error": f"Workflow not found: {workflow_id}"}
-
-        phases = workflow.metadata.get("phases") or []
-        if not phases:
-            # No structured phases → legacy one-shot path. There's no
-            # phase to gate on, so approval_required has no meaning.
-            return await self._execute_oneshot(workflow, parameters, triggered_by)
-
-        return await self._execute_phased(workflow, phases, parameters, triggered_by)
-
-    async def resume_workflow(
-        self,
-        run_id: str,
-        decision: str,
-        *,
-        rejection_reason: Optional[str] = None,
-        approved_by: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Resume a paused workflow run after an approval decision (#128).
-
-        Called from the approvals endpoint (or the workflow-run resume
-        endpoint). ``decision`` is ``"approved"`` or ``"rejected"``.
-        On approve, re-enters the phase loop at the paused phase. On
-        reject, finalises the run as ``cancelled``.
-        """
-        if decision not in ("approved", "rejected"):
-            return {"success": False, "error": f"Invalid decision: {decision}"}
-
-        run_service = self._workflow_runs
-        run = run_service.get_run(run_id)
-        if run is None:
-            return {"success": False, "error": f"Run not found: {run_id}"}
-        if run.get("status") != "paused":
+        # Caught here as well as in the resolver, so a definition with nothing to
+        # run is refused before it leaves a run record behind. The two loops read
+        # different sections, so they are empty in different ways.
+        missing = _nothing_to_run(workflow)
+        if missing:
             return {
                 "success": False,
-                "error": (f"Run {run_id} is not paused (status={run.get('status')})"),
+                "error": f"Workflow declares no {missing}: {workflow_id}",
             }
-
-        phases_rows = run_service.list_phases(run_id)
-        paused = next(
-            (p for p in phases_rows if p["status"] == "pending_approval"),
-            None,
-        )
-        if paused is None:
-            return {
-                "success": False,
-                "error": f"No pending_approval phase found on run {run_id}",
-            }
-
-        workflow = self.get_workflow(run["workflow_id"])
-        if not workflow:
-            run_service.finalize_run(
-                run_id,
-                status="failed",
-                error=f"Workflow {run['workflow_id']} no longer exists",
-            )
-            return {
-                "success": False,
-                "error": f"Workflow not found: {run['workflow_id']}",
-            }
-
-        phases = workflow.metadata.get("phases") or []
-        phase_index = next(
-            (
-                i
-                for i, p in enumerate(phases)
-                if (p.get("phase_id") or f"phase-{p.get('order', i + 1)}")
-                == paused["phase_id"]
-            ),
-            None,
-        )
-        if phase_index is None:
-            run_service.finalize_run(
-                run_id,
-                status="failed",
-                error=(
-                    f"Paused phase {paused['phase_id']} no longer in "
-                    f"workflow definition"
-                ),
-            )
-            return {
-                "success": False,
-                "error": "Paused phase missing from workflow definition",
-            }
-
-        if decision == "rejected":
-            reason = rejection_reason or "Rejected by analyst"
-            run_service.upsert_phase(
-                run_id,
-                paused["phase_id"],
-                phase_order=paused["phase_order"],
-                agent_id=paused["agent_id"],
-                status="failed",
-                approval_state="rejected",
-                error=reason,
-                finished_at=datetime.utcnow(),
-            )
-            run_service.finalize_run(
-                run_id, status="cancelled", error=f"Rejected: {reason}"
-            )
-            return {
-                "success": True,
-                "status": "cancelled",
-                "run_id": run_id,
-                "rejection_reason": reason,
-                "rejected_by": approved_by,
-            }
-
-        # Approved — mark the approval state and re-enter the loop.
-        run_service.upsert_phase(
-            run_id,
-            paused["phase_id"],
-            phase_order=paused["phase_order"],
-            agent_id=paused["agent_id"],
-            status="pending",
-            approval_state="approved",
-        )
-        run_service.set_status(run_id, "running")
-
-        # Rebuild accumulated context from completed prior phases.
-        accumulated: Dict[str, Any] = {}
-        for p in phases_rows:
-            if p["status"] == "completed":
-                accumulated[p["phase_id"]] = p.get("output") or {}
-
-        return await self._run_phase_loop(
-            workflow=workflow,
-            phases=phases,
-            start_index=phase_index,
-            run_id=run_id,
-            parameters=dict(run.get("trigger_context") or {}),
-            accumulated=accumulated,
-            triggered_by=run.get("triggered_by"),
-            skill_tools_available=list(run.get("skill_tools_available") or []),
-        )
-
-    # ------------------------------------------------------------------
-    # Internal execution helpers
-    # ------------------------------------------------------------------
-
-    def _resolve_agent_provider(self, component: str):
-        """Resolve ``(provider_spec, model_id)`` for a workflow agent.
-
-        Uses the same ``ai_model_configs`` chain the daemon and Model
-        Assignment UI use (component → chat_default → default Anthropic).
-        Returns ``(None, model_id)`` when the resolved provider is Anthropic —
-        that path stays on ``ClaudeService.chat``. A non-Anthropic provider
-        returns its ``ProviderSpec`` so the caller runs the OpenAI agent loop.
-        Any failure degrades to ``(None, DEFAULT_MODEL)`` (legacy behavior).
-        """
-        try:
-            from core.llm.router.router import get_provider_spec
-            from core.llm.providers.registry import get_registry
-
-            pick = get_registry().resolve_model_for_component(component)
-            if not pick:
-                return None, DEFAULT_MODEL
-            provider_id, model_id = pick
-            spec = get_provider_spec(provider_id)
-            if spec is None or spec.provider_type == "anthropic":
-                return None, model_id
-            return spec, model_id
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Provider resolution failed (%s); using default", exc)
-            return None, DEFAULT_MODEL
-
-    async def _run_agent_turn(
-        self,
-        *,
-        claude_service,
-        component: str,
-        message: str,
-        system_prompt: Optional[str],
-        recommended_tools: Optional[List[str]],
-        max_tokens: int,
-        session_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-    ) -> Optional[str]:
-        """Run one workflow agent turn on the correct provider.
-
-        Anthropic → the existing ``ClaudeService.chat`` loop (unchanged).
-        Non-Anthropic → ``OpenAIAgentService`` (full multi-turn tool loop with
-        the same tier/approval gating), returning the final text like ``chat``.
-        """
-        spec, model_id = self._resolve_agent_provider(component)
-
-        if spec is None:
-            return await asyncio.to_thread(
-                claude_service.chat,
-                message=message,
-                system_prompt=system_prompt,
-                model=model_id,
-                max_tokens=max_tokens,
-                recommended_tools=recommended_tools,
-            )
-
-        from core.llm.harness.openai import OpenAIAgentService
-
-        agent = OpenAIAgentService(
-            recommended_tools=recommended_tools, approvals=self._approvals
-        )
-        return await agent.run(
-            provider=spec,
-            messages=[{"role": "user", "content": message}],
-            system_prompt=system_prompt,
-            model=model_id,
-            max_tokens=max_tokens,
-            enable_tools=True,
-            session_id=session_id,
-            agent_id=agent_id,
-        )
-
-    async def _execute_oneshot(
-        self,
-        workflow: "WorkflowDefinition",
-        parameters: Dict[str, Any],
-        triggered_by: Optional[str],
-    ) -> Dict[str, Any]:
-        """Legacy composite-prompt path for file-based workflows that
-        don't have structured phases. No approval gating possible —
-        there's no phase_id to attach an approval to."""
-        from core.llm.harness.claude import ClaudeService
-        from core.agents.manager import SOCAgentLibrary
-
-        target_context = self._build_target_context(parameters)
-        all_agents = SOCAgentLibrary.get_all_agents()
-        agent_profiles = {
-            agent_id: all_agents[agent_id]
-            for agent_id in workflow.agents
-            if agent_id in all_agents
-        }
-        prompt = self.build_execution_prompt(
-            workflow=workflow,
-            target_context=target_context,
-            agent_profiles=agent_profiles,
-        )
-        all_tools, skill_tool_names = self._collect_tools(workflow, agent_profiles)
-        system_prompt = self._build_system_prompt(workflow, skill_tool_names)
-
-        claude_service = ClaudeService(
-            use_backend_tools=True,
-            use_mcp_tools=True,
-            use_agent_sdk=False,
-            enable_thinking=True,
-            mcp_registry=self._mcp_registry,
-        )
-        # The oneshot composite call runs on the workflow-default assignment
-        # (chat_default). Only require an Anthropic key when that resolves to
-        # Anthropic — a non-Anthropic provider carries its own Bifrost key.
-        oneshot_provider, oneshot_model = self._resolve_agent_provider("chat_default")
-        if oneshot_provider is None and not claude_service.has_api_key():
-            return {"success": False, "error": "Claude API not configured"}
 
         workflow_dict = workflow.to_dict(include_body=False)
-
-        # #184 Phase 2: pre-call cost estimate for the run record. Workflows
-        # don't have a per-run budget cap (Bifrost VK enforcement is the
-        # gate), but stashing the projected USD band into trigger_context
-        # gives operators an audit trail of expected vs. actual spend.
-        # Best-effort — telemetry never blocks a workflow.
-        trigger_context = dict(parameters or {})
-        try:
-            from core.llm.cost.estimator import estimate_cost
-
-            _est = await estimate_cost(
-                provider_type=(
-                    oneshot_provider.provider_type if oneshot_provider else "anthropic"
-                ),
-                model_id=oneshot_model,
-                messages=[{"role": "user", "content": prompt}],
-                system_prompt=system_prompt,
-                max_tokens=8192,
-            )
-            trigger_context["cost_estimate"] = _est.to_dict()
-        except Exception as _est_err:  # noqa: BLE001
-            logger.debug(
-                "Workflow %s pre-flight estimate failed (%s); proceeding",
-                workflow.id,
-                _est_err,
-            )
-
         run_service = self._workflow_runs
+        # One id for one run: the workflow run record and the agent ledger are two
+        # views of the same thing, so a mirrored phase needs no id translation.
         run_id = run_service.begin_run(
             workflow_id=workflow.id,
             workflow_name=workflow.name,
             workflow_source=workflow_dict.get("source", "file"),
             workflow_version=workflow_dict.get("version"),
-            trigger_context=trigger_context,
-            triggered_by=triggered_by,
-            skill_tools_available=skill_tool_names,
-        )
-
-        try:
-            response_text = await self._run_agent_turn(
-                claude_service=claude_service,
-                component="chat_default",
-                message=prompt,
-                system_prompt=system_prompt,
-                recommended_tools=all_tools if all_tools else None,
-                max_tokens=8192,
-                session_id=run_id,
-            )
-            success = response_text is not None
-            error = None if success else "LLM returned no response"
-        except Exception as exc:  # noqa: BLE001
-            response_text = ""
-            success = False
-            error = f"{type(exc).__name__}: {exc}"
-            logger.exception("Workflow execution failed for %s", workflow.id)
-
-        if run_id:
-            run_service.finalize_run(
-                run_id,
-                status="completed" if success else "failed",
-                result_summary=response_text or None,
-                error=error,
-            )
-
-        return {
-            "success": success,
-            "status": "completed" if success else "failed",
-            "run_id": run_id,
-            "workflow": workflow_dict,
-            "result": response_text or "",
-            "tool_calls": [],
-            "error": error,
-            "parameters": parameters,
-            "skill_tools_available": skill_tool_names,
-            "executed_at": datetime.now().isoformat(),
-        }
-
-    async def _execute_phased(
-        self,
-        workflow: "WorkflowDefinition",
-        phases: List[Dict[str, Any]],
-        parameters: Dict[str, Any],
-        triggered_by: Optional[str],
-    ) -> Dict[str, Any]:
-        """Phase-by-phase execution path for custom workflows (#128)."""
-        from core.llm.harness.claude import ClaudeService
-
-        if not ClaudeService(
-            use_backend_tools=False, use_mcp_tools=False, use_agent_sdk=False
-        ).has_api_key():
-            return {"success": False, "error": "Claude API not configured"}
-
-        _, skill_tool_names = self._collect_tools(workflow, {})
-
-        workflow_dict = workflow.to_dict(include_body=False)
-        run_service = self._workflow_runs
-        run_id = run_service.begin_run(
-            workflow_id=workflow.id,
-            workflow_name=workflow.name,
-            workflow_source=workflow_dict.get("source", "custom"),
-            workflow_version=workflow_dict.get("version"),
             trigger_context=dict(parameters or {}),
             triggered_by=triggered_by,
-            skill_tools_available=skill_tool_names,
+            run_id=new_run_id(),
         )
-
         if not run_id:
+            return {"success": False, "error": "Could not persist run (DB unavailable)"}
+
+        job = build_start_job(
+            run_id=run_id,
+            # The definition's, not a constant: threat-hunt drives the hypothesis
+            # loop and the other four walk their phases, from one entry point.
+            run_kind=workflow.run_kind,
+            request={
+                # A reference, not a path: the agent layer asks for the resolved
+                # layers at run start, so an edited definition reaches the next run.
+                "arch": "",
+                "playbook": f"{WORKFLOW_SCHEME}{workflow.id}",
+                "config": "",
+                "prompt": self._build_target_context(parameters),
+            },
+            enqueued_by=triggered_by or "api",
+        )
+        try:
+            job_id = await enqueue_run(job)
+        except Exception as exc:  # noqa: BLE001
+            run_service.finalize_run(
+                run_id, status="failed", error=f"Could not enqueue run: {exc}"
+            )
+            logger.error("Could not enqueue workflow run %s: %s", run_id, exc)
             return {
                 "success": False,
-                "error": "Could not persist run (DB unavailable)",
+                "error": "run queue unavailable",
+                "run_id": run_id,
             }
 
-        return await self._run_phase_loop(
-            workflow=workflow,
-            phases=phases,
-            start_index=0,
-            run_id=run_id,
-            parameters=parameters,
-            accumulated={},
-            triggered_by=triggered_by,
-            skill_tools_available=skill_tool_names,
-        )
-
-    async def _run_phase_loop(
-        self,
-        *,
-        workflow: "WorkflowDefinition",
-        phases: List[Dict[str, Any]],
-        start_index: int,
-        run_id: str,
-        parameters: Dict[str, Any],
-        accumulated: Dict[str, Any],
-        triggered_by: Optional[str],
-        skill_tools_available: List[str],
-    ) -> Dict[str, Any]:
-        """Shared phase-loop body used by both initial execute and
-        resume. Walks phases from ``start_index``; pauses or completes
-        the run as appropriate."""
-        from core.llm.harness.claude import ClaudeService
-        from core.agents.manager import SOCAgentLibrary
-
-        run_service = self._workflow_runs
-        approval_service = self._approvals
-        all_agents = SOCAgentLibrary.get_all_agents()
-        workflow_dict = workflow.to_dict(include_body=False)
-
-        target_context = self._build_target_context(parameters)
-
-        claude_service = ClaudeService(
-            use_backend_tools=True,
-            use_mcp_tools=True,
-            use_agent_sdk=False,
-            enable_thinking=True,
-            mcp_registry=self._mcp_registry,
-        )
-
-        phase_outputs: List[Dict[str, Any]] = []
-        last_response_text = ""
-
-        # Existing phase rows (populated on resume) let us detect a
-        # phase that was already approved and must not re-prompt.
-        existing_phases = {p["phase_id"]: p for p in run_service.list_phases(run_id)}
-
-        for idx in range(start_index, len(phases)):
-            phase = phases[idx]
-            phase_id = phase.get("phase_id") or f"phase-{phase.get('order', idx + 1)}"
-            phase_order = int(phase.get("order", idx + 1))
-            agent_id = phase.get("agent_id") or ""
-
-            prior_row = existing_phases.get(phase_id)
-            already_approved = (
-                prior_row is not None and prior_row.get("approval_state") == "approved"
-            )
-
-            # Pre-phase approval gate (#128). Skipped if the phase row
-            # already carries approval_state='approved' (resume path).
-            if phase.get("approval_required") and not already_approved:
-                run_service.upsert_phase(
-                    run_id,
-                    phase_id,
-                    phase_order=phase_order,
-                    agent_id=agent_id,
-                    status="pending_approval",
-                    input_context={"prior_outputs": accumulated},
-                    approval_state="pending",
-                )
-                action = approval_service.create_action(
-                    action_type=ActionType.WORKFLOW_PHASE,
-                    title=(
-                        f"Approve phase '{phase.get('name', phase_id)}' "
-                        f"in {workflow.name}"
-                    ),
-                    description=(
-                        phase.get("purpose")
-                        or f"Phase {phase_order} of {workflow.name}"
-                    ),
-                    target=run_id,
-                    confidence=0.0,
-                    reason="Workflow phase marked approval_required=True",
-                    evidence=[run_id],
-                    created_by=triggered_by or "workflow_engine",
-                    parameters={
-                        "phase_id": phase_id,
-                        "phase_order": phase_order,
-                        "agent_id": agent_id,
-                        "phase_inputs": accumulated,
-                        "workflow_name": workflow.name,
-                    },
-                    workflow_run_id=run_id,
-                    workflow_phase_id=phase_id,
-                )
-                run_service.set_status(run_id, "paused")
-                return {
-                    "success": True,
-                    "status": "paused",
-                    "run_id": run_id,
-                    "workflow": workflow_dict,
-                    "pending_approval_action_id": action.action_id,
-                    "paused_at_phase": phase_id,
-                    "parameters": parameters,
-                    "skill_tools_available": skill_tools_available,
-                    "executed_at": datetime.now().isoformat(),
-                }
-
-            profile = all_agents.get(agent_id)
-            phase_prompt = self._build_phase_prompt(
-                workflow=workflow,
-                phase=phase,
-                target_context=target_context,
-                prior_outputs=accumulated,
-            )
-            system_prompt = self._build_system_prompt(
-                workflow, skill_tools_available, single_phase=phase
-            )
-            phase_tools = self._tools_for_phase(phase, profile, skill_tools_available)
-
-            # #184 Phase 2: per-phase pre-call estimate stashed into the
-            # phase's input_context so each phase row carries its own
-            # projected USD band. No gating — Bifrost VK is the budget
-            # gate. Best-effort, never blocks the phase.
-            phase_input_context: Dict[str, Any] = {"prior_outputs": accumulated}
-            phase_component = (
-                getattr(profile, "component_category", None) or "chat_default"
-            )
-            try:
-                from core.llm.cost.estimator import estimate_cost
-
-                _est_provider, _est_model = self._resolve_agent_provider(
-                    phase_component
-                )
-                _phase_est = await estimate_cost(
-                    provider_type=(
-                        _est_provider.provider_type if _est_provider else "anthropic"
-                    ),
-                    model_id=_est_model,
-                    messages=[{"role": "user", "content": phase_prompt}],
-                    system_prompt=system_prompt,
-                    max_tokens=8192,
-                )
-                phase_input_context["cost_estimate"] = _phase_est.to_dict()
-            except Exception as _phase_est_err:  # noqa: BLE001
-                logger.debug(
-                    "Workflow run %s phase %s estimate failed (%s); proceeding",
-                    run_id,
-                    phase_id,
-                    _phase_est_err,
-                )
-
-            # Run the phase.
-            run_service.upsert_phase(
-                run_id,
-                phase_id,
-                phase_order=phase_order,
-                agent_id=agent_id,
-                status="running",
-                input_context=phase_input_context,
-                started_at=datetime.utcnow(),
-            )
-
-            try:
-                response_text = await self._run_agent_turn(
-                    claude_service=claude_service,
-                    component=phase_component,
-                    message=phase_prompt,
-                    system_prompt=system_prompt,
-                    recommended_tools=phase_tools or None,
-                    max_tokens=8192,
-                    session_id=run_id,
-                    agent_id=agent_id,
-                )
-                phase_ok = response_text is not None
-                phase_error = None if phase_ok else "LLM returned no response"
-            except Exception as exc:  # noqa: BLE001
-                response_text = ""
-                phase_ok = False
-                phase_error = f"{type(exc).__name__}: {exc}"
-                logger.exception(
-                    "Workflow phase %s failed for run %s", phase_id, run_id
-                )
-
-            finished = datetime.utcnow()
-            if phase_ok:
-                output = {"text": response_text or ""}
-                run_service.upsert_phase(
-                    run_id,
-                    phase_id,
-                    phase_order=phase_order,
-                    agent_id=agent_id,
-                    status="completed",
-                    output=output,
-                    finished_at=finished,
-                )
-                accumulated[phase_id] = output
-                phase_outputs.append(
-                    {"phase_id": phase_id, "output": response_text or ""}
-                )
-                last_response_text = response_text or last_response_text
-            else:
-                run_service.upsert_phase(
-                    run_id,
-                    phase_id,
-                    phase_order=phase_order,
-                    agent_id=agent_id,
-                    status="failed",
-                    error=phase_error,
-                    finished_at=finished,
-                )
-                run_service.finalize_run(
-                    run_id,
-                    status="failed",
-                    result_summary=self._combine_summary(phase_outputs),
-                    error=phase_error,
-                )
-                return {
-                    "success": False,
-                    "status": "failed",
-                    "run_id": run_id,
-                    "workflow": workflow_dict,
-                    "result": self._combine_summary(phase_outputs),
-                    "tool_calls": [],
-                    "error": phase_error,
-                    "parameters": parameters,
-                    "skill_tools_available": skill_tools_available,
-                    "executed_at": datetime.now().isoformat(),
-                }
-
-        summary = self._combine_summary(phase_outputs) or last_response_text
-        run_service.finalize_run(
-            run_id,
-            status="completed",
-            result_summary=summary or None,
-        )
         return {
             "success": True,
-            "status": "completed",
+            "status": "queued",
             "run_id": run_id,
+            "job_id": job_id,
             "workflow": workflow_dict,
-            "result": summary or "",
-            "tool_calls": [],
-            "error": None,
             "parameters": parameters,
-            "skill_tools_available": skill_tools_available,
             "executed_at": datetime.now().isoformat(),
         }
-
-    # ------------------------------------------------------------------
-    # Prompt / tool helpers
-    # ------------------------------------------------------------------
-
-    def _collect_tools(
-        self,
-        workflow: "WorkflowDefinition",
-        agent_profiles: Dict[str, Any],
-    ) -> tuple[List[str], List[str]]:
-        """Collect workflow + agent + MCP + skill tools. Returns
-        ``(all_tools, skill_tool_names)``."""
-        all_tools = list(workflow.tools_used)
-        for agent_id in workflow.agents:
-            profile = agent_profiles.get(agent_id)
-            if profile and getattr(profile, "recommended_tools", None):
-                for tool in profile.recommended_tools:
-                    if tool not in all_tools:
-                        all_tools.append(tool)
-        try:
-            for name in self._mcp_registry.get_tool_names() or []:
-                if name not in all_tools:
-                    all_tools.append(name)
-        except Exception as e:  # noqa: BLE001
-            logger.debug("Could not get MCP tools from registry: %s", e)
-
-        skill_tool_names: List[str] = []
-        try:
-            from core.skills.skill_tools_bridge import list_active_skill_tools
-
-            skill_defs, _ = list_active_skill_tools()
-            skill_tool_names = [t["name"] for t in skill_defs]
-            for name in skill_tool_names:
-                if name not in all_tools:
-                    all_tools.append(name)
-        except Exception as e:  # noqa: BLE001
-            logger.debug("Could not load active skill tools: %s", e)
-
-        return all_tools, skill_tool_names
-
-    def _tools_for_phase(
-        self,
-        phase: Dict[str, Any],
-        profile: Optional[Any],
-        skill_tool_names: List[str],
-    ) -> List[str]:
-        """Narrow the tool list to what this phase actually needs."""
-        tools = list(phase.get("tools") or [])
-        if profile and getattr(profile, "recommended_tools", None):
-            for t in profile.recommended_tools:
-                if t not in tools:
-                    tools.append(t)
-        try:
-            for name in self._mcp_registry.get_tool_names() or []:
-                if name not in tools:
-                    tools.append(name)
-        except Exception:  # noqa: BLE001
-            pass
-        for name in skill_tool_names:
-            if name not in tools:
-                tools.append(name)
-        return tools
-
-    def _build_system_prompt(
-        self,
-        workflow: "WorkflowDefinition",
-        skill_tool_names: List[str],
-        single_phase: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """System prompt shared by oneshot and per-phase execution."""
-        skills_hint = ""
-        if skill_tool_names:
-            skills_hint = (
-                "\n<available_skills>\n"
-                "The following skill tools are available as reusable SOC "
-                "capabilities. Invoke by name whenever the phase's work "
-                "matches a skill's purpose — each call returns the "
-                "skill's rendered playbook text for you to act on.\n"
-                + "\n".join(f"- {name}" for name in skill_tool_names)
-                + "\n</available_skills>\n"
-            )
-        scope = (
-            f'phase "{single_phase.get("name", single_phase.get("phase_id"))}"'
-            if single_phase
-            else "multi-phase workflow"
-        )
-        header = (
-            f"You are the Vigil SOC Workflow Engine executing the "
-            f'"{workflow.name}" {scope}.'
-        )
-        return f"""{header}
-
-You have access to SOC tools and must ground every conclusion in tool output.
-
-<entity_recognition>
-- Finding IDs (f-YYYYMMDD-XXXXXXXX): Use get_finding tool
-- Case IDs (case-YYYYMMDD-XXXXXXXX): Use get_case tool
-- IPs/domains/hashes: Use threat intel tools
-- NEVER access findings as files - use tools
-</entity_recognition>
-{skills_hint}
-<principles>
-- Always fetch data via tools before analyzing
-- Be evidence-based and document reasoning
-- Use parallel tool calls for independent queries
-- Return a concise, structured summary suitable as input to the next phase
-</principles>
-"""
-
-    def _build_phase_prompt(
-        self,
-        workflow: "WorkflowDefinition",
-        phase: Dict[str, Any],
-        target_context: str,
-        prior_outputs: Dict[str, Any],
-    ) -> str:
-        """Focused prompt for a single phase. Includes accumulated
-        outputs from prior phases so context carries forward."""
-        lines: List[str] = [
-            f"# Phase {phase.get('order', '?')}: {phase.get('name', '')}",
-            "",
-            f"**Workflow:** {workflow.name}",
-            f"**Agent role:** {phase.get('agent_id', '')}",
-        ]
-        if phase.get("purpose"):
-            lines += ["", f"**Purpose:** {phase['purpose']}"]
-        lines += ["", "## Target Context", target_context]
-        if prior_outputs:
-            lines += ["", "## Prior Phase Outputs"]
-            for pid, out in prior_outputs.items():
-                text = (out or {}).get("text") if isinstance(out, dict) else str(out)
-                if text:
-                    lines += [f"### {pid}", text.strip()]
-        steps = phase.get("steps") or []
-        if steps:
-            lines += ["", "## Steps"]
-            for i, step in enumerate(steps, start=1):
-                lines.append(f"{i}. {step}")
-        if phase.get("expected_output"):
-            lines += ["", f"**Expected output:** {phase['expected_output']}"]
-        lines += [
-            "",
-            "Execute this phase using the tools available, grounding "
-            "every claim in tool results. Conclude with a structured "
-            "summary suitable as input for the next phase.",
-        ]
-        return "\n".join(lines)
-
-    def _combine_summary(self, phase_outputs: List[Dict[str, Any]]) -> str:
-        """Concatenate per-phase outputs into a single run summary."""
-        parts: List[str] = []
-        for p in phase_outputs:
-            parts.append(f"### {p['phase_id']}\n{p.get('output', '')}")
-        return "\n\n".join(parts)
 
     def _build_target_context(self, parameters: Dict[str, Any]) -> str:
         """Build a context string from execution parameters."""
@@ -1244,7 +421,8 @@ You have access to SOC tools and must ground every conclusion in tool output.
 
         if finding_id:
             try:
-                from core.storage.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import \
+                    DatabaseDataService
 
                 data_service = DatabaseDataService()
                 finding = data_service.get_finding(finding_id)
@@ -1255,16 +433,14 @@ You have access to SOC tools and must ground every conclusion in tool output.
                         if techniques
                         else "None"
                     )
-                    parts.append(
-                        f"""**Target Finding:**
+                    parts.append(f"""**Target Finding:**
 - Finding ID: {finding.get('finding_id')}
 - Severity: {finding.get('severity')}
 - Data Source: {finding.get('data_source')}
 - Timestamp: {finding.get('timestamp')}
 - Anomaly Score: {finding.get('anomaly_score', 'N/A')}
 - Description: {finding.get('description', 'N/A')}
-- MITRE ATT&CK Techniques: {technique_str}"""
-                    )
+- MITRE ATT&CK Techniques: {technique_str}""")
                 else:
                     parts.append(
                         f"**Target Finding ID:** {finding_id} (details will be retrieved during execution)"
@@ -1276,20 +452,19 @@ You have access to SOC tools and must ground every conclusion in tool output.
 
         if case_id:
             try:
-                from core.storage.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import \
+                    DatabaseDataService
 
                 data_service = DatabaseDataService()
                 case = data_service.get_case(case_id)
                 if case:
-                    parts.append(
-                        f"""**Target Case:**
+                    parts.append(f"""**Target Case:**
 - Case ID: {case.get('case_id')}
 - Title: {case.get('title')}
 - Status: {case.get('status')}
 - Priority: {case.get('priority')}
 - Description: {case.get('description', 'N/A')}
-- Finding Count: {len(case.get('finding_ids', []))}"""
-                    )
+- Finding Count: {len(case.get('finding_ids', []))}""")
                 else:
                     parts.append(
                         f"**Target Case ID:** {case_id} (details will be retrieved during execution)"

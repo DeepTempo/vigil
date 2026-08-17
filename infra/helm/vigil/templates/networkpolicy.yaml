@@ -121,6 +121,80 @@ spec:
   ingress: []
 ---
 {{- end }}
+{{- if .Values.agentWorker.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "vigil.fullname" . }}-agent-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "agent-worker") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-worker") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    # Its work arrives over Redis, so nothing routes to it. The one exception is
+    # the kubelet, which has to reach the probe port -- a probe blocked by policy
+    # reads as a failing container.
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 6990
+---
+{{- end }}
+{{- if .Values.agentServe.enabled }}
+{{- /*
+The control ADR 0014 leans on. Dropping the loopback check left the bearer token
+as the only in-process gate, and this is what replaces the bind: chat and run
+projections are reachable from the backend and from nowhere else.
+
+Deliberately narrower than the backend policy above, which admits any pod in the
+namespace. That one is shared by the daemon, llm-worker and helm test, so
+tightening it is a change to those; this surface has exactly one caller.
+*/ -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "vigil.fullname" . }}-agent-serve
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "agent-serve") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-serve") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "backend") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.agentServe.service.port }}
+    {{- if .Values.networkPolicies.agentServe.allowProbesFromAnyNamespace }}
+    {{- /* Health rides the traffic port, and ingress rules are OR'd -- so this
+           rule does not merely add probes, it opens the port to every pod in the
+           cluster and leaves the bearer token as the only gate. It is on by
+           default because a kubelet probe originates from the node rather than a
+           pod, and whether a CNI lets that past a pod-selector rule is
+           implementation-specific; a probe blocked by policy reads as a failing
+           container and takes the Deployment down.
+
+           Set false on a cluster whose CNI is known to permit node-sourced
+           health checks (Calico and Cilium both do). Then the rule above is the
+           whole story and only the backend can reach this. */}}
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.agentServe.service.port }}
+    {{- end }}
+---
+{{- end }}
 {{- /* NetworkPolicy for MVP Postgres only. Bitnami's chart has its own
        networkPolicy.* config — enable that there instead. */ -}}
 {{- if and .Values.postgresql.enabled (not .Values.postgresql.bitnami.enabled) }}
@@ -150,6 +224,18 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "db-init") | nindent 14 }}
+        {{- /* Both: serve's readiness probe is a query, so omitting it here does
+               not degrade the Deployment, it stops it rolling out. */}}
+        {{- if .Values.agentWorker.enabled }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-worker") | nindent 14 }}
+        {{- end }}
+        {{- if .Values.agentServe.enabled }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-serve") | nindent 14 }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: {{ .Values.postgresql.service.port }}
@@ -180,6 +266,12 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "llm-worker") | nindent 14 }}
+        {{- /* The worker only: serve never touches the queue. */}}
+        {{- if .Values.agentWorker.enabled }}
+        - podSelector:
+            matchLabels:
+              {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-worker") | nindent 14 }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: {{ .Values.redis.service.port }}

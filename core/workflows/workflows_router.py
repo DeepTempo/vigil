@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from core.agents.projections import read_projection
 from core.deps import (
     provide_approvals,
     provide_custom_workflows,
@@ -362,6 +363,7 @@ async def execute_workflow(
 async def get_workflow_run(
     run_id: str,
     run_service: WorkflowRunService = Depends(provide_workflow_runs),
+    workflows: WorkflowsService = Depends(provide_workflows),
 ):
     """Fetch a single workflow run by id.
 
@@ -374,7 +376,20 @@ async def get_workflow_run(
     if not row:
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
     row["phases"] = run_service.list_phases(run_id)
+    if _is_hunt(workflows, row.get("workflow_id")):
+        row["hunt"] = await read_projection(run_id)
     return row
+
+
+# A hunt writes no phase rows: it has beliefs to report, not steps. The agent
+# layer owns them, so they are read from it rather than folded here.
+def _is_hunt(workflows: WorkflowsService, workflow_id: Optional[str]) -> bool:
+    from core.workflows.workflows_service import HUNT_RUN_KIND
+
+    if not workflow_id:
+        return False
+    definition = workflows.get_workflow(str(workflow_id))
+    return definition is not None and definition.run_kind == HUNT_RUN_KIND
 
 
 @router.post("/workflows/runs/{run_id}/resume")
@@ -392,6 +407,7 @@ async def resume_workflow_run(
     linked to the run, returns 409.
     """
     from core.response.approval_service import ActionStatus
+    from core.workflows.run_resume import resume_run
 
     run = run_service.get_run(run_id)
     if not run:
@@ -402,24 +418,17 @@ async def resume_workflow_run(
             detail=f"Run {run_id} is not paused (status={run.get('status')})",
         )
 
-    pending = [
-        a
-        for a in approval_service.list_actions(
-            status=ActionStatus.PENDING, workflow_run_id=run_id
-        )
-    ]
-    if pending:
-        approval_service.approve_action(
-            pending[0].action_id,
-            approved_by=request.approved_by or "analyst",
+    approved_by = request.approved_by or "analyst"
+    pending = approval_service.list_actions(
+        status=ActionStatus.PENDING, workflow_run_id=run_id
+    )
+    if not pending:
+        raise HTTPException(
+            status_code=409, detail=f"Run {run_id} has no pending approval"
         )
 
-    result = await workflows.resume_workflow(
-        run_id,
-        "approved",
-        approved_by=request.approved_by or "analyst",
-    )
-    return result
+    approval_service.approve_action(pending[0].action_id, approved_by=approved_by)
+    return await resume_run(run_id, pending[0].action_id, approved_by)
 
 
 @router.post("/workflows/runs/{run_id}/cancel")
@@ -436,32 +445,25 @@ async def cancel_workflow_run(
     as ``cancelled`` with the supplied reason.
     """
     from core.response.approval_service import ActionStatus
+    from core.workflows.run_resume import resume_run
 
     run = run_service.get_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
 
-    pending = [
-        a
-        for a in approval_service.list_actions(
-            status=ActionStatus.PENDING, workflow_run_id=run_id
-        )
-    ]
+    rejected_by = request.rejected_by or "analyst"
+    pending = approval_service.list_actions(
+        status=ActionStatus.PENDING, workflow_run_id=run_id
+    )
     for action in pending:
         approval_service.reject_action(
-            action.action_id,
-            reason=request.reason,
-            rejected_by=request.rejected_by or "analyst",
+            action.action_id, reason=request.reason, rejected_by=rejected_by
         )
 
-    if run.get("status") == "paused":
-        result = await workflows.resume_workflow(
-            run_id,
-            "rejected",
-            rejection_reason=request.reason,
-            approved_by=request.rejected_by or "analyst",
-        )
-        return result
+    # A rejection ends the run, but the agent layer is what ends it: this hands
+    # the decision over and that side journals it and stops.
+    if run.get("status") == "paused" and pending:
+        return await resume_run(run_id, pending[0].action_id, rejected_by)
 
     # Running-but-not-paused runs: we can't interrupt the in-flight
     # Claude call here, but we can mark the row cancelled so history

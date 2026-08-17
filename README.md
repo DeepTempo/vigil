@@ -58,31 +58,45 @@ Every workflow is a Markdown file. Here's what one looks like inside:
 ---
 name: phishing-triage
 description: "Triage and investigate phishing reports from user submissions."
-agents:
-  - triage
-  - investigator
-  - responder
-tools-used:
-  - get_finding
-  - list_findings
-  - nearest_neighbors
-  - create_approval_action
-use-case: "A user reports a suspicious email and the SOC needs to assess, investigate, and contain."
-trigger-examples:
+use_case: "A user reports a suspicious email and the SOC needs to assess, investigate, and contain."
+trigger_examples:
   - "Run phishing triage on finding f-20260401-abc123"
   - "Investigate this phishing report"
+objectives:
+  - "Decide whether the reported mail is malicious"
+  - "Contain it without waiting on a second report"
+phases:
+  - id: assess
+    agent: triage
+    name: "Assess the Report"
+    tools: [get_finding, list_findings]
+    instructions: |
+      Fetch the finding, extract sender/domain/URLs, score severity, check for
+      known-bad indicators. Hand on the verdict and the indicators you found.
+
+  - id: investigate
+    agent: investigator
+    name: "Investigate"
+    tools: [get_finding, nearest_neighbors, search_detections]
+    instructions: |
+      Use nearest_neighbors to find similar reports. Correlate with detection
+      rules. Build an evidence timeline. Hand on the timeline and related findings.
+
+  - id: contain
+    agent: responder
+    name: "Contain"
+    tools: [get_case, update_case]
+    approval_required: true
+    instructions: |
+      If confirmed malicious: block the sender domain, quarantine matching emails,
+      and plan remediation with confidence scores.
 ---
 
 # Phishing Triage Workflow
 
-## Phase 1: Assess the Report (Triage Agent)
-Fetch the finding, extract sender/domain/URLs, score severity, check for known-bad indicators.
-
-## Phase 2: Investigate (Investigator Agent)
-Use nearest_neighbors to find similar reports. Correlate with detection rules. Build an evidence timeline.
-
-## Phase 3: Contain (Responder Agent)
-If confirmed malicious: block sender domain, quarantine matching emails, submit approval actions with confidence scores.
+An overview for whoever reads this file. The `phases` above are what actually
+runs, in the order written — the agents and tools shown on the Workflows screen
+are read off them.
 ```
 
 Edit this file. That's it. No vendor ticket, no professional services, no YAML/JSON schema to learn.
@@ -115,7 +129,7 @@ Vigil uses the [Model Context Protocol](https://modelcontextprotocol.io/) to con
 
 **Coming soon:** AWS Security Hub, Azure Sentinel, GCP Security, Okta, Microsoft Defender, SentinelOne, Carbon Black, PagerDuty.
 
-MCP servers live in `mcp-servers/` and are configured via the Settings UI or `mcp_config.json`. Add a new integration by dropping an MCP server into the `tools/` directory — or use the built-in Custom Integration Builder to generate one from API docs.  If you build an integration that you find useful, chances are someone else will as well.  Please contribute!
+MCP servers live in each vendor's slice as `core/integrations/<vendor>/tool.py` and are configured via the Settings UI or `mcp_config.json`. Add a new integration by adding a slice with an MCP server in it — see [core/integrations/README.md](core/integrations/README.md) — or use the built-in Custom Integration Builder to generate one from API docs.  If you build an integration that you find useful, chances are someone else will as well.  Please contribute!
 
 ---
 
@@ -355,8 +369,7 @@ vigil/
 │                      #   autonomous SOC), worker (ARQ llm-worker)
 ├── clients/web/       # React + Tailwind frontend
 ├── contrib/           # Community tools: auto-contributor, benchmarking
-├── mcp-servers/       # MCP server implementations (30+)
-├── tools/             # The 10 MCP tools, one stdio server each
+├── tools/mcp/         # MCP servers for Vigil's own services
 ├── infra/             # Docker Compose, Helm chart, DB init SQL
 ├── docs/              # Documentation
 └── data/schemas/      # JSON validation schemas

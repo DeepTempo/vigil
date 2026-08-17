@@ -9,8 +9,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
-_VIGIL_DIRNAME = '.vigil'
-_LEGACY_DIRNAME = '.deeptempo'
+_VIGIL_DIRNAME = ".vigil"
+_LEGACY_DIRNAME = ".deeptempo"
 
 REQUEST_TIMEOUT = 30
 STREAM_TIMEOUT = 120
@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     # Host-run default: `bifrost` resolves only inside the compose network, and
     # compose, Helm and start.sh all inject the right hostname explicitly.
     bifrost_url: str = "http://localhost:8080"
+    # Where the agent worker listens. Two calls go this way rather than through
+    # the queue: a chat turn, which is synchronous, and a run's projection.
+    agent_url: str = "http://localhost:6989"
     anthropic_base_url: str = ""
     ollama_url: str = "http://localhost:11434"
     default_model: str = "claude-sonnet-4-6"
@@ -261,14 +264,14 @@ def is_demo_mode() -> bool:
     enabled = get_settings().demo_mode
     if enabled is not None:
         return enabled
-    return get_general_config('demo_mode', False)
+    return get_general_config("demo_mode", False)
 
 
 def _load_json_config(path: Path) -> dict:
     if not path.exists():
         return {}
     try:
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             return json.load(f)
     except (json.JSONDecodeError, IOError) as e:
         logger.error(f"Config load error {path}: {e}")
@@ -276,17 +279,17 @@ def _load_json_config(path: Path) -> dict:
 
 
 def get_integration_config(integration_id: str) -> dict[str, Any]:
-    data = _load_json_config(vigil_path('integrations_config.json'))
-    if integration_id not in data.get('enabled_integrations', []):
+    data = _load_json_config(vigil_path("integrations_config.json"))
+    if integration_id not in data.get("enabled_integrations", []):
         return {}
-    return data.get('integrations', {}).get(integration_id, {})
+    return data.get("integrations", {}).get(integration_id, {})
 
 
 def is_integration_enabled(integration_id: str) -> bool:
-    data = _load_json_config(vigil_path('integrations_config.json'))
-    return integration_id in data.get('enabled_integrations', [])
+    data = _load_json_config(vigil_path("integrations_config.json"))
+    return integration_id in data.get("enabled_integrations", [])
 
 
 def get_general_config(key: str, default: Any = None) -> Any:
-    data = _load_json_config(vigil_path('general_config.json'))
+    data = _load_json_config(vigil_path("general_config.json"))
     return data.get(key, default)

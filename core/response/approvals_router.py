@@ -11,10 +11,9 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from core.deps import provide_approvals, provide_workflows
+from core.deps import provide_approvals
 from core.response.approval_service import ApprovalService
 from core.routing import Auth, RouterMeta
-from core.workflows.workflows_service import WorkflowsService
 
 router = APIRouter()
 
@@ -145,13 +144,14 @@ async def approve_action(
     action_id: str,
     request: ApproveRequest,
     service: ApprovalService = Depends(provide_approvals),
-    workflows: WorkflowsService = Depends(provide_workflows),
 ):
     """Approve a pending action.
 
     If the action is linked to a paused workflow run, the run resumes
     automatically and the resume result is included in the response.
     """
+    from core.workflows.run_resume import resume_run
+
     action = service.get_action(action_id)
     if action is None:
         raise HTTPException(status_code=404, detail=f"Approval not found: {action_id}")
@@ -167,12 +167,9 @@ async def approve_action(
     }
 
     if updated.workflow_run_id:
-        resume = await workflows.resume_workflow(
-            updated.workflow_run_id,
-            "approved",
-            approved_by=approved_by,
+        response["resume_result"] = await resume_run(
+            updated.workflow_run_id, action_id, approved_by
         )
-        response["resume_result"] = resume
 
     return response
 
@@ -182,13 +179,14 @@ async def reject_action(
     action_id: str,
     request: RejectRequest,
     service: ApprovalService = Depends(provide_approvals),
-    workflows: WorkflowsService = Depends(provide_workflows),
 ):
     """Reject a pending action.
 
     If the action is linked to a paused workflow run, the run is
     cancelled with the supplied reason.
     """
+    from core.workflows.run_resume import resume_run
+
     action = service.get_action(action_id)
     if action is None:
         raise HTTPException(status_code=404, detail=f"Approval not found: {action_id}")
@@ -206,12 +204,8 @@ async def reject_action(
     }
 
     if updated.workflow_run_id:
-        resume = await workflows.resume_workflow(
-            updated.workflow_run_id,
-            "rejected",
-            rejection_reason=request.reason,
-            approved_by=rejected_by,
+        response["resume_result"] = await resume_run(
+            updated.workflow_run_id, action_id, rejected_by
         )
-        response["resume_result"] = resume
 
     return response

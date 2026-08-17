@@ -1,31 +1,73 @@
 ---
 name: threat-hunt
 description: "Proactive, hypothesis-driven threat hunting across all available data sources with network analysis, malware examination, and intelligence enrichment."
-agents:
-  - threat_hunter
-  - network_analyst
-  - malware_analyst
-  - threat_intel
-  - reporter
-tools-used:
-  - list_findings
-  - get_finding
-  - nearest_neighbors
-  - search_detections
-  - create_attack_layer
-  - get_case
-use-case: "Proactive threat hunting -- start with a hypothesis or IOC and systematically search for evidence across network, endpoint, and threat intel sources."
-trigger-examples:
+use_case: "Proactive threat hunting -- start with a hypothesis or IOC and systematically search for evidence across network, endpoint, and threat intel sources."
+trigger_examples:
   - "Hunt for C2 beaconing activity across all network findings"
   - "Proactive hunt: look for lateral movement via RDP"
   - "Validate whether this DeepTempo C2 alert is real by checking all available threat intel for the public IP"
   - "Hunt for APT28 credential harvesting techniques"
   - "Search for signs of data exfiltration in the last 24 hours"
+# The hypothesis loop, not a phase chain: the lead decides what to test next from
+# what the evidence has done to each belief, and a phase order cannot express that.
+run_kind: hunt
+
+# What this hunt is out to test. Stated here rather than inferred from a prompt,
+# so the run's premise is something a person wrote and review can see.
+hypotheses:
+  - "A host is beaconing to attacker-controlled infrastructure on a regular interval"
+  - "Credentials taken from that host have been reused elsewhere in the estate"
+attack_techniques:
+  - T1071.001
+  - T1078
+data_domains:
+  - network
+  - authentication
+  - endpoint
+
+objectives:
+  - "State a hypothesis and the scope that would test it"
+  - "Characterise the network and artifact evidence bearing on it"
+  - "Enrich every observable and attribute where the evidence supports it"
+  - "Report the hypothesis as confirmed, refuted or inconclusive, with reasons"
+# The roster, not an order: the lead dispatches whichever of these the question in
+# front of it needs. Their prompts and tool grants live in arch/threathunt.yaml,
+# so what stands here is who can be asked and what each is for.
+phases:
+  - id: threat_hunter
+    agent: threat_hunter
+    name: "Behavioural hunting"
+    tools: [search_findings, nearest_neighbors, telemetry_search]
+    instructions: |
+      Broad behavioural hunting across the signal detection already scored and the
+      telemetry behind it. "Nothing matched" is a finding about visibility, not a
+      failure: say which sources you queried and which you could not.
+
+  - id: network_analyst
+    agent: network_analyst
+    name: "Traffic shape"
+    tools: [telemetry_search, search_findings]
+    instructions: |
+      Beaconing intervals, jitter, volume asymmetry, DNS and HTTP. Quantify: a
+      regular interval with low variance is the signal, a busy host is not.
+
+  - id: threat_intel
+    agent: threat_intel
+    name: "Observable enrichment"
+    tools: [lookup_indicators]
+    instructions: |
+      Reputation and attribution for observables, against the indicator database
+      and whatever intel integrations are connected. A miss is not exoneration:
+      say "not in the feed" and never report an unknown observable as benign.
 ---
 
 # Threat Hunt Workflow
 
-Proactive, hypothesis-driven threat hunting workflow. Sequences five specialized agents to formulate a hunt hypothesis, analyze network traffic, examine suspicious artifacts, enrich IOCs across threat intel sources, and produce an actionable hunt report.
+Proactive, hypothesis-driven threat hunting. This text is the hunt's narrative — the Hunt Lead reads it as standing context for every decision it makes.
+
+A hunt does not walk a sequence of steps. It puts the hypotheses above on the board, and each iteration the Hunt Lead reads a digest of what has been gathered so far and chooses what to do next: dispatch a worker against an open question, expand a piece of evidence it was shown, pivot onto an entity, deepen a line that is paying off, abandon one that is not, validate a hypothesis it believes is settled, stop and ask for an operator, or conclude. What the evidence did to each belief is what drives the next move, which is why there is no phase order to state.
+
+Every hypothesis ends as proven, disproven or inconclusive. Inconclusive is a legitimate ending and must be reported as itself: distinguish "we looked and it was not there" from "we could not look" — they read identically in a report that does not separate them, and only one of them clears the hypothesis.
 
 ## When to Use
 
@@ -35,103 +77,6 @@ Proactive, hypothesis-driven threat hunting workflow. Sequences five specialized
 - Searching for indicators of compromise across the environment
 - Periodic threat hunting exercises
 
-## Agent Sequence
-
-### Phase 1: Hypothesis & Hunt (Threat Hunter Agent)
-
-**Purpose:** Formulate hunt hypothesis based on TTPs, define scope, execute hunt queries, identify anomalies and outliers.
-
-**Tools:** `list_findings`, `nearest_neighbors`, `search_detections`, pattern intelligence tools
-
-**Steps:**
-1. Formulate or refine the hunt hypothesis based on input (TTP, IOC, threat actor, or behavior)
-2. Define hunt parameters: scope, timeframe, data sources to query
-3. Execute hunt queries using available tools:
-   - `list_findings` with filters for relevant time range and severity
-   - `nearest_neighbors` to find similar patterns via embeddings
-   - `search_detections` to check for matching detection rules
-4. Identify anomalies, outliers, and suspicious patterns
-5. Validate initial findings -- eliminate obvious false positives
-6. Document candidate findings requiring deeper analysis
-
-**Output:** Hunt hypothesis document, initial IOCs/anomalies, suspicious patterns, candidate findings for downstream analysis
-
-### Phase 2: Network Analysis (Network Analyst Agent)
-
-**Purpose:** Deep-dive network traffic analysis on suspicious entities from the hunt -- flow patterns, protocol anomalies, C2 beaconing, lateral movement.
-
-**Tools:** `list_findings`, `get_finding`, `search_detections`
-
-**Steps:**
-1. Analyze network findings related to suspicious IPs/hosts from Phase 1
-2. Examine flow patterns: volumes, destinations, timing
-3. Protocol-specific analysis: HTTP, DNS, SMB, RDP, SSH anomalies
-4. Detect C2 beaconing: regular intervals, known C2 infrastructure, encoded channels
-5. Identify lateral movement: internal-to-internal connections, port scanning, credential reuse
-6. Geolocation analysis: connections to anomalous countries or ASNs
-7. Establish traffic baselines to highlight deviations
-
-**Output:** Network IOCs (IPs, domains, ports), C2 indicators, lateral movement paths, protocol anomalies, traffic baselines
-
-### Phase 3: Artifact Analysis (Malware Analyst Agent)
-
-**Purpose:** Analyze suspicious binaries and artifacts discovered during the hunt -- static/dynamic analysis, family classification, capability assessment.
-
-**Tools:** `get_finding`, sandbox MCP tools (if available)
-
-**Steps:**
-1. Collect suspicious file hashes and artifacts from Phases 1-2
-2. Static analysis: file properties, string extraction, import tables, PE structure
-3. Dynamic analysis: sandbox execution results (if available via MCP tools)
-4. Assess malware capabilities: data theft, backdoor, RAT, ransomware, cryptominer
-5. Classify malware family and variant
-6. Extract behavioral IOCs: mutex names, registry keys, file paths, network callbacks
-7. Identify C2 infrastructure embedded in binaries
-8. Generate detection signatures (YARA, Sigma)
-
-**Output:** Malware family classification, behavioral analysis, extracted IOCs, C2 infrastructure, detection signatures
-
-### Phase 4: Intelligence Enrichment (Threat Intel Agent)
-
-**Purpose:** Enrich all discovered IOCs across multiple threat intelligence sources. Attribute to threat actors, track campaigns.
-
-**Tools:** `get_finding`, `list_findings`, threat intel MCP tools (VirusTotal, Shodan, AlienVault OTX)
-
-**Steps:**
-1. Compile all IOCs from Phases 1-3 (IPs, domains, hashes, URLs)
-2. Enrich each IOC across available sources:
-   - IP/domain reputation and geolocation
-   - Hash lookups in malware databases
-   - Shodan data for exposed services
-   - AlienVault OTX pulse matching
-3. Identify threat actor attribution (with stated confidence level)
-4. Track campaign patterns: shared infrastructure, similar TTPs, targeting
-5. Assess threat context: actor motivations, objectives, typical targets
-6. Produce actionable intelligence: blocking recommendations, additional IOCs to hunt
-
-**Output:** Enriched IOC profiles, threat actor attribution with confidence, campaign tracking, actionable intelligence for blocking/hunting
-
-### Phase 5: Hunt Report (Reporter Agent)
-
-**Purpose:** Consolidate all hunt results into an actionable report with hypothesis validation, IOC summary, and detection recommendations.
-
-**Tools:** `get_case`, `list_findings`, `create_attack_layer`
-
-**Steps:**
-1. Compile results from all hunt phases
-2. Validate or refute the original hypothesis with evidence
-3. Generate MITRE ATT&CK Navigator layer for discovered techniques
-4. Structure the hunt report:
-   - **Hunt Summary:** Hypothesis, scope, methodology
-   - **Hypothesis Validation:** Confirmed, refuted, or inconclusive -- with evidence
-   - **Findings:** All anomalies and threats discovered
-   - **IOC Inventory:** Complete list with enrichment data
-   - **MITRE ATT&CK Mapping:** Techniques observed
-   - **Detection Recommendations:** New rules to add, gaps to close
-   - **Executive Brief:** High-level summary for leadership
-
-**Output:** Hunt summary report, validated/refuted hypothesis, complete IOC list, ATT&CK layer, detection recommendations
-
 ## Example Invocation
 
 ```
@@ -140,27 +85,27 @@ User: "Validate whether this DeepTempo C2 alert is real by checking all threat i
 
 ## Expected Output
 
+The run's own ledger, and a hunt report rendered from it. The console reads the
+standing of each hypothesis while the hunt is in flight:
+
 ```json
 {
-  "workflow": "threat-hunt",
-  "phases_completed": ["hypothesis-hunt", "network-analysis", "artifact-analysis", "intel-enrichment", "report"],
-  "hypothesis": "Suspected C2 communication with 185.220.101.1",
-  "hypothesis_status": "confirmed",
-  "iocs_discovered": {
-    "ips": ["185.220.101.1", "185.220.101.5"],
-    "domains": ["update-service.example.com"],
-    "hashes": ["a1b2c3..."]
-  },
-  "threat_actor": {
-    "name": "APT28",
-    "confidence": 0.72,
-    "ttps": ["T1071.001", "T1059.001", "T1078"]
-  },
-  "beaconing_detected": true,
-  "beaconing_interval": "300s",
-  "detection_recommendations": [
-    "Add Sigma rule for DNS queries to update-service.example.com",
-    "Block IP range 185.220.101.0/24 at perimeter"
+  "status": "terminal",
+  "iteration": 7,
+  "evidence_count": 34,
+  "hypotheses": [
+    {
+      "statement": "A host is beaconing to attacker-controlled infrastructure on a regular interval",
+      "status": "proven",
+      "attack_technique": "T1071.001",
+      "resolution_reason": "300s interval, variance under 4s, across 19 hours to 185.220.101.1"
+    },
+    {
+      "statement": "Credentials taken from that host have been reused elsewhere in the estate",
+      "status": "inconclusive",
+      "attack_technique": "T1078",
+      "resolution_reason": "authentication telemetry retained for 7 days; the beaconing predates it"
+    }
   ]
 }
 ```

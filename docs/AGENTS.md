@@ -48,8 +48,17 @@ Workflows can be executed from the **Workflows** page in the UI or via the `/api
 |----------|--------|----------|---------------|
 | **Incident Response** | Triage -> Investigator -> Responder -> Reporter | Active incident handling | [`workflows/incident-response/WORKFLOW.md`](/workflows/incident-response/WORKFLOW.md) |
 | **Full Investigation** | Investigator -> MITRE Analyst -> Correlator -> Responder -> Reporter | Deep-dive analysis with ATT&CK mapping | [`workflows/full-investigation/WORKFLOW.md`](/workflows/full-investigation/WORKFLOW.md) |
-| **Threat Hunt** | Threat Hunter -> Network Analyst -> Malware Analyst -> Threat Intel -> Reporter | Proactive hypothesis-driven hunting | [`workflows/threat-hunt/WORKFLOW.md`](/workflows/threat-hunt/WORKFLOW.md) |
+| **Threat Hunt** | Hunt Lead over Threat Hunter, Network Analyst, Threat Intel | Proactive hypothesis-driven hunting | [`workflows/threat-hunt/WORKFLOW.md`](/workflows/threat-hunt/WORKFLOW.md) |
 | **Forensic Analysis** | Forensics -> Malware Analyst -> Network Analyst -> Reporter | Post-incident forensics with chain of custody | [`workflows/forensic-analysis/WORKFLOW.md`](/workflows/forensic-analysis/WORKFLOW.md) |
+
+**Threat Hunt is the one that is not a phase chain.** It declares `run_kind: hunt`
+in its frontmatter, which routes it to the hypothesis loop: the definition states
+`hypotheses`, `attack_techniques` and `data_domains`, and a Hunt Lead decides each
+iteration what to do next from what the evidence has done to each belief. Its
+`phases:` block is a roster of who may be dispatched, not an order — the workers'
+prompts and tool grants live in `services/agent/arch/threathunt.yaml`. The other
+four definitions are compose playbooks and walk their phases in order. A hunt run
+reports hypotheses and their standing where a compose run reports phase rows.
 
 ### Adding Custom Workflows
 

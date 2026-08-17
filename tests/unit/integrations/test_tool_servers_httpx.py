@@ -2,10 +2,10 @@
 
 Two halves:
 
-1. A source scan over ``tools/*.py`` and ``core/integrations/*/tool.py``:
-   no ``requests`` import, and every ``httpx`` call states its own
-   ``timeout``. Nothing else reaches all 39 call sites, and httpx's 5s
-   default is short enough to break a sandbox report or a SIEM search.
+1. A source scan over ``core/integrations/*/tool.py``: no ``requests``
+   import, and every ``httpx`` call states its own ``timeout``. Nothing
+   else reaches all 39 call sites, and httpx's 5s default is short enough
+   to break a sandbox report or a SIEM search.
 2. Round trips through each server's dispatcher over a respx-mocked
    transport: ``raise_for_status()`` failures landing in the handler that
    reports a status code while transport failures stay in the generic one,
@@ -32,18 +32,18 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import core.integrations.alienvault_otx.tool as otx  # noqa: E402
+import core.integrations.anyrun.tool as anyrun  # noqa: E402
+import core.integrations.azure_ad.tool as aad  # noqa: E402
+import core.integrations.cape_sandbox.tool as cape  # noqa: E402
+import core.integrations.carbon_black.tool as cbc  # noqa: E402
+import core.integrations.hybrid_analysis.tool as ha  # noqa: E402
+import core.integrations.ip_geolocation.tool as geo  # noqa: E402
 import core.integrations.microsoft_defender.tool as mde_tool  # noqa: E402
+import core.integrations.microsoft_teams.tool as teams  # noqa: E402
+import core.integrations.misp.tool as misp  # noqa: E402
+import core.integrations.palo_alto.tool as pan  # noqa: E402
 import core.integrations.slack.tool as slack_tool  # noqa: E402
-import tools.alienvault_otx as otx  # noqa: E402
-import tools.anyrun as anyrun  # noqa: E402
-import tools.azure_ad as aad  # noqa: E402
-import tools.cape_sandbox as cape  # noqa: E402
-import tools.carbon_black as cbc  # noqa: E402
-import tools.hybrid_analysis as ha  # noqa: E402
-import tools.ip_geolocation as geo  # noqa: E402
-import tools.microsoft_teams as teams  # noqa: E402
-import tools.misp as misp  # noqa: E402
-import tools.palo_alto as pan  # noqa: E402
 from core.integrations.cloudflare import tool as cf  # noqa: E402
 
 pytestmark = pytest.mark.unit
@@ -55,7 +55,12 @@ def _body(out) -> dict:
 
 
 def _stub_config(monkeypatch, module, config: dict) -> None:
-    monkeypatch.setattr(module, "get_integration_config", lambda *a, **kw: config)
+    """Stand in for the descriptor lookup every server reads its config through.
+
+    ``resolve()`` returns every declared field, so a server's ``missing()``
+    guard only passes when the stub carries each name it requires.
+    """
+    monkeypatch.setattr(module, "resolve", lambda *a, **kw: config)
 
 
 # --------------------------------------------------------------------- #
@@ -84,11 +89,8 @@ MIN_TOTAL_CALL_SITES = 30
 
 
 def _tool_servers() -> list[Path]:
-    servers = sorted(
-        p for p in (ROOT / "tools").glob("*.py") if p.name != "__init__.py"
-    )
-    servers += sorted((ROOT / "core" / "integrations").glob("*/tool.py"))
-    return servers
+    """Every in-repo MCP server. `mcp-config.json` spawns each of these."""
+    return sorted((ROOT / "core" / "integrations").glob("*/tool.py"))
 
 
 def _parse(path: Path) -> ast.AST:
@@ -284,7 +286,7 @@ async def test_palo_alto_forwards_the_configured_tls_policy(
     monkeypatch, configured, expected
 ):
     _stub_config(
-        monkeypatch, pan, {"url": "https://pan.test", "api_key": "k", **configured}
+        monkeypatch, pan, {"hostname": "pan.test", "api_key": "k", **configured}
     )
     seen = {}
 
@@ -307,7 +309,9 @@ async def test_palo_alto_forwards_the_configured_tls_policy(
 @respx.mock
 async def test_palo_alto_xml_api_params_survive_encoding(monkeypatch):
     """The xpath/element payload is full of <, >, ' and [] — httpx must quote it."""
-    _stub_config(monkeypatch, pan, {"url": "https://pan.test", "api_key": "k"})
+    _stub_config(
+        monkeypatch, pan, {"hostname": "pan.test", "api_key": "k", "verify_ssl": True}
+    )
     route = respx.get(url__startswith="https://pan.test/api/").mock(
         return_value=httpx.Response(200, text="<response status='success'/>")
     )
@@ -441,7 +445,12 @@ async def test_carbon_black_posts_the_search_payload(monkeypatch):
     _stub_config(
         monkeypatch,
         cbc,
-        {"url": "https://cbc.test", "api_token": "t", "org_key": "ORG"},
+        {
+            "url": "https://cbc.test",
+            "api_key": "sec",
+            "api_id": "id",
+            "org_key": "ORG",
+        },
     )
     route = respx.post("https://cbc.test/appservices/v6/orgs/ORG/devices/_search").mock(
         return_value=httpx.Response(200, json={"results": [{"id": 1}]})
@@ -451,7 +460,7 @@ async def test_carbon_black_posts_the_search_payload(monkeypatch):
     assert body["count"] == 1
     request = route.calls.last.request
     assert json.loads(request.content)["query"] == "device_external_ip:10.0.0.1"
-    assert request.headers["X-Auth-Token"] == "t"
+    assert request.headers["X-Auth-Token"] == "sec/id"
 
 
 @respx.mock

@@ -47,7 +47,7 @@ async def llm_call(
 ) -> Dict[str, Any]:
     # The primary job: session load, dispatch, session save. provider_id=None
     # keeps the pre-#88 ClaudeService.chat() path exactly.
-    rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
+    in_flight: asyncio.Semaphore = ctx["in_flight"]
     claude_service = ctx["claude_service"]
     session_store: RedisSessionStore = ctx["session_store"]
 
@@ -95,7 +95,7 @@ async def llm_call(
         if router_result is not None:
             result = router_result
         else:
-            await rate_limiter.acquire()
+            await in_flight.acquire()
             try:
                 response = await asyncio.to_thread(
                     _sync_claude_call,
@@ -104,16 +104,12 @@ async def llm_call(
                     model=model,
                     max_tokens=max_tokens,
                     system_prompt=system_prompt,
-                    enable_thinking=enable_thinking,
-                    thinking_budget=thinking_budget,
-                    tools=tools,
-                    temperature=temperature,
                     session_id=session_id,
                     agent_id=agent_id,
                     investigation_id=investigation_id,
                 )
             finally:
-                rate_limiter.release()
+                in_flight.release()
             result = _extract_result(response)
 
         if worker_span is not None:
@@ -143,126 +139,6 @@ async def llm_call(
         error_msg = f"{type(exc).__name__}: {exc}"
         logger.error("llm_call failed (returning error dict): %s", error_msg)
         return {"content": "", "type": "error", "error": error_msg}
-
-
-async def llm_call_raw(
-    ctx: Dict[str, Any],
-    messages: List[Dict],
-    model: str,
-    max_tokens: int,
-    enable_thinking: bool,
-    thinking_budget: int,
-    tools: Optional[List[Dict]],
-    temperature: Optional[float],
-    traceparent: str = "",
-    investigation_id: Optional[str] = None,
-    agent_id: Optional[str] = None,
-    provider_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    # AgentRunner's tool loop. Manages no session: the caller supplies the whole
-    # message list, assistant and tool_result turns included.
-    rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
-    claude_service = ctx["claude_service"]
-
-    # Restore parent span context propagated across the ARQ/Redis boundary
-    try:
-        from opentelemetry.trace import SpanKind
-
-        from core.telemetry import extract_traceparent, get_tracer
-
-        parent_ctx = extract_traceparent({"traceparent": traceparent})
-        _tracer = get_tracer("vigil.services.worker.jobs")
-        worker_span = _tracer.start_span(
-            "llm_worker.execute",
-            context=parent_ctx,
-            kind=SpanKind.CONSUMER,
-        )
-        worker_span.set_attribute("gen_ai.system", "anthropic")
-        worker_span.set_attribute("gen_ai.request.model", model)
-    except Exception:
-        worker_span = None
-
-    try:
-        router_result = await _maybe_dispatch_via_router(
-            ctx,
-            provider_id=provider_id,
-            messages=messages,
-            system_prompt=None,
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            tools=tools,
-            enable_thinking=enable_thinking,
-            thinking_budget=thinking_budget,
-        )
-        if router_result is not None:
-            result = _adapt_router_result_to_raw(router_result)
-        else:
-            await rate_limiter.acquire()
-            try:
-                response = await asyncio.to_thread(
-                    _sync_claude_raw,
-                    claude_service,
-                    messages=messages,
-                    model=model,
-                    max_tokens=max_tokens,
-                    enable_thinking=enable_thinking,
-                    thinking_budget=thinking_budget,
-                    tools=tools,
-                    temperature=temperature,
-                    investigation_id=investigation_id,
-                    agent_id=agent_id,
-                )
-            finally:
-                rate_limiter.release()
-            result = _serialize_raw_response(response)
-
-        if worker_span is not None:
-            try:
-                in_tok = result.get("input_tokens", 0)
-                out_tok = result.get("output_tokens", 0)
-                worker_span.set_attribute("gen_ai.usage.input_tokens", in_tok)
-                worker_span.set_attribute("gen_ai.usage.output_tokens", out_tok)
-                worker_span.set_attribute(
-                    "gen_ai.finish_reason", result.get("stop_reason", "")
-                )
-                worker_span.end()
-            except Exception:
-                pass
-
-        return result
-
-    except Exception as exc:
-        if worker_span is not None:
-            try:
-                worker_span.end()
-            except Exception:
-                pass
-        error_msg = f"{type(exc).__name__}: {exc}"
-        logger.error("llm_call_raw failed (returning error dict): %s", error_msg)
-        return {
-            "content": [],
-            "stop_reason": "error",
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "error": error_msg,
-        }
-
-
-def _is_default_anthropic_spec(spec) -> bool:
-    # Only the seeded row is safe for the shared ClaudeService, which resolves its
-    # key from these env names. Any other row has its own ref and needs the router.
-    if spec.provider_type != "anthropic":
-        return False
-    ref = spec.api_key_ref
-    if ref is None:
-        return True
-    return ref in {
-        "CLAUDE_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "claude_api_key",
-        "anthropic_api_key",
-    }
 
 
 async def _maybe_dispatch_via_router(
@@ -302,18 +178,11 @@ async def _maybe_dispatch_via_router(
         )
         return None
 
-    # All traffic now routes through Bifrost (GH #84 PR-B). We still hand off
-    # default-anthropic-with-thinking calls to the shared ClaudeService so
-    # they get its full tool-use loop, context reduction, and session
-    # management — that logic lives in ClaudeService, not here. Non-default
-    # Anthropic providers have their own api_key_ref and must dispatch through
-    # the router so _dispatch_anthropic resolves that per-provider secret
-    # (not CLAUDE_API_KEY).
-    if enable_thinking and _is_default_anthropic_spec(spec):
-        return None
-
-    rate_limiter: asyncio.Semaphore = ctx["rate_limiter"]
-    await rate_limiter.acquire()
+    # The fallback this used to take was ClaudeService's tool loop, context
+    # reduction and session management. None of the three exist (#629, #631,
+    # #632), so every provider dispatches the one way.
+    in_flight: asyncio.Semaphore = ctx["in_flight"]
+    await in_flight.acquire()
     try:
         return await router.dispatch(
             provider=spec,
@@ -327,42 +196,7 @@ async def _maybe_dispatch_via_router(
             thinking_budget=thinking_budget,
         )
     finally:
-        rate_limiter.release()
-
-
-def _adapt_router_result_to_raw(router_result: Dict[str, Any]) -> Dict[str, Any]:
-    # stop_reason must reflect real tool_use blocks: AgentRunner's loop only
-    # continues on "tool_use", so a hardcoded "end_turn" drops every tool call.
-    blocks: List[Dict[str, Any]] = []
-    text = router_result.get("content") or ""
-    if text:
-        blocks.append({"type": "text", "text": text})
-    thinking = router_result.get("thinking")
-    if thinking:
-        blocks.append({"type": "thinking", "thinking": thinking})
-    tool_calls = router_result.get("tool_calls") or []
-    for tc in tool_calls:
-        blocks.append(
-            {
-                "type": "tool_use",
-                "id": tc.get("id"),
-                "name": tc.get("name"),
-                "input": tc.get("input") or {},
-            }
-        )
-    return {
-        "content": blocks,
-        "stop_reason": "tool_use" if tool_calls else "end_turn",
-        "input_tokens": router_result.get("input_tokens", 0),
-        "output_tokens": router_result.get("output_tokens", 0),
-        # #184 Phase 3: surface cache tokens so the daemon can price them
-        # correctly. Anthropic returns cache_read/creation in the usage
-        # object; non-Anthropic providers report 0 (handled in router).
-        "cache_read_tokens": router_result.get("cache_read_tokens", 0),
-        "cache_creation_tokens": router_result.get("cache_creation_tokens", 0),
-        "provider": router_result.get("provider"),
-        "path": router_result.get("path"),
-    }
+        in_flight.release()
 
 
 # The two _sync_* helpers below run inside asyncio.to_thread.
@@ -375,10 +209,6 @@ def _sync_claude_call(
     model: str,
     max_tokens: int,
     system_prompt: Optional[str],
-    enable_thinking: bool,
-    thinking_budget: int,
-    tools: Optional[List[Dict]],
-    temperature: Optional[float],
     session_id: Optional[str] = None,
     agent_id: Optional[str] = None,
     investigation_id: Optional[str] = None,
@@ -392,95 +222,10 @@ def _sync_claude_call(
         system_prompt=system_prompt,
         model=model,
         max_tokens=max_tokens,
-        enable_thinking=enable_thinking,
-        thinking_budget=thinking_budget if enable_thinking else None,
         session_id=session_id,
         agent_id=agent_id,
         investigation_id=investigation_id,
     )
-
-
-def _sync_claude_raw(
-    claude_service,
-    *,
-    messages: List[Dict],
-    model: str,
-    max_tokens: int,
-    enable_thinking: bool,
-    thinking_budget: int,
-    tools: Optional[List[Dict]],
-    temperature: Optional[float],
-    investigation_id: Optional[str] = None,
-    agent_id: Optional[str] = None,
-) -> Any:
-    # A direct messages.create() call, for multi-turn tool loops.
-    import time as _time
-
-    from core.llm.defaults import (
-        build_thinking_kwargs,
-        model_requires_adaptive_thinking,
-    )
-
-    kwargs: Dict[str, Any] = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": messages,
-    }
-    if tools:
-        kwargs["tools"] = tools
-    # Newer Anthropic models (Opus 4.7/4.8, Fable 5, Mythos) reject sampling
-    # params like temperature with a 400, so only send it to older models.
-    if temperature is not None and not model_requires_adaptive_thinking(model):
-        kwargs["temperature"] = temperature
-    if enable_thinking and thinking_budget:
-        # Model-aware: adaptive thinking for models that reject budget_tokens.
-        kwargs.update(build_thinking_kwargs(model, thinking_budget))
-
-    # #185: tag the upstream Bifrost call with a Vigil interaction UUID
-    # so the LogEntry on Bifrost's side can be correlated with the local
-    # LLMInteractionLog row this method writes below. Bifrost captures
-    # any `x-bf-lh-*` header into LogEntry.metadata.
-    import uuid as _uuid
-
-    _interaction_id = str(_uuid.uuid4())
-    kwargs["extra_headers"] = {
-        **(kwargs.get("extra_headers") or {}),
-        "x-bf-lh-vigil-interaction-id": _interaction_id,
-    }
-
-    _raw_started = _time.monotonic()
-    response = claude_service.client.messages.create(**kwargs)
-    _raw_duration_ms = int((_time.monotonic() - _raw_started) * 1000)
-
-    # Persist reasoning trace (GH #79)
-    try:
-        _usage = getattr(response, "usage", None)
-        claude_service._persist_interaction(
-            session_id=None,
-            agent_id=agent_id,
-            investigation_id=investigation_id,
-            model=getattr(response, "model", model),
-            system_prompt=None,
-            request_messages=messages,
-            response_content=list(response.content) if response.content else [],
-            thinking_enabled=bool(enable_thinking),
-            thinking_budget=thinking_budget if enable_thinking else None,
-            stop_reason=getattr(response, "stop_reason", None),
-            input_tokens=getattr(_usage, "input_tokens", 0) if _usage else 0,
-            output_tokens=getattr(_usage, "output_tokens", 0) if _usage else 0,
-            cache_read_tokens=(
-                getattr(_usage, "cache_read_input_tokens", 0) if _usage else 0
-            ),
-            cache_creation_tokens=(
-                getattr(_usage, "cache_creation_input_tokens", 0) if _usage else 0
-            ),
-            duration_ms=_raw_duration_ms,
-            interaction_id=_interaction_id,
-        )
-    except Exception as _pe:
-        logger.debug(f"Reasoning-trace persist skipped (raw): {_pe}")
-
-    return response
 
 
 def _extract_result(response: Any) -> Dict[str, Any]:
@@ -579,15 +324,11 @@ async def on_startup(ctx: Dict[str, Any]):
 
     from core.llm.harness.claude import ClaudeService
 
-    claude_service = ClaudeService(
-        use_backend_tools=True,
-        use_mcp_tools=False,
-        use_agent_sdk=False,
-        enable_thinking=True,
-        thinking_budget=8000,
-    )
+    claude_service = ClaudeService(enable_thinking=True, thinking_budget=8000)
     ctx["claude_service"] = claude_service
-    ctx["rate_limiter"] = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
+    # A cap on calls in flight, not a rate limit: the rate is Bifrost's, and
+    # how a client answers its refusals is core.llm.gateway_retry's.
+    ctx["in_flight"] = asyncio.Semaphore(MAX_CONCURRENT_LLM_CALLS)
     ctx["session_store"] = RedisSessionStore(ctx["redis"])
 
     # Multi-provider routing (GH #88). Router is optional: if construction
@@ -614,7 +355,7 @@ async def on_shutdown(ctx: Dict[str, Any]):
 class WorkerSettings:
     # ARQ polls queues left-to-right, so triage is always consumed before
     # investigation, and investigation before chat.
-    functions = [llm_call, llm_call_raw]
+    functions = [llm_call]
     redis_settings = _redis_settings()
     queue_name = QUEUE_NAME
     max_jobs = MAX_CONCURRENT_LLM_CALLS

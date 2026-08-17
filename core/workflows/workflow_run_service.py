@@ -33,14 +33,18 @@ class WorkflowRunService:
         trigger_context: Optional[Dict[str, Any]] = None,
         triggered_by: Optional[str] = None,
         skill_tools_available: Optional[List[str]] = None,
+        run_id: Optional[str] = None,
     ) -> Optional[str]:
         """Create a ``workflow_runs`` row with ``status='running'``.
 
         Returns the new ``run_id`` on success, ``None`` if the DB
         write fails (the workflow still executes — run history is
         best-effort so a DB outage can't block operations).
+
+        A caller may supply ``run_id`` when the run is already
+        identified elsewhere, so one run carries one id everywhere.
         """
-        run_id = generate_run_id()
+        run_id = run_id or generate_run_id()
         try:
             db = get_db_manager()
             with db.session_scope() as session:
@@ -90,6 +94,7 @@ class WorkflowRunService:
         status: str,
         result_summary: Optional[str] = None,
         error: Optional[str] = None,
+        cost_usd: Optional[float] = None,
     ) -> bool:
         """Mark a run terminal. ``status`` must be one of the check-
         constrained values: completed | failed | cancelled."""
@@ -113,6 +118,8 @@ class WorkflowRunService:
                     row.result_summary = result_summary[:50_000]
                 if error is not None:
                     row.error = str(error)[:5_000]
+                if cost_usd is not None:
+                    row.total_cost_usd = cost_usd
                 if row.started_at is not None:
                     delta = now - row.started_at
                     row.duration_ms = int(delta.total_seconds() * 1000)

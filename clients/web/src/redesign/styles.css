@@ -282,6 +282,29 @@
       background: var(--accent);
    }
 
+   /* How many runs are parked waiting on someone. Anchored to the button rather
+      than the label so it survives the rail collapsing to icons. */
+   .rail .nav-count {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      min-width: 15px;
+      height: 15px;
+      padding: 0 4px;
+      border-radius: 8px;
+      background: var(--warn, #d98a20);
+      color: #10100e;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 15px;
+      text-align: center;
+   }
+
+   .rail.expanded .nav-count {
+      position: static;
+      margin-left: auto;
+   }
+
    .rail .nav-label {
       font-size: 13px;
       font-weight: 500;

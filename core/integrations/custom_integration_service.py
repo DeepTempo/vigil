@@ -4,12 +4,12 @@ import json
 import logging
 import os
 import re
-from pathlib import Path
-from typing import Dict, Any, Optional, List
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from core.llm.defaults import DEFAULT_MODEL
 from core.config import vigil_path
+from core.llm.defaults import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class CustomIntegrationService:
             from core.llm.harness.claude import ClaudeService
 
             # Initialize Claude
-            claude = ClaudeService(use_mcp_tools=False)
+            claude = ClaudeService()
 
             # Check if Claude is configured
             if not claude.api_key or not claude.client:
@@ -236,7 +236,11 @@ Please analyze this documentation and generate:
    - Complete, production-ready MCP server implementation
    - Follow the Vigil SOC patterns
    - Include proper error handling
-   - Use config_utils.py for configuration loading
+   - Load configuration with
+     `from core.integrations._base.config import missing, resolve_fields`, then
+     `resolve_fields("<integration-id>", ["field", ...])`. Never read a
+     credential from `get_integration_config` — secrets are stripped before
+     that store is written, so it always returns None for them.
    - Define tools based on the API's capabilities
    - Each tool should have a clear name, description, and input schema
 

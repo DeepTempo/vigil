@@ -36,9 +36,23 @@ kubectl port-forward -n vigil svc/vigil-backend 6987:6987
 | `vigil-backend` | Deployment | 2 (default) | FastAPI API + bundled SPA on port 6987 |
 | `vigil-daemon` | StatefulSet | **1 (singleton)** | Autonomous orchestrator; webhook=8081, metrics=9090, health=9091 |
 | `vigil-llm-worker` | Deployment | 2 (default) | ARQ worker for Claude requests off Redis queue |
+| `vigil-agent-worker` | Deployment | 2 (default) | Drains the BullMQ `agent-runs` queue; probes on 6990, no Service. Opt-out via `agentWorker.enabled=false` |
+| `vigil-agent-serve` | Deployment | 2 (default) | Agent chat (SSE) and run projections on 6989; ClusterIP, reached by the backend at `AGENT_URL`. Opt-out via `agentServe.enabled=false` |
 | `vigil-postgres` | StatefulSet | 1 | Opt-out via `postgresql.enabled=false` |
 | `vigil-redis` | StatefulSet | 1 | Opt-out via `redis.enabled=false` |
 | `vigil-db-init` | Job (Helm hook) | 1 per install/upgrade | Applies `infra/database/init/*.sql` idempotently |
+
+### Images
+
+Three, not two. `vigil-agent-worker` and `vigil-agent-serve` run the **same** image with different commands — it is a Node image and cannot reuse the backend's the way `llm-worker` does.
+
+| Image | Used by |
+|---|---|
+| `ghcr.io/vigil-soc/vigil-backend` | backend, llm-worker, db-init |
+| `ghcr.io/vigil-soc/vigil-daemon` | daemon |
+| `ghcr.io/vigil-soc/vigil-agent` | agent-worker, agent-serve |
+
+`vigil-agent` is published from the release that first ships these Deployments. If you mirror images into a private registry or run air-gapped, add the third one before upgrading — the agent Deployments are enabled by default and will otherwise sit in `ImagePullBackOff`. To upgrade without them, set `agentWorker.enabled=false` and `agentServe.enabled=false`.
 
 ## Required inputs
 
@@ -50,6 +64,10 @@ At minimum you need:
 When `config.DEV_MODE=false` (the default), also set:
 
 - `secrets.jwtSecretKey` — generate with `python -c "import secrets; print(secrets.token_urlsafe(64))"`
+
+When the agent Deployments are enabled (the default), also set:
+
+- `secrets.agentInternalToken` — generate the same way. It is the whole gate on the seam between the backend and the agent layer since ADR 0014, and it fails closed: leave it unset and every `/internal` call answers 503 and every agent call answers 401, so no run gets past resolving its playbook.
 
 ## External Postgres or Redis
 

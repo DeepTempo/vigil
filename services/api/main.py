@@ -193,7 +193,7 @@ def _mcp_auto_connect_enabled() -> bool:
     return not settings.dev_mode
 
 
-async def _connect_external_services(mcp_client):
+async def _connect_external_services(mcp_client, registry):
     """Connect external startup integrations (skipped under TESTING)."""
     import asyncio
 
@@ -322,6 +322,12 @@ async def _connect_external_services(mcp_client):
             logger.info(
                 f"Persistent connections: {sum(1 for connected in status.values() if connected)}/{len(status)}"
             )
+
+            # Explicitly, now the LLM client no longer does it on the way past
+            # (#632): the AI generators discover tools through this registry.
+            from core.integrations.mcp.registry import populate_from_cache
+
+            populate_from_cache(registry)
         else:
             logger.warning("MCP client not available - MCP SDK may not be installed")
     except Exception as e:
@@ -358,10 +364,10 @@ def _build_services(app: FastAPI):
     app.state.mcp_registry = MCPRegistry()
     app.state.workflow_runs = WorkflowRunService()
 
+    # No approvals or registry: the phase loop that used them belongs to the agent
+    # layer now, and this service only discovers definitions and enqueues runs.
     app.state.workflows = WorkflowsService(
-        approvals=app.state.approvals,
         custom_workflows=app.state.custom_workflows,
-        mcp_registry=app.state.mcp_registry,
         workflow_runs=app.state.workflow_runs,
     )
     app.state.workflow_ai = WorkflowAIGenerator(
@@ -586,7 +592,7 @@ async def _startup(app: FastAPI):
             "(Bifrost sync, model catalog, LLM gateway, MCP)"
         )
     else:
-        await _connect_external_services(app.state.mcp_client)
+        await _connect_external_services(app.state.mcp_client, app.state.mcp_registry)
 
     # Load custom agents from DB into the AgentManager so built-in + custom
     # agents are visible in one merged list. Lookup misses for "custom-*" IDs

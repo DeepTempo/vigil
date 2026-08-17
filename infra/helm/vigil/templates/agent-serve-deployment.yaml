@@ -1,0 +1,113 @@
+{{- /*
+Agent Serve: the agent layer's HTTP surface — chat over SSE, and the run
+projections a supervisor reads. Same image as agent-worker, different command.
+
+Two Deployments rather than one because the two scale on unrelated things: the
+worker on queue depth, this on how many conversations are open. Until #635 both
+ran in one process (worker.ts booted the chat server itself), which meant one
+replica count for a queue consumer and an SSE endpoint at once.
+
+Unlike agent-worker this has a Service and takes traffic — from the backend,
+which proxies /api/claude/chat/stream here and reads run projections. Which is
+why ADR 0014 exists: both sides refused anything that was not loopback, so this
+Deployment could not have worked at all before that decision.
+*/ -}}
+{{- if .Values.agentServe.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vigil.agentServe.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "agent-serve") | nindent 4 }}
+spec:
+  {{- /* Unconditional, unlike agent-worker's: there is no agent-serve HPA to hand
+         the count to, deliberately — see values.yaml. */}}
+  replicas: {{ .Values.agentServe.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-serve") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vigil.componentLabels" (dict "context" . "component" "agent-serve") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.agentServe.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "vigil.serviceAccountName" . }}
+      {{- include "vigil.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- /* An SSE stream can sit on one model call for minutes, and killing it
+             loses the conversation rather than merely retrying it. */}}
+      terminationGracePeriodSeconds: {{ .Values.agentServe.terminationGracePeriodSeconds }}
+      containers:
+        - name: agent-serve
+          image: {{ include "vigil.image" (dict "context" . "component" "agentServe") | quote }}
+          imagePullPolicy: {{ include "vigil.imagePullPolicy" (dict "context" . "component" "agentServe") }}
+          {{- /* The image's CMD is the worker; this is the other entry point. */}}
+          command: ["node", "dist/serve.js"]
+          envFrom:
+            {{- include "vigil.envFrom" . | nindent 12 }}
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vigil.postgres.passwordSecret" . }}
+                  key: {{ include "vigil.postgres.passwordSecretKey" . }}
+            - name: AGENT_HTTP_PORT
+              value: {{ .Values.agentServe.service.port | toString | quote }}
+            {{- /* vigil.env supplies POSTGRES_* and REDIS_URL. Serve ignores
+                   every Redis variable -- it never touches the queue -- but the
+                   block is shared, and one it does not read costs nothing. */}}
+            {{- include "vigil.env" . | nindent 12 }}
+            {{- with .Values.agentServe.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.agentServe.service.port }}
+              protocol: TCP
+          {{- /* Health rides on the traffic port on purpose: a check on a
+                 separate listener can pass while the port that serves chat is
+                 wedged. Readiness reflects Postgres, the only thing this process
+                 cannot work without -- it reads and writes the ledger and never
+                 touches Redis, so "queue connectivity" would be reporting on
+                 something it does not use. */}}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.agentServe.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+      {{- with .Values.agentServe.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.agentServe.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.agentServe.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

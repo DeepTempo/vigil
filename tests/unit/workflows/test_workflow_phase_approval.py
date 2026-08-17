@@ -1,9 +1,9 @@
-"""Unit tests for phase-by-phase workflow execution + approval gating (#128).
+"""Unit tests for phase approval gating (#128, rewired by #630).
 
-These exercise the full pause→approve/reject→resume state machine
-against a real Postgres. ``ClaudeService.chat`` is patched to return
-canned per-phase text so we don't spend API credits and tests stay
-deterministic.
+The state machine is the same and it now spans the boundary: the agent
+layer raises a checkpoint and reports the waiting step here, an analyst
+answers on the approval action, and that answer is read back for the
+agent layer to journal onto its ledger.
 
 Skips cleanly if no DB is reachable — same pattern as
 ``test_workflow_run_service.py``.
@@ -11,9 +11,7 @@ Skips cleanly if no DB is reachable — same pattern as
 
 from __future__ import annotations
 
-import asyncio
-from typing import Any, Dict, List
-from unittest.mock import patch
+from typing import Optional
 
 import pytest
 
@@ -52,8 +50,9 @@ pytestmark = [
 @pytest.fixture
 def clean_tables():
     """Wipe the tables we touch before + after each test."""
-    from core.storage.connection import get_db_manager
     from sqlalchemy import text
+
+    from core.storage.connection import get_db_manager
 
     def _clear():
         with get_db_manager().session_scope() as s:
@@ -80,214 +79,193 @@ def clean_tables():
     _clear()
 
 
-def _make_workflow(approval_on_phase_2: bool = True):
-    """Build an in-memory WorkflowDefinition with 2 phases."""
-    from core.workflows.workflows_service import WorkflowDefinition
+@pytest.fixture
+def internal(monkeypatch):
+    """Answer the shared-secret check so the bridge is callable directly.
 
-    phases: List[Dict[str, Any]] = [
-        {
-            "order": 1,
-            "phase_id": "phase-1",
-            "name": "Triage",
-            "agent_id": "triage",
-            "purpose": "Initial triage",
-            "tools": [],
-            "steps": ["Check severity"],
-            "expected_output": "triage summary",
-            "approval_required": False,
-        },
-        {
-            "order": 2,
-            "phase_id": "phase-2",
-            "name": "Respond",
-            "agent_id": "auto_responder",
-            "purpose": "Contain threat",
-            "tools": [],
-            "steps": ["Isolate host"],
-            "expected_output": "response result",
-            "approval_required": approval_on_phase_2,
-        },
-    ]
-    metadata = {
-        "name": "Test Phased Workflow",
-        "description": "phase-by-phase execution test",
-        "agents": ["triage", "auto_responder"],
-        "tools-used": [],
-        "use-case": "",
-        "trigger-examples": [],
-        "phases": phases,
-    }
-    return WorkflowDefinition(
-        workflow_id="test-phase-001",
-        file_path=None,
-        metadata=metadata,
-        body="",
-        source="custom",
+    The token is the whole of it since ADR 0014 -- ``authorise`` no longer reads
+    the request, so there is no loopback stand-in left to build.
+    """
+    from core.agents import internal_auth
+
+    monkeypatch.setattr(internal_auth, "get_secret", lambda name: "test-token")
+    return "Bearer test-token"
+
+
+def _run(workflow_id: str = "test-phase-001") -> str:
+    from core.workflows.workflow_run_service import WorkflowRunService
+
+    run_id = WorkflowRunService().begin_run(
+        workflow_id=workflow_id,
+        workflow_name="Test Phased Workflow",
+        workflow_source="file",
+        triggered_by="tester",
+    )
+    assert run_id is not None
+    return run_id
+
+
+def _update(status: str, checkpoint: Optional[str] = None):
+    from core.workflows.run_bridge_router import PhaseUpdate
+
+    return PhaseUpdate(
+        phase_id="phase-2",
+        agent="auto_responder",
+        name="Respond",
+        order=2,
+        status=status,
+        checkpoint_id=checkpoint,
+        question="Approve Respond, run by auto_responder?",
     )
 
 
-class _FakeClaudeService:
-    """Test double that skips the real Claude call but keeps the
-    interface ``WorkflowsService`` depends on."""
+def _services():
+    from core.response.approval_service import ApprovalService
+    from core.workflows.workflow_run_service import WorkflowRunService
 
-    def __init__(self, *args, **kwargs):
-        pass
+    return WorkflowRunService(), ApprovalService()
 
-    def has_api_key(self) -> bool:  # noqa: D401
-        return True
 
-    def chat(
-        self, *, message, system_prompt, model, max_tokens, recommended_tools=None
+class TestPhaseApprovalAcrossTheBridge:
+    def test_a_waiting_phase_pauses_the_run_and_raises_an_approval(
+        self, clean_tables, internal
     ):
-        # Return a deterministic per-phase summary so we can assert on it.
-        if "phase-1" in message or "Phase 1" in message:
-            return "phase-1 output: triage complete"
-        if "phase-2" in message or "Phase 2" in message:
-            return "phase-2 output: contained"
-        return "ok"
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
-class TestPhasedExecutionPauseResume:
-    def _patched_service(self, workflow):
-        """Return a WorkflowsService wired so .get_workflow yields our
-        in-memory fixture and ClaudeService is the fake."""
-        from core.workflows import workflows_service as ws
-
-        svc = ws.WorkflowsService()
-        svc.get_workflow = lambda wid: workflow  # type: ignore[method-assign]
-        return svc
-
-    def test_pauses_before_phase_requiring_approval(self, clean_tables):
-        from core.llm.harness import claude as cs_module
+        from core.response.approval_service import ActionStatus, ApprovalService
+        from core.workflows.run_bridge_router import record_phase
         from core.workflows.workflow_run_service import WorkflowRunService
 
-        workflow = _make_workflow(approval_on_phase_2=True)
-        svc = self._patched_service(workflow)
+        token = internal
+        run_id = _run()
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
 
-        with patch.object(cs_module, "ClaudeService", _FakeClaudeService):
-            result = asyncio.run(
-                svc.execute_workflow(
-                    workflow.id,
-                    parameters={"context": "test"},
-                    triggered_by="pytest",
-                )
-            )
-
-        assert result["success"] is True
-        assert result["status"] == "paused"
-        assert result["run_id"]
-        assert result["pending_approval_action_id"]
-        assert result["paused_at_phase"] == "phase-2"
-
-        run = WorkflowRunService().get_run(result["run_id"])
+        run = WorkflowRunService().get_run(run_id)
         assert run["status"] == "paused"
-        phases = WorkflowRunService().list_phases(result["run_id"])
-        by_id = {p["phase_id"]: p for p in phases}
-        assert by_id["phase-1"]["status"] == "completed"
-        assert by_id["phase-2"]["status"] == "pending_approval"
-        assert by_id["phase-2"]["approval_state"] == "pending"
 
-    def test_resume_approved_completes_run(self, clean_tables):
-        from core.llm.harness import claude as cs_module
-        from core.response.approval_service import ApprovalService
+        pending = ApprovalService().list_actions(
+            status=ActionStatus.PENDING, workflow_run_id=run_id
+        )
+        assert len(pending) == 1
+        assert pending[0].parameters["checkpoint_id"] == "chk-phase-2"
+        assert pending[0].workflow_phase_id == "phase-2"
+
+    def test_the_same_checkpoint_reported_twice_raises_one_approval(
+        self, clean_tables, internal
+    ):
+        """A resume re-reports the step it is still waiting on."""
+        from core.response.approval_service import ActionStatus, ApprovalService
+        from core.workflows.run_bridge_router import record_phase
+
+        token = internal
+        run_id = _run()
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
+
+        pending = ApprovalService().list_actions(
+            status=ActionStatus.PENDING, workflow_run_id=run_id
+        )
+        assert len(pending) == 1
+
+    def test_an_approval_comes_back_as_a_decision_the_ledger_can_take(
+        self, clean_tables, internal
+    ):
+        from core.response.approval_service import ActionStatus, ApprovalService
+        from core.workflows.run_bridge_router import list_decisions, record_phase
+
+        token = internal
+        run_id = _run()
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
+
+        service = ApprovalService()
+        action = service.list_actions(
+            status=ActionStatus.PENDING, workflow_run_id=run_id
+        )[0]
+        service.approve_action(action.action_id, approved_by="tester")
+
+        decisions = list_decisions(run_id, token, _services()[1]).decisions
+        assert len(decisions) == 1
+        assert decisions[0].checkpoint_id == "chk-phase-2"
+        assert decisions[0].answer == "approve"
+        assert decisions[0].actor == "tester"
+
+    def test_a_rejection_comes_back_carrying_its_reason(self, clean_tables, internal):
+        from core.response.approval_service import ActionStatus, ApprovalService
+        from core.workflows.run_bridge_router import list_decisions, record_phase
+
+        token = internal
+        run_id = _run()
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
+
+        service = ApprovalService()
+        action = service.list_actions(
+            status=ActionStatus.PENDING, workflow_run_id=run_id
+        )[0]
+        service.reject_action(
+            action.action_id, reason="too risky", rejected_by="tester"
+        )
+
+        decisions = list_decisions(run_id, token, _services()[1]).decisions
+        assert len(decisions) == 1
+        assert decisions[0].answer == "reject"
+        assert decisions[0].text == "too risky"
+
+    def test_an_undecided_run_hands_back_nothing_to_journal(
+        self, clean_tables, internal
+    ):
+        from core.workflows.run_bridge_router import list_decisions, record_phase
+
+        token = internal
+        run_id = _run()
+        record_phase(
+            run_id, _update("pending_approval", "chk-phase-2"), token, *_services()
+        )
+
+        assert list_decisions(run_id, token, _services()[1]).decisions == []
+
+    def test_a_completed_phase_leaves_the_run_running(self, clean_tables, internal):
+        from core.workflows.run_bridge_router import record_phase
         from core.workflows.workflow_run_service import WorkflowRunService
 
-        workflow = _make_workflow(approval_on_phase_2=True)
-        svc = self._patched_service(workflow)
+        token = internal
+        run_id = _run()
+        record_phase(run_id, _update("completed"), token, *_services())
 
-        with patch.object(cs_module, "ClaudeService", _FakeClaudeService):
-            paused = asyncio.run(
-                svc.execute_workflow(workflow.id, parameters={}, triggered_by="pytest")
-            )
-            assert paused["status"] == "paused"
-            run_id = paused["run_id"]
-            action_id = paused["pending_approval_action_id"]
+        run_service = WorkflowRunService()
+        assert run_service.get_run(run_id)["status"] == "running"
+        phases = run_service.list_phases(run_id)
+        assert [p["phase_id"] for p in phases] == ["phase-2"]
+        assert phases[0]["status"] == "completed"
 
-            ApprovalService().approve_action(action_id, approved_by="tester")
-            result = asyncio.run(
-                svc.resume_workflow(run_id, "approved", approved_by="tester")
-            )
+    def test_the_outcome_finalises_the_run(self, clean_tables, internal):
+        from core.workflows.run_bridge_router import TerminalUpdate, record_terminal
+        from core.workflows.workflow_run_service import WorkflowRunService
 
-        assert result["success"] is True
-        assert result["status"] == "completed"
-        assert result["run_id"] == run_id
+        token = internal
+        run_id = _run()
+        record_terminal(
+            run_id,
+            TerminalUpdate(outcome="completed", reason="all 2 phases ran", summary="s"),
+            token,
+            *_services(),
+        )
 
         run = WorkflowRunService().get_run(run_id)
         assert run["status"] == "completed"
-        phases = WorkflowRunService().list_phases(run_id)
-        statuses = {p["phase_id"]: p["status"] for p in phases}
-        approval_states = {p["phase_id"]: p["approval_state"] for p in phases}
-        assert statuses == {"phase-1": "completed", "phase-2": "completed"}
-        assert approval_states["phase-2"] == "approved"
-
-    def test_resume_rejected_cancels_run(self, clean_tables):
-        from core.llm.harness import claude as cs_module
-        from core.response.approval_service import ApprovalService
-        from core.workflows.workflow_run_service import WorkflowRunService
-
-        workflow = _make_workflow(approval_on_phase_2=True)
-        svc = self._patched_service(workflow)
-
-        with patch.object(cs_module, "ClaudeService", _FakeClaudeService):
-            paused = asyncio.run(
-                svc.execute_workflow(workflow.id, parameters={}, triggered_by="pytest")
-            )
-            run_id = paused["run_id"]
-            action_id = paused["pending_approval_action_id"]
-
-            ApprovalService().reject_action(
-                action_id, reason="not safe", rejected_by="tester"
-            )
-            result = asyncio.run(
-                svc.resume_workflow(
-                    run_id,
-                    "rejected",
-                    rejection_reason="not safe",
-                    approved_by="tester",
-                )
-            )
-
-        assert result["success"] is True
-        assert result["status"] == "cancelled"
-        assert "not safe" in result["rejection_reason"]
-
-        run = WorkflowRunService().get_run(run_id)
-        assert run["status"] == "cancelled"
-        assert "not safe" in (run["error"] or "")
-        phases = WorkflowRunService().list_phases(run_id)
-        by_id = {p["phase_id"]: p for p in phases}
-        assert by_id["phase-2"]["status"] == "failed"
-        assert by_id["phase-2"]["approval_state"] == "rejected"
-
-    def test_no_approval_required_runs_straight_through(self, clean_tables):
-        from core.llm.harness import claude as cs_module
-        from core.workflows.workflow_run_service import WorkflowRunService
-
-        workflow = _make_workflow(approval_on_phase_2=False)
-        svc = self._patched_service(workflow)
-
-        with patch.object(cs_module, "ClaudeService", _FakeClaudeService):
-            result = asyncio.run(
-                svc.execute_workflow(workflow.id, parameters={}, triggered_by="pytest")
-            )
-
-        assert result["success"] is True
-        assert result["status"] == "completed"
-        run = WorkflowRunService().get_run(result["run_id"])
-        assert run["status"] == "completed"
+        assert run["result_summary"] == "s"
 
 
 class TestApprovalActionWorkflowLinkage:
     def test_create_action_persists_workflow_linkage(self, clean_tables):
-        from core.response.approval_service import (
-            ActionType,
-            ApprovalService,
-        )
+        from core.response.approval_service import ActionType, ApprovalService
         from core.workflows.workflow_run_service import WorkflowRunService
 
         run_id = WorkflowRunService().begin_run(
