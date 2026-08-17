@@ -26,12 +26,12 @@ jobs:
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: true
       
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -78,10 +78,10 @@ jobs:
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -101,10 +101,10 @@ jobs:
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       
       - name: Run hadolint
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.4.0
         with:
           dockerfile: infra/docker/Dockerfile.backend
           ignore: DL3008,DL3009
@@ -114,7 +114,7 @@ jobs:
       # (#635) and installs no apt packages, so the two rules waived above have
       # nothing to say about it. Advisory here would only let it rot.
       - name: Run hadolint (agent)
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.4.0
         with:
           dockerfile: infra/docker/Dockerfile.agent
 
@@ -130,13 +130,13 @@ jobs:
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build agent image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: infra/docker/Dockerfile.agent
@@ -187,12 +187,12 @@ jobs:
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: true
       
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -221,7 +221,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDEAPI }}
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           file: ./coverage.xml
           flags: unittests
@@ -233,10 +233,10 @@ jobs:
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -284,10 +284,10 @@ jobs:
       DATABASE_URL: postgres://test:test@localhost:5432/agent_test
       REDIS_URL: redis://localhost:6379/0
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -357,18 +357,18 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -410,7 +410,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDEAPI }}
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           file: ./coverage.xml
           flags: integration
@@ -446,12 +446,12 @@ jobs:
       POSTGRES_PASSWORD: test
       POSTGRES_DB: deeptempo_test
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -484,12 +484,12 @@ jobs:
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: true
       
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
@@ -500,7 +500,7 @@ jobs:
         run: bandit -r core/ services/ tools/ scripts/ -f json -o bandit-report.json || true
       
       - name: Upload Bandit results
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: bandit-report
           path: bandit-report.json
@@ -511,10 +511,10 @@ jobs:
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
       
@@ -536,15 +536,15 @@ jobs:
       packages: write
     
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: true
       
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       
       - name: Log in to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -552,7 +552,7 @@ jobs:
       
       - name: Extract metadata (backend)
         id: meta-backend
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
           tags: |
@@ -560,7 +560,7 @@ jobs:
             type=sha,prefix={{branch}}-
       
       - name: Build and push backend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: infra/docker/Dockerfile.backend
@@ -572,7 +572,7 @@ jobs:
       
       - name: Extract metadata (daemon)
         id: meta-daemon
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-daemon
           tags: |
@@ -580,7 +580,7 @@ jobs:
             type=sha,prefix={{branch}}-
       
       - name: Build and push daemon image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: infra/docker/Dockerfile.daemon
@@ -603,10 +603,10 @@ jobs:
     # catches breakage that only appears after the merge.
     if: github.repository == 'Vigil-SOC/vigil'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -622,7 +622,7 @@ jobs:
       
       - name: Upload build artifacts
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-build
           path: clients/web/build/
@@ -646,7 +646,7 @@ jobs:
         continue-on-error: true
       
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
         continue-on-error: true
