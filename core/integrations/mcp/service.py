@@ -12,6 +12,7 @@ import os
 
 from core.secrets import get_secret
 from core.config import vigil_path
+from core.integrations.mcp.child_env import ca_bundle_env
 from core.detections.detection_rules_service import DetectionRulesService
 from core.integrations.integration_bridge_service import IntegrationBridgeService
 
@@ -89,6 +90,8 @@ class MCPServer:
         try:
             # Prepare environment
             env = os.environ.copy()  # noqa: ENV001 - MCP child process env
+            # httpx ignores REQUESTS_CA_BUNDLE, so inheriting it is not enough.
+            env.update(ca_bundle_env())
             env.update(self.env)
             
             # Start process
@@ -412,6 +415,9 @@ class MCPService:
                     # detection scans the raw config above, not this spawn env,
                     # so dormancy behavior is unchanged.
                     env = os.environ.copy()  # noqa: ENV001 - MCP child env
+                    # httpx ignores REQUESTS_CA_BUNDLE, so inheriting it is
+                    # not enough.
+                    env.update(ca_bundle_env())
                     env.update(
                         {
                             k: self._substitute_env_vars(v)

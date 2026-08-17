@@ -24,6 +24,7 @@ except ImportError:
             ClientSession = Any
             StdioServerParameters = Any
 
+from core.integrations.mcp.child_env import ca_bundle_env
 from core.integrations.mcp.service import MCPService
 
 from core.secrets import get_secret
@@ -248,11 +249,13 @@ class MCPClient:
             return False
 
         try:
-            # Create stdio server parameters
+            # Create stdio server parameters. stdio_client narrows the child
+            # environment to a six-name allowlist, so a CA bundle set in the
+            # backend's environment has to be forwarded rather than inherited.
             server_params = StdioServerParameters(
                 command=server.command,
                 args=server.args,
-                env=server.env
+                env={**ca_bundle_env(), **(server.env or {})}
             )
             
             if persistent:

@@ -42,6 +42,22 @@ verify = True if config.get('verify_ssl') is None else config.get('verify_ssl')
 | `except httpx.HTTPStatusError` | The twin of `requests.HTTPError`. `httpx.HTTPError` is its parent and also catches transport failures, which belong to the generic handler. |
 | No `None` in `params=` | requests dropped a `None`-valued param; httpx sends `key=`. A tool call may carry `"limit": null`, so write `args.get("limit") or 20`, not `args.get("limit", 20)`. |
 
+### CA bundles
+
+To trust a private or inspecting CA, set **`SSL_CERT_FILE`** (a bundle file) or
+**`SSL_CERT_DIR`** (a directory) in the backend's environment. `REQUESTS_CA_BUNDLE`
+and `CURL_CA_BUNDLE` are honored as aliases for the `requests` era, translated to
+the name httpx actually reads. Unset, httpx uses certifi.
+
+`core/integrations/mcp/child_env.py` resolves this and every spawn site merges
+it into the child environment. Forwarding has to be explicit: `mcp.client.stdio`
+narrows a spawned server's environment to `HOME`, `LOGNAME`, `PATH`, `SHELL`,
+`TERM`, `USER` plus its own `env` block, so a bundle set in the backend's
+environment is otherwise stripped before the server sees it.
+
+A path that doesn't exist is ignored with a warning rather than forwarded — a
+stale value should not turn into a bundle that fails every TLS handshake.
+
 ## Tests
 
 `tests/unit/integrations/test_tool_servers_httpx.py` scans every `tool.py` for
