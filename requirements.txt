@@ -102,7 +102,7 @@ stix2>=3.0.1
 # PDF report generation (chat reports, case reports). The feature ships in
 # services/api/routers/claude.py → /generate-chat-report; without this dep the endpoint
 # returns 503 even though the feature is wired into the UI.
-reportlab>=4.0.0
+reportlab>=5.0.0
 
 # Monitoring & Observability
 sentry-sdk>=1.40.0
