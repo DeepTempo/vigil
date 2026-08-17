@@ -82,7 +82,9 @@ async def handle_call_tool(name: str, arguments: dict | None):
             return result({"success": True, "user_id": uid, "action": "disabled"})
         
         elif name == "aad_get_sign_ins":
-            params = {"$top": args.get("limit", 20)}
+            # `or 20`, not a .get default: a tool call may carry "limit": null,
+            # and httpx renders a None param as "$top=" where requests dropped it.
+            params = {"$top": args.get("limit") or 20}
             if user := args.get("user"):
                 params["$filter"] = f"userPrincipalName eq '{user}'"
             resp = httpx.get("https://graph.microsoft.com/v1.0/auditLogs/signIns",

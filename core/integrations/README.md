@@ -40,6 +40,7 @@ verify = True if config.get('verify_ssl') is None else config.get('verify_ssl')
 | No `follow_redirects` | httpx's default, and the one to keep — not something a server has to handle. Most servers hardcode their vendor's host, so a 3xx is unreachable anyway. It matters only for the five whose host is operator-supplied (`cape_sandbox`, `carbon_black`, `microsoft_teams`, `misp`, `palo_alto`): there a 3xx means a wrong base URL, and following it would be worse than surfacing it — on a POST, a 301/302/303 is re-issued as a GET without the body, so a "delivered" alert silently isn't. A handler that reads `status_code` instead of calling `raise_for_status()` must carry the status into its payload, or the failure is undiagnosable. |
 | `verify=<resolved verify_ssl>` | For on-prem appliances that may use self-signed certs. Never hardcode `verify=False` — the operator opts out. |
 | `except httpx.HTTPStatusError` | The twin of `requests.HTTPError`. `httpx.HTTPError` is its parent and also catches transport failures, which belong to the generic handler. |
+| No `None` in `params=` | requests dropped a `None`-valued param; httpx sends `key=`. A tool call may carry `"limit": null`, so write `args.get("limit") or 20`, not `args.get("limit", 20)`. |
 
 ## Tests
 

@@ -329,6 +329,65 @@ async def test_palo_alto_xml_api_params_survive_encoding(monkeypatch):
     assert "<" not in str(route.calls.last.request.url)
 
 
+@respx.mock
+async def test_palo_alto_block_carries_the_status_code(monkeypatch):
+    """A 3xx means the configured hostname is wrong, and nothing follows it.
+
+    pan_block_ip reads status_code instead of raising, so without the code in
+    the payload an operator sees a bare `success: false` for a containment
+    action and has nothing to debug from.
+    """
+    _stub_config(
+        monkeypatch, pan, {"hostname": "pan.test", "api_key": "k", "verify_ssl": True}
+    )
+    respx.get(url__startswith="https://pan.test/api/").mock(
+        return_value=httpx.Response(302, headers={"Location": "https://pan.test/php/"})
+    )
+
+    body = _body(
+        await pan.handle_call_tool("pan_block_ip", {"ip": "1.2.3.4", "reason": "c2"})
+    )
+    assert body["success"] is False
+    assert body["status_code"] == 302
+
+
+# --------------------------------------------------------------------- #
+# Null-valued params — requests dropped them, httpx sends `key=`
+# --------------------------------------------------------------------- #
+
+
+@respx.mock
+async def test_azure_ad_sign_ins_drops_a_null_limit(monkeypatch):
+    """A tool call may carry "limit": null; Graph 400s on a bare `$top=`."""
+    _stub_config(
+        monkeypatch,
+        aad,
+        {"tenant_id": "tid", "client_id": "cid", "client_secret": "sec"},
+    )
+    respx.post("https://login.microsoftonline.com/tid/oauth2/v2.0/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "at"})
+    )
+    route = respx.get("https://graph.microsoft.com/v1.0/auditLogs/signIns").mock(
+        return_value=httpx.Response(200, json={"value": []})
+    )
+
+    await aad.handle_call_tool("aad_get_sign_ins", {"limit": None})
+    assert route.calls.last.request.url.params["$top"] == "20"
+
+
+@respx.mock
+async def test_palo_alto_threats_drops_a_null_limit(monkeypatch):
+    _stub_config(
+        monkeypatch, pan, {"hostname": "pan.test", "api_key": "k", "verify_ssl": True}
+    )
+    route = respx.get(url__startswith="https://pan.test/api/").mock(
+        return_value=httpx.Response(200, text="<response/>")
+    )
+
+    await pan.handle_call_tool("pan_get_threats", {"limit": None})
+    assert route.calls.last.request.url.params["nlogs"] == "20"
+
+
 # --------------------------------------------------------------------- #
 # Request encoding — files=, data=, params=, json=
 # --------------------------------------------------------------------- #

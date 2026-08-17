@@ -56,11 +56,20 @@ async def handle_call_tool(name: str, arguments: dict | None):
                 "xpath": f"/config/devices/entry/vsys/entry[@name='vsys1']/address/entry[@name='blocked-{ip}']",
                 "element": f"<ip-netmask>{ip}/32</ip-netmask><description>Blocked: {args.get('reason', 'security')}</description>"
             }, verify=verify, timeout=30)
-            return result({"success": resp.status_code == 200, "ip": ip, "action": "blocked"})
+            # httpx doesn't follow redirects, so a 3xx here means the configured
+            # hostname is wrong. Carry the status or that is undiagnosable.
+            return result({
+                "success": resp.status_code == 200,
+                "status_code": resp.status_code,
+                "ip": ip, "action": "blocked"
+            })
         
         elif name == "pan_get_threats":
             resp = httpx.get(f"{url}/api/", params={
-                "type": "log", "log-type": "threat", "key": api_key, "nlogs": args.get("limit", 20)
+                # `or 20`: see the aad_get_sign_ins note — a null limit would
+                # reach the wire as "nlogs=" under httpx.
+                "type": "log", "log-type": "threat", "key": api_key,
+                "nlogs": args.get("limit") or 20
             }, verify=verify, timeout=30)
             # Parse XML response (simplified)
             return result({"success": True, "message": "Check Palo Alto console for threat logs"})
