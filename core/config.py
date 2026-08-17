@@ -268,7 +268,7 @@ def _format_validation_error(exc: ValidationError) -> str:
         loc = ".".join(str(part) for part in error.get("loc", ()))
         msg = error.get("msg", "invalid value")
         details.append(f"{loc}: {msg}" if loc else msg)
-    return "; ".join(details) or str(exc).replace("\n", " ")
+    return "; ".join(details) or "invalid settings"
 
 
 def validate_settings_or_exit() -> Settings:

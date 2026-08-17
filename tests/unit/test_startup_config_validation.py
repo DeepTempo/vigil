@@ -2,8 +2,18 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
+
+from pydantic import ValidationError
+
+from core.config import _format_validation_error
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+class _EmptyValidationError:
+    def errors(self) -> list[object]:
+        return []
 
 
 def _run_startup(command: str) -> subprocess.CompletedProcess[str]:
@@ -43,3 +53,9 @@ def test_daemon_entrypoint_reports_labeled_configuration_error():
     assert "daemon_health_port" in result.stderr
     assert "Traceback" not in result.stderr
     assert "ValidationError" not in result.stderr
+
+
+def test_validation_error_formatting_never_falls_back_to_exception_text():
+    error = cast(ValidationError, _EmptyValidationError())
+
+    assert _format_validation_error(error) == "invalid settings"
