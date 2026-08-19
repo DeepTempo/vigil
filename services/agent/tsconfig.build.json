@@ -1,0 +1,26 @@
+// Emit config, used only by the image build. tsconfig.json stays noEmit so
+// `npm run typecheck` and vitest are untouched.
+//
+// NodeNext rather than the base config's "bundler": bundler resolution cannot
+// emit for node. The sources already carry .js extensions on relative imports,
+// so this is *nearly* a config swap -- but not entirely. NodeNext resolves a
+// default import from a CommonJS package to module.exports.default, which is why
+// core/stream.ts imports ajv by name. Anything else CJS added here will want the
+// same treatment, and only this config will say so: `npm run typecheck` uses
+// bundler resolution and lets a default import past.
+//
+// Both entry points emit from the include below -- dist/worker.js and
+// dist/serve.js -- because the image runs one or the other by command.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "tests", "scripts", "vitest.config.ts"]
+}

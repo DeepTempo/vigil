@@ -13,8 +13,8 @@ source "$(dirname "$0")/lib.sh"
 step() { echo "STEP $1 $2"; }
 
 step submodules start
-if [ -d "$REPO_ROOT/.git" ] && [ ! -f "$REPO_ROOT/deeptempo-core/pyproject.toml" ] \
-    && [ ! -f "$REPO_ROOT/deeptempo-core/setup.py" ]; then
+if [ -d "$REPO_ROOT/.git" ] && [ ! -f "$REPO_ROOT/mempalace/pyproject.toml" ] \
+    && [ ! -f "$REPO_ROOT/mempalace/setup.py" ]; then
     (cd "$REPO_ROOT" && git submodule update --init --recursive) >&2 \
         || echo "Warning: submodule init failed." >&2
 fi
@@ -37,10 +37,10 @@ install_python_deps >&2
 step deps ok
 
 step frontend-deps start
-if ensure_npm_on_path && [ -d "$REPO_ROOT/frontend" ]; then
-    if [ ! -d "$REPO_ROOT/frontend/node_modules" ]; then
-        (cd "$REPO_ROOT/frontend" && npm ci --prefer-offline) >&2 \
-            || (cd "$REPO_ROOT/frontend" && npm install) >&2
+if ensure_npm_on_path && [ -d "$REPO_ROOT/clients/web" ]; then
+    if [ ! -d "$REPO_ROOT/clients/web/node_modules" ]; then
+        (cd "$REPO_ROOT/clients/web" && npm ci --prefer-offline) >&2 \
+            || (cd "$REPO_ROOT/clients/web" && npm install) >&2
     fi
     step frontend-deps ok
 else

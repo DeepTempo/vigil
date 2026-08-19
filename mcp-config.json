@@ -29,25 +29,25 @@
 
     "deeptempo-findings": {
       "command": "python3",
-      "args": ["mcp-servers/servers/deeptempo_findings.py"],
+      "args": ["tools/mcp/deeptempo_findings.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "tempo-flow": {
       "command": "python3",
-      "args": ["mcp-servers/servers/tempo_flow.py"],
+      "args": ["tools/mcp/tempo_flow.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "approval": {
       "command": "python3",
-      "args": ["mcp-servers/servers/approval.py"],
+      "args": ["tools/mcp/approval.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "attack-layer": {
       "command": "python3",
-      "args": ["mcp-servers/servers/attack_layer.py"],
+      "args": ["tools/mcp/attack_layer.py"],
       "cwd": "${workspaceFolder}"
     },
 
@@ -113,7 +113,7 @@
 
     "splunk-selfhosted": {
       "command": "python3",
-      "args": ["tools/splunk.py"],
+      "args": ["core/integrations/splunk/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
         "_setup_note": "Self-hosted Splunk via REST API. Set SPLUNK_URL (e.g., https://splunk.example.com:8089), SPLUNK_USERNAME, and SPLUNK_PASSWORD in .env. Port 8089 uses HTTPS by default."
@@ -122,7 +122,7 @@
 
     "elastic": {
       "command": "python3",
-      "args": ["tools/elastic.py"],
+      "args": ["core/integrations/elastic/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
         "_setup_note": "Elastic Security via Elasticsearch REST API. Set ELASTIC_HOST (e.g., https://elasticsearch.example.com:9200), ELASTIC_API_KEY or ELASTIC_USERNAME/ELASTIC_PASSWORD, and optionally ELASTIC_KIBANA_URL in .env."
@@ -232,7 +232,7 @@
 
     "alienvault-otx": {
       "command": "python3",
-      "args": ["tools/alienvault_otx.py"],
+      "args": ["core/integrations/alienvault_otx/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
         "_note": "Kept as custom tool. Consider consolidating with FastMCP ThreatIntel (multi-source: OTX + VT + AbuseIPDB + IPinfo) when available as a stable package."
@@ -243,7 +243,7 @@
 
     "palo-alto": {
       "command": "python3",
-      "args": ["tools/palo_alto.py"],
+      "args": ["core/integrations/palo_alto/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
         "_note": "Kept as custom tool. Prisma AIRS MCP (official, Jan 2026) focuses on securing AI agents, not PAN-OS firewall management. Evaluate if it covers block_ip/get_threats use cases."
@@ -252,7 +252,7 @@
 
     "slack": {
       "command": "python3",
-      "args": ["tools/slack.py"],
+      "args": ["core/integrations/slack/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
         "_note": "Kept as custom tool. Slack Platform MCP Server (official, in development) focuses on app development, not SOC alerting. Monitor for slack_send_alert support."
@@ -263,13 +263,13 @@
 
     "carbon-black": {
       "command": "python3",
-      "args": ["tools/carbon_black.py"],
+      "args": ["core/integrations/carbon_black/tool.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "vstrike": {
       "command": "python3",
-      "args": ["tools/vstrike.py"],
+      "args": ["core/integrations/vstrike/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
         "_setup_note": "CloudCurrent VStrike network topology fusion layer. Set VSTRIKE_BASE_URL and VSTRIKE_API_KEY in .env, or configure in Settings > Integrations.",
@@ -281,7 +281,7 @@
 
     "microsoft-defender": {
       "command": "python3",
-      "args": ["tools/microsoft_defender.py"],
+      "args": ["core/integrations/microsoft_defender/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
         "_note": "Partially covered by Microsoft Sentinel MCP (shared Defender data lake). Evaluate if azure-sentinel entry above can replace this."
@@ -290,13 +290,13 @@
 
     "microsoft-teams": {
       "command": "python3",
-      "args": ["tools/microsoft_teams.py"],
+      "args": ["core/integrations/microsoft_teams/tool.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "azure-ad": {
       "command": "python3",
-      "args": ["tools/azure_ad.py"],
+      "args": ["core/integrations/azure_ad/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
         "_note": "Microsoft Entra (Azure AD rebrand) may be accessible via Sentinel MCP or Okta MCP for identity use cases. Evaluate."
@@ -305,25 +305,25 @@
 
     "misp": {
       "command": "python3",
-      "args": ["tools/misp.py"],
+      "args": ["core/integrations/misp/tool.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "hybrid-analysis": {
       "command": "python3",
-      "args": ["tools/hybrid_analysis.py"],
+      "args": ["core/integrations/hybrid_analysis/tool.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "anyrun": {
       "command": "python3",
-      "args": ["tools/anyrun.py"],
+      "args": ["core/integrations/anyrun/tool.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "cape-sandbox": {
       "command": "python3",
-      "args": ["tools/cape_sandbox.py"],
+      "args": ["core/integrations/cape_sandbox/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
         "CAPE_SANDBOX_URL": "${CAPE_SANDBOX_URL}",
@@ -333,19 +333,19 @@
 
     "ip-geolocation": {
       "command": "python3",
-      "args": ["tools/ip_geolocation.py"],
+      "args": ["core/integrations/ip_geolocation/tool.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "url-analysis": {
       "command": "python3",
-      "args": ["tools/url_analysis.py"],
+      "args": ["core/integrations/url_analysis/tool.py"],
       "cwd": "${workspaceFolder}"
     },
 
     "cloudflare": {
       "command": "python3",
-      "args": ["tools/cloudflare.py"],
+      "args": ["core/integrations/cloudflare/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
         "_setup_note": "Cloudflare WAF, Zero Trust Gateway, and Access response actions plus read-only IP/domain threat lookups. Configure api_token (and optional account_id, zone_id) in Settings → Integrations. Tools are no-ops until the integration is enabled.",

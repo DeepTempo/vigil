@@ -15,6 +15,7 @@ not an end-to-end MCP spin-up.
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 
 # Keep CSRF out of the way — exercised elsewhere.
 os.environ.setdefault("DEV_MODE", "true")
@@ -28,16 +29,28 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture(scope="module")
 def client():
-    from backend.main import app
+    from services.api.main import app
 
     with TestClient(app) as c:
         yield c
 
 
+@contextmanager
+def _override_mcp_client(client, fake_client):
+    """Swap the MCP client the handler receives (#459) for the duration."""
+    from core.deps import provide_mcp_client
+
+    client.app.dependency_overrides[provide_mcp_client] = lambda: fake_client
+    try:
+        yield
+    finally:
+        client.app.dependency_overrides.pop(provide_mcp_client, None)
+
+
 @pytest.fixture
 def fake_server_known():
     """Patch mcp_service so ``deeptempo-findings`` is a known, settable server."""
-    from api import mcp as mcp_api
+    from services.api.routers import mcp as mcp_api
 
     # Make set_server_enabled succeed (server exists); status is the stdio
     with patch.object(
@@ -66,9 +79,7 @@ class TestEnableTransactional:
         fake_client.get_last_error = MagicMock(return_value=None)
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
-        with patch(
-            "services.mcp_client.get_mcp_client", return_value=fake_client
-        ):
+        with _override_mcp_client(client, fake_client):
             r = client.put(
                 "/api/mcp/servers/deeptempo-findings/enabled",
                 json={"enabled": True},
@@ -95,9 +106,7 @@ class TestEnableTransactional:
         )
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
-        with patch(
-            "services.mcp_client.get_mcp_client", return_value=fake_client
-        ):
+        with _override_mcp_client(client, fake_client):
             r = client.put(
                 "/api/mcp/servers/virustotal/enabled",
                 json={"enabled": True},
@@ -116,9 +125,7 @@ class TestEnableTransactional:
         fake_client.connect_to_server = AsyncMock(return_value=True)
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
-        with patch(
-            "services.mcp_client.get_mcp_client", return_value=fake_client
-        ):
+        with _override_mcp_client(client, fake_client):
             r = client.put(
                 "/api/mcp/servers/deeptempo-findings/enabled",
                 json={"enabled": False},

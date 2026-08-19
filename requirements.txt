@@ -1,8 +1,5 @@
-# Submodules (editable installs)
-# NOTE: These are only installed when submodules are initialized.
-# Run: git submodule update --init --recursive
--e ./deeptempo-core
--e ./mcp-servers
+# Submodule (editable install). Only installed once the submodule is
+# initialized: git submodule update --init --recursive
 # mempalace is a first-class component (#129). It's a git submodule rather than
 # a PyPI pin so we can track a specific upstream SHA and patch locally; chromadb
 # comes in as a transitive dep of mempalace's own pyproject.toml.
@@ -19,33 +16,44 @@ ijson>=3.2.0
 anthropic>=0.45.0
 claude-agent-sdk>=0.1.0
 openai>=1.40.0
-requests>=2.31.0
+# HTTP client for every integration client and MCP tool server. Arrives
+# transitively via anthropic/openai; pinned so we don't rely on someone
+# else's graph.
+httpx>=0.27.0
+# No longer used by any application code — only the scripts/ utilities.
+requests>=2.34.2
 urllib3>=2.0.0
 boto3>=1.34.0
 aiohttp>=3.9.0
 
 # Core declared transitive deps
 pydantic>=2.0.0
-PyYAML>=6.0.0
+pydantic-settings>=2.0.0
+PyYAML>=6.0.3
 
 # Web Backend
-fastapi>=0.109.0
+# 0.129.0 is the first release with Depends(scope=...), which the per-request
+# unit-of-work boundary needs — see core/routing.py.
+fastapi>=0.129.0
 uvicorn[standard]>=0.27.0
-python-multipart>=0.0.6
+python-multipart>=0.0.32
 email-validator>=2.0.0
 
 # Database
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.52
+psycopg2-binary>=2.9.12
 pgvector>=0.3.0  # pgvector column type + <=> ANN for finding embeddings
 
 # Optional proxy hops in front of the metadata DB and DB-shaped
 # integrations (Settings → System → Database, plus per-integration
 # proxy block). sshtunnel only loaded when the operator picks an SSH
-# tunnel; pysocks gives requests/urllib SOCKS5 support for
-# integrations whose clients pick up HTTPS_PROXY / ALL_PROXY.
+# tunnel. SOCKS5 via HTTPS_PROXY / ALL_PROXY needs a per-library backend:
+# httpx cannot use pysocks, so both are required — socksio for the
+# integration clients and MCP tool servers, pysocks for the requests
+# callers left in scripts/.
 sshtunnel>=0.4.0
 pysocks>=1.7.1
+socksio>=1.0.0
 
 # MCP SDK (for MCP tools)
 # Install with: pip install mcp
@@ -76,8 +84,12 @@ faker>=22.0.0
 respx>=0.21.0  # httpx mocking — required by tests/unit/test_elastic_service.py
 
 # Job Queue (ARQ + Redis)
-arq>=0.27.0
+arq>=0.28.0
 redis>=5.0.0
+
+# Agent-layer queue, on one wire format with the agent package's npm bullmq.
+# Capped below 2.16, which needs redis>=6 while arq needs redis<6.
+bullmq==2.15.0
 
 # Kafka ingestion (optional; only used when KAFKA_ENABLED=true)
 aiokafka>=0.10.0
@@ -86,12 +98,12 @@ aiokafka>=0.10.0
 # Cloudforce One integration is enabled). Imports are lazy in
 # services/threat_feed_service.py so missing wheels do not break startup.
 taxii2-client>=2.3.0
-stix2>=3.0.1
+stix2>=3.0.2
 
 # PDF report generation (chat reports, case reports). The feature ships in
-# backend/api/claude.py → /generate-chat-report; without this dep the endpoint
+# services/api/routers/claude.py → /generate-chat-report; without this dep the endpoint
 # returns 503 even though the feature is wired into the UI.
-reportlab>=4.0.0
+reportlab>=5.0.0
 
 # Monitoring & Observability
 sentry-sdk>=1.40.0
@@ -100,7 +112,7 @@ prometheus-client>=0.19.0
 # OpenTelemetry
 opentelemetry-api>=1.25.0
 opentelemetry-sdk>=1.25.0
-opentelemetry-exporter-otlp-proto-grpc>=1.25.0
+opentelemetry-exporter-otlp-proto-grpc>=1.44.0
 opentelemetry-exporter-otlp-proto-http>=1.25.0
 opentelemetry-exporter-prometheus>=0.46b0
 opentelemetry-instrumentation-fastapi>=0.46b0

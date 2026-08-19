@@ -58,31 +58,45 @@ Every workflow is a Markdown file. Here's what one looks like inside:
 ---
 name: phishing-triage
 description: "Triage and investigate phishing reports from user submissions."
-agents:
-  - triage
-  - investigator
-  - responder
-tools-used:
-  - get_finding
-  - list_findings
-  - nearest_neighbors
-  - create_approval_action
-use-case: "A user reports a suspicious email and the SOC needs to assess, investigate, and contain."
-trigger-examples:
+use_case: "A user reports a suspicious email and the SOC needs to assess, investigate, and contain."
+trigger_examples:
   - "Run phishing triage on finding f-20260401-abc123"
   - "Investigate this phishing report"
+objectives:
+  - "Decide whether the reported mail is malicious"
+  - "Contain it without waiting on a second report"
+phases:
+  - id: assess
+    agent: triage
+    name: "Assess the Report"
+    tools: [get_finding, list_findings]
+    instructions: |
+      Fetch the finding, extract sender/domain/URLs, score severity, check for
+      known-bad indicators. Hand on the verdict and the indicators you found.
+
+  - id: investigate
+    agent: investigator
+    name: "Investigate"
+    tools: [get_finding, nearest_neighbors, search_detections]
+    instructions: |
+      Use nearest_neighbors to find similar reports. Correlate with detection
+      rules. Build an evidence timeline. Hand on the timeline and related findings.
+
+  - id: contain
+    agent: responder
+    name: "Contain"
+    tools: [get_case, update_case]
+    approval_required: true
+    instructions: |
+      If confirmed malicious: block the sender domain, quarantine matching emails,
+      and plan remediation with confidence scores.
 ---
 
 # Phishing Triage Workflow
 
-## Phase 1: Assess the Report (Triage Agent)
-Fetch the finding, extract sender/domain/URLs, score severity, check for known-bad indicators.
-
-## Phase 2: Investigate (Investigator Agent)
-Use nearest_neighbors to find similar reports. Correlate with detection rules. Build an evidence timeline.
-
-## Phase 3: Contain (Responder Agent)
-If confirmed malicious: block sender domain, quarantine matching emails, submit approval actions with confidence scores.
+An overview for whoever reads this file. The `phases` above are what actually
+runs, in the order written — the agents and tools shown on the Workflows screen
+are read off them.
 ```
 
 Edit this file. That's it. No vendor ticket, no professional services, no YAML/JSON schema to learn.
@@ -115,7 +129,7 @@ Vigil uses the [Model Context Protocol](https://modelcontextprotocol.io/) to con
 
 **Coming soon:** AWS Security Hub, Azure Sentinel, GCP Security, Okta, Microsoft Defender, SentinelOne, Carbon Black, PagerDuty.
 
-MCP servers live in `mcp-servers/` and are configured via the Settings UI or `mcp_config.json`. Add a new integration by dropping an MCP server into the `tools/` directory — or use the built-in Custom Integration Builder to generate one from API docs.  If you build an integration that you find useful, chances are someone else will as well.  Please contribute!
+MCP servers live in each vendor's slice as `core/integrations/<vendor>/tool.py` and are configured via the Settings UI or `mcp_config.json`. Add a new integration by adding a slice with an MCP server in it — see [core/integrations/README.md](core/integrations/README.md) — or use the built-in Custom Integration Builder to generate one from API docs.  If you build an integration that you find useful, chances are someone else will as well.  Please contribute!
 
 ---
 
@@ -144,7 +158,7 @@ Auth bypass is enabled by default (`DEV_MODE=true`) for quick development. Full 
 - **Node.js 18+** (for frontend)
 - **Docker Desktop** (must be running — used for PostgreSQL)
 - **Git** (with submodule support)
-- An LLM provider key. Vigil supports Anthropic Claude (default), OpenAI, and Ollama (local) — configure providers in Settings → AI Config. See [`docker/bifrost/README.md`](docker/bifrost/README.md) for the multi-provider gateway. *(optional for initial testing)*
+- An LLM provider key. Vigil supports Anthropic Claude (default), OpenAI, and Ollama (local) — configure providers in Settings → AI Config. See [`infra/docker/bifrost/README.md`](infra/docker/bifrost/README.md) for the multi-provider gateway. *(optional for initial testing)*
 
 ### Default Login Credentials
 
@@ -179,7 +193,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Frontend setup
-cd frontend
+cd clients/web
 npm install
 cd ..
 ```
@@ -188,10 +202,10 @@ cd ..
 
 ### Install on Kubernetes
 
-A production-style Helm chart lives at [`helm/vigil/`](helm/vigil/):
+A production-style Helm chart lives at [`infra/helm/vigil/`](infra/helm/vigil/):
 
 ```bash
-helm install vigil ./helm/vigil \
+helm install vigil ./infra/helm/vigil \
   --namespace vigil --create-namespace \
   --set secrets.anthropicApiKey="$ANTHROPIC_API_KEY" \
   --set secrets.postgresPassword="$(openssl rand -hex 24)" \
@@ -227,10 +241,10 @@ python scripts/demo.py
 # Terminal 3: Start backend
 source venv/bin/activate
 export PYTHONPATH="${PWD}:${PYTHONPATH}"
-uvicorn backend.main:app --host 127.0.0.1 --port 6987 --reload
+uvicorn services.api.main:app --host 127.0.0.1 --port 6987 --reload
 
 # Terminal 4: Start frontend
-cd frontend && npm run dev
+cd clients/web && npm run dev
 ```
 
 ### Shutdown
@@ -277,11 +291,11 @@ Build a local DMG (Apple Silicon shown; the image tarball is arch-specific):
 
 ```bash
 # 1. Build the backend image from source and stage it as an offline tarball
-bash desktop/scripts/bundle-image.sh linux/arm64
+bash clients/desktop/scripts/bundle-image.sh linux/arm64
 
 # 2. Package the app (copies the Bifrost config, bundles the tarball)
-cd desktop && npm run dist
-# -> desktop/release/Vigil-<version>-arm64.dmg
+cd clients/desktop && npm run dist
+# -> clients/desktop/release/Vigil-<version>-arm64.dmg
 ```
 
 > **macOS Gatekeeper (unsigned build).** Locally built DMGs are ad-hoc
@@ -348,17 +362,15 @@ cd desktop && npm run dist
 
 ```
 vigil/
-├── workflows/         # WORKFLOW.md definitions (4 built-in)
+├── core/              # Shared library: capability domains (findings, cases,
+│                      #   llm, integrations, …) over a storage/platform tier
+│   └── workflows/definitions/   # WORKFLOW.md definitions (5 built-in)
+├── services/          # Deployables only: api (FastAPI), daemon (headless
+│                      #   autonomous SOC), worker (ARQ llm-worker)
+├── clients/web/       # React + Tailwind frontend
 ├── contrib/           # Community tools: auto-contributor, benchmarking
-├── mcp-servers/       # MCP server implementations (30+)
-├── backend/           # FastAPI backend API + Agent SDK tools
-├── frontend/          # React + Tailwind frontend
-├── services/          # Business logic (workflows service, etc.)
-├── daemon/            # Headless autonomous SOC service
-├── tools/             # Additional tool implementations
-├── database/          # PostgreSQL models and migrations
-├── core/              # Config, rate limiting, exceptions
-├── docker/            # Docker Compose setup
+├── tools/mcp/         # MCP servers for Vigil's own services
+├── infra/             # Docker Compose, Helm chart, DB init SQL
 ├── docs/              # Documentation
 └── data/schemas/      # JSON validation schemas
 ```
