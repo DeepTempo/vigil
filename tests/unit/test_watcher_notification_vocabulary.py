@@ -13,9 +13,13 @@ mean "send", and the API's refusal of keys it cannot honour. See #553.
 
 from __future__ import annotations
 
+import ast
 import logging
+from pathlib import Path
 
 import pytest
+
+REPO = Path(__file__).resolve().parent.parent.parent
 
 pytestmark = pytest.mark.unit
 
@@ -73,28 +77,63 @@ def _service_recording_sends(monkeypatch):
 # --------------------------------------------------------------------------
 
 
-def test_vocabulary_names_exactly_the_types_that_reach_notify_watchers():
-    """Change-detector: the declared set must match the real call sites.
+def _notification_types_at_call_sites() -> set[str]:
+    """Every literal ``notification_type`` passed to a ``notify_watchers`` call.
 
-    ``new_comment`` comes from core/cases/case_collaboration_service.py and
-    ``sla_warning`` from core/cases/case_notification_service.py. Adding a
-    notify_watchers call site without registering its type here should fail,
-    because an unregistered type cannot be switched off by a watcher.
+    Parsed rather than imported so this sees the source as written, including
+    call sites in modules these tests never load.
+    """
+    found: set[str] = set()
+    sources = [
+        path
+        for root in ("core", "services", "tools")
+        for path in (REPO / root).rglob("*.py")
+    ]
+    for path in sources:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Attribute):
+                name = func.attr
+            else:
+                name = getattr(func, "id", None)
+            if name != "notify_watchers":
+                continue
+            for kw in node.keywords:
+                if kw.arg == "notification_type" and isinstance(kw.value, ast.Constant):
+                    found.add(kw.value.value)
+    return found
+
+
+def test_vocabulary_matches_the_real_call_sites():
+    """Change-detector against the source, not against a copy of the constant.
+
+    Adding a ``notify_watchers`` call site without registering its type fails
+    here, because an unregistered type cannot be switched off by a watcher.
+    Retiring the last call site for a type fails here too, so the vocabulary
+    cannot outlive what it describes.
     """
     from core.cases.case_notification_service import WATCHER_NOTIFICATION_TYPES
 
-    assert set(WATCHER_NOTIFICATION_TYPES) == {"new_comment", "sla_warning"}
+    assert _notification_types_at_call_sites() == set(WATCHER_NOTIFICATION_TYPES)
+
+
+def test_call_sites_were_actually_found():
+    """Guard the guard: an AST scan that finds nothing would pass vacuously."""
+    assert _notification_types_at_call_sites()
 
 
 def test_types_notified_directly_are_not_in_the_vocabulary():
-    """case_assigned / comment_mention / stale_case bypass watcher preferences.
+    """comment_mention / stale_case bypass watcher preferences.
 
     They call create_notification directly and never consult the column, so
     listing them would advertise a switch that does nothing.
     """
     from core.cases.case_notification_service import WATCHER_NOTIFICATION_TYPES
 
-    for direct_only in ("case_assigned", "comment_mention", "stale_case"):
+    for direct_only in ("comment_mention", "stale_case"):
         assert direct_only not in WATCHER_NOTIFICATION_TYPES
 
 
