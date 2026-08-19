@@ -4,12 +4,16 @@ import { WatchersCard } from './CaseSections'
 import { casesApi } from '../../../services/api'
 
 /**
- * The watchers card read `added_at`, but `CaseWatcher.to_dict()` emits
- * `created_at` — so `fmtD` was always called with `undefined` and every row
- * rendered "Watching since —". It failed quietly: `fmtD` guards falsy input,
- * and the `?` on the interface field kept TypeScript happy, so nothing
- * surfaced the mismatch. See #561.
+ * The watchers card read `added_at`, but the API sends `created_at` — so
+ * `fmtD` was always called with `undefined` and every row rendered
+ * "Watching since —". It failed quietly: `fmtD` guards falsy input, and the
+ * `?` on the interface field kept TypeScript happy, so nothing surfaced the
+ * mismatch. Fixed in #584; this pins it. See #561.
  */
+
+/* `fmtD` formats in local time, so an unpinned TZ makes the expected date
+   depend on where the suite runs (UTC-10 rolls 09:14Z back a day). */
+vi.stubEnv('TZ', 'UTC')
 
 vi.mock('../../../services/api', () => ({
   casesApi: {
@@ -19,7 +23,7 @@ vi.mock('../../../services/api', () => ({
   },
 }))
 
-/** Exactly the shape `CaseWatcher.to_dict()` returns (database/models.py). */
+/** The shape `CaseWatcherSchema` dumps (core/storage/schemas/case_entities.py). */
 const WATCHER_ROW = {
   case_id: 'case-2026-0142',
   user_id: 'analyst@example.com',
@@ -57,9 +61,9 @@ describe('WatchersCard', () => {
   })
 
   it('still shows the placeholder when the API omits the timestamp', async () => {
-    // The column is nullable, so `created_at` can legitimately be absent —
-    // that path must keep degrading gracefully rather than rendering
-    // "Invalid Date".
+    // `CaseWatcherSchema.created_at` is optional, so the field can be absent
+    // from the payload — that path must keep degrading gracefully rather than
+    // rendering "Invalid Date".
     vi.mocked(casesApi.getWatchers).mockResolvedValue({
       data: { watchers: [{ ...WATCHER_ROW, created_at: undefined }] },
     } as never)
