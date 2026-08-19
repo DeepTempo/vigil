@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.0](https://github.com/Vigil-SOC/vigil/compare/v0.4.0...v0.5.0) (2026-08-14)
+
+
+### Features
+
+* **agent:** one loop — the harness, the tool bridge, and the hunt on it ([#638](https://github.com/Vigil-SOC/vigil/issues/638)) ([39b82b1](https://github.com/Vigil-SOC/vigil/commit/39b82b1c1005036719deb57d57a9ff4e9f12c547))
+* **config:** typed Settings object; retire the 215 raw env reads ([#520](https://github.com/Vigil-SOC/vigil/issues/520)) ([5a6550b](https://github.com/Vigil-SOC/vigil/commit/5a6550b32aa8254e81f7eeae287b169664313784))
+
+
+### Bug Fixes
+
+* **api:** drop the DB-aligned threadpool cap ([#614](https://github.com/Vigil-SOC/vigil/issues/614)) ([3e59161](https://github.com/Vigil-SOC/vigil/commit/3e5916161138040c1e4e960ba3eae1e0fb1babcd))
+* **api:** offload blocking I/O off the event loop ([#518](https://github.com/Vigil-SOC/vigil/issues/518)) ([cf2cfbb](https://github.com/Vigil-SOC/vigil/commit/cf2cfbb1eee23537f3df8724e7f7e020234c6998))
+* **integrations:** hyphenated Integration IDs so cloud SIEM pollers start ([#555](https://github.com/Vigil-SOC/vigil/issues/555)) ([#583](https://github.com/Vigil-SOC/vigil/issues/583)) ([de748b6](https://github.com/Vigil-SOC/vigil/commit/de748b66b2dab7ec1ada9679ace91ada75dee52c))
+* **integrations:** move to httpx, unblock the loop ([#609](https://github.com/Vigil-SOC/vigil/issues/609)) ([46e5115](https://github.com/Vigil-SOC/vigil/commit/46e5115e303d070ca6cf5611dc9792c7920b79af))
+* **llm:** sync Bifrost keys via the keys API ([#640](https://github.com/Vigil-SOC/vigil/issues/640)) ([fa57c15](https://github.com/Vigil-SOC/vigil/commit/fa57c154d92b57189c8d581d70c7305dc370f978)), closes [#613](https://github.com/Vigil-SOC/vigil/issues/613)
+* **tools:** make TLS verification configurable for palo_alto and misp ([#662](https://github.com/Vigil-SOC/vigil/issues/662)) ([4a0ed1d](https://github.com/Vigil-SOC/vigil/commit/4a0ed1dc84844f803565240c9dd6070d04b2dd61))
+
 ## [0.4.0](https://github.com/Vigil-SOC/vigil/compare/v0.3.0...v0.4.0) (2026-07-30)
 
 

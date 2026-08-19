@@ -1,7 +1,7 @@
 """End-to-end check that the unauthenticated endpoints called out in
 the 2026-05 disclosure now return 401 instead of 200.
 
-Runs against the real FastAPI app from ``backend.main`` with
+Runs against the real FastAPI app from ``services.api.main`` with
 ``DEV_MODE=false`` forced (otherwise the auth middleware would short-
 circuit to a mock admin user and the test would silently no-op).
 
@@ -21,15 +21,15 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "backend"))
 
 # Pre-import at collection time so ``sys.modules`` is locked in before
 # anything else runs.
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-not-for-prod")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from backend import main as backend_main  # noqa: E402
-from backend.middleware import auth as auth_module  # noqa: E402
+from services.api import main as backend_main  # noqa: E402
+from core.config import get_settings  # noqa: E402
+from services.api.middleware import auth as auth_module  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -38,16 +38,36 @@ pytestmark = pytest.mark.unit
 def app():
     """Build a TestClient with auth force-enabled regardless of DEV_MODE.
 
-    Patches the module-level ``DEV_MODE`` on the already-imported
-    ``backend.middleware.auth`` so ``get_current_user`` takes the real
-    validation path. Restores the previous value on teardown.
+    Two places have to be forced, not one. ``services.api.middleware.auth``
+    reads a module-level ``DEV_MODE`` captured at import, so patching the
+    attribute is enough there. Routers that carry their own dev-mode bypass
+    — the VStrike inbound receiver is the current one — instead call
+    ``get_settings().dev_mode`` live, and tests/conftest.py sets
+    ``DEV_MODE=true`` for the whole session so routers can be imported at
+    all. Patching only the middleware left those routers short-circuiting
+    their own gate, so the endpoint answered 200 and looked unauthenticated
+    when it was really just in dev mode.
+
+    It has to be the environment rather than the cached Settings object:
+    conftest's autouse fixture calls ``get_settings.cache_clear()`` around
+    every test, and function-scoped autouse runs after this module-scoped
+    fixture, so a patched instance is discarded before the request runs.
     """
     prev = auth_module.DEV_MODE
     auth_module.DEV_MODE = False
+    prev_env = os.environ.get("DEV_MODE")
+    os.environ["DEV_MODE"] = "false"
+    get_settings.cache_clear()
     try:
-        yield TestClient(backend_main.app)
+        with TestClient(backend_main.app) as c:
+            yield c
     finally:
         auth_module.DEV_MODE = prev
+        if prev_env is None:
+            os.environ.pop("DEV_MODE", None)
+        else:
+            os.environ["DEV_MODE"] = prev_env
+        get_settings.cache_clear()
 
 
 # Each tuple: HTTP method, URL path, optional JSON body.
@@ -82,19 +102,7 @@ PROTECTED_ROUTES = [
         "/api/integrations/compatibility/install",
         {"integration_id": "misp"},
     ),
-    ("GET", "/api/claude/sdk-status", None),
     ("GET", "/api/claude/models", None),
-    (
-        "POST",
-        "/api/claude/chat",
-        {
-            "messages": [{"role": "user", "content": "auth gate test"}],
-            "max_tokens": 1,
-            "enable_thinking": False,
-            "streaming": False,
-            "use_agent_sdk": False,
-        },
-    ),
     (
         "POST",
         "/api/claude/chat/stream",
@@ -102,11 +110,6 @@ PROTECTED_ROUTES = [
             "messages": [{"role": "user", "content": "auth gate test"}],
             "max_tokens": 1,
         },
-    ),
-    (
-        "POST",
-        "/api/claude/agent/task",
-        {"task": "auth gate test only", "max_turns": 1, "allowed_tools": []},
     ),
     ("POST", "/api/claude/analyze-finding?finding_id=auth-gate-test", None),
     ("GET", "/api/webhooks/", None),
@@ -123,6 +126,15 @@ PROTECTED_ROUTES = [
     ("GET", "/api/integrations/vstrike/ui/networks", None),
     ("POST", "/api/integrations/vstrike/ui/iframe-token", None),
     ("GET", "/api/integrations/vstrike/topology/asset/test-asset", None),
+    # The agent layer's own surfaces. /api/* takes a session; /internal/* takes
+    # the shared secret, and answers the same way when it is not presented.
+    ("POST", "/api/agent-runs", {"run_kind": "hunt", "playbook": "p", "config": "c"}),
+    ("GET", "/api/agent-runs/9c1c2d3e-0000-4000-8000-000000000592", None),
+    (
+        "POST",
+        "/api/agent-runs/9c1c2d3e-0000-4000-8000-000000000592/directives",
+        {"kind": "note", "text": "auth gate test"},
+    ),
     # Routes that were on bare `router` (no auth) — fixed in issue #286.
     ("POST", "/api/integrations/vstrike/network-graph", {"network_id": "test"}),
     ("POST", "/api/integrations/vstrike/ui/legend-apply", {"legend_run_id": "test"}),
@@ -147,6 +159,49 @@ def test_unauthenticated_request_is_rejected(app, method, path, body):
         f"{method} {path} returned {response.status_code} "
         f"(body: {response.text[:200]})"
     )
+
+
+# The agent layer's /internal surfaces. Their gate is the shared secret rather than
+# a session, so the secret has to exist for the refusal to be about the caller: with
+# none configured every call answers 503, which is a different fact.
+INTERNAL_ROUTES = [
+    ("GET", "/internal/runs/run-auth-gate/decisions", None),
+    ("POST", "/internal/runs/run-auth-gate/terminal", {"outcome": "failed"}),
+    (
+        "POST",
+        "/internal/runs/run-auth-gate/checkpoints",
+        {"checkpoint_id": "apr-1", "checkpoint_class": "tool_approval", "question": "Approve?"},
+    ),
+    (
+        "POST",
+        "/internal/tools/invoke",
+        {"tool": "noop", "args": {}, "bounds": {"max_rows": 1, "timeout_ms": 1000}},
+    ),
+    ("GET", "/internal/pricing/rates?model_id=m&provider_type=p", None),
+]
+
+
+@pytest.mark.parametrize("method,path,body", INTERNAL_ROUTES)
+def test_internal_route_without_the_shared_secret_is_rejected(
+    app, monkeypatch, method, path, body
+):
+    from core.agents import internal_auth
+
+    monkeypatch.setattr(internal_auth, "get_secret", lambda name: "configured-secret")
+    response = app.request(method, path, json=body)
+    assert response.status_code == 401, (
+        f"{method} {path} returned {response.status_code} (body: {response.text[:200]})"
+    )
+
+
+@pytest.mark.parametrize("method,path,body", INTERNAL_ROUTES)
+def test_internal_route_says_so_when_no_secret_is_configured(
+    app, monkeypatch, method, path, body
+):
+    from core.agents import internal_auth
+
+    monkeypatch.setattr(internal_auth, "get_secret", lambda name: None)
+    assert app.request(method, path, json=body).status_code == 503
 
 
 def test_unauthenticated_claude_upload_file_is_rejected(app):
@@ -217,7 +272,7 @@ def test_authenticated_non_admin_is_rejected(method, path, body, monkeypatch):
     / ``settings.write`` gates the disclosure's fixes added on top of
     router-level auth.
     """
-    from database.models import User
+    from core.storage.models import User
 
     fake_user = User(
         user_id="non-admin",
@@ -241,7 +296,7 @@ def test_authenticated_non_admin_is_rejected(method, path, body, monkeypatch):
     )
     # And that AuthService.check_permission returns False (no admin).
     monkeypatch.setattr(
-        "backend.services.auth_service.AuthService.check_permission",
+        "core.auth.auth_service.AuthService.check_permission",
         lambda user_id, permission, session=None: False,
     )
 
