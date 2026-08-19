@@ -1,4 +1,0 @@
-# This directory is for unit tests
-# All tests were moved to broken_tests/ directory as they tested outdated APIs
-# Add new tests here that match the current API
-

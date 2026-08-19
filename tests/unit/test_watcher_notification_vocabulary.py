@@ -1,7 +1,7 @@
 """The set of notification types a watcher can switch off must be declared.
 
 ``case_watchers.notification_preferences`` is read with
-``prefs.get(notification_type, True)`` (services/case_notification_service.py),
+``prefs.get(notification_type, True)`` (core/cases/case_notification_service.py),
 where ``notification_type`` is a runtime argument. Nothing declared which keys
 that lookup honours, so the available switches could only be learned by finding
 every ``notify_watchers`` call site by hand — and a caller sending an
@@ -14,18 +14,8 @@ mean "send", and the API's refusal of keys it cannot honour. See #553.
 from __future__ import annotations
 
 import logging
-import os
-import sys
-from pathlib import Path
 
 import pytest
-
-os.environ.setdefault("DEV_MODE", "true")
-
-REPO = Path(__file__).resolve().parent.parent.parent
-for p in (str(REPO), str(REPO / "backend")):
-    if p not in sys.path:
-        sys.path.insert(0, p)
 
 pytestmark = pytest.mark.unit
 
@@ -67,7 +57,7 @@ class _Watcher:
 
 def _service_recording_sends(monkeypatch):
     """A CaseNotificationService that records sends instead of writing them."""
-    from services.case_notification_service import CaseNotificationService
+    from core.cases.case_notification_service import CaseNotificationService
 
     sent = []
 
@@ -86,12 +76,12 @@ def _service_recording_sends(monkeypatch):
 def test_vocabulary_names_exactly_the_types_that_reach_notify_watchers():
     """Change-detector: the declared set must match the real call sites.
 
-    ``new_comment`` comes from services/case_collaboration_service.py and
-    ``sla_warning`` from services/case_notification_service.py. Adding a
+    ``new_comment`` comes from core/cases/case_collaboration_service.py and
+    ``sla_warning`` from core/cases/case_notification_service.py. Adding a
     notify_watchers call site without registering its type here should fail,
     because an unregistered type cannot be switched off by a watcher.
     """
-    from services.case_notification_service import WATCHER_NOTIFICATION_TYPES
+    from core.cases.case_notification_service import WATCHER_NOTIFICATION_TYPES
 
     assert set(WATCHER_NOTIFICATION_TYPES) == {"new_comment", "sla_warning"}
 
@@ -102,7 +92,7 @@ def test_types_notified_directly_are_not_in_the_vocabulary():
     They call create_notification directly and never consult the column, so
     listing them would advertise a switch that does nothing.
     """
-    from services.case_notification_service import WATCHER_NOTIFICATION_TYPES
+    from core.cases.case_notification_service import WATCHER_NOTIFICATION_TYPES
 
     for direct_only in ("case_assigned", "comment_mention", "stale_case"):
         assert direct_only not in WATCHER_NOTIFICATION_TYPES
@@ -239,7 +229,7 @@ def test_watcher_add_rejects_unknown_notification_type():
     """A caller sending {"case_assigned": False} believes it suppressed something."""
     from pydantic import ValidationError
 
-    from backend.api.cases import WatcherAdd
+    from services.api.routers.cases import WatcherAdd
 
     with pytest.raises(ValidationError) as exc:
         WatcherAdd(
@@ -254,7 +244,7 @@ def test_watcher_add_rejects_unknown_notification_type():
 
 
 def test_watcher_add_accepts_known_notification_types():
-    from backend.api.cases import WatcherAdd
+    from services.api.routers.cases import WatcherAdd
 
     model = WatcherAdd(
         user_id="analyst-1",
@@ -269,7 +259,7 @@ def test_watcher_add_accepts_known_notification_types():
 
 def test_watcher_add_allows_omitted_preferences():
     """The frontend posts {user_id} only — that must stay valid."""
-    from backend.api.cases import WatcherAdd
+    from services.api.routers.cases import WatcherAdd
 
     assert WatcherAdd(user_id="analyst-1").notification_preferences is None
 
@@ -277,7 +267,7 @@ def test_watcher_add_allows_omitted_preferences():
 def test_watcher_add_rejects_non_boolean_value():
     from pydantic import ValidationError
 
-    from backend.api.cases import WatcherAdd
+    from services.api.routers.cases import WatcherAdd
 
     with pytest.raises(ValidationError):
         WatcherAdd(
@@ -291,7 +281,7 @@ def test_add_watcher_route_returns_422_for_unknown_type():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from backend.api.cases import router
+    from services.api.routers.cases import router
 
     app = FastAPI()
     app.include_router(router, prefix="/api/cases")

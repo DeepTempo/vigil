@@ -1,0 +1,75 @@
+model: anthropic/claude-opus-5
+
+budgets:
+  max_calls: 12
+  # Wall clock, not just calls and dollars: a run wedged on a slow tool burns
+  # real time against no ceiling otherwise.
+  max_wall_ms: 1800000
+  max_cost_usd: 5.00
+
+runtime:
+  max_turns: 6
+  result_cap: 20000
+  recall_limit: 3
+
+# Every tool is remote, because remote is the only kind any adapter implements --
+# the demolition collapsed them all onto the Python bridge. A generated config says
+# the same thing: playbook_resolver.py emits id, kind, description and parameters
+# and nothing else, so these fixtures are shaped like what a deployment produces.
+tools:
+  - id: splunk_search
+    kind: remote
+    provides: telemetry_search
+    description: search the raw telemetry in the SIEM's own query language
+    parameters:
+      type: object
+      properties:
+        sql:
+          type: string
+          description: The SELECT statement to run.
+      required: [sql]
+    max_rows: 200
+    timeout_ms: 30000
+  # local, not remote: the answer is this run's own ledger, which the backend
+  # has never seen.
+  - id: expand
+    kind: local
+    description: return the raw payloads behind evidence ids
+    parameters:
+      type: object
+      properties:
+        evidence_ids: { type: array, items: { type: string } }
+  - id: search_findings
+    kind: remote
+    provides: findings_search
+    description: search the findings detection has already scored
+    parameters:
+      type: object
+      properties:
+        query: { type: string }
+        severity: { type: string }
+  - id: nearest_neighbors
+    kind: remote
+    provides: similar_findings
+    description: findings whose embeddings sit closest to a given one
+    parameters:
+      type: object
+      required: [finding_id]
+      properties:
+        finding_id: { type: string }
+  - id: lookup_indicators
+    kind: remote
+    provides: indicator_lookup
+    description: look observables up in the indicator database
+    parameters:
+      type: object
+      required: [values]
+      properties:
+        values: { type: array, items: { type: string } }
+
+approvals: []
+
+thresholds:
+  min_corroborating_sources: 2
+  gap_lock_threshold: 3
+  priority_floor: 5

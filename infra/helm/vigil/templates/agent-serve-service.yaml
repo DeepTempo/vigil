@@ -1,0 +1,26 @@
+{{- /*
+ClusterIP only, and deliberately not in the Ingress: this surface is reached by
+the backend, never by a browser. The bearer token is the only in-process check
+since ADR 0014, so what keeps it internal is this Service's type plus the
+NetworkPolicy — the two together are what replaced the loopback bind.
+
+AGENT_URL is computed from this name in configmap.yaml.
+*/ -}}
+{{- if .Values.agentServe.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vigil.agentServe.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "agent-serve") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.agentServe.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-serve") | nindent 4 }}
+{{- end }}

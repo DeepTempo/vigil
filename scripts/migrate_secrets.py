@@ -24,7 +24,6 @@ Run from the repo root::
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -32,7 +31,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from backend.secrets_manager import (  # noqa: E402
+from core.secrets_manager import (  # noqa: E402
     DotEnvBackend,
     EncryptedFileBackend,
     EnvironmentBackend,

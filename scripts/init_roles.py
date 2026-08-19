@@ -6,14 +6,13 @@ This script ensures that all default roles are created in the database.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from database.connection import get_db_manager
+from core.storage.connection import get_db_manager
 from sqlalchemy import text
 import logging
 

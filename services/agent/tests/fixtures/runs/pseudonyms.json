@@ -1,0 +1,2022 @@
+{
+  "note": "sha256(type:value) truncated to 16 hex -> replacement",
+  "counts": {
+    "arn": 1,
+    "aws_key": 5,
+    "domain": 94,
+    "email": 23,
+    "hash": 15,
+    "ip": 223,
+    "process": 37,
+    "user": 7,
+    "url": 15,
+    "token": 81,
+    "mac": 6
+  },
+  "map": {
+    "0ad4b4cff0a82fb2": {
+      "type": "arn",
+      "to": "arn:aws:iam::000000000001:user/user0001"
+    },
+    "778fe06e160b93df": {
+      "type": "aws_key",
+      "to": "AKIA0000000000000001"
+    },
+    "50e30490a1f9a006": {
+      "type": "aws_key",
+      "to": "AKIA0000000000000002"
+    },
+    "60065ccf84e1073a": {
+      "type": "aws_key",
+      "to": "AKIA0000000000000003"
+    },
+    "5bcc51a054e3567b": {
+      "type": "aws_key",
+      "to": "AKIA0000000000000004"
+    },
+    "2d76a8f3385402e6": {
+      "type": "aws_key",
+      "to": "AKIA0000000000000005"
+    },
+    "f767cf51b6f222e1": {
+      "type": "domain",
+      "to": "host0001.example.com"
+    },
+    "e2d77e5532b5553f": {
+      "type": "domain",
+      "to": "host0002.example.com"
+    },
+    "d9b1d9feda010eee": {
+      "type": "domain",
+      "to": "host0003.example.com"
+    },
+    "ff3ae9c13f0017a1": {
+      "type": "domain",
+      "to": "host0004.example.com"
+    },
+    "94fc32b19906b620": {
+      "type": "domain",
+      "to": "host0005.example.com"
+    },
+    "2f95ae7ff1905e7e": {
+      "type": "domain",
+      "to": "host0006.example.com"
+    },
+    "d6fb65677bae6fdb": {
+      "type": "domain",
+      "to": "host0007.example.com"
+    },
+    "0d12b456bd9bbcbc": {
+      "type": "domain",
+      "to": "host0008.example.com"
+    },
+    "c43ee2f0a2c833be": {
+      "type": "domain",
+      "to": "host0009.example.com"
+    },
+    "828addf51d120151": {
+      "type": "domain",
+      "to": "host0010.example.com"
+    },
+    "9aafb82e256df5c0": {
+      "type": "domain",
+      "to": "host0011.example.com"
+    },
+    "94b2e6eee61c8b2c": {
+      "type": "domain",
+      "to": "host0012.example.com"
+    },
+    "367507f47da90a1d": {
+      "type": "domain",
+      "to": "host0013.example.com"
+    },
+    "25c1cdb05c9c5e21": {
+      "type": "domain",
+      "to": "host0014.example.com"
+    },
+    "18061cf482d8d82e": {
+      "type": "domain",
+      "to": "host0015.example.com"
+    },
+    "b37ae748294082e9": {
+      "type": "domain",
+      "to": "host0016.example.com"
+    },
+    "08e0802ee33e9086": {
+      "type": "domain",
+      "to": "host0017.example.com"
+    },
+    "2ba9d7de7737bf5d": {
+      "type": "domain",
+      "to": "host0018.example.com"
+    },
+    "9f0550797d895e54": {
+      "type": "domain",
+      "to": "host0019.example.com"
+    },
+    "110fd0fdb2307107": {
+      "type": "domain",
+      "to": "host0020.example.com"
+    },
+    "1f591cfa83265f95": {
+      "type": "domain",
+      "to": "host0021.example.com"
+    },
+    "030cbed81b52b026": {
+      "type": "domain",
+      "to": "host0022.example.com"
+    },
+    "4c704e034b4984b0": {
+      "type": "domain",
+      "to": "host0023.example.com"
+    },
+    "d55fe54532b773bc": {
+      "type": "domain",
+      "to": "host0024.example.com"
+    },
+    "6a74aa6dbc7d1d4d": {
+      "type": "domain",
+      "to": "host0025.example.com"
+    },
+    "c8967f177963a9e0": {
+      "type": "domain",
+      "to": "host0026.example.com"
+    },
+    "84384a6adbadb956": {
+      "type": "domain",
+      "to": "host0027.example.com"
+    },
+    "db14d2fd3d8c2362": {
+      "type": "domain",
+      "to": "host0028.example.com"
+    },
+    "8a8502024ea37061": {
+      "type": "domain",
+      "to": "host0029.example.com"
+    },
+    "b54b7d8c02512414": {
+      "type": "domain",
+      "to": "host0030.example.com"
+    },
+    "39ea706eb177b9a9": {
+      "type": "domain",
+      "to": "host0031.example.com"
+    },
+    "1bfa54e9c4489041": {
+      "type": "domain",
+      "to": "host0032.example.com"
+    },
+    "78b4b31b3f18178f": {
+      "type": "domain",
+      "to": "host0033.example.com"
+    },
+    "5c0575c3a1613561": {
+      "type": "domain",
+      "to": "host0034.example.com"
+    },
+    "4a2a56e6f2cb123f": {
+      "type": "domain",
+      "to": "host0035.example.com"
+    },
+    "3c3790d25dbf1b28": {
+      "type": "domain",
+      "to": "host0036.example.com"
+    },
+    "8ad3444dfdb25255": {
+      "type": "domain",
+      "to": "host0037.example.com"
+    },
+    "8c83fffbb985ba6b": {
+      "type": "domain",
+      "to": "host0038.example.com"
+    },
+    "c7201a48bb011490": {
+      "type": "domain",
+      "to": "host0039.example.com"
+    },
+    "bb02344dc84f3b51": {
+      "type": "domain",
+      "to": "host0040.example.com"
+    },
+    "fcdc057dd0d4de72": {
+      "type": "domain",
+      "to": "host0041.example.com"
+    },
+    "0d7b9e87fb9764e8": {
+      "type": "domain",
+      "to": "host0042.example.com"
+    },
+    "08bc15f761a14e7f": {
+      "type": "domain",
+      "to": "host0043.example.com"
+    },
+    "7a62988781ca3e99": {
+      "type": "domain",
+      "to": "host0044.example.com"
+    },
+    "b0c6639f561351eb": {
+      "type": "domain",
+      "to": "host0045.example.com"
+    },
+    "b594d9af4abd2f4f": {
+      "type": "domain",
+      "to": "host0046.example.com"
+    },
+    "55b742c71fd7a98c": {
+      "type": "domain",
+      "to": "host0047.example.com"
+    },
+    "016ddeffe0cb27f0": {
+      "type": "domain",
+      "to": "host0048.example.com"
+    },
+    "b9eb66acfc1d9f0c": {
+      "type": "domain",
+      "to": "host0049.example.com"
+    },
+    "4b3142590a38dca6": {
+      "type": "domain",
+      "to": "host0050.example.com"
+    },
+    "a119f4b3d107440e": {
+      "type": "domain",
+      "to": "host0051.example.com"
+    },
+    "280ac43d37cb9b17": {
+      "type": "domain",
+      "to": "host0052.example.com"
+    },
+    "055a74a7ff24bf2d": {
+      "type": "domain",
+      "to": "host0053.example.com"
+    },
+    "6889e7fa405d6fea": {
+      "type": "domain",
+      "to": "host0054.example.com"
+    },
+    "dd5d0bf4df0b3627": {
+      "type": "domain",
+      "to": "host0055.example.com"
+    },
+    "4fd8c7f18b67ad40": {
+      "type": "domain",
+      "to": "host0056.example.com"
+    },
+    "33c2bc2f4f1dcd27": {
+      "type": "domain",
+      "to": "host0057.example.com"
+    },
+    "4360ea3e3a0bad57": {
+      "type": "domain",
+      "to": "host0058.example.com"
+    },
+    "41232615783a9322": {
+      "type": "domain",
+      "to": "host0059.example.com"
+    },
+    "cd4303b9033ad5e4": {
+      "type": "domain",
+      "to": "host0060.example.com"
+    },
+    "69351ad475c5765b": {
+      "type": "domain",
+      "to": "host0061.example.com"
+    },
+    "95f587263ac07c6b": {
+      "type": "domain",
+      "to": "host0062.example.com"
+    },
+    "31e2d0b97098368b": {
+      "type": "domain",
+      "to": "host0063.example.com"
+    },
+    "73f1bc339e691d40": {
+      "type": "domain",
+      "to": "host0064.example.com"
+    },
+    "e8814588d397227a": {
+      "type": "domain",
+      "to": "host0065.example.com"
+    },
+    "a6bb055d7fc98386": {
+      "type": "domain",
+      "to": "host0066.example.com"
+    },
+    "a8b66d19edad4e00": {
+      "type": "domain",
+      "to": "host0067.example.com"
+    },
+    "c11bdaace46fb731": {
+      "type": "domain",
+      "to": "host0068.example.com"
+    },
+    "c3785430a0994ccb": {
+      "type": "domain",
+      "to": "host0069.example.com"
+    },
+    "7436c4cbbc965c9e": {
+      "type": "domain",
+      "to": "host0070.example.com"
+    },
+    "4ed66a4907aaf157": {
+      "type": "domain",
+      "to": "host0071.example.com"
+    },
+    "e000cc218f9a0e94": {
+      "type": "domain",
+      "to": "host0072.example.com"
+    },
+    "7dc21c9dee46a15a": {
+      "type": "domain",
+      "to": "host0073.example.com"
+    },
+    "f3439dd2678a5710": {
+      "type": "domain",
+      "to": "host0074.example.com"
+    },
+    "27026dce9d6e24d4": {
+      "type": "domain",
+      "to": "host0075.example.com"
+    },
+    "77b48a569c634edc": {
+      "type": "domain",
+      "to": "host0076.example.com"
+    },
+    "e5eb8614c7883eac": {
+      "type": "domain",
+      "to": "host0077.example.com"
+    },
+    "14a12dc38a9bd26a": {
+      "type": "domain",
+      "to": "host0078.example.com"
+    },
+    "48e1c598201681d4": {
+      "type": "domain",
+      "to": "host0079.example.com"
+    },
+    "86c546bd43cd0d6d": {
+      "type": "domain",
+      "to": "host0080.example.com"
+    },
+    "adff4dcbf7cbb6bf": {
+      "type": "domain",
+      "to": "host0081.example.com"
+    },
+    "4f1991aaf168a31e": {
+      "type": "domain",
+      "to": "host0082.example.com"
+    },
+    "439af2e5d98b5c4e": {
+      "type": "domain",
+      "to": "host0083.example.com"
+    },
+    "d629dc70d2356267": {
+      "type": "domain",
+      "to": "host0084.example.com"
+    },
+    "ecd7b49bce65e316": {
+      "type": "domain",
+      "to": "host0085.example.com"
+    },
+    "8a989b75693f8c1a": {
+      "type": "domain",
+      "to": "host0086.example.com"
+    },
+    "587fece082cea56c": {
+      "type": "domain",
+      "to": "host0087.example.com"
+    },
+    "1410ff966be94127": {
+      "type": "domain",
+      "to": "host0088.example.com"
+    },
+    "d7bb89bbbf1b1b01": {
+      "type": "domain",
+      "to": "host0089.example.com"
+    },
+    "1854613cd1e7885c": {
+      "type": "domain",
+      "to": "host0090.example.com"
+    },
+    "05a2b7778970ba57": {
+      "type": "domain",
+      "to": "host0091.example.com"
+    },
+    "224ff7d619618936": {
+      "type": "domain",
+      "to": "host0092.example.com"
+    },
+    "b1b2b33850c8fc99": {
+      "type": "domain",
+      "to": "host0093.example.com"
+    },
+    "1bca6b13c2b41b14": {
+      "type": "domain",
+      "to": "host0094.example.com"
+    },
+    "8205923eaf54dba5": {
+      "type": "email",
+      "to": "user0001@example.com"
+    },
+    "b3e2f948c08b12ed": {
+      "type": "email",
+      "to": "user0002@example.com"
+    },
+    "d2625c2fb5c43277": {
+      "type": "email",
+      "to": "user0003@example.com"
+    },
+    "866567b4e435b7f1": {
+      "type": "email",
+      "to": "user0004@example.com"
+    },
+    "e67ee36c93c4adc1": {
+      "type": "email",
+      "to": "user0005@example.com"
+    },
+    "107561b22bcbc188": {
+      "type": "email",
+      "to": "user0006@example.com"
+    },
+    "6bea7eb36f2c7db3": {
+      "type": "email",
+      "to": "user0007@example.com"
+    },
+    "f1a0a62c8809dd03": {
+      "type": "email",
+      "to": "user0008@example.com"
+    },
+    "8460eceb9d21ab9e": {
+      "type": "email",
+      "to": "user0009@example.com"
+    },
+    "4862111756c9088a": {
+      "type": "email",
+      "to": "user0010@example.com"
+    },
+    "5496f12cc49aebba": {
+      "type": "email",
+      "to": "user0011@example.com"
+    },
+    "8396b104075d1f79": {
+      "type": "email",
+      "to": "user0012@example.com"
+    },
+    "b50347497e9e5bdf": {
+      "type": "email",
+      "to": "user0013@example.com"
+    },
+    "d9edfd69c530f88d": {
+      "type": "email",
+      "to": "user0014@example.com"
+    },
+    "08dc4970473f0056": {
+      "type": "email",
+      "to": "user0015@example.com"
+    },
+    "0c7d8be656b8ff3e": {
+      "type": "email",
+      "to": "user0016@example.com"
+    },
+    "56abe105a958b3c7": {
+      "type": "email",
+      "to": "user0017@example.com"
+    },
+    "8fc7be66d3a8e3dd": {
+      "type": "email",
+      "to": "user0018@example.com"
+    },
+    "d480722c367394fb": {
+      "type": "email",
+      "to": "user0019@example.com"
+    },
+    "011720e23304f7c8": {
+      "type": "email",
+      "to": "user0020@example.com"
+    },
+    "d06b5be56cc361cb": {
+      "type": "email",
+      "to": "user0021@example.com"
+    },
+    "915e39c0edcc1140": {
+      "type": "email",
+      "to": "user0022@example.com"
+    },
+    "b464fe6f84dfb455": {
+      "type": "email",
+      "to": "user0023@example.com"
+    },
+    "9a11163fccc3acbb": {
+      "type": "hash",
+      "to": "0000000000000000000000000000000000000001"
+    },
+    "63841830d0bb5cb0": {
+      "type": "hash",
+      "to": "0000000000000000000000000000000000000002"
+    },
+    "0f006df54a28762e": {
+      "type": "hash",
+      "to": "0000000000000000000000000000000000000000000000000000000000000003"
+    },
+    "4e6e8af52175e8c7": {
+      "type": "hash",
+      "to": "00000000000000000000000000000004"
+    },
+    "3a864df04d207b79": {
+      "type": "hash",
+      "to": "00000000000000000000000000000005"
+    },
+    "a17bc70f1c4fcf3b": {
+      "type": "hash",
+      "to": "00000000000000000000000000000006"
+    },
+    "52c1e6e757bb5526": {
+      "type": "hash",
+      "to": "00000000000000000000000000000007"
+    },
+    "8355b654668b72cf": {
+      "type": "hash",
+      "to": "00000000000000000000000000000008"
+    },
+    "05b4a82e0e46ef7b": {
+      "type": "hash",
+      "to": "00000000000000000000000000000009"
+    },
+    "5f328dd6c05506f4": {
+      "type": "hash",
+      "to": "000000000000000000000000000000000000000a"
+    },
+    "21f12cd5432ae499": {
+      "type": "hash",
+      "to": "0000000000000000000000000000000b"
+    },
+    "3e4c1802b764580d": {
+      "type": "hash",
+      "to": "0000000000000000000000000000000c"
+    },
+    "2afe3d6fcd97be9e": {
+      "type": "hash",
+      "to": "0000000000000000000000000000000d"
+    },
+    "5e42ab13b4aeb3c9": {
+      "type": "hash",
+      "to": "000000000000000000000000000000000000000e"
+    },
+    "953641192ffa9b24": {
+      "type": "hash",
+      "to": "000000000000000000000000000000000000000000000000000000000000000f"
+    },
+    "80177af0d04ecc5c": {
+      "type": "ip",
+      "to": "10.128.0.1"
+    },
+    "f946afd251a07062": {
+      "type": "ip",
+      "to": "192.0.2.1"
+    },
+    "b6680c61a094d504": {
+      "type": "ip",
+      "to": "192.0.2.10"
+    },
+    "340490e211ab67ef": {
+      "type": "ip",
+      "to": "192.0.2.100"
+    },
+    "a44ea263ce671a22": {
+      "type": "ip",
+      "to": "192.0.2.101"
+    },
+    "2688669b003f625d": {
+      "type": "ip",
+      "to": "192.0.2.102"
+    },
+    "8199b0a5f436341e": {
+      "type": "ip",
+      "to": "192.0.2.103"
+    },
+    "8f983ac79c5edbaf": {
+      "type": "ip",
+      "to": "192.0.2.104"
+    },
+    "2b3bed4607c65ca6": {
+      "type": "ip",
+      "to": "192.0.2.105"
+    },
+    "e44fe444f2e0e4ec": {
+      "type": "ip",
+      "to": "192.0.2.106"
+    },
+    "9445f60d82c59562": {
+      "type": "ip",
+      "to": "192.0.2.107"
+    },
+    "915c4d2224542389": {
+      "type": "ip",
+      "to": "192.0.2.108"
+    },
+    "a9bb09e66ccd17e6": {
+      "type": "ip",
+      "to": "192.0.2.109"
+    },
+    "ed2887e9a4045524": {
+      "type": "ip",
+      "to": "192.0.2.11"
+    },
+    "c3b57c36bf63e6c8": {
+      "type": "ip",
+      "to": "192.0.2.110"
+    },
+    "69a042088c0d9427": {
+      "type": "ip",
+      "to": "192.0.2.111"
+    },
+    "ff3e3308fd31af36": {
+      "type": "ip",
+      "to": "192.0.2.112"
+    },
+    "97cbe495ac7750bb": {
+      "type": "ip",
+      "to": "192.0.2.113"
+    },
+    "5af54d1cdd4567be": {
+      "type": "ip",
+      "to": "192.0.2.114"
+    },
+    "ee706c2efe577412": {
+      "type": "ip",
+      "to": "192.0.2.115"
+    },
+    "0a5f777ccfe6e4f2": {
+      "type": "ip",
+      "to": "192.0.2.116"
+    },
+    "636b81c73b42b6cf": {
+      "type": "ip",
+      "to": "192.0.2.117"
+    },
+    "7c76e78b9ebc81a3": {
+      "type": "ip",
+      "to": "192.0.2.118"
+    },
+    "07ebf025fcb5b2e2": {
+      "type": "ip",
+      "to": "192.0.2.119"
+    },
+    "e2d2f6ad8eac406a": {
+      "type": "ip",
+      "to": "192.0.2.12"
+    },
+    "2a1e84ffff068c27": {
+      "type": "ip",
+      "to": "192.0.2.120"
+    },
+    "d6f2573f6e9299b3": {
+      "type": "ip",
+      "to": "192.0.2.121"
+    },
+    "a363b3ff920d1253": {
+      "type": "ip",
+      "to": "192.0.2.122"
+    },
+    "54147cd111132378": {
+      "type": "ip",
+      "to": "192.0.2.123"
+    },
+    "1ba4fd12e0748410": {
+      "type": "ip",
+      "to": "192.0.2.124"
+    },
+    "89653cdbe3a54501": {
+      "type": "ip",
+      "to": "192.0.2.125"
+    },
+    "1bc42cca014b946e": {
+      "type": "ip",
+      "to": "192.0.2.126"
+    },
+    "84fda9033e92b057": {
+      "type": "ip",
+      "to": "192.0.2.127"
+    },
+    "bf01882cada6d33a": {
+      "type": "ip",
+      "to": "192.0.2.128"
+    },
+    "2cf49dc19f5aecf3": {
+      "type": "ip",
+      "to": "192.0.2.129"
+    },
+    "4e325b0479bb76db": {
+      "type": "ip",
+      "to": "192.0.2.13"
+    },
+    "272d0df1395c2207": {
+      "type": "ip",
+      "to": "192.0.2.130"
+    },
+    "7615bd35f95b9903": {
+      "type": "ip",
+      "to": "192.0.2.131"
+    },
+    "f48d45c14c94c791": {
+      "type": "ip",
+      "to": "192.0.2.132"
+    },
+    "c5f45c515ca3d743": {
+      "type": "ip",
+      "to": "192.0.2.133"
+    },
+    "4786db6008db591e": {
+      "type": "ip",
+      "to": "192.0.2.134"
+    },
+    "ffb052f88c4a6c35": {
+      "type": "ip",
+      "to": "192.0.2.135"
+    },
+    "d3f07f46ff3b9544": {
+      "type": "ip",
+      "to": "192.0.2.136"
+    },
+    "706d8980dff451ff": {
+      "type": "ip",
+      "to": "192.0.2.137"
+    },
+    "866be04625b07205": {
+      "type": "ip",
+      "to": "192.0.2.138"
+    },
+    "c669b18650294df2": {
+      "type": "ip",
+      "to": "192.0.2.139"
+    },
+    "f1c0532693f498fe": {
+      "type": "ip",
+      "to": "192.0.2.14"
+    },
+    "be7fadacaca75e4a": {
+      "type": "ip",
+      "to": "192.0.2.140"
+    },
+    "681b23114d5d3d47": {
+      "type": "ip",
+      "to": "192.0.2.141"
+    },
+    "7dee51099ac7789e": {
+      "type": "ip",
+      "to": "192.0.2.142"
+    },
+    "88f729de64c924fe": {
+      "type": "ip",
+      "to": "192.0.2.143"
+    },
+    "4c06cbf4bc338933": {
+      "type": "ip",
+      "to": "192.0.2.144"
+    },
+    "8f9e504850eddd2b": {
+      "type": "ip",
+      "to": "192.0.2.145"
+    },
+    "8e473819a954a9fc": {
+      "type": "ip",
+      "to": "192.0.2.146"
+    },
+    "8a87711ce1d868af": {
+      "type": "ip",
+      "to": "192.0.2.147"
+    },
+    "6391f6eb0ca9edff": {
+      "type": "ip",
+      "to": "192.0.2.148"
+    },
+    "8af3a4bb2e0376ab": {
+      "type": "ip",
+      "to": "192.0.2.149"
+    },
+    "46220a9b33105379": {
+      "type": "ip",
+      "to": "192.0.2.15"
+    },
+    "5d15e80cb2ff4a5d": {
+      "type": "ip",
+      "to": "192.0.2.150"
+    },
+    "62614963ddd2cb7d": {
+      "type": "ip",
+      "to": "192.0.2.151"
+    },
+    "61dfef6782e1c103": {
+      "type": "ip",
+      "to": "192.0.2.152"
+    },
+    "98894359f0059fcd": {
+      "type": "ip",
+      "to": "192.0.2.153"
+    },
+    "74a20424b4adbd77": {
+      "type": "ip",
+      "to": "10.128.0.10"
+    },
+    "757c65b84e0bae89": {
+      "type": "ip",
+      "to": "192.0.2.154"
+    },
+    "c00cceccbe12d3f8": {
+      "type": "ip",
+      "to": "192.0.2.155"
+    },
+    "f7a6a047c464132e": {
+      "type": "ip",
+      "to": "10.128.0.100"
+    },
+    "3019296af8dd4df7": {
+      "type": "ip",
+      "to": "10.128.0.101"
+    },
+    "b0099f916166c619": {
+      "type": "ip",
+      "to": "10.128.0.102"
+    },
+    "c532bc38c0ba5682": {
+      "type": "ip",
+      "to": "10.128.0.103"
+    },
+    "16d968dfcd162247": {
+      "type": "ip",
+      "to": "10.128.0.104"
+    },
+    "e1ef4569a3fa1497": {
+      "type": "ip",
+      "to": "10.128.0.105"
+    },
+    "b1c7b347f620365f": {
+      "type": "ip",
+      "to": "10.128.0.106"
+    },
+    "9c4d1d28f0a55693": {
+      "type": "ip",
+      "to": "192.0.2.156"
+    },
+    "469a74fd3499a4be": {
+      "type": "ip",
+      "to": "192.0.2.157"
+    },
+    "401deba1140e60aa": {
+      "type": "ip",
+      "to": "192.0.2.158"
+    },
+    "80dc2965cc0ddfd4": {
+      "type": "ip",
+      "to": "10.128.0.107"
+    },
+    "8f68f4284477be93": {
+      "type": "ip",
+      "to": "10.128.0.108"
+    },
+    "973ae9a761ef53f1": {
+      "type": "ip",
+      "to": "10.128.0.109"
+    },
+    "aa7ae6a9c79bddf1": {
+      "type": "ip",
+      "to": "192.0.2.159"
+    },
+    "d156ed5deea6d558": {
+      "type": "ip",
+      "to": "192.0.2.16"
+    },
+    "72d5b48481bcfb8b": {
+      "type": "ip",
+      "to": "192.0.2.160"
+    },
+    "b9cc336aeb1fc272": {
+      "type": "ip",
+      "to": "192.0.2.161"
+    },
+    "73ba816f3f3fa488": {
+      "type": "ip",
+      "to": "192.0.2.162"
+    },
+    "1a5a03ba646a2ff4": {
+      "type": "ip",
+      "to": "10.128.0.11"
+    },
+    "42ee4cf0738faed0": {
+      "type": "ip",
+      "to": "10.128.0.110"
+    },
+    "b0c4d2a5d1b2e1ed": {
+      "type": "ip",
+      "to": "10.128.0.111"
+    },
+    "e435543a1b08aae4": {
+      "type": "ip",
+      "to": "10.128.0.112"
+    },
+    "326b37a3df36fd75": {
+      "type": "ip",
+      "to": "10.128.0.113"
+    },
+    "079c132d37461627": {
+      "type": "ip",
+      "to": "10.128.0.114"
+    },
+    "5c21b99e8399c09c": {
+      "type": "ip",
+      "to": "10.128.0.115"
+    },
+    "36d718e91b6d1bdd": {
+      "type": "ip",
+      "to": "10.128.0.116"
+    },
+    "ba1497599d3cc702": {
+      "type": "ip",
+      "to": "10.128.0.117"
+    },
+    "a0d9432c7b5c2d6d": {
+      "type": "ip",
+      "to": "10.128.0.118"
+    },
+    "a5df8697f45d139e": {
+      "type": "ip",
+      "to": "10.128.0.119"
+    },
+    "b7dee4cfa51c104b": {
+      "type": "ip",
+      "to": "10.128.0.12"
+    },
+    "a15be403485edc9c": {
+      "type": "ip",
+      "to": "10.128.0.120"
+    },
+    "31fb8851b592c9df": {
+      "type": "ip",
+      "to": "10.128.0.121"
+    },
+    "0a5f6c4ad81d7c71": {
+      "type": "ip",
+      "to": "10.128.0.122"
+    },
+    "422ab40c0d0d7db3": {
+      "type": "ip",
+      "to": "10.128.0.123"
+    },
+    "3a1ddf87bac34d4e": {
+      "type": "ip",
+      "to": "10.128.0.124"
+    },
+    "6a3f566ea4ec034a": {
+      "type": "ip",
+      "to": "10.128.0.125"
+    },
+    "6cc7f2961b48bd5b": {
+      "type": "ip",
+      "to": "10.128.0.126"
+    },
+    "08be174fc728e00d": {
+      "type": "ip",
+      "to": "10.128.0.127"
+    },
+    "d0473ff3fb682296": {
+      "type": "ip",
+      "to": "10.128.0.128"
+    },
+    "c02bbab4c8f5c7b5": {
+      "type": "ip",
+      "to": "10.128.0.129"
+    },
+    "b095df38764778e1": {
+      "type": "ip",
+      "to": "10.128.0.13"
+    },
+    "3063464b2952186e": {
+      "type": "ip",
+      "to": "10.128.0.130"
+    },
+    "41258619e63bca9c": {
+      "type": "ip",
+      "to": "10.128.0.131"
+    },
+    "c281ac4950fca811": {
+      "type": "ip",
+      "to": "192.0.2.163"
+    },
+    "9b62f052d2e0b77e": {
+      "type": "ip",
+      "to": "192.0.2.164"
+    },
+    "d811bdd6648f68a4": {
+      "type": "ip",
+      "to": "192.0.2.165"
+    },
+    "ff147ddbbec00c02": {
+      "type": "ip",
+      "to": "192.0.2.166"
+    },
+    "c227a982a32fe9d3": {
+      "type": "ip",
+      "to": "192.0.2.167"
+    },
+    "d26462605627f9c1": {
+      "type": "ip",
+      "to": "192.0.2.168"
+    },
+    "1eaad488fad3db4f": {
+      "type": "ip",
+      "to": "192.0.2.169"
+    },
+    "c4eb36b083ddd63c": {
+      "type": "ip",
+      "to": "192.0.2.17"
+    },
+    "9864ebba21afb844": {
+      "type": "ip",
+      "to": "192.0.2.170"
+    },
+    "1bda03d7b3e58831": {
+      "type": "ip",
+      "to": "192.0.2.171"
+    },
+    "3f78805b970cd94c": {
+      "type": "ip",
+      "to": "192.0.2.172"
+    },
+    "eb64c25b24152145": {
+      "type": "ip",
+      "to": "192.0.2.173"
+    },
+    "7269d8efe91486ef": {
+      "type": "ip",
+      "to": "192.0.2.174"
+    },
+    "ddd50fdef64ee64a": {
+      "type": "ip",
+      "to": "192.0.2.175"
+    },
+    "f41f274e0fa3bf9e": {
+      "type": "ip",
+      "to": "192.0.2.176"
+    },
+    "4d9a1f75b0649c3c": {
+      "type": "ip",
+      "to": "192.0.2.177"
+    },
+    "2bc7b6a1eb255679": {
+      "type": "ip",
+      "to": "192.0.2.178"
+    },
+    "d52ca4bcaec5c8f4": {
+      "type": "ip",
+      "to": "192.0.2.179"
+    },
+    "f212083facc006c8": {
+      "type": "ip",
+      "to": "192.0.2.18"
+    },
+    "0f72a7b9a949e7ab": {
+      "type": "ip",
+      "to": "192.0.2.180"
+    },
+    "b79d3626904c690d": {
+      "type": "ip",
+      "to": "192.0.2.181"
+    },
+    "706fd5645830aed8": {
+      "type": "ip",
+      "to": "192.0.2.182"
+    },
+    "0f8f1084e2e58e4e": {
+      "type": "ip",
+      "to": "192.0.2.183"
+    },
+    "fca96a450e627583": {
+      "type": "ip",
+      "to": "192.0.2.184"
+    },
+    "f42f748550c179d6": {
+      "type": "ip",
+      "to": "192.0.2.185"
+    },
+    "121b3ebf06dcda6f": {
+      "type": "ip",
+      "to": "224.0.0.0"
+    },
+    "feba0cbe7f031c6b": {
+      "type": "ip",
+      "to": "192.0.2.186"
+    },
+    "216c9585f406ab2a": {
+      "type": "ip",
+      "to": "192.0.2.187"
+    },
+    "e7000c2dcf07e02f": {
+      "type": "ip",
+      "to": "192.0.2.188"
+    },
+    "e4d85e95ae1f1e53": {
+      "type": "ip",
+      "to": "192.0.2.189"
+    },
+    "43c9d91756c323d2": {
+      "type": "ip",
+      "to": "192.0.2.19"
+    },
+    "d4394cdded4d7ea8": {
+      "type": "ip",
+      "to": "192.0.2.190"
+    },
+    "83ca379ee4469003": {
+      "type": "ip",
+      "to": "192.0.2.191"
+    },
+    "6884f0eef97d54b7": {
+      "type": "ip",
+      "to": "239.255.255.250"
+    },
+    "ca7cc9114d0821c9": {
+      "type": "ip",
+      "to": "192.0.2.192"
+    },
+    "cca5be21c44cab04": {
+      "type": "ip",
+      "to": "192.0.2.193"
+    },
+    "1c587c755aa9242c": {
+      "type": "ip",
+      "to": "192.0.2.194"
+    },
+    "bbe34de9eca989be": {
+      "type": "ip",
+      "to": "192.0.2.195"
+    },
+    "8cf60b40086b9a79": {
+      "type": "ip",
+      "to": "192.0.2.196"
+    },
+    "7e0b6d2883748988": {
+      "type": "ip",
+      "to": "192.0.2.197"
+    },
+    "0dbe67a60e8e2830": {
+      "type": "ip",
+      "to": "192.0.2.198"
+    },
+    "f03fa0bc85da23cf": {
+      "type": "ip",
+      "to": "192.0.2.199"
+    },
+    "56aa8270308bcf79": {
+      "type": "ip",
+      "to": "192.0.2.2"
+    },
+    "1844e8dedcd4cc7a": {
+      "type": "ip",
+      "to": "192.0.2.20"
+    },
+    "81f45f45fa3d6b54": {
+      "type": "ip",
+      "to": "192.0.2.200"
+    },
+    "9af97bf1965422ec": {
+      "type": "ip",
+      "to": "192.0.2.201"
+    },
+    "e7b82acd664b7841": {
+      "type": "ip",
+      "to": "192.0.2.202"
+    },
+    "4826dc5d03daa677": {
+      "type": "ip",
+      "to": "192.0.2.203"
+    },
+    "22f6090db800d16d": {
+      "type": "ip",
+      "to": "192.0.2.204"
+    },
+    "0fbda74d5c9ee2f6": {
+      "type": "ip",
+      "to": "192.0.2.205"
+    },
+    "52257ac047b477cb": {
+      "type": "ip",
+      "to": "192.0.2.206"
+    },
+    "aeec35971b4207e3": {
+      "type": "ip",
+      "to": "192.0.2.207"
+    },
+    "c493ef87ee70a115": {
+      "type": "ip",
+      "to": "192.0.2.208"
+    },
+    "5cc8f83e5f4befd3": {
+      "type": "ip",
+      "to": "192.0.2.209"
+    },
+    "cba70d4af9273114": {
+      "type": "ip",
+      "to": "192.0.2.21"
+    },
+    "7f59c549b91faeb2": {
+      "type": "ip",
+      "to": "192.0.2.210"
+    },
+    "a26a2fd93f4574d5": {
+      "type": "ip",
+      "to": "192.0.2.211"
+    },
+    "66df1c233abb4835": {
+      "type": "ip",
+      "to": "192.0.2.212"
+    },
+    "9a3c5db2566fb49a": {
+      "type": "ip",
+      "to": "192.0.2.213"
+    },
+    "9b5ffd2b318392f6": {
+      "type": "ip",
+      "to": "192.0.2.214"
+    },
+    "2782512baa2355a3": {
+      "type": "ip",
+      "to": "192.0.2.215"
+    },
+    "ef09209ae59e5d55": {
+      "type": "ip",
+      "to": "192.0.2.216"
+    },
+    "9c933a58c59a09f0": {
+      "type": "ip",
+      "to": "192.0.2.217"
+    },
+    "4e452e6cd967e145": {
+      "type": "ip",
+      "to": "192.0.2.218"
+    },
+    "df3da3b6e9ace18a": {
+      "type": "ip",
+      "to": "192.0.2.219"
+    },
+    "596577f5b8b6d39b": {
+      "type": "ip",
+      "to": "192.0.2.22"
+    },
+    "37240dc4ba79667f": {
+      "type": "ip",
+      "to": "192.0.2.220"
+    },
+    "5b96bbf40ddb10f3": {
+      "type": "ip",
+      "to": "192.0.2.221"
+    },
+    "32263ad846a5c44c": {
+      "type": "ip",
+      "to": "192.0.2.222"
+    },
+    "b142fda9980cffa8": {
+      "type": "ip",
+      "to": "192.0.2.223"
+    },
+    "253bc91d5ad0e0d7": {
+      "type": "ip",
+      "to": "192.0.2.224"
+    },
+    "51a243106d48abaa": {
+      "type": "ip",
+      "to": "192.0.2.225"
+    },
+    "85a113a4a0ca8ed3": {
+      "type": "ip",
+      "to": "192.0.2.226"
+    },
+    "071a153b2ba8bc34": {
+      "type": "ip",
+      "to": "192.0.2.227"
+    },
+    "3a81c2e7e6570bbe": {
+      "type": "ip",
+      "to": "192.0.2.228"
+    },
+    "ec087ca24fc09ea9": {
+      "type": "ip",
+      "to": "192.0.2.229"
+    },
+    "0dcdecaa538c612e": {
+      "type": "ip",
+      "to": "192.0.2.23"
+    },
+    "f67f3257ca4f05fa": {
+      "type": "ip",
+      "to": "192.0.2.230"
+    },
+    "cd604e0e9d3f5ceb": {
+      "type": "ip",
+      "to": "192.0.2.231"
+    },
+    "f7baaed8a1e79000": {
+      "type": "ip",
+      "to": "192.0.2.232"
+    },
+    "14cfc79caff61faf": {
+      "type": "ip",
+      "to": "192.0.2.233"
+    },
+    "c93f4bc90f7a5152": {
+      "type": "ip",
+      "to": "192.0.2.234"
+    },
+    "5f05ad5c18dd165a": {
+      "type": "ip",
+      "to": "192.0.2.235"
+    },
+    "c2b1bd3d47f4290e": {
+      "type": "ip",
+      "to": "192.0.2.236"
+    },
+    "a5d4cb9984bba70e": {
+      "type": "ip",
+      "to": "192.0.2.237"
+    },
+    "a5dc3c4c1bce969a": {
+      "type": "ip",
+      "to": "192.0.2.238"
+    },
+    "d879b11d1209739e": {
+      "type": "ip",
+      "to": "192.0.2.239"
+    },
+    "4e227f73103d9513": {
+      "type": "ip",
+      "to": "192.0.2.24"
+    },
+    "ec6dae3d2c4ab177": {
+      "type": "ip",
+      "to": "192.0.2.240"
+    },
+    "6bb202556ad6a6a7": {
+      "type": "ip",
+      "to": "192.0.2.241"
+    },
+    "654f16abf98022cc": {
+      "type": "ip",
+      "to": "192.0.2.242"
+    },
+    "60eb3a2bcbdca22b": {
+      "type": "ip",
+      "to": "192.0.2.243"
+    },
+    "87e7e1d1a0716d06": {
+      "type": "ip",
+      "to": "192.0.2.244"
+    },
+    "3d80e7bcba7a432d": {
+      "type": "ip",
+      "to": "192.0.2.245"
+    },
+    "333b91626d1c63d6": {
+      "type": "ip",
+      "to": "192.0.2.246"
+    },
+    "7cec37f3c058ca03": {
+      "type": "ip",
+      "to": "192.0.2.247"
+    },
+    "36dd193c26ce5634": {
+      "type": "ip",
+      "to": "192.0.2.248"
+    },
+    "e659df7b05ad935c": {
+      "type": "ip",
+      "to": "192.0.2.249"
+    },
+    "61cf09daa4d7ef09": {
+      "type": "ip",
+      "to": "192.0.2.25"
+    },
+    "8b4d95c782f09d64": {
+      "type": "ip",
+      "to": "192.0.2.250"
+    },
+    "860ca7a9f2c92a6f": {
+      "type": "ip",
+      "to": "192.0.2.251"
+    },
+    "4a2c368bf94167b2": {
+      "type": "ip",
+      "to": "192.0.2.252"
+    },
+    "71e50e22859747f8": {
+      "type": "ip",
+      "to": "192.0.2.253"
+    },
+    "39065e52ddd180ed": {
+      "type": "ip",
+      "to": "192.0.2.254"
+    },
+    "922b61c35e6344f9": {
+      "type": "ip",
+      "to": "192.0.2.26"
+    },
+    "c4a0e146b4058578": {
+      "type": "ip",
+      "to": "192.0.2.27"
+    },
+    "2ae67cd938b748fa": {
+      "type": "ip",
+      "to": "192.0.2.28"
+    },
+    "435161e15febb3a3": {
+      "type": "ip",
+      "to": "192.0.2.29"
+    },
+    "e9b31be8ae38dd4f": {
+      "type": "ip",
+      "to": "192.0.2.3"
+    },
+    "84abe3b0e8ab8e26": {
+      "type": "ip",
+      "to": "192.0.2.30"
+    },
+    "df989b0fee37f7ae": {
+      "type": "ip",
+      "to": "192.0.2.31"
+    },
+    "57a9abee63da8d23": {
+      "type": "ip",
+      "to": "192.0.2.32"
+    },
+    "914547a550eeb770": {
+      "type": "ip",
+      "to": "192.0.2.33"
+    },
+    "db811cd01179ca77": {
+      "type": "ip",
+      "to": "192.0.2.34"
+    },
+    "8d084b8049141f4a": {
+      "type": "ip",
+      "to": "192.0.2.35"
+    },
+    "a05f95504ecc78e5": {
+      "type": "process",
+      "to": "...\\vpndownloader.exe"
+    },
+    "72b02ec49c3f5d81": {
+      "type": "process",
+      "to": "...\\vpnui.exe"
+    },
+    "8e5bbbefbbb71fd6": {
+      "type": "process",
+      "to": "0"
+    },
+    "7b1e7980b4f191c0": {
+      "type": "process",
+      "to": "5588"
+    },
+    "e95b6536a1cabb57": {
+      "type": "process",
+      "to": "7756"
+    },
+    "ec7fecb9839a8790": {
+      "type": "process",
+      "to": "c:\\program files (x86)\\cisco\\cisco anyconnect secure mobility client\\vpnagent.exe"
+    },
+    "0315e9ebd5499690": {
+      "type": "process",
+      "to": "c:\\program files (x86)\\google\\chrome\\application\\chrome.exe"
+    },
+    "04947c11e598fc00": {
+      "type": "process",
+      "to": "c:\\programdata\\microsoft\\windows defender\\platform\\4.18.1806.18062-0\\msmpeng.exe"
+    },
+    "0e88768936fe9c38": {
+      "type": "process",
+      "to": "c:\\windows\\explorer.exe"
+    },
+    "0f246fc3a989ffe7": {
+      "type": "process",
+      "to": "c:\\windows\\system32\\browser_broker.exe"
+    },
+    "6973f85308a78541": {
+      "type": "process",
+      "to": "c:\\windows\\system32\\cleanmgr.exe"
+    },
+    "d52e914f5e713fd4": {
+      "type": "process",
+      "to": "c:\\windows\\system32\\fodhelper.exe"
+    },
+    "f1db9eb62d9156a1": {
+      "type": "process",
+      "to": "c:\\windows\\system32\\netsh.exe"
+    },
+    "6f1afd02fbc49483": {
+      "type": "process",
+      "to": "c:\\windows\\system32\\schtasks.exe"
+    },
+    "e7947430dad6a978": {
+      "type": "process",
+      "to": "c:\\windows\\system32\\svchost.exe"
+    },
+    "9e4735b83370aa3e": {
+      "type": "process",
+      "to": "c:\\windows\\system32\\svchost.exe -k netsvcs -p -s schedule"
+    },
+    "a3d6a2918c78f7a2": {
+      "type": "process",
+      "to": "c:\\windows\\system32\\wbem\\wmiprvse.exe"
+    },
+    "171eae230ac5ac94": {
+      "type": "process",
+      "to": "c:\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe"
+    },
+    "17155f200f159211": {
+      "type": "process",
+      "to": "c:\\windows\\temp\\hdoor.exe"
+    },
+    "782662ddb1095ce4": {
+      "type": "process",
+      "to": "c:\\windows\\temp\\unziped\\lsof-master\\iexeplorer.exe"
+    },
+    "72ff91aeb7e19a14": {
+      "type": "process",
+      "to": "cat /etc/passwd"
+    },
+    "ebc3884544610eb5": {
+      "type": "process",
+      "to": "echo <base64 ubuntu 16.04 bpf privesc c source> >> /tmp/colonel"
+    },
+    "a4cc98152e9234c1": {
+      "type": "process",
+      "to": "groups"
+    },
+    "7115c355de2196a8": {
+      "type": "process",
+      "to": "id"
+    },
+    "0f892665ddc7bc71": {
+      "type": "process",
+      "to": "lsb_release -a"
+    },
+    "a97ca761765e9c18": {
+      "type": "process",
+      "to": "powershell.exe"
+    },
+    "ceff0304f72dcb33": {
+      "type": "process",
+      "to": "powershell.exe (empire -enc)"
+    },
+    "0dd0cd3b1e245e32": {
+      "type": "process",
+      "to": "powershell.exe (pid 5588)"
+    },
+    "2bb42d8796523f61": {
+      "type": "process",
+      "to": "powershell.exe (pid 6360)"
+    },
+    "b85d5b554d1bfd4d": {
+      "type": "process",
+      "to": "powershell.exe -noni -w hidden -c \"iex ([text.encoding]::unicode.getstring([convert]::frombase64string((gp hklm:\\software\\microsoft\\network debug).debug)))\""
+    },
+    "147cbbe6441d1be6": {
+      "type": "process",
+      "to": "services.exe"
+    },
+    "88ccb1228f7a0294": {
+      "type": "process",
+      "to": "svchost.exe"
+    },
+    "f3f957fec4cb6196": {
+      "type": "process",
+      "to": "tiworker.exe"
+    },
+    "74ad46d021b8491f": {
+      "type": "process",
+      "to": "uname -a"
+    },
+    "072493beda4ea51e": {
+      "type": "process",
+      "to": "useradd -ou 0 -g 0 -m -n -r -s /bin/bash tomcat7 -p host0026.example.com"
+    },
+    "5e00e35257e7936a": {
+      "type": "process",
+      "to": "vpnui.exe"
+    },
+    "72dce79ef084993d": {
+      "type": "process",
+      "to": "whoami"
+    },
+    "998f19cd3d7f6d8c": {
+      "type": "user",
+      "to": "[\"cisco anyconnect vpn agent for windows 4.6.01098\",\"anyconnect agent 4.6.01098\"]"
+    },
+    "35dfdde6c55336a0": {
+      "type": "user",
+      "to": "EXAMPLE\\user0001"
+    },
+    "46e7f6368e69f64f": {
+      "type": "user",
+      "to": "EXAMPLE\\user0002"
+    },
+    "97c7e35499d4112f": {
+      "type": "user",
+      "to": "mozilla/5.0 (windows nt 6.1; wow64; trident/7.0; rv:11.0) like gecko"
+    },
+    "49ce892262da6f90": {
+      "type": "user",
+      "to": "mozilla/5.0 (windows nt; windows nt 10.0; en-us) windowspowershell/5.1.17134.112"
+    },
+    "39457bbd9b8cfa8b": {
+      "type": "user",
+      "to": "nt authority\\system"
+    },
+    "760bec3f6b90564f": {
+      "type": "user",
+      "to": "tomcat8"
+    },
+    "e46dc8760c14af34": {
+      "type": "url",
+      "to": "/p0001"
+    },
+    "7fe6886102591272": {
+      "type": "url",
+      "to": "http://10.128.0.13/p0002"
+    },
+    "22ac04a454afeb36": {
+      "type": "url",
+      "to": "http://10.128.0.13/p0003"
+    },
+    "e7fa37ca0cdccb98": {
+      "type": "url",
+      "to": "http://10.128.0.13:8080/p0004"
+    },
+    "76ba10383ba867bd": {
+      "type": "url",
+      "to": "http://192.0.2.213:3333/p0005"
+    },
+    "6563ce6d91aa7081": {
+      "type": "url",
+      "to": "http://192.0.2.213:443/p0006"
+    },
+    "4956c50ae1352677": {
+      "type": "url",
+      "to": "http://host0014.example.com/p0007"
+    },
+    "e58620ef3ab2d483": {
+      "type": "url",
+      "to": "http://host0046.example.com/p0008"
+    },
+    "6ac583ebf8af8a60": {
+      "type": "url",
+      "to": "http://host0092.example.com/p0009"
+    },
+    "5f331c96945b6033": {
+      "type": "url",
+      "to": "https://192.0.2.213:443/p0010"
+    },
+    "be6d1da54ba2bf7d": {
+      "type": "url",
+      "to": "https://host0034.example.com/p0011"
+    },
+    "5586faaf7b6818c2": {
+      "type": "url",
+      "to": "https://host0034.example.com/p0012"
+    },
+    "5014145908b9fed1": {
+      "type": "url",
+      "to": "https://host0038.example.com/p0013"
+    },
+    "324df801451118d5": {
+      "type": "url",
+      "to": "https://host0038.example.com/p0014"
+    },
+    "aeab7fd2a230acd8": {
+      "type": "url",
+      "to": "https://host0038.example.com/p0015"
+    },
+    "c96ea8df70c0e110": {
+      "type": "token",
+      "to": "user0001"
+    },
+    "e7987de34d5ccb87": {
+      "type": "token",
+      "to": "host0001"
+    },
+    "6df5f833d45ad4a1": {
+      "type": "token",
+      "to": "host0003"
+    },
+    "bd6768eaef82569c": {
+      "type": "token",
+      "to": "host0005"
+    },
+    "b19fac7267f38782": {
+      "type": "token",
+      "to": "host0005"
+    },
+    "d450797a26fded95": {
+      "type": "token",
+      "to": "host0006"
+    },
+    "e817990c2b4052b5": {
+      "type": "token",
+      "to": "host0008"
+    },
+    "8c7338c8242ccedd": {
+      "type": "token",
+      "to": "host0011"
+    },
+    "a7cd2f65a1854ccf": {
+      "type": "token",
+      "to": "host0012"
+    },
+    "51d0adad846ce464": {
+      "type": "token",
+      "to": "host0016"
+    },
+    "374b510201f4d433": {
+      "type": "token",
+      "to": "host0017"
+    },
+    "46442fcea513ecb3": {
+      "type": "token",
+      "to": "user0007"
+    },
+    "16891b6a62a1c667": {
+      "type": "token",
+      "to": "host0019"
+    },
+    "dfb4edbb585f2e42": {
+      "type": "token",
+      "to": "host0020"
+    },
+    "50da68ec1e3f1653": {
+      "type": "token",
+      "to": "host0024"
+    },
+    "afd39fb7d6fd5712": {
+      "type": "token",
+      "to": "host0025"
+    },
+    "19d045df48bd8861": {
+      "type": "token",
+      "to": "host0026"
+    },
+    "b66daa127f49b95c": {
+      "type": "token",
+      "to": "host0027"
+    },
+    "0e0784bce8b042a7": {
+      "type": "token",
+      "to": "host0028"
+    },
+    "a83695a87df6cadf": {
+      "type": "token",
+      "to": "host0029"
+    },
+    "545557788dab9fa2": {
+      "type": "token",
+      "to": "host0030"
+    },
+    "a58fe6c910ab82cb": {
+      "type": "token",
+      "to": "host0034"
+    },
+    "d1ce91e4950aa1c6": {
+      "type": "token",
+      "to": "host0036"
+    },
+    "58f99f91c515752a": {
+      "type": "token",
+      "to": "user0010"
+    },
+    "2446357f4c2955ad": {
+      "type": "token",
+      "to": "host0037"
+    },
+    "70672095498b2824": {
+      "type": "token",
+      "to": "host0039"
+    },
+    "ea367afc23114374": {
+      "type": "token",
+      "to": "host0040"
+    },
+    "e0d9f5bfac1611d0": {
+      "type": "token",
+      "to": "host0041"
+    },
+    "f41ad737d92f2ab8": {
+      "type": "token",
+      "to": "host0042"
+    },
+    "3cc9fa72a31cabca": {
+      "type": "token",
+      "to": "host0043"
+    },
+    "b7136d851e47c927": {
+      "type": "token",
+      "to": "host0054"
+    },
+    "81eec8199a9fd9e2": {
+      "type": "token",
+      "to": "host0055"
+    },
+    "5fdc9c3078711782": {
+      "type": "token",
+      "to": "host0058"
+    },
+    "b2cb7edce405a302": {
+      "type": "token",
+      "to": "host0059"
+    },
+    "eeccb78c635272d9": {
+      "type": "token",
+      "to": "host0065"
+    },
+    "f2e9a09e242bd16a": {
+      "type": "token",
+      "to": "host0069"
+    },
+    "8020840a7660e198": {
+      "type": "token",
+      "to": "host0071"
+    },
+    "258166502eaf65d2": {
+      "type": "token",
+      "to": "host0075"
+    },
+    "cdbcf2f4b2075e74": {
+      "type": "token",
+      "to": "host0076"
+    },
+    "e85a505de358ddb0": {
+      "type": "token",
+      "to": "host0078"
+    },
+    "7bf294343b8615a0": {
+      "type": "token",
+      "to": "host0081"
+    },
+    "f1d6c69a4f3c4455": {
+      "type": "token",
+      "to": "host0083"
+    },
+    "7e45406b03424043": {
+      "type": "token",
+      "to": "user0001"
+    },
+    "37a5ada8c4a934ca": {
+      "type": "token",
+      "to": "user0002"
+    },
+    "90d467bb500e5a7d": {
+      "type": "token",
+      "to": "user0002-s"
+    },
+    "f956dea03f8d2be0": {
+      "type": "token",
+      "to": "user0004"
+    },
+    "350335ce371a0b7e": {
+      "type": "token",
+      "to": "user0004-s"
+    },
+    "206ac1f88dc22c94": {
+      "type": "token",
+      "to": "user0005"
+    },
+    "3a7fab2b9b4fc3de": {
+      "type": "token",
+      "to": "user0006"
+    },
+    "71a6f66993ebeee8": {
+      "type": "token",
+      "to": "user0007-s"
+    },
+    "2346ee1c548b3f8f": {
+      "type": "token",
+      "to": "user0008"
+    },
+    "e1dffa01bca6b277": {
+      "type": "token",
+      "to": "user0009"
+    },
+    "586ea6333d1bfef9": {
+      "type": "token",
+      "to": "user0010-s"
+    },
+    "52654dfd7cd8b1db": {
+      "type": "token",
+      "to": "user0011"
+    },
+    "efd91547f0081cf3": {
+      "type": "token",
+      "to": "user0011-s"
+    },
+    "6446331ec379308f": {
+      "type": "token",
+      "to": "user0012"
+    },
+    "24bf54e67052f2d4": {
+      "type": "token",
+      "to": "user0014"
+    },
+    "39cab9239a50548d": {
+      "type": "token",
+      "to": "user0014-s"
+    },
+    "83841a57fc37d9b8": {
+      "type": "token",
+      "to": "user0015"
+    },
+    "f922824b5ab68f91": {
+      "type": "token",
+      "to": "user0015-s"
+    },
+    "8eefdb20bcbd673e": {
+      "type": "token",
+      "to": "user0016"
+    },
+    "89de533f277ab6b9": {
+      "type": "token",
+      "to": "user0016-s"
+    },
+    "4d5d1fee8eff9423": {
+      "type": "token",
+      "to": "user0017"
+    },
+    "805d454c1d36e6f0": {
+      "type": "token",
+      "to": "user0020"
+    },
+    "eb7c5b63248863f1": {
+      "type": "token",
+      "to": "[\"cisco anyconnect vpn agent for windows 4.6.01098\",\"anyconnect agent 4.6.01098\"]"
+    },
+    "a38e4d1c6daeb640": {
+      "type": "token",
+      "to": "user0001"
+    },
+    "86ccca1e43ec5675": {
+      "type": "token",
+      "to": "user0002"
+    },
+    "f6a319a906eb47d5": {
+      "type": "token",
+      "to": "mozilla/5.0 (windows nt 6.1; wow64; trident/7.0; rv:11.0) like gecko"
+    },
+    "e78223afe6a16981": {
+      "type": "token",
+      "to": "mozilla/5.0 (windows nt; windows nt 10.0; en-us) windowspowershell/5.1.17134.112"
+    },
+    "b3ccd70d206ceea4": {
+      "type": "token",
+      "to": "tomcat8"
+    },
+    "50ce1fea26333a12": {
+      "type": "token",
+      "to": "host0002-l"
+    },
+    "72f886d8635b9e5a": {
+      "type": "token",
+      "to": "host0004-l"
+    },
+    "21aa2dc85629de8a": {
+      "type": "token",
+      "to": "host0006-l"
+    },
+    "5f8943224c1badc5": {
+      "type": "token",
+      "to": "host0007-l"
+    },
+    "3aeca34f23776a26": {
+      "type": "token",
+      "to": "host0008-l"
+    },
+    "b5c5cc07bdc44be5": {
+      "type": "token",
+      "to": "acme"
+    },
+    "2619805e031fb2ab": {
+      "type": "token",
+      "to": "keyword0001"
+    },
+    "aa6a601db74bc5d0": {
+      "type": "token",
+      "to": "alertvendor"
+    },
+    "c0b5cb5d2b7f722d": {
+      "type": "token",
+      "to": "examplevps"
+    },
+    "399a80985d0bf758": {
+      "type": "token",
+      "to": "exampleapp"
+    },
+    "2ce186e0879f98a8": {
+      "type": "token",
+      "to": "user0010-s"
+    }
+  }
+}

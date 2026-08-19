@@ -66,7 +66,7 @@ For each gap identified above, provide enough context for Phase 3 (contribution 
 **Where it would live in Vigil:**
 - [ ] New agent in `backend/agents/`
 - [ ] New skill in `skills/`
-- [ ] New MCP server in `mcp-servers/`
+- [ ] New MCP server in `tools/`
 - [ ] Enhancement to existing agent: [which one]
 - [ ] New detection rules in `data/`
 - [ ] New reporting template

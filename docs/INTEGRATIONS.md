@@ -300,7 +300,7 @@ Tools: `anyrun_get_report`, `anyrun_search`, `anyrun_get_iocs`
 ### CAPE Sandbox
 
 Open-source Cuckoo fork for on-prem detonation. Vigil ships an MCP client
-(`tools/cape_sandbox.py`) that talks to an existing CAPE deployment over
+(`core/integrations/cape_sandbox/tool.py`) that talks to an existing CAPE deployment over
 its REST API — Vigil does **not** host CAPE itself. CAPE requires KVM and
 Windows guest VMs, so it's typically deployed on bare metal, not inside
 Docker Desktop.
@@ -431,7 +431,7 @@ Settings > Integrations > Custom Integration Builder:
 1. Upload API documentation
 2. AI generates MCP server code
 3. Review and test
-4. Deploy to `tools/` directory
+4. Saved to `~/.vigil/custom_integrations/<id>_server.py`
 
 ## CloudCurrent VStrike (Network Topology Fusion)
 
@@ -452,7 +452,7 @@ radius.
 | Vigil → VStrike | `POST /api/integrations/vstrike/network-graph` | Full network graph: `{label, nodes, edges, bbox}` |
 | Vigil → VStrike | `POST /api/integrations/vstrike/ui/legend-apply` | Apply selected legend in the iframe |
 | Vigil → VStrike | `POST /api/integrations/vstrike/ui/rightpanel-focus` | Open / focus the iframe's right-hand details panel |
-| MCP | `tools/vstrike.py` (`vstrike_*` tools) | Agent-invokable topology queries + UI control |
+| MCP | `core/integrations/vstrike/tool.py` (`vstrike_*` tools) | Agent-invokable topology queries + UI control |
 
 #### Recently added MCP tools
 
@@ -488,8 +488,8 @@ UI: **Settings → Integrations → CloudCurrent VStrike**.
 
 VStrike enrichment lives at `finding.entity_context["vstrike"]` (JSONB —
 no DB migration required). Shape is defined by
-`backend/schemas/vstrike.py::VStrikeEnrichment` and mirrored by
-`frontend/src/types/vstrike.ts`.
+`core/integrations/vstrike/schemas.py::VStrikeEnrichment` and mirrored by
+`clients/web/src/types/vstrike.ts`.
 
 The ingest handler does read-modify-write on `entity_context` so existing
 keys (`src_ip`, `hostname`, etc.) are never clobbered.
@@ -499,7 +499,7 @@ keys (`src_ip`, `hostname`, etc.) are never clobbered.
 When `auto_cluster_cases: true` (default), the ingest handler groups
 upserted findings by `(segment, attack_path[0] or asset_id)` and creates
 one case per group via
-`services.case_automation_service.cluster_findings_by_attack_path`.
+`core.cases.case_automation_service.cluster_findings_by_attack_path`.
 
 ### Authentication
 

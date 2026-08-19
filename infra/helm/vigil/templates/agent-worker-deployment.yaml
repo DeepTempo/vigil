@@ -1,0 +1,111 @@
+{{- /*
+The TypeScript agent worker: drains the BullMQ `agent-runs` queue and writes
+the ledger. Mirrors llm-worker's shape, but runs its own Node image rather than
+reusing the backend one.
+
+It runs *alongside* llm-worker, not instead of it. ADR-0001 says the `arq:llm`
+queue "disappears entirely", and it will — but only once nothing enqueues to it.
+Three producers still do:
+  services/api/routers/claude.py         (the `chat` cutover)
+  services/daemon/agent_runner.py        (the `investigate` cutover)
+  core/reporting/ai_insights_service.py  (no cutover step covers this one)
+Delete llm-worker when that list is empty, not before.
+*/ -}}
+{{- if .Values.agentWorker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vigil.agentWorker.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "agent-worker") | nindent 4 }}
+spec:
+  {{- if not .Values.agentWorker.autoscaling.enabled }}
+  replicas: {{ .Values.agentWorker.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "vigil.componentSelectorLabels" (dict "context" . "component" "agent-worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vigil.componentLabels" (dict "context" . "component" "agent-worker") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.agentWorker.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "vigil.serviceAccountName" . }}
+      {{- include "vigil.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: agent-worker
+          image: {{ include "vigil.image" (dict "context" . "component" "agentWorker") | quote }}
+          imagePullPolicy: {{ include "vigil.imagePullPolicy" (dict "context" . "component" "agentWorker") }}
+          {{- /* No command override: unlike llm-worker, this image's CMD is
+                 already the worker (node dist/worker.js). */}}
+          envFrom:
+            {{- include "vigil.envFrom" . | nindent 12 }}
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vigil.postgres.passwordSecret" . }}
+                  key: {{ include "vigil.postgres.passwordSecretKey" . }}
+            {{- /* The worker reads the discrete parts, not a DSN or a URL: a
+                   $(VAR) substituted into either is not URL-encoded. */}}
+            {{- include "vigil.env" . | nindent 12 }}
+            {{- include "vigil.agentRedisEnv" . | nindent 12 }}
+            {{- with .Values.agentWorker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            {{- /* Probes only. Nothing routes here and there is no Service:
+                   a queue consumer is reached through Redis, not the network. */}}
+            - name: health
+              containerPort: 6990
+              protocol: TCP
+          {{- /* Liveness asks only whether the process answers; readiness asks
+                 whether Redis is reachable and the worker is running.
+
+                 Deliberately not the same question. A worker whose Redis dropped
+                 must stop being ready -- it drains nothing, and a rollout should
+                 halt -- but restarting it would reconnect to the same broken
+                 Redis, and restarting every replica at once against a Redis
+                 already in trouble turns a blip into an outage. */}}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.agentWorker.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+      {{- with .Values.agentWorker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.agentWorker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.agentWorker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

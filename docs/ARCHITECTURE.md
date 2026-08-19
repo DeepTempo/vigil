@@ -163,18 +163,36 @@ DATABASE_URL="postgresql://deeptempo:deeptempo_secure_password_change_me@localho
 BIFROST_URL="http://bifrost:8080"
 ```
 
-### Backend Tool Initialization
+### One loop, and where it is
 
-All backend API endpoints use:
+There is exactly **one tool-calling loop** in Vigil, and it is TypeScript:
+`services/agent/core/stream.ts`. It owns the budget, the approval gate, the
+prompt-injection scan and the turn cap, so anything that reasons with tools gets
+all four by construction rather than by remembering to.
+
+Python holds **no** loop. `ClaudeService.chat()` is a one-shot completion for the
+~20 callers that want a single answer and no tools:
 
 ```python
-from services.claude_service import ClaudeService
+from core.llm.harness.claude import ClaudeService
 
-claude_service = ClaudeService(
-    use_backend_tools=True,   # ✅ Backend tools
-    use_mcp_tools=False       # ❌ No MCP
-)
+answer = ClaudeService().chat(message="...", system_prompt="...")
 ```
+
+Work that needs tools is enqueued as a run and the worker drives it:
+
+```python
+from core.agents.queue import build_start_job, enqueue_run, new_run_id
+
+run_id = new_run_id()
+await enqueue_run(build_start_job(run_id, "investigate", request, enqueued_by="api"))
+```
+
+Five loops preceded this — `claude_service`, `agent_runner`, `workflows_service`,
+`orchestrator` and `openai_agent_service` — with three tool dispatchers and four
+transports between them. `scripts/check_one_loop.py` runs in CI and fails when a
+second one appears, because each addition looked reasonable on its own and review
+did not catch the fifth.
 
 ## Deployment
 
@@ -186,10 +204,10 @@ cd docker && docker-compose up -d postgres
 
 # Terminal 2: Backend
 source venv/bin/activate
-uvicorn backend.main:app --host 127.0.0.1 --port 6987 --reload
+uvicorn services.api.main:app --host 127.0.0.1 --port 6987 --reload
 
 # Terminal 3: Frontend
-cd frontend && npm run dev
+cd clients/web && npm run dev
 ```
 
 ### Production (Docker)
@@ -295,12 +313,14 @@ Web UI → Backend → Claude Agent SDK → Backend Tools → Services
 ### "No tools loaded"
 
 ```python
-# Check tool initialization
-from services.claude_service import ClaudeService
-claude = ClaudeService(use_backend_tools=True)
-print(f"Loaded: {len(claude.backend_tools)} tools")
-# Should show: 19
+# Tools are the registry's, not an LLM client's. Startup populates it.
+from core.integrations.mcp.registry import get_mcp_registry
+print(get_mcp_registry().get_tool_names())
 ```
+
+An empty list means no MCP server connected this boot: the disk cache is a
+warm-start artifact and a server that failed to connect is deliberately not
+registered, so a model cannot claim a capability it has no session for.
 
 ### "Detection rules not found"
 
@@ -327,7 +347,7 @@ echo $POSTGRESQL_CONNECTION_STRING
 
 ### Adding New Tools
 
-1. **Define tool schema** in `backend/schemas/tool_schemas.py`:
+1. **Define tool schema** in `core/llm/tool_schemas.py`:
 
 ```python
 {
@@ -345,7 +365,7 @@ echo $POSTGRESQL_CONNECTION_STRING
 
 2. **Implement tool** in appropriate service
 
-3. **Route tool** in `services/claude_service.py` → `_process_backend_tool_use()`:
+3. **Route tool** in `core/llm/harness/claude.py` → `_process_backend_tool_use()`:
 
 ```python
 elif tool_name == 'my_new_tool':
@@ -378,7 +398,7 @@ pytest tests/unit/
 - [Backend Tools Guide](BACKEND_TOOLS.md) - Detailed tool documentation
 - [Detection Engineering](DETECTION_ENGINEERING.md) - Detection rule usage
 - [Integrations](INTEGRATIONS.md) - Backend tool integration overview
-- [API Reference](../backend/main.py) - FastAPI documentation
+- [API Reference](../services/api/main.py) - FastAPI documentation
 
 ## Support
 

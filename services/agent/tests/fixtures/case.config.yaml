@@ -1,0 +1,33 @@
+model: anthropic/claude-opus-5
+
+budgets:
+  max_calls: 6
+  # Wall clock, not just calls and dollars: a run wedged on a slow tool burns
+  # real time against no ceiling otherwise.
+  max_wall_ms: 1800000
+  max_cost_usd: 1.00
+
+runtime:
+  max_turns: 4
+  result_cap: 8000
+  recall_limit: 2
+
+# remote, for the reason hunt.config.yaml gives at more length.
+tools:
+  - id: case_records
+    kind: remote
+    description: Read the case records held for an investigation.
+    parameters:
+      type: object
+      properties:
+        case_id:
+          type: string
+          description: The case whose records to read.
+      required: [case_id]
+    max_rows: 100
+    timeout_ms: 15000
+
+approvals: [case_records]
+
+thresholds:
+  min_corroborating_sources: 2
