@@ -24,12 +24,37 @@ DEFAULT_SANDBOX_FILE_TYPES = "exe,dll,doc,docx,xls,xlsx,pdf,js,vbs,ps1,bat,msi"
 # Reads prefer ~/.vigil and fall back to the legacy ~/.deeptempo copy; writes
 # always target ~/.vigil, so data drifts over on the next save.
 def vigil_path(*parts: str, write: bool = False) -> Path:
-    target = Path.home() / _VIGIL_DIRNAME  # per call, so tests can patch home
-    legacy = Path.home() / _LEGACY_DIRNAME
+    if "VIGIL_DIR" in os.environ:  # noqa: ENV001
+        target = Path(os.environ["VIGIL_DIR"])  # noqa: ENV001
+        legacy = target
+    elif "VIGIL_HOME" in os.environ:  # noqa: ENV001
+        target = Path(os.environ["VIGIL_HOME"]) / _VIGIL_DIRNAME  # noqa: ENV001
+        legacy = Path(os.environ["VIGIL_HOME"]) / _LEGACY_DIRNAME  # noqa: ENV001
+    else:
+        home = Path.home()  # per call, so tests can patch home
+        if home == Path("/"):
+            app_dir = Path("/app")
+            if app_dir.is_dir() and os.access(app_dir, os.W_OK):
+                home = app_dir
+            elif os.access("/tmp", os.W_OK):
+                home = Path("/tmp")
+        target = home / _VIGIL_DIRNAME
+        legacy = home / _LEGACY_DIRNAME
     if parts:
         target, legacy = target.joinpath(*parts), legacy.joinpath(*parts)
     if write:
-        (target.parent if parts else target).mkdir(parents=True, exist_ok=True)
+        try:
+            (target.parent if parts else target).mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.warning("Could not create directory for %s: %s; falling back to /tmp", target, e)
+            try:
+                tmp_target = Path("/tmp") / _VIGIL_DIRNAME
+                if parts:
+                    tmp_target = tmp_target.joinpath(*parts)
+                (tmp_target.parent if parts else tmp_target).mkdir(parents=True, exist_ok=True)
+                return tmp_target
+            except OSError:
+                pass
         return target
     if not target.exists() and legacy.exists():
         return legacy
@@ -60,6 +85,8 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 500
     vigil_context_path: str = ""
     vigil_frontend_url: str = ""
+    vigil_dir: Optional[str] = None
+    vigil_home: Optional[str] = None
     mempalace_palace_path: Optional[str] = None
     # Call sites disagree on the default (shared_intel off, orchestrator on), so
     # this stays tri-state and each site supplies its own fallback.

@@ -64,8 +64,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root user
-RUN groupadd -r vigil && useradd -r -g vigil -d /app -s /sbin/nologin vigil
+# Non-root user (matching UID/GID 1000 from podSecurityContext in Helm chart)
+RUN groupadd -g 1000 vigil && useradd -u 1000 -g 1000 -d /home/vigil -m -s /sbin/nologin vigil
 
 WORKDIR /app
 
@@ -90,8 +90,8 @@ COPY --chown=vigil:vigil setup.cfg    ./setup.cfg
 COPY --from=web-builder --chown=vigil:vigil /build/web/build ./clients/web/build/
 
 # Writable dirs the app needs at runtime
-RUN mkdir -p /app/data/investigations /app/data/mempalace \
-    && chown -R vigil:vigil /app/data
+RUN mkdir -p /app/data/investigations /app/data/mempalace /home/vigil/.vigil \
+    && chown -R vigil:vigil /app/data /home/vigil
 
 # Bake version into the image so `backend.__version__` resolves at import time
 # (core/version.py reads VERSION from disk)
@@ -99,7 +99,8 @@ RUN echo "${VIGIL_VERSION}" > /app/VERSION
 
 USER vigil
 
-ENV PYTHONPATH=/app \
+ENV HOME=/home/vigil \
+    PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PORT=6987
 

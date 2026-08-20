@@ -26,6 +26,8 @@ chart-templated).
 {{- end -}}
 
 {{- define "vigil.env" -}}
+- name: HOME
+  value: "/tmp"
 - name: POSTGRES_HOST
   value: {{ include "vigil.postgres.host" . | quote }}
 - name: POSTGRES_PORT
