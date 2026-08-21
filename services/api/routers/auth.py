@@ -6,6 +6,7 @@ Handles login, logout, token refresh, password management, and MFA.
 
 import logging
 from datetime import datetime
+from core.time import utcnow
 from typing import Annotated, List, Optional
 from fastapi import APIRouter, HTTPException, Depends, Header, Request, Response, status
 from pydantic import BaseModel, EmailStr
@@ -175,7 +176,7 @@ def _apply_new_password(user: User, plaintext: str) -> None:
     # Cap to the configured limit so the JSONB row doesn't grow unbounded.
     user.password_history = previous[:PASSWORD_HISTORY_LIMIT]
     user.password_hash = new_hash
-    user.password_changed_at = datetime.utcnow()
+    user.password_changed_at = utcnow()
 
 
 def _has_any_user(session: Session) -> bool:
@@ -291,7 +292,7 @@ async def login(
         )
     except AccountLockedError as exc:
         retry_after = max(
-            1, int((exc.locked_until - datetime.utcnow()).total_seconds())
+            1, int((exc.locked_until - utcnow()).total_seconds())
         )
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,

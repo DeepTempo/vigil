@@ -5,6 +5,7 @@ Defines the database schema for cases, findings, and related entities.
 """
 
 from datetime import datetime
+from core.time import utcnow
 from typing import Optional, List
 from sqlalchemy import (
     Column,
@@ -56,7 +57,7 @@ case_findings = Table(
         ForeignKey("findings.finding_id", ondelete="CASCADE"),
         primary_key=True,
     ),
-    Column("added_at", DateTime, default=datetime.utcnow, nullable=False),
+    Column("added_at", DateTime, default=utcnow, nullable=False),
 )
 
 
@@ -98,13 +99,13 @@ class Finding(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -197,13 +198,13 @@ class Case(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -245,7 +246,7 @@ class SketchMapping(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     # Indexes
@@ -276,13 +277,13 @@ class AttackLayer(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -344,7 +345,7 @@ class AIDecisionLog(Base):
 
     # Timestamps
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     feedback_timestamp: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
@@ -388,13 +389,13 @@ class SystemConfig(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -426,13 +427,13 @@ class UserPreference(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -474,13 +475,13 @@ class IntegrationConfig(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -540,13 +541,13 @@ class FederationSource(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default=text("now()")
+        DateTime, nullable=False, default=utcnow, server_default=text("now()")
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default=text("now()"),
     )
 
@@ -582,7 +583,7 @@ class ConfigAuditLog(Base):
 
     # When
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     # Indexes
@@ -641,13 +642,13 @@ class SLAPolicy(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -710,13 +711,13 @@ class CaseSLA(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -772,13 +773,13 @@ class CaseComment(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -813,7 +814,7 @@ class CaseWatcher(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     # Indexes
@@ -873,13 +874,13 @@ class CaseEvidence(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -942,13 +943,13 @@ class CaseIOC(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -1007,13 +1008,13 @@ class CaseTask(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -1077,13 +1078,13 @@ class CaseTemplate(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -1128,7 +1129,7 @@ class CaseRelationship(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     # Indexes
@@ -1178,13 +1179,13 @@ class CaseMetrics(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -1228,7 +1229,7 @@ class CaseAttachment(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     # Indexes
@@ -1281,7 +1282,7 @@ class CaseClosureInfo(Base):
 
     # Timestamps
     closed_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
 
@@ -1319,7 +1320,7 @@ class CaseEscalation(Base):
 
     # Timestamps
     escalated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -1372,7 +1373,7 @@ class CaseAuditLog(Base):
 
     # Timestamp
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     # Indexes
@@ -1440,13 +1441,13 @@ class User(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -1483,13 +1484,13 @@ class Role(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -1533,7 +1534,7 @@ class Investigation(Base):
 
     priority: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -1573,7 +1574,7 @@ class InvestigationLog(Base):
         nullable=False,
     )
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     event_type: Mapped[str] = mapped_column(String(30), nullable=False)
     details: Mapped[dict] = mapped_column(JSONB, nullable=False, default={})
@@ -1602,7 +1603,7 @@ class LLMInteractionLog(Base):
     agent_id: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
     investigation_id: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     model: Mapped[str] = mapped_column(String(80), nullable=False)
     request_messages: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
@@ -1654,7 +1655,7 @@ class SharedIOC(Base):
     ioc_type: Mapped[str] = mapped_column(String(30), nullable=False)
     value: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     __table_args__ = (
@@ -1708,7 +1709,7 @@ class CaseNotification(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     # Indexes
@@ -1755,14 +1756,14 @@ class CustomWorkflow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=utcnow,
         server_default="now()",
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -1798,7 +1799,7 @@ class WorkflowRun(Base):
     )
 
     started_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -1881,7 +1882,7 @@ class ApprovalAction(Base):
         JSONB, nullable=False, default=list, server_default="[]"
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)
     requires_approval: Mapped[bool] = mapped_column(
@@ -1953,14 +1954,14 @@ class Skill(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=utcnow,
         server_default="now()",
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -1978,7 +1979,7 @@ class Skill(Base):
     @staticmethod
     def generate_skill_id() -> str:
         """Generate a new skill_id in the form s-YYYYMMDD-XXXXXXXX."""
-        ts = datetime.utcnow().strftime("%Y%m%d")
+        ts = utcnow().strftime("%Y%m%d")
         return f"s-{ts}-{uuid.uuid4().hex[:8].upper()}"
 
 
@@ -2026,13 +2027,13 @@ class CustomAgent(Base):
 
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
 
@@ -2061,10 +2062,10 @@ class LLMProviderConfig(Base):
     last_test_success: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     __table_args__ = (
@@ -2106,10 +2107,10 @@ class AIModelConfig(Base):
     settings: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     updated_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     __table_args__ = (Index("idx_ai_model_configs_provider", "provider_id"),)
@@ -2137,10 +2138,10 @@ class ThreatIndicator(Base):
     valid_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     raw_stix: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     first_seen: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     last_seen: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     __table_args__ = (
@@ -2183,13 +2184,13 @@ class Conversation(Base):
         Integer, nullable=False, default=0, server_default="0"
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         server_default="now()",
     )
     # Sort key for the history list; null until the first message lands.
@@ -2248,7 +2249,7 @@ class ChatMessage(Base):
         Numeric(10, 6), nullable=False, default=0, server_default="0"
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default="now()"
+        DateTime, nullable=False, default=utcnow, server_default="now()"
     )
 
     conversation: Mapped["Conversation"] = relationship(

@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime
+from core.time import utcnow
 from typing import Optional, Dict, Any
 
 from core.response.approval_service import ApprovalService
@@ -238,7 +238,7 @@ class AutonomousResponder:
                         "title": f"🚨 SOC Alert - {severity.upper()}",
                         "text": message,
                         "footer": "AI-SOC Daemon",
-                        "ts": datetime.utcnow().timestamp()
+                        "ts": utcnow().timestamp()
                     }]
                 },
                 timeout=30,

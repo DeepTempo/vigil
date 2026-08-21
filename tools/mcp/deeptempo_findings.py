@@ -9,6 +9,8 @@ from typing import Optional
 import numpy as np
 from mcp.server.fastmcp import FastMCP
 
+from core.time import utcnow
+
 logger = logging.getLogger(__name__)
 mcp = FastMCP("deeptempo-findings")
 
@@ -295,7 +297,7 @@ def create_case(
 ) -> str:
     try:
         db = get_db()
-        case_id = f"case-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+        case_id = f"case-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
         case = db.create_case(
             case_id=case_id,
             title=title,
@@ -352,7 +354,7 @@ def update_case(
         if add_note:
             notes = case.notes or []
             notes.append(
-                {"timestamp": datetime.utcnow().isoformat() + "Z", "note": add_note}
+                {"timestamp": utcnow().isoformat() + "Z", "note": add_note}
             )
             updates["notes"] = notes
 
@@ -420,7 +422,7 @@ def add_case_activity(
 
         activities = case.activities or []
         new_activity = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": utcnow().isoformat() + "Z",
             "activity_type": activity_type,
             "description": description,
             "details": details or {},
@@ -472,7 +474,7 @@ def add_case_timeline_entry(
 
         timeline = case.timeline or []
         new_entry = {
-            "timestamp": event_time or (datetime.utcnow().isoformat() + "Z"),
+            "timestamp": event_time or (utcnow().isoformat() + "Z"),
             "event_type": event_type,
             "description": event_description,
             "details": details or {},
@@ -562,7 +564,7 @@ def add_resolution_step(
 
         resolution_steps = case.resolution_steps or []
         new_step = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": utcnow().isoformat() + "Z",
             "description": description,
             "action_taken": action_taken,
             "result": result,
@@ -848,8 +850,6 @@ def add_case_evidence(
                            source="Palo Alto FW", tags=["c2", "exfiltration"])
     """
     try:
-        from datetime import datetime
-
         from core.storage.connection import get_db_session
         from core.storage.models import CaseEvidence
 
@@ -860,14 +860,14 @@ def add_case_evidence(
                 evidence_type=evidence_type,
                 name=name,
                 collected_by=collected_by,
-                collected_at=datetime.utcnow(),
+                collected_at=utcnow(),
                 description=description,
                 file_path=file_path,
                 source=source,
                 tags=tags or [],
                 chain_of_custody=[
                     {
-                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "timestamp": utcnow().isoformat() + "Z",
                         "action": "collected",
                         "user": collected_by,
                         "notes": "Evidence collected and added to case",
@@ -925,8 +925,6 @@ def add_case_ioc(
                       tags=["malware", "ransomware"])
     """
     try:
-        from datetime import datetime
-
         from core.storage.connection import get_db_session
         from core.storage.models import CaseIOC
 
@@ -941,8 +939,8 @@ def add_case_ioc(
                 source=source,
                 tags=tags or [],
                 context=context,
-                first_seen=datetime.utcnow(),
-                last_seen=datetime.utcnow(),
+                first_seen=utcnow(),
+                last_seen=utcnow(),
                 is_active=True,
                 is_false_positive=False,
             )
@@ -1134,8 +1132,6 @@ def update_case_task(
         - update_case_task(5, status="completed", notes="Malware analysis complete - ransomware variant")
     """
     try:
-        from datetime import datetime
-
         from core.storage.connection import get_db_session
         from core.storage.models import CaseTask
 
@@ -1148,7 +1144,7 @@ def update_case_task(
             if status:
                 task.status = status
                 if status == "completed":
-                    task.completed_at = datetime.utcnow()
+                    task.completed_at = utcnow()
             if assignee:
                 task.assignee = assignee
 

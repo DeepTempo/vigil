@@ -8,6 +8,7 @@ import asyncio
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+from core.time import utcnow
 import uuid
 import httpx
 
@@ -100,9 +101,9 @@ class MicrosoftDefenderIngestion(SIEMIngestionService):
             
             # Set time range
             if not start_time:
-                start_time = datetime.utcnow() - timedelta(hours=24)
+                start_time = utcnow() - timedelta(hours=24)
             if not end_time:
-                end_time = datetime.utcnow()
+                end_time = utcnow()
             
             # Build API request
             api_url = "https://api.securitycenter.microsoft.com/api/alerts"
@@ -194,7 +195,7 @@ class MicrosoftDefenderIngestion(SIEMIngestionService):
                 "description": alert.get('description', ''),
                 "severity": self.normalize_severity(alert.get('severity')),
                 "data_source": "microsoft_defender",
-                "timestamp": alert.get('alertCreationTime', datetime.utcnow().isoformat()),
+                "timestamp": alert.get('alertCreationTime', utcnow().isoformat()),
                 "raw_data": alert,
                 "metadata": {
                     "alert_id": alert.get('id'),

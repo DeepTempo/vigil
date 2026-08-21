@@ -16,6 +16,7 @@ other existing callers) keep working.
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from core.time import utcnow
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -283,7 +284,7 @@ class ApprovalService:
                     confidence=float(confidence),
                     reason=reason,
                     evidence=list(evidence or []),
-                    created_at=datetime.utcnow(),
+                    created_at=utcnow(),
                     created_by=created_by,
                     requires_approval=requires_approval,
                     status=status,
@@ -371,7 +372,7 @@ class ApprovalService:
                     )
                     return _row_to_pending(row)
                 row.status = ActionStatus.APPROVED.value
-                row.approved_at = datetime.utcnow()
+                row.approved_at = utcnow()
                 row.approved_by = approved_by
                 session.flush()
                 pending = _row_to_pending(row)
@@ -405,7 +406,7 @@ class ApprovalService:
                 row.status = ActionStatus.REJECTED.value
                 row.rejection_reason = reason
                 row.approved_by = rejected_by
-                row.approved_at = datetime.utcnow()
+                row.approved_at = utcnow()
                 session.flush()
                 pending = _row_to_pending(row)
             logger.info(
@@ -439,7 +440,7 @@ class ApprovalService:
                     )
                     return _row_to_pending(row)
                 row.status = ActionStatus.EXECUTED.value
-                row.executed_at = datetime.utcnow()
+                row.executed_at = utcnow()
                 row.execution_result = result
                 session.flush()
                 return _row_to_pending(row)
@@ -460,7 +461,7 @@ class ApprovalService:
                 if row is None:
                     return None
                 row.status = ActionStatus.FAILED.value
-                row.executed_at = datetime.utcnow()
+                row.executed_at = utcnow()
                 row.execution_result = {"error": error}
                 session.flush()
                 logger.error("Action %s failed: %s", action_id, error)

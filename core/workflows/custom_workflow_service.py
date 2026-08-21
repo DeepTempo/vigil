@@ -8,7 +8,7 @@ WORKFLOW.md definitions that WorkflowsService already loads from disk.
 import logging
 import re
 import uuid
-from datetime import datetime
+from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -168,7 +168,7 @@ class CustomWorkflowService:
                 if key in allowed and value is not None:
                     setattr(wf, key, value)
             wf.version = (wf.version or 1) + 1
-            wf.updated_at = datetime.utcnow()
+            wf.updated_at = utcnow()
             session.flush()
             result = CustomWorkflowSchema.dump(wf)
         logger.info(
@@ -184,6 +184,6 @@ class CustomWorkflowService:
             if not wf:
                 return False
             wf.is_active = False
-            wf.updated_at = datetime.utcnow()
+            wf.updated_at = utcnow()
         logger.info(f"Soft-deleted custom workflow: {workflow_id}")
         return True

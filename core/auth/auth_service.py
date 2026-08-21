@@ -10,6 +10,7 @@ import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta
+from core.time import utcnow
 from typing import Optional, Dict, Any, List
 import bcrypt
 import jwt
@@ -151,7 +152,7 @@ class AuthService:
             else timedelta(days=JWT_REFRESH_EXPIRATION_DAYS)
         )
 
-        now = datetime.utcnow()
+        now = utcnow()
         payload = {
             "user_id": user.user_id,
             "username": user.username,
@@ -238,7 +239,7 @@ class AuthService:
                 # Reject while locked. Lockout is authoritative even over a
                 # correct password — otherwise an attacker who eventually
                 # guesses right would bypass the wait.
-                now = datetime.utcnow()
+                now = utcnow()
                 if user.locked_until and user.locked_until > now:
                     logger.warning(
                         "Login rejected, account locked: %s until %s",

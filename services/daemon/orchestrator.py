@@ -15,6 +15,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta
+from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from core.agents.builtins import ORCHESTRATION_DECISION_ID, ORCHESTRATOR_ACTOR
@@ -347,7 +348,7 @@ class Orchestrator:
         shutdown_event: Optional[asyncio.Event] = None,
     ):
         """Core investigation creation logic."""
-        inv_id = f"inv-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+        inv_id = f"inv-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
         total_steps = count_steps(workflow_id)
 
         workdir = self.workdir.create(inv_id)
@@ -516,7 +517,7 @@ class Orchestrator:
                         )
 
                 executing = self._get_investigations_by_status("executing")
-                now = datetime.utcnow()
+                now = utcnow()
 
                 for inv in executing:
                     inv_dict = _inv_as_dict(inv)
@@ -698,7 +699,7 @@ class Orchestrator:
                     logger.warning("progress for %s: row not found", inv_id)
                     return
                 inv.iteration_count = projection.get("iterations", 0)
-                inv.last_activity_at = datetime.utcnow()
+                inv.last_activity_at = utcnow()
                 # Null is "the gateway priced nothing", which is not zero spent.
                 cost = projection.get("cost_usd")
                 if cost is not None:
@@ -719,7 +720,7 @@ class Orchestrator:
 
     def _track_hourly_cost(self):
         """Track rolling hourly cost for budget enforcement."""
-        now = datetime.utcnow()
+        now = utcnow()
         cutoff = now - timedelta(hours=1)
         self._hourly_costs = [c for c in self._hourly_costs if c["ts"] > cutoff]
         hourly_total = sum(c["cost"] for c in self._hourly_costs)
@@ -915,7 +916,7 @@ class Orchestrator:
             priority = case_data.get("priority", "medium")
 
             inv_id = (
-                f"inv-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+                f"inv-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
             )
             total_steps = count_steps("case-review")
 
@@ -1023,7 +1024,7 @@ class Orchestrator:
                         "proposed_actions": state.get("proposed_actions", []),
                         "completed_steps": state.get("completed_steps", []),
                         "case_id": state.get("case_id"),
-                        "completed_at": datetime.utcnow().isoformat(),
+                        "completed_at": utcnow().isoformat(),
                     },
                     indent=2,
                 )
@@ -1394,7 +1395,7 @@ class Orchestrator:
                     if notes:
                         inv.master_review_notes = notes
                     if status == "completed":
-                        inv.completed_at = datetime.utcnow()
+                        inv.completed_at = utcnow()
         except Exception as e:
             logger.error(f"Failed to update investigation status: {e}")
 

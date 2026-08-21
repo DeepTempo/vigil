@@ -15,7 +15,7 @@ DAEMON_HEALTH_PORT (default 9091) exposing /health and /status.
 import asyncio
 import logging
 from collections import defaultdict
-from datetime import datetime
+from core.time import utcnow
 from typing import Any, Dict
 
 from aiohttp import web
@@ -41,7 +41,7 @@ class DaemonMetrics:
     """
 
     def __init__(self):
-        self._start_time = datetime.utcnow()
+        self._start_time = utcnow()
 
         # In-memory shadow counters (used by get_summary / get_poll_count /
         # get_total_processed which must return values synchronously).
@@ -146,7 +146,7 @@ class DaemonMetrics:
 
     def get_summary(self) -> Dict[str, Any]:
         """Get summary of all metrics (used for /status display only)."""
-        uptime = (datetime.utcnow() - self._start_time).total_seconds()
+        uptime = (utcnow() - self._start_time).total_seconds()
         total_polls = sum(self._poll_counts.values())
 
         poll_stats = {}
@@ -183,7 +183,7 @@ class DaemonMetrics:
         self._events_counts.clear()
         self._processing_count = 0
         self._processing_durations.clear()
-        self._start_time = datetime.utcnow()
+        self._start_time = utcnow()
         logger.info("Metrics reset")
 
 
@@ -203,7 +203,7 @@ class MetricsServer:
 
     def __init__(self, config: MetricsConfig):
         self.config = config
-        self._start_time = datetime.utcnow()
+        self._start_time = utcnow()
 
         # Component references (set externally)
         self.poller = None
@@ -239,8 +239,8 @@ class MetricsServer:
         """Handle health check request."""
         health: Dict[str, Any] = {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "uptime_seconds": (datetime.utcnow() - self._start_time).total_seconds(),
+            "timestamp": utcnow().isoformat(),
+            "uptime_seconds": (utcnow() - self._start_time).total_seconds(),
         }
 
         components = {}
@@ -292,7 +292,7 @@ class MetricsServer:
             "daemon": {
                 "start_time": self._start_time.isoformat(),
                 "uptime_seconds": (
-                    datetime.utcnow() - self._start_time
+                    utcnow() - self._start_time
                 ).total_seconds(),
             },
             "poller": metrics.get("poller", {}),

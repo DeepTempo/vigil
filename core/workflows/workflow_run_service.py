@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
+from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def generate_run_id() -> str:
     """Return a new run_id shaped ``wfr-YYYYMMDD-<uuid8>``."""
-    return f"wfr-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+    return f"wfr-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
 
 
 class WorkflowRunService:
@@ -57,7 +58,7 @@ class WorkflowRunService:
                     status="running",
                     triggered_by=triggered_by,
                     trigger_context=trigger_context or {},
-                    started_at=datetime.utcnow(),
+                    started_at=utcnow(),
                     skill_tools_available=list(skill_tools_available or []),
                 )
                 session.add(row)
@@ -108,7 +109,7 @@ class WorkflowRunService:
                 if row is None:
                     logger.warning("finalize_run: unknown run %s", run_id)
                     return False
-                now = datetime.utcnow()
+                now = utcnow()
                 row.status = status
                 row.finished_at = now
                 # Truncate result_summary to avoid committing megabyte

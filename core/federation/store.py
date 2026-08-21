@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,7 @@ def update_source(source_id: str, fields: Dict[str, Any]) -> Optional[Dict[str, 
 def record_success(
     source_id: str, *, cursor: Dict[str, Any], when: Optional[datetime] = None
 ) -> None:
-    when = when or datetime.utcnow()
+    when = when or utcnow()
     update_source(
         source_id,
         {
@@ -159,7 +160,7 @@ def record_failure(source_id: str, error: str) -> None:
             row = session.get(FederationSource, source_id)
             if row is None:
                 return
-            row.last_poll_at = datetime.utcnow()
+            row.last_poll_at = utcnow()
             row.last_error = (error or "")[:2000]
             row.consecutive_errors = (row.consecutive_errors or 0) + 1
     except Exception as e:

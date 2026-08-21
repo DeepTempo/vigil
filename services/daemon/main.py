@@ -56,7 +56,7 @@ class SOCDaemon:
     
     def _setup_signal_handlers(self):
         """Setup graceful shutdown handlers."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self._handle_shutdown)

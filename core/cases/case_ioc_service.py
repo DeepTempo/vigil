@@ -7,6 +7,7 @@ Handles IOC tracking, enrichment, deduplication, and export.
 import logging
 import json
 from datetime import datetime
+from core.time import utcnow
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -81,8 +82,8 @@ class CaseIOCService:
                     threat_level=threat_level,
                     confidence=confidence,
                     source=source,
-                    first_seen=first_seen or datetime.utcnow(),
-                    last_seen=last_seen or datetime.utcnow(),
+                    first_seen=first_seen or utcnow(),
+                    last_seen=last_seen or utcnow(),
                     tags=tags or [],
                     context=context,
                     is_active=True,
@@ -267,7 +268,7 @@ class CaseIOCService:
                     'modified': ioc.updated_at.isoformat() + 'Z',
                     'pattern': f'[{stix_type}:value = \'{ioc.value}\']',
                     'pattern_type': 'stix',
-                    'valid_from': (ioc.first_seen.isoformat() + 'Z') if ioc.first_seen else datetime.utcnow().isoformat() + 'Z'
+                    'valid_from': (ioc.first_seen.isoformat() + 'Z') if ioc.first_seen else utcnow().isoformat() + 'Z'
                 }
 
                 if ioc.threat_level:

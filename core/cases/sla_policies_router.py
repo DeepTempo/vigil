@@ -3,7 +3,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from datetime import datetime
+from core.time import utcnow
 
 from core.storage.models import SLAPolicy
 from core.storage.schemas import CaseSchema, SLAPolicySchema
@@ -267,7 +267,7 @@ async def update_sla_policy(
             
             policy.is_default = data.is_default
         
-        policy.updated_at = datetime.utcnow()
+        policy.updated_at = utcnow()
         # Flush so the read-back sees server defaults; the request's
         # unit of work commits.
         session.flush()
@@ -359,7 +359,7 @@ async def set_default_policy(policy_id: str, session: UnitOfWorkSession):
         
         # Set this as default
         policy.is_default = True
-        policy.updated_at = datetime.utcnow()
+        policy.updated_at = utcnow()
         # Flush so the read-back sees server defaults; the request's
         # unit of work commits.
         session.flush()

@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from datetime import datetime
+from core.time import utcnow
 from pathlib import Path
 
 from services.api.middleware.auth import get_current_user
@@ -353,7 +354,7 @@ async def add_case_activity(case_id: str, activity: ActivityAdd):
     
     # Add new activity
     new_activity = {
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'timestamp': utcnow().isoformat() + 'Z',
         'activity_type': activity.activity_type,
         'description': activity.description,
         'details': activity.details or {}
@@ -390,7 +391,7 @@ async def add_resolution_step(case_id: str, step: ResolutionStepAdd):
     
     # Add new step
     new_step = {
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'timestamp': utcnow().isoformat() + 'Z',
         'description': step.description,
         'action_taken': step.action_taken,
         'result': step.result
@@ -1141,7 +1142,7 @@ async def merge_cases(case_id: str, data: MergeRequest):
         target_tags = target.tags or []
         target.tags = list(set(target_tags + source_tags))
 
-        now = datetime.utcnow()
+        now = utcnow()
         merge_activity = {
             "timestamp": now.isoformat() + "Z",
             "activity_type": "case_merged",

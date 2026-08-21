@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from core.time import utcnow
 from typing import Any, Dict, List, Optional
 from core.config import get_settings
 
@@ -103,7 +104,7 @@ class ThreatFeedPoller:
                 total_seen += len(indicators)
                 total_inserted += counts.get("inserted", 0)
                 total_updated += counts.get("updated", 0)
-                _last_polled[key] = datetime.utcnow() - timedelta(seconds=60)
+                _last_polled[key] = utcnow() - timedelta(seconds=60)
             except Exception as e:  # noqa: BLE001
                 logger.error("Cloudforce One poll failed for %s: %s", cid, e)
                 errors += 1

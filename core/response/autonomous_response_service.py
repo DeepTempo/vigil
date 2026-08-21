@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Dict, List, Optional, Callable, Any
 from datetime import datetime
+from core.time import utcnow
 
 from core.agents.builtins import AgentId
 from core.response.approval_service import ActionType, ApprovalService
@@ -75,7 +76,7 @@ class AutonomousResponseService:
                         "title": f"🚨 SOC Alert - {severity.upper()}",
                         "text": message,
                         "footer": "AI-SOC Autonomous Response",
-                        "ts": datetime.utcnow().timestamp()
+                        "ts": utcnow().timestamp()
                     }]
                 },
                 timeout=30,

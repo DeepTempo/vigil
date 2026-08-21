@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header
@@ -103,7 +103,7 @@ def record_phase(
 ) -> None:
     authorise(authorization, "run progress")
 
-    now = datetime.utcnow()
+    now = utcnow()
     run_service.upsert_phase(
         run_id,
         update.phase_id,
@@ -224,7 +224,7 @@ def list_decisions(
                     actor=action.approved_by or "analyst",
                     answer=answer,
                     text=action.rejection_reason or "",
-                    resolved_at=action.approved_at or datetime.utcnow().isoformat(),
+                    resolved_at=action.approved_at or utcnow().isoformat(),
                 )
             )
     return Decisions(decisions=decided)
