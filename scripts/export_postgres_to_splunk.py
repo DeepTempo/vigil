@@ -13,7 +13,6 @@ import argparse
 import json
 import requests
 from typing import List, Dict, Any
-from core.time import utcnow
 import urllib3
 
 # Add parent directory to path for imports
@@ -21,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.storage.connection import get_db_manager
 from core.storage.models import Finding, Case
+from core.time import utcnow
 from sqlalchemy import func
 
 # Disable SSL warnings for self-signed certificates

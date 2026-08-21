@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-PACKAGES = ("core", "services", "tools")
+PACKAGES = ("core", "services", "tools", "scripts")
 HELPER = Path("core/time.py")
 
 
@@ -33,6 +33,11 @@ def _utcnow_violations(rel_path: Path):
     source = (REPO_ROOT / rel_path).read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(rel_path))
     for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "datetime":
+            for alias in node.names:
+                if alias.name == "utcnow":
+                    yield node.lineno, "from datetime import utcnow"
+            continue
         if not isinstance(node, ast.Attribute) or node.attr != "utcnow":
             continue
         base = node.value
