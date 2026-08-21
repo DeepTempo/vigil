@@ -24,12 +24,15 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.mutable import MutableList
 from pgvector.sqlalchemy import Vector
 import uuid
 
 # Fixed width for the findings vector column; sources of other dimensions
 # (LogLM 512) are zero-padded/truncated to this before storage.
 EMBEDDING_DIM = 768
+
+JSONBList = MutableList.as_mutable(JSONB)
 
 
 class Base(DeclarativeBase):
@@ -167,22 +170,24 @@ class Case(Base):
     assignee: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Tags (array of strings)
-    tags: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=True, default=[])
+    tags: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=True, default=list)
 
     # Notes (JSONB array)
-    notes: Mapped[List[dict]] = mapped_column(JSONB, nullable=True, default=[])
+    notes: Mapped[List[dict]] = mapped_column(JSONBList, nullable=True, default=list)
 
     # Timeline events (JSONB array)
-    timeline: Mapped[List[dict]] = mapped_column(JSONB, nullable=False, default=[])
+    timeline: Mapped[List[dict]] = mapped_column(
+        JSONBList, nullable=False, default=list
+    )
 
     # Activities (JSONB array)
     activities: Mapped[Optional[List[dict]]] = mapped_column(
-        JSONB, nullable=True, default=[]
+        JSONBList, nullable=True, default=list
     )
 
     # Resolution steps (JSONB array)
     resolution_steps: Mapped[Optional[List[dict]]] = mapped_column(
-        JSONB, nullable=True, default=[]
+        JSONBList, nullable=True, default=list
     )
 
     # MITRE ATT&CK techniques
@@ -857,7 +862,7 @@ class CaseEvidence(Base):
 
     # Chain of custody (JSONB array of custody entries)
     chain_of_custody: Mapped[List[dict]] = mapped_column(
-        JSONB, nullable=False, default=[]
+        JSONBList, nullable=False, default=list
     )
 
     # Analysis results
@@ -1054,7 +1059,7 @@ class CaseTemplate(Base):
 
     # Task templates (JSONB array)
     task_templates: Mapped[List[dict]] = mapped_column(
-        JSONB, nullable=False, default=[]
+        JSONB, nullable=False, default=list
     )
 
     # Playbook steps (JSONB array)
@@ -1509,7 +1514,7 @@ class Investigation(Base):
     workflow_id: Mapped[str] = mapped_column(String(50), nullable=False)
 
     trigger_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    trigger_ids: Mapped[List[dict]] = mapped_column(JSONB, nullable=False, default=[])
+    trigger_ids: Mapped[List[dict]] = mapped_column(JSONB, nullable=False, default=list)
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
 
