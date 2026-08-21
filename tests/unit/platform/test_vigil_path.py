@@ -1,8 +1,14 @@
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+# chmod cannot deny root, so the unwritable cases prove nothing there.
+needs_unprivileged = pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0, reason="requires a non-root user"
+)
 
 from core.config import state_dir_status, vigil_path
 
@@ -63,8 +69,7 @@ def test_vigil_dir_overrides_home(tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_vigil_dir_has_no_legacy_fallback(home, tmp_path, monkeypatch):
-    # An explicit override means exactly that dir. Reaching back to ~/.deeptempo
-    # from under a VIGIL_DIR the operator chose would be a surprise.
+    # An explicit override means exactly that directory.
     (home / ".deeptempo").mkdir()
     (home / ".deeptempo" / "a.json").write_text("{}")
     custom = tmp_path / "state"
@@ -73,10 +78,10 @@ def test_vigil_dir_has_no_legacy_fallback(home, tmp_path, monkeypatch):
 
 
 @pytest.mark.unit
+@needs_unprivileged
 def test_write_failure_raises_rather_than_relocating(home):
-    # #701 caught OSError and silently wrote to /tmp instead. Reads never
-    # followed, so the save looked fine and the value was gone. Callers that
-    # want to degrade (telemetry, request logging) catch this themselves.
+    # A silent /tmp relocation applied to writes only, so the save looked fine
+    # and the value was gone. Callers that want to degrade catch this themselves.
     home.chmod(0o500)
     try:
         with pytest.raises(OSError):
@@ -88,10 +93,13 @@ def test_write_failure_raises_rather_than_relocating(home):
 @pytest.mark.unit
 def test_state_dir_status_reports_path_and_writability(home):
     status = state_dir_status()
-    assert status == {"path": str(home / ".vigil"), "writable": True}
+    assert status == {"path": str(home / ".vigil"), "exists": False, "writable": True}
+    (home / ".vigil").mkdir()
+    assert state_dir_status()["exists"] is True
 
 
 @pytest.mark.unit
+@needs_unprivileged
 def test_state_dir_status_reports_unwritable_without_raising(home):
     home.chmod(0o500)
     try:
@@ -104,15 +112,15 @@ def test_state_dir_status_reports_unwritable_without_raising(home):
 
 @pytest.mark.unit
 def test_bare_directory_never_resolves_to_legacy(home):
-    # Regression: the secrets backend asks for the directory itself. If that
-    # answered ~/.deeptempo, every credential written after would land there.
+    # The secrets backend asks for the directory itself; answering ~/.deeptempo
+    # would send every credential written after it there.
     (home / ".deeptempo").mkdir()
     assert vigil_path() == home / ".vigil"
 
 
 @pytest.mark.unit
 def test_bare_directory_is_not_created_on_read(home):
-    # Constructed unconditionally at startup, so it must not touch the disk.
     assert not (home / ".vigil").exists()
     vigil_path()
+    state_dir_status()
     assert not (home / ".vigil").exists()

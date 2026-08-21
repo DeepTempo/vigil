@@ -88,18 +88,14 @@ services:
     ports:
       - "127.0.0.1:6987:6987"
     volumes:
-      # HOME is /home/vigil in the image (set beside the uid-1000 user in
-      # Dockerfile.backend, #701), so the encrypted secret store resolves to
-      # /home/vigil/.vigil. Without this volume every UI-configured key dies on
-      # restart. The image pre-creates the dir owned by 1000:1000, so the named
-      # volume inherits that ownership on first mount.
+      # Must track HOME in Dockerfile.backend, or every UI-configured key dies
+      # on restart. The image pre-creates the dir owned by 1000:1000 so a fresh
+      # named volume inherits that; a volume from before #701 does not, and has
+      # to be recreated.
       - vigil_home:/home/vigil/.vigil
-    # core/reporting/logs_router.py writes logs/ relative to the workdir, but /app
-    # is root-owned and the image runs as vigil(1000). Since #376 that router
-    # catches OSError and degrades to console, so a wrong owner here costs the
-    # frontend log file rather than the process. A named volume mounts root-owned;
-    # tmpfs can be given the right owner, and scratch is the correct shape here
-    # since real logs go to stdout. Keep uid/gid in step with Dockerfile.backend.
+    # logs/ is workdir-relative and /app is root-owned, so tmpfs is the only
+    # mount that can carry the right owner. Keep uid/gid in step with
+    # Dockerfile.backend.
     tmpfs:
       - /app/logs:uid=1000,gid=1000
     depends_on:

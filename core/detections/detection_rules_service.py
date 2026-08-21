@@ -72,12 +72,14 @@ FORMAT_ENV_VARS = {
 }
 
 
+_CONFIG_FILENAME = "detection_sources.json"
+
+
 class DetectionRulesService:
     """Service for managing detection rule sources."""
 
     def __init__(self):
-        self.config_path = vigil_path("detection_sources.json")
-        self.write_path = vigil_path("detection_sources.json", write=True)
+        self.config_path = vigil_path(_CONFIG_FILENAME)
         self.base_dir = Path.home() / "security-detections"
         self.sources: List[Dict[str, Any]] = []
         self._load_config()
@@ -133,8 +135,10 @@ class DetectionRulesService:
         self._save_config()
 
     def _save_config(self):
+        # Resolved here, not in __init__: write=True creates the directory, and
+        # this service is constructed on the API startup path (#695).
         try:
-            with open(self.write_path, "w") as f:
+            with open(vigil_path(_CONFIG_FILENAME, write=True), "w") as f:
                 json.dump({"sources": self.sources, "version": 1}, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving detection sources config: {e}")

@@ -45,6 +45,7 @@ spec:
                   name: {{ include "vigil.postgres.passwordSecret" . }}
                   key: {{ include "vigil.postgres.passwordSecretKey" . }}
             {{- include "vigil.env" . | nindent 12 }}
+            {{- include "vigil.stateEnv" . | nindent 12 }}
             {{- with .Values.llmWorker.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

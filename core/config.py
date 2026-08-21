@@ -21,22 +21,15 @@ DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_SANDBOX_FILE_TYPES = "exe,dll,doc,docx,xls,xlsx,pdf,js,vbs,ps1,bat,msi"
 
 
-# The State Directory: one per-install directory holding what the metadata DB
-# does not — credentials, MCP enable flags, detection sources, exports.
+# The State Directory: the one per-install directory holding what the metadata
+# DB does not. VIGIL_DIR if exported, else ~/.vigil — nothing else. A write that
+# cannot happen raises; callers that want to degrade catch it themselves.
 #
-# Exactly two things decide where it is: VIGIL_DIR if exported, else ~/.vigil.
-# #701 briefly added VIGIL_HOME, a HOME=/ container remap, and a silent /tmp
-# fallback on mkdir failure; all three are gone. The /tmp fallback in particular
-# only applied to writes, so a file saved under it was never read back — the
-# save appeared to work and the value vanished. A write that cannot happen now
-# raises, and each caller keeps the policy it already had: telemetry and request
-# logging catch and degrade, the secrets store lets it propagate.
-#
-# Reads still fall back to the legacy ~/.deeptempo copy from before the rename;
-# writes always target the State Directory, so data drifts over on the next save.
+# Reads fall back to the legacy ~/.deeptempo copy from before the rename; writes
+# always target the State Directory, so data drifts over on the next save.
 def vigil_path(*parts: str, write: bool = False) -> Path:
-    # os.environ, not Settings: this resolves at import time, before Settings is
-    # safe to build, so VIGIL_DIR must be exported rather than set in .env.
+    # os.environ, not Settings: resolves before Settings is safe to build, so
+    # VIGIL_DIR must be exported rather than set in .env.
     override = os.environ.get("VIGIL_DIR")  # noqa: ENV001 - pre-Settings bootstrap
     if override:
         target = legacy = Path(override)
@@ -48,10 +41,10 @@ def vigil_path(*parts: str, write: bool = False) -> Path:
     if write:
         (target.parent if parts else target).mkdir(parents=True, exist_ok=True)
         return target
-    # Only ever a per-file read shim. Asked for the directory itself, always
-    # answer with the State Directory — otherwise a caller that stores files
-    # under it (the secrets backend) adopts the legacy copy as its write target.
-    if parts and target != legacy and not target.exists() and legacy.exists():
+    # Only ever a per-file shim. Asked for the directory itself it must answer
+    # with the State Directory, or the secrets backend adopts the legacy copy as
+    # its write target.
+    if parts and not target.exists() and legacy.exists():
         return legacy
     return target
 
@@ -59,19 +52,29 @@ def vigil_path(*parts: str, write: bool = False) -> Path:
 def state_dir_status() -> dict:
     """Where the State Directory resolved to, and whether it can be written.
 
-    Surfaced on /api/health so a misconfigured volume is visible before someone
-    loses a credential to it. #695 was diagnosable only from a traceback, and the
-    /tmp fallback that replaced it was not diagnosable at all.
+    Read-only: never creates the directory, so a health probe cannot be the
+    thing that brings the credential store into existence. A directory that does
+    not exist yet is probed at its nearest existing ancestor, which answers the
+    question that matters — whether the first save will land.
     """
     path = vigil_path()
+    status: dict = {"path": str(path), "exists": path.is_dir()}
+    target = path
+    while not target.is_dir() and target != target.parent:
+        target = target.parent
+    # Unique per process: a shared name races with concurrent health probes,
+    # where one caller's unlink makes the other's look unwritable.
+    probe = target / f".vigil-write-probe.{os.getpid()}"
     try:
-        path.mkdir(parents=True, exist_ok=True)
-        probe = path / ".write-probe"
         probe.touch()
-        probe.unlink()
-        return {"path": str(path), "writable": True}
+        return {**status, "writable": True}
     except OSError as exc:
-        return {"path": str(path), "writable": False, "error": str(exc)}
+        return {**status, "writable": False, "error": str(exc)}
+    finally:
+        try:
+            probe.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

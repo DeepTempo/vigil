@@ -19,7 +19,7 @@ from core.secrets import get_secret, set_secret
 from core.storage.config_service import get_config_service
 from core.llm.defaults import DEFAULT_MODEL
 from core.integrations.integration_secrets import redact_secrets, secret_fields_for, split_secrets
-from core.config import get_settings, vigil_path
+from core.config import get_settings, state_dir_status, vigil_path
 
 router = APIRouter()
 
@@ -29,6 +29,19 @@ ROUTER_META = RouterMeta(
     auth=Auth.REQUIRED,
 )
 logger = logging.getLogger(__name__)
+
+
+def _mirror_to_file(filename: str, config_data: Dict[str, Any]) -> None:
+    """Copy config the database already owns, for backward compatibility.
+
+    Best-effort: the database write has committed, so an unwritable State
+    Directory must not fail a request that succeeded.
+    """
+    try:
+        with open(vigil_path(filename, write=True), "w") as f:
+            json.dump(config_data, f, indent=2)
+    except OSError as e:
+        logger.warning(f"Could not mirror {filename} to the State Directory: {e}")
 
 
 class ClaudeConfig(BaseModel):
@@ -392,10 +405,7 @@ async def set_s3_config(config: S3Config):
                 status_code=500, detail="Failed to save S3 config to database"
             )
 
-        # Also save to file for backward compatibility
-        config_file = vigil_path("s3_config.json", write=True)
-        with open(config_file, "w") as f:
-            json.dump(config_data, f, indent=2)
+        _mirror_to_file("s3_config.json", config_data)
 
         # Only overwrite credentials if new values were provided
         if config.access_key_id:
@@ -689,10 +699,7 @@ async def set_theme_config(config: ThemeConfig):
                 status_code=500, detail="Failed to save theme to database"
             )
 
-        # Also save to file for backward compatibility
-        config_file = vigil_path("theme_config.json", write=True)
-        with open(config_file, "w") as f:
-            json.dump(config_data, f, indent=2)
+        _mirror_to_file("theme_config.json", config_data)
 
         return {"success": True, "message": "Theme saved"}
     except HTTPException:
@@ -826,14 +833,13 @@ async def set_integrations_config(
             if not success:
                 logger.error(f"Failed to save integration '{integration_id}'")
 
-        # Also save to file for backward compatibility — sanitized only.
-        config_file = vigil_path("integrations_config.json", write=True)
-        config_data = {
-            "enabled_integrations": config.enabled_integrations,
-            "integrations": sanitized_integrations,
-        }
-        with open(config_file, "w") as f:
-            json.dump(config_data, f, indent=2)
+        _mirror_to_file(
+            "integrations_config.json",
+            {
+                "enabled_integrations": config.enabled_integrations,
+                "integrations": sanitized_integrations,
+            },
+        )
 
         # Derive <ID>_MCP_URL env vars (e.g. LOGLM_MCP_URL) from any
         # connectorUrl just saved, so static mcp-config.json remote-MCP
@@ -847,6 +853,16 @@ async def set_integrations_config(
     except Exception as e:
         logger.error(f"Error setting integrations config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/state-directory")
+async def get_state_directory():
+    """Resolved State Directory path and writability.
+
+    Authenticated: /api/health carries only the booleans, since it is public and
+    this names where credentials live.
+    """
+    return {"success": True, "state_directory": state_dir_status()}
 
 
 @router.get("/integrations/status")
@@ -1011,10 +1027,7 @@ async def set_general_config(config: GeneralConfig):
                 status_code=500, detail="Failed to save configuration to database"
             )
 
-        # Also save to file for backward compatibility (during transition)
-        config_file = vigil_path("general_config.json", write=True)
-        with open(config_file, "w") as f:
-            json.dump(config_data, f, indent=2)
+        _mirror_to_file("general_config.json", config_data)
 
         # Update the global secrets manager if keyring setting changed
         try:

@@ -662,14 +662,18 @@ async def health_check():
 
         service = DatabaseDataService()
         backend_info = service.get_backend_info()
+        state_dir = state_dir_status()
 
         return {
             "status": "healthy",
             "version": __version__,
             "demo_mode": is_demo_mode(),
-            # Where Vigil is actually putting credentials, and whether it can.
-            # A wrong mount is otherwise invisible until someone loses a key.
-            "state_directory": state_dir_status(),
+            # Booleans only — this route is public, and the resolved path names
+            # where credentials live. Full status: GET /api/config/state-directory.
+            "state_directory": {
+                "exists": state_dir["exists"],
+                "writable": state_dir["writable"],
+            },
             "storage": {
                 "backend": backend_info["backend"],
                 "database_available": backend_info.get("database_available", False),
