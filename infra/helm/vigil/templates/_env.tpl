@@ -25,9 +25,19 @@ chart-templated).
     name: {{ include "vigil.secret.fullname" . }}
 {{- end -}}
 
+{{- define "vigil.stateVolumeMount" -}}
+- name: vigil-state
+  mountPath: {{ .Values.stateDirectory.mountPath }}
+{{- end -}}
+
+{{- define "vigil.stateVolume" -}}
+- name: vigil-state
+  {{- toYaml .Values.stateDirectory.volume | nindent 2 }}
+{{- end -}}
+
 {{- define "vigil.env" -}}
-- name: HOME
-  value: "/tmp"
+- name: VIGIL_DIR
+  value: {{ .Values.stateDirectory.mountPath | quote }}
 - name: POSTGRES_HOST
   value: {{ include "vigil.postgres.host" . | quote }}
 - name: POSTGRES_PORT

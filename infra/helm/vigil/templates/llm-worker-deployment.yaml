@@ -52,6 +52,10 @@ spec:
             {{- toYaml .Values.llmWorker.resources | nindent 12 }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- include "vigil.stateVolumeMount" . | nindent 12 }}
+      volumes:
+        {{- include "vigil.stateVolume" . | nindent 8 }}
       {{- with .Values.llmWorker.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

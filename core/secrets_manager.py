@@ -318,7 +318,6 @@ class EncryptedFileBackend(SecretsBackend):
     are never written to ``.env`` and are not exposed to other processes.
     """
 
-    DEFAULT_DIR = Path.home() / ".vigil"
     SECRETS_FILENAME = "secrets.enc"
     MASTER_KEY_FILENAME = "master.key"
 

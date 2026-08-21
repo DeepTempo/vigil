@@ -445,6 +445,27 @@ serviceAccount:
   automountServiceAccountToken: false
 
 # -----------------------------------------------------------------------------
+# State Directory
+# -----------------------------------------------------------------------------
+# Where Vigil keeps what the database does not: the secrets store, MCP enable
+# flags, detection sources. Exported as VIGIL_DIR to every workload.
+#
+# The default is an emptyDir, which is per-pod and cleared on restart. That is
+# deliberate: a ReadWriteOnce disk cannot be shared by backend.replicaCount > 1,
+# and ReadWriteMany storage is not available on every cluster, so neither can be
+# the default. For a Helm install, supply credentials through
+# `secrets.existingSecret` or ExternalSecrets rather than the Settings UI.
+#
+# To make it durable on a cluster with ReadWriteMany storage:
+#   stateDirectory.volume:
+#     persistentVolumeClaim:
+#       claimName: vigil-state
+stateDirectory:
+  mountPath: /var/lib/vigil
+  volume:
+    emptyDir: {}
+
+# -----------------------------------------------------------------------------
 # Pod security
 # -----------------------------------------------------------------------------
 podSecurityContext:

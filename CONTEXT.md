@@ -151,6 +151,23 @@ if it's runtime plumbing with no owning capability. The cut against a capability
 domain is **mechanism vs. knowledge**: supervising a process, or resolving a
 setting, is `platform`; knowing what the setting *means* is the domain's.
 
+**State Directory**:
+The one per-install directory outside the repo holding everything a Vigil
+install accumulates that the metadata DB does not — credentials, integration
+config, MCP enable flags, detection sources, theme, exports. Defaults to
+`~/.vigil`; `VIGIL_DIR` names it explicitly and is the **only** override.
+Resolved by `vigil_path()` — a mechanism, so it is `platform` by the cut above.
+_Avoid_: config dir, state dir, `.vigil`, "where secrets live", VIGIL_HOME.
+
+**Mirror** vs **Original** (State Directory contents):
+A **Mirror** is a State Directory file the DB is authoritative for — the router
+reads "database first" and writes the file only "for backward compatibility"
+(`theme_config.json`, `s3_config.json`, `integrations_config.json`,
+`general_config.json`). Losing one costs nothing. An **Original** has no DB home,
+so losing the file loses the data: the secrets store, `mcp_server_enabled.json`,
+`detection_sources.json`, `custom_integrations/`. Only Originals constrain where
+the State Directory can live.
+
 ### Agent layer
 
 Vocabulary of `services/agent/` — TypeScript, outside `core/`, but the terms

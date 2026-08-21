@@ -21,7 +21,7 @@
       "command": "python3",
       "args": ["-m", "mempalace.mcp_server"],
       "env": {
-        "MEMPALACE_PALACE_PATH": "${MEMPALACE_PALACE_PATH:-${HOME}/.vigil/mempalace/palace}"
+        "MEMPALACE_PALACE_PATH": "${MEMPALACE_PALACE_PATH:-${VIGIL_DIR}/mempalace/palace}"
       }
     },
 

@@ -88,6 +88,10 @@ spec:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- include "vigil.stateVolumeMount" . | nindent 12 }}
+      volumes:
+        {{- include "vigil.stateVolume" . | nindent 8 }}
       {{- with .Values.backend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

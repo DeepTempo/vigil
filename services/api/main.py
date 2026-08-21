@@ -658,7 +658,7 @@ async def health_check():
     """Health check endpoint with storage backend info."""
     try:
         from core.storage.database_data_service import DatabaseDataService
-        from core.config import is_demo_mode
+        from core.config import is_demo_mode, state_dir_status
 
         service = DatabaseDataService()
         backend_info = service.get_backend_info()
@@ -667,6 +667,9 @@ async def health_check():
             "status": "healthy",
             "version": __version__,
             "demo_mode": is_demo_mode(),
+            # Where Vigil is actually putting credentials, and whether it can.
+            # A wrong mount is otherwise invisible until someone loses a key.
+            "state_directory": state_dir_status(),
             "storage": {
                 "backend": backend_info["backend"],
                 "database_available": backend_info.get("database_available", False),

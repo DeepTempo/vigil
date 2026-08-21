@@ -90,6 +90,10 @@ class MCPServer:
         try:
             # Prepare environment
             env = os.environ.copy()  # noqa: ENV001 - MCP child process env
+            # Children resolve ${VIGIL_DIR} from mcp-config.json, and an unset
+            # var substitutes to "" — which would root their paths at "/". Pin
+            # the parent's resolved State Directory so they cannot differ.
+            env.setdefault("VIGIL_DIR", str(vigil_path()))
             # httpx ignores REQUESTS_CA_BUNDLE, so inheriting it is not enough.
             env.update(ca_bundle_env())
             env.update(self.env)
@@ -213,8 +217,10 @@ class MCPServer:
 class MCPService:
     """Service for managing MCP servers."""
     
-    # Path to persist enabled/disabled state for each MCP server
-    _STATE_FILE = vigil_path("mcp_server_enabled.json")
+    # Resolved per call, never at class-definition time: an import-time write is
+    # what crashed the daemon in #695, and an import-time read would pin the load
+    # path while _save_enabled_state resolves the write path fresh.
+    _STATE_FILENAME = "mcp_server_enabled.json"
     
     def __init__(
         self,
@@ -256,8 +262,9 @@ class MCPService:
     def _load_enabled_state(self) -> Dict[str, bool]:
         """Load the enabled/disabled state from disk. Returns empty dict if no file."""
         try:
-            if self._STATE_FILE.exists():
-                with open(self._STATE_FILE, "r") as f:
+            state_file = vigil_path(self._STATE_FILENAME)
+            if state_file.exists():
+                with open(state_file, "r") as f:
                     data = json.load(f)
                 return data.get("enabled", {})
         except Exception as e:
@@ -267,7 +274,7 @@ class MCPService:
     def _save_enabled_state(self) -> None:
         """Persist the enabled/disabled state to disk."""
         try:
-            write_path = vigil_path("mcp_server_enabled.json", write=True)
+            write_path = vigil_path(self._STATE_FILENAME, write=True)
             with open(write_path, "w") as f:
                 json.dump({"enabled": self._enabled_servers}, f, indent=2)
         except Exception as e:
@@ -415,6 +422,7 @@ class MCPService:
                     # detection scans the raw config above, not this spawn env,
                     # so dormancy behavior is unchanged.
                     env = os.environ.copy()  # noqa: ENV001 - MCP child env
+                    env.setdefault("VIGIL_DIR", str(vigil_path()))
                     # httpx ignores REQUESTS_CA_BUNDLE, so inheriting it is
                     # not enough.
                     env.update(ca_bundle_env())

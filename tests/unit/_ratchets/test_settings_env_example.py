@@ -105,6 +105,10 @@ NOT_SETTINGS = {
     # Bootstrap for the secrets manager itself, which cannot depend on Settings.
     "ENABLE_KEYRING",
     "SECRETS_BACKEND",
+    # Locates the State Directory. vigil_path() resolves it at import time, before
+    # Settings can be built, so it is read from the environment and must be
+    # exported rather than set in .env.
+    "VIGIL_DIR",
     # Provider selection still handled by the DB provider registry.
     "DEFAULT_LLM_PROVIDER",
     "OPENAI_BASE_URL",
