@@ -10,6 +10,7 @@ const path = require("path");
 
 const version = require("../package.json").version;
 const image = `ghcr.io/vigil-soc/vigil-backend:${version}`;
+const repoRoot = path.join(__dirname, "..", "..", "..");
 const outDir = path.join(__dirname, "..", "standalone");
 const dbInit = path.join(outDir, "db-init");
 
@@ -54,7 +55,7 @@ fs.writeFileSync(
 );
 
 fs.copyFileSync(
-  path.join(__dirname, "..", "..", "..", "docker", "bifrost", "config.json"),
+  path.join(repoRoot, "infra", "docker", "bifrost", "config.json"),
   path.join(outDir, "bifrost-config.json"),
 );
 
