@@ -116,6 +116,14 @@ def _row_to_pending(row: ApprovalActionRow) -> PendingAction:
 class ApprovalService:
     """Service for managing approval workflow for autonomous actions."""
 
+    #: How far below the auto-approval threshold an action still runs, flagged
+    #: for review. One constant so the threshold, the flag band and
+    #: :meth:`get_action_decision` cannot drift apart.
+    FLAG_MARGIN = 0.05
+
+    #: Below this, an action is watched rather than proposed at all.
+    MONITOR_ONLY_BELOW = 0.70
+
     def __init__(self, data_dir: Optional[Path] = None, dry_run: bool = False):
         """
         Initialize approval service.
@@ -181,32 +189,60 @@ class ApprovalService:
         """Get the current force manual approval setting."""
         return self.force_manual_approval
 
+    def _auto_approve_floor(self, threshold: float) -> float:
+        """The lowest confidence that may run unattended.
+
+        One flag band below ``threshold``, but never below
+        :attr:`MONITOR_ONLY_BELOW`: an action too weak to be worth proposing
+        is not one to carry out on its own, and a threshold configured low
+        enough to cross that line would otherwise have
+        :meth:`get_action_decision` returning ``monitor_only`` for something
+        :meth:`should_auto_approve` had already cleared.
+        """
+        return max(threshold - self.FLAG_MARGIN, self.MONITOR_ONLY_BELOW)
+
     def should_auto_approve(
         self,
         action: Dict,
         threshold: float = 0.90,
         force_manual: bool = False,
     ) -> bool:
-        """Decide if an action should auto-approve based on confidence."""
+        """Decide if an action should auto-approve based on confidence.
+
+        Auto-approval starts one flag band below ``threshold``: an action in
+        ``[threshold - FLAG_MARGIN, threshold)`` still runs, and
+        :meth:`needs_flag` marks it for review afterwards.
+
+        The band is derived from ``threshold`` rather than hard-coded, which
+        is what makes the parameter mean anything. It used to fall back to a
+        literal ``0.85`` after the threshold check, so every value above 0.85
+        was ignored -- passing ``threshold=0.99`` still auto-approved an
+        action at 0.86. For a knob whose only purpose is to make the service
+        more conservative, that is the dangerous direction to fail in.
+        """
         if force_manual or self.get_force_manual_approval():
             return False
         confidence = action.get("confidence", 0.0)
-        if confidence >= threshold:
-            return True
-        if confidence >= 0.85:
-            return True
-        return False
+        return confidence >= self._auto_approve_floor(threshold)
 
-    def needs_flag(self, confidence: float) -> bool:
-        """Check if an action needs a flag (confidence 0.85-0.89)."""
-        return 0.85 <= confidence < 0.90
+    def needs_flag(self, confidence: float, threshold: float = 0.90) -> bool:
+        """Whether an auto-approved action should be flagged for review.
+
+        The band just below ``threshold``: approved on confidence alone, but
+        close enough to the line to be worth a second look.
+        """
+        return self._auto_approve_floor(threshold) <= confidence < threshold
 
     def get_action_decision(self, action: Dict, threshold: float = 0.90) -> str:
-        """Get the decision for an action based on confidence."""
+        """Get the decision for an action based on confidence.
+
+        The auto-approval line is the same one :meth:`should_auto_approve`
+        uses, so the two cannot disagree about an action.
+        """
         confidence = action.get("confidence", 0.0)
-        if confidence < 0.70:
+        if confidence < self.MONITOR_ONLY_BELOW:
             return "monitor_only"
-        elif confidence < 0.85:
+        elif confidence < self._auto_approve_floor(threshold):
             return "manual_approval"
         else:
             return "auto_approve"
