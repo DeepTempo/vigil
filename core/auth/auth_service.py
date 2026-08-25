@@ -108,8 +108,8 @@ class AuthService:
         hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
         return hashed.decode("utf-8")
 
-    @default_on_error(False)
     @staticmethod
+    @default_on_error(False)
     def verify_password(password: str, password_hash: str) -> bool:
         """
         Verify a password against its hash.
@@ -121,9 +121,7 @@ class AuthService:
         Returns:
             True if password matches
         """
-        return bcrypt.checkpw(
-            password.encode("utf-8"), password_hash.encode("utf-8")
-        )
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
     @staticmethod
     def _session_fingerprint(user_agent: Optional[str]) -> str:
@@ -289,8 +287,8 @@ class AuthService:
                     user.username,
                 )
 
-    @default_on_error(None)
     @staticmethod
+    @default_on_error(None)
     def setup_mfa(user_id: str, session: Optional[Session] = None) -> Optional[str]:
         with unit_of_work(session) as session:
             user = session.query(User).filter(User.user_id == user_id).first()
@@ -307,9 +305,8 @@ class AuthService:
             logger.info(f"MFA setup initiated for user: {user.username}")
             return secret
 
-
-    @default_on_error(None)
     @staticmethod
+    @default_on_error(None)
     def enable_mfa(
         user_id: str, code: str, session: Optional[Session] = None
     ) -> Optional[List[str]]:
@@ -341,9 +338,8 @@ class AuthService:
             logger.info(f"MFA enabled for user: {user.username}")
             return codes
 
-
-    @default_on_error(None)
     @staticmethod
+    @default_on_error(None)
     def get_mfa_recovery_codes(
         user_id: str, session: Optional[Session] = None
     ) -> Optional[List[str]]:
@@ -360,9 +356,8 @@ class AuthService:
             codes, user.mfa_recovery_codes = AuthService._generate_recovery_codes()
             return codes
 
-
-    @default_on_error(False)
     @staticmethod
+    @default_on_error(False)
     def verify_mfa_code(
         user_id: str, code: str, session: Optional[Session] = None
     ) -> bool:
@@ -398,7 +393,6 @@ class AuthService:
                     continue
 
             return False
-
 
     @staticmethod
     def _generate_recovery_codes() -> tuple[list[str], list[str]]:
@@ -534,8 +528,8 @@ class AuthService:
 
             return role.permissions
 
-    @default_on_error(None)
     @staticmethod
+    @default_on_error(None)
     def create_user(
         username: str,
         email: str,
@@ -594,4 +588,3 @@ class AuthService:
 
             logger.info(f"User created: {username}")
             return user
-

@@ -232,7 +232,7 @@ class DatabaseService:
             
             return findings
     
-    @default_on_error(None)
+    @default_on_error(None, level="warning")
     def find_similar_findings(
         self,
         finding_id: str,

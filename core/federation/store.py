@@ -62,7 +62,7 @@ def is_globally_enabled() -> bool:
 # ---------------------------------------------------------------------------
 
 
-@default_on_error(list)
+@default_on_error(list, level="debug")
 def list_sources() -> List[Dict[str, Any]]:
     """All federation_sources rows as dicts."""
     from core.storage.connection import get_db_manager
@@ -74,7 +74,7 @@ def list_sources() -> List[Dict[str, Any]]:
         return FederationSourceSchema.dump_many(rows)
 
 
-@default_on_error(None)
+@default_on_error(None, level="debug")
 def get_source(source_id: str) -> Optional[Dict[str, Any]]:
     from core.storage.connection import get_db_manager
     from core.storage.models import FederationSource
@@ -85,7 +85,7 @@ def get_source(source_id: str) -> Optional[Dict[str, Any]]:
         return FederationSourceSchema.dump(row) if row else None
 
 
-@default_on_error(None)
+@default_on_error(None, level="warning")
 def upsert_source(source_id: str, defaults: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Ensure a row exists; if missing, insert with ``defaults``.
 
@@ -105,7 +105,7 @@ def upsert_source(source_id: str, defaults: Dict[str, Any]) -> Optional[Dict[str
         return FederationSourceSchema.dump(row)
 
 
-@default_on_error(None)
+@default_on_error(None, level="warning")
 def update_source(source_id: str, fields: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Patch arbitrary columns on a source row. Caller validates fields."""
     from core.storage.connection import get_db_manager
