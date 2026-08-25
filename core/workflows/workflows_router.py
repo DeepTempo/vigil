@@ -300,9 +300,7 @@ async def execute_workflow(
     # surfacing a concrete user identity here (DEV_MODE / system
     # triggers). Daemon invocations can override by calling the
     # service layer directly.
-    result = await service.execute_workflow(
-        workflow_id, parameters, triggered_by="api"
-    )
+    result = await service.execute_workflow(workflow_id, parameters, triggered_by="api")
 
     if not result.get("success"):
         error = result.get("error", "Unknown error during workflow execution")

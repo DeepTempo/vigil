@@ -47,9 +47,7 @@ def generate_skill(request: SkillGenerateRequest):
     """
     conversation_history = request.conversation_history or []
     if request.user_response:
-        conversation_history.append(
-            {"role": "user", "content": request.user_response}
-        )
+        conversation_history.append({"role": "user", "content": request.user_response})
 
     result = _service().generate_skill(
         description=request.description,

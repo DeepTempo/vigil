@@ -145,9 +145,7 @@ class DotEnvBackend(SecretsBackend):
         # Write all secrets to file
         with open(self.env_file, "w") as f:
             f.write("# Vigil SOC Secrets\n")
-            f.write(
-                "# This file contains sensitive credentials - keep it secure!\n\n"
-            )
+            f.write("# This file contains sensitive credentials - keep it secure!\n\n")
             for k, v in self._cache.items():
                 # Escape quotes in value
                 escaped_value = v.replace('"', '\\"')

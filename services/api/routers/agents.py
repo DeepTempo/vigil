@@ -55,8 +55,8 @@ async def list_agents():
     tooling without having to restart. Built-ins are code-defined and
     cached in-process.
     """
-        # Cheap best-effort refresh. Failures leave the existing cache in
-        # place — you'd still get the built-in list back.
+    # Cheap best-effort refresh. Failures leave the existing cache in
+    # place — you'd still get the built-in list back.
     agent_manager.refresh_custom_agents()
     agents = agent_manager.get_agent_list()
     return {"agents": agents, "current_agent": agent_manager.current_agent_id}

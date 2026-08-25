@@ -13,7 +13,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import logging
 
-from services.api.middleware.auth import get_current_active_user, require_integrations_admin
+from services.api.middleware.auth import (
+    get_current_active_user,
+    require_integrations_admin,
+)
 from core.storage.models import User
 from core.deps import provide_integration_compat
 from core.integrations.integration_compatibility_service import (
@@ -35,7 +38,6 @@ class IntegrationActionRequest(BaseModel):
     """Request body for install/upgrade/uninstall of a known integration."""
 
     integration_id: str
-
 
 
 @router.get("/compatibility/status")

@@ -134,9 +134,7 @@ async def get_case_timeline(case_id: str):
             TimelineEvent(
                 id=f"note-{case_id}-{idx}",
                 content=f"Note: {note.get('content', '')[:100]}",
-                start=normalize_timestamp(
-                    note.get("timestamp", case["created_at"])
-                ),
+                start=normalize_timestamp(note.get("timestamp", case["created_at"])),
                 type="note",
                 metadata={
                     "case_id": case_id,

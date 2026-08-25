@@ -11,7 +11,10 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from services.api.middleware.auth import get_current_active_user, require_integrations_admin
+from services.api.middleware.auth import (
+    get_current_active_user,
+    require_integrations_admin,
+)
 from core.deps import provide_mcp_client
 from core.storage.models import User
 from core.integrations.mcp.service import MCPService
@@ -25,7 +28,6 @@ ROUTER_META = RouterMeta(
     tags=["mcp"],
     auth=Auth.REQUIRED,
 )
-
 
 
 def _validate_known_server(server_name: str) -> None:
