@@ -52,17 +52,6 @@ _CASE_OWNED_MODELS = (
     CaseComment,
 )
 
-_TASK_FIELDS = (
-    "title",
-    "description",
-    "status",
-    "assignee",
-    "priority",
-    "due_date",
-    "completed_at",
-    "actual_hours",
-)
-
 
 def add_task(
     session: Session,
@@ -109,13 +98,17 @@ def list_tasks(case_id: str) -> List[CaseTask]:
 def update_task(
     session: Session, task_id: int, updates: Dict[str, Any]
 ) -> Optional[CaseTask]:
-    """Apply non-None ``updates`` to a task. Returns None if it doesn't exist."""
+    """Apply non-None ``updates`` to a task. Returns None if it doesn't exist.
+
+    Driven off the payload rather than a field list held here: TaskUpdate is
+    already the definition of what a caller may change, and a second copy of
+    it only stays right until someone adds a field.
+    """
     task = session.query(CaseTask).filter(CaseTask.task_id == task_id).first()
     if task is None:
         return None
-    for field in _TASK_FIELDS:
-        value = updates.get(field)
-        if value is not None:
+    for field, value in updates.items():
+        if value is not None and hasattr(task, field):
             setattr(task, field, value)
     session.flush()
     return task

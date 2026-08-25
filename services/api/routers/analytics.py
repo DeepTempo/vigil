@@ -60,60 +60,51 @@ async def get_analytics(
     Returns:
         Dictionary containing metrics, time series data, distributions, and AI insights
     """
-    try:
-        start_time, end_time = get_time_range(time_range)
+    start_time, end_time = get_time_range(time_range)
 
-        # Get previous period for comparison
-        period_duration = end_time - start_time
-        prev_start = start_time - period_duration
+    # Get previous period for comparison
+    period_duration = end_time - start_time
+    prev_start = start_time - period_duration
 
-        # Calculate key metrics
-        metrics = await calculate_metrics(
-            db, start_time, end_time, prev_start, start_time
-        )
+    # Calculate key metrics
+    metrics = await calculate_metrics(db, start_time, end_time, prev_start, start_time)
 
-        # Get time series data
-        time_series = await get_time_series_data(db, start_time, end_time, time_range)
+    # Get time series data
+    time_series = await get_time_series_data(db, start_time, end_time, time_range)
 
-        # Get severity distribution
-        severity_dist = await get_severity_distribution(db, start_time, end_time)
+    # Get severity distribution
+    severity_dist = await get_severity_distribution(db, start_time, end_time)
 
-        # Get top sources
-        top_sources = await get_top_alert_sources(db, start_time, end_time)
+    # Get top sources
+    top_sources = await get_top_alert_sources(db, start_time, end_time)
 
-        # Get response time trend
-        response_time_data = await get_response_time_trend(
-            db, start_time, end_time, time_range
-        )
+    # Get response time trend
+    response_time_data = await get_response_time_trend(
+        db, start_time, end_time, time_range
+    )
 
-        # Get affected entities/devices
-        affected_entities = await get_affected_entities(db, start_time, end_time)
+    # Get affected entities/devices
+    affected_entities = await get_affected_entities(db, start_time, end_time)
 
-        # Get attack time heatmap
-        attack_heatmap = await get_attack_time_heatmap(db, start_time, end_time)
+    # Get attack time heatmap
+    attack_heatmap = await get_attack_time_heatmap(db, start_time, end_time)
 
-        # Get MITRE technique distribution
-        mitre_techniques = await get_mitre_technique_distribution(
-            db, start_time, end_time
-        )
+    # Get MITRE technique distribution
+    mitre_techniques = await get_mitre_technique_distribution(db, start_time, end_time)
 
-        # NOTE: AI insights are intentionally NOT generated here — they are
-        # served from an in-memory cache via GET /analytics/insights so this
-        # endpoint returns fast and never blocks on the Claude API.
-        return {
-            "metrics": metrics,
-            "timeSeriesData": time_series,
-            "severityDistribution": severity_dist,
-            "topSources": top_sources,
-            "responseTimeData": response_time_data,
-            "affectedEntities": affected_entities,
-            "attackHeatmap": attack_heatmap,
-            "mitreTechniques": mitre_techniques,
-        }
-
-    except Exception as e:
-        logger.error(f"Error generating analytics: {str(e)}")
-        raise
+    # NOTE: AI insights are intentionally NOT generated here — they are
+    # served from an in-memory cache via GET /analytics/insights so this
+    # endpoint returns fast and never blocks on the Claude API.
+    return {
+        "metrics": metrics,
+        "timeSeriesData": time_series,
+        "severityDistribution": severity_dist,
+        "topSources": top_sources,
+        "responseTimeData": response_time_data,
+        "affectedEntities": affected_entities,
+        "attackHeatmap": attack_heatmap,
+        "mitreTechniques": mitre_techniques,
+    }
 
 
 @router.get("/analytics/insights")

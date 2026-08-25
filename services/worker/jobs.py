@@ -6,7 +6,11 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from core.config import get_settings
-from core.llm.gateway.gateway import QUEUE_NAME, RedisSessionStore, _redis_settings
+from core.llm.gateway.gateway import (
+    QUEUE_NAME,
+    RedisSessionStore,
+    redis_settings as gateway_redis_settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -340,7 +344,9 @@ class WorkerSettings:
     # ARQ polls queues left-to-right, so triage is always consumed before
     # investigation, and investigation before chat.
     functions = [llm_call]
-    redis_settings = _redis_settings()
+    # ARQ reads this attribute by name; alias the import so the class
+    # attribute does not shadow the function producing it.
+    redis_settings = gateway_redis_settings()
     queue_name = QUEUE_NAME
     max_jobs = MAX_CONCURRENT_LLM_CALLS
     job_timeout = 180

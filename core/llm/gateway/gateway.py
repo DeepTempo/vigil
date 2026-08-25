@@ -25,7 +25,12 @@ logger = logging.getLogger(__name__)
 QUEUE_NAME = "arq:llm"
 
 
-def _redis_settings() -> RedisSettings:
+def redis_settings() -> RedisSettings:
+    """ARQ connection settings derived from ``redis_url``.
+
+    Public: the llm-worker builds its WorkerSettings from the same values, so
+    the queue it drains is the one the gateway enqueues onto.
+    """
     url = get_settings().redis_url or DEFAULT_REDIS_URL
     # Parse redis://host:port/db
     from urllib.parse import urlparse
@@ -100,7 +105,7 @@ class LLMGateway:
 
     @classmethod
     async def create(cls, settings: Optional[RedisSettings] = None) -> "LLMGateway":
-        settings = settings or _redis_settings()
+        settings = settings or redis_settings()
         pool = await create_pool(settings)
 
         # Instrument the underlying Redis client with OTEL tracing

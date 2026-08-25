@@ -30,6 +30,10 @@ from core.federation.runner import FederationRunner
 logger = logging.getLogger(__name__)
 
 
+class IngestionError(RuntimeError):
+    """An ingestion service reported success=False for a poll."""
+
+
 @dataclass
 class PollState:
     """Per-source polling cursor.
@@ -564,6 +568,13 @@ class DataPoller:
         Callers must not mark a finding processed unless this returns True:
         the dedup key is what makes a retry possible, so marking a finding that
         was never stored drops it permanently.
+
+        "Accepted" means handed off, not durable. On the queue path that is a
+        put() onto an in-process asyncio.Queue, so a finding still dies with
+        the daemon if it stops between the put and the processor's write. What
+        this closes is the larger hole: an ingest that raised, or no sink at
+        all, used to be marked processed just the same. Making the queue path
+        durable needs the queue itself to be, which is a separate change.
         """
         if self._output_queue:
             await self._output_queue.put({
@@ -613,12 +624,17 @@ class DataPoller:
 
         result = service.ingest_alerts(limit=100)
 
-        if result.get("success"):
-            ingested = result.get("ingested", 0)
-            self.stats[f"{source}_findings"] += ingested
-            logger.info("%s: ingested %d %s", label, ingested, noun)
-        else:
-            logger.error("%s ingestion failed: %s", label, result.get("errors"))
+        if not result.get("success"):
+            # Raise rather than log: the loop is what counts an error and what
+            # decides whether to stamp last_poll_time. Returning quietly here
+            # recorded a failed poll as a clean one -- the same blind spot the
+            # bare `except: log` in these pollers used to have, reached by the
+            # other branch.
+            raise IngestionError(f"{label} ingestion failed: {result.get('errors')}")
+
+        ingested = result.get("ingested", 0)
+        self.stats[f"{source}_findings"] += ingested
+        logger.info("%s: ingested %d %s", label, ingested, noun)
 
     async def _poll_ingestion_loop(self, source: str, shutdown_event: asyncio.Event):
         """Poll an ingestion-service source on interval until shutdown."""
