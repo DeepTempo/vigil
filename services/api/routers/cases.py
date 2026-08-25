@@ -986,11 +986,11 @@ async def merge_cases(case_id: str, data: MergeRequest):
 
     from core.cases.case_workflow_service import CaseWorkflowService
 
+    # A missing case surfaces as NotFoundError, which the shared handler
+    # renders as a 404 naming which of the two it was.
     moved_findings = CaseWorkflowService().merge_cases(
         case_id, data.source_case_id, data.merged_by
     )
-    if moved_findings is None:
-        raise HTTPException(status_code=404, detail="Target or source case not found")
 
     result_case = data_service.get_case(case_id)
     return {

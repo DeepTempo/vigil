@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from core.storage.models import Case, CaseTemplate, CaseTask
 from core.storage.unit_of_work import unit_of_work
-from core.exceptions import default_on_error
+from core.exceptions import NotFoundError, default_on_error
 
 logger = logging.getLogger(__name__)
 
@@ -422,8 +422,8 @@ class CaseWorkflowService:
 
         Moves findings, timeline, activities, IOCs, evidence, tasks, and
         comments across; closes the source and links it with a 'merged_into'
-        relationship. Returns the number of findings moved, or None if either
-        case is missing.
+        relationship. Returns the number of findings moved, and raises
+        ``NotFoundError`` naming whichever case is missing.
 
         Runs in its own transaction — the whole merge must land or none of it.
         """
@@ -437,8 +437,10 @@ class CaseWorkflowService:
         with unit_of_work() as session:
             target = session.query(Case).filter_by(case_id=target_case_id).first()
             source = session.query(Case).filter_by(case_id=source_case_id).first()
-            if not target or not source:
-                return None
+            if not target:
+                raise NotFoundError(f"Target case {target_case_id} not found")
+            if not source:
+                raise NotFoundError(f"Source case {source_case_id} not found")
 
             target_finding_ids = {f.finding_id for f in target.findings}
             moved_findings = 0

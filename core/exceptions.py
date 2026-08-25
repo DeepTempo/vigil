@@ -6,9 +6,13 @@ import logging
 class SOCError(Exception):
     """Base for expected domain failures.
 
-    The API renders these directly: ``message`` reaches the client, so keep it
-    free of internal detail. Subclasses set ``status_code`` to choose the HTTP
-    status; anything else surfaces as a 500.
+    The API renders these directly. Subclasses set ``status_code`` to choose
+    the HTTP status; anything else surfaces as a 500.
+
+    ``message`` reaches the client only on a 4xx, so write it for whoever is
+    calling. On a 5xx the handler substitutes a generic string and keeps the
+    real one for the log, because those messages tend to quote the underlying
+    library verbatim.
     """
 
     status_code: int = 500
@@ -22,6 +26,15 @@ class SOCError(Exception):
 class DatabaseError(SOCError):
     def __init__(self, message: str):
         super().__init__(message, "DATABASE_ERROR")
+
+
+class NotFoundError(SOCError):
+    """A named resource does not exist. ``message`` is shown to the client."""
+
+    status_code = 404
+
+    def __init__(self, message: str, code: str = "NOT_FOUND"):
+        super().__init__(message, code)
 
 
 def default_on_error(default, *, level: str = "exception"):

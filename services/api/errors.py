@@ -22,7 +22,14 @@ logger = logging.getLogger(__name__)
 
 async def soc_error_handler(request: Request, exc: SOCError) -> JSONResponse:
     status = getattr(exc, "status_code", 500)
-    body: dict[str, str] = {"detail": exc.message, "code": exc.code}
+
+    # A 4xx message is written for the client and is safe to pass on. A 5xx one
+    # describes a failure the client cannot act on, and tends to carry whatever
+    # the underlying library said -- DatabaseError quotes psycopg2, host, port
+    # and user included. Same rule as an unhandled exception: log it, hand back
+    # the trace id.
+    detail = exc.message if status < 500 else "Internal server error"
+    body: dict[str, str] = {"detail": detail, "code": exc.code}
 
     trace_id, _ = current_trace_ids()
     if trace_id:
