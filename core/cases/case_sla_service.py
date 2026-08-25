@@ -7,6 +7,7 @@ notifications, and reporting.
 
 import logging
 from datetime import datetime, timedelta
+from core.time import utcnow
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -222,7 +223,7 @@ class CaseSLAService:
         """
         with unit_of_work(session) as session:
             if current_time is None:
-                current_time = datetime.utcnow()
+                current_time = utcnow()
 
             case_sla = session.query(CaseSLA).filter(
                 CaseSLA.case_id == case_id
@@ -272,7 +273,7 @@ class CaseSLAService:
             if not case_sla:
                 return None
 
-            current_time = datetime.utcnow()
+            current_time = utcnow()
 
             # Calculate time remaining
             response_remaining = None
@@ -375,7 +376,7 @@ class CaseSLAService:
                 return True
 
             case_sla.is_paused = True
-            case_sla.paused_at = datetime.utcnow()
+            case_sla.paused_at = utcnow()
 
             logger.info(f"SLA paused for case {case_id}: {reason}")
             return True
@@ -413,7 +414,7 @@ class CaseSLAService:
             # Calculate pause duration
             if case_sla.paused_at:
                 pause_duration = (
-                    datetime.utcnow() - case_sla.paused_at
+                    utcnow() - case_sla.paused_at
                 ).total_seconds()
                 case_sla.total_pause_duration += int(pause_duration)
 
@@ -423,7 +424,7 @@ class CaseSLAService:
                 case_sla.resolution_due += pause_delta
 
             case_sla.is_paused = False
-            case_sla.resumed_at = datetime.utcnow()
+            case_sla.resumed_at = utcnow()
 
             logger.info(f"SLA resumed for case {case_id}")
             return True
@@ -454,7 +455,7 @@ class CaseSLAService:
             if not case_sla:
                 return False
 
-            current_time = datetime.utcnow()
+            current_time = utcnow()
             case_sla.resolution_completed_at = current_time
             case_sla.resolution_sla_met = current_time <= case_sla.resolution_due
 
@@ -479,7 +480,7 @@ class CaseSLAService:
             List of case dictionaries with SLA information
         """
         with unit_of_work(session) as session:
-            current_time = datetime.utcnow()
+            current_time = utcnow()
 
             # Get all active SLAs
             slas = session.query(CaseSLA).filter(

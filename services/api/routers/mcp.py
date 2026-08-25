@@ -8,17 +8,14 @@ an MCP server can spawn subprocesses and surface tools to agents.
 
 import logging
 from typing import Dict, List, Optional
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from services.api.middleware.auth import get_current_active_user, require_integrations_admin
+from core.deps import provide_mcp_client
+from core.storage.models import User
 from core.integrations.mcp.service import MCPService
 from core.routing import Auth, RouterMeta
-from core.storage.models import User
-from services.api.middleware.auth import (
-    get_current_active_user,
-    require_integrations_admin,
-)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,6 +25,7 @@ ROUTER_META = RouterMeta(
     tags=["mcp"],
     auth=Auth.REQUIRED,
 )
+
 
 
 def _validate_known_server(server_name: str) -> None:
@@ -47,15 +45,15 @@ def _service() -> MCPService:
     Both the API endpoints and the MCPClient used to wrap in their own
     ``MCPService()`` — two instances, two cached ``_enabled_servers``
     dicts, so ``set_server_enabled`` on A was never visible to
-    ``connect_to_server`` on B. Centralising through ``get_mcp_client()``
+    ``connect_to_server`` on B. Centralising through the process client
     ensures a single source of truth. Falls back to a local instance
     if the MCP SDK isn't installed so the introspection endpoints
     still work.
     """
     try:
-        from core.integrations.mcp.client import get_mcp_client
+        from core.integrations.mcp.client import process_mcp_client
 
-        client = get_mcp_client()
+        client = process_mcp_client()
         if client is not None:
             return client.mcp_service
     except Exception:
@@ -127,6 +125,7 @@ async def set_server_enabled(
     server_name: str,
     request: ServerEnabledRequest,
     current_user: User = Depends(get_current_active_user),
+    mcp_client=Depends(provide_mcp_client),
 ):
     """Enable or disable an MCP server and apply the change at runtime.
 
@@ -157,13 +156,6 @@ async def set_server_enabled(
     connected: Optional[bool] = None
     error: Optional[str] = None
     missing_credentials: Optional[List[str]] = None
-
-    try:
-        from core.integrations.mcp.client import get_mcp_client
-
-        mcp_client = get_mcp_client()
-    except Exception:
-        mcp_client = None
 
     if request.enabled:
         # Try to bring the server online now. Failures (missing creds,
@@ -215,16 +207,13 @@ async def set_server_enabled(
 
 
 @router.get("/connections/status")
-async def get_connections_status():
+async def get_connections_status(mcp_client=Depends(provide_mcp_client)):
     """
     Get persistent connection status for all MCP servers.
 
     Returns:
         Connection status for each server
     """
-    from core.integrations.mcp.client import get_mcp_client
-
-    mcp_client = get_mcp_client()
     if not mcp_client:
         return {"error": "MCP client not available", "connections": {}}
 
@@ -311,9 +300,9 @@ async def get_server_logs(server_name: str, lines: int = 100):
     # actually tells the user why a server isn't reachable. The log file
     # itself only exists for servers started via the monitor path.
     try:
-        from core.integrations.mcp.client import get_mcp_client
+        from core.integrations.mcp.client import process_mcp_client
 
-        last_err = get_mcp_client().get_last_error(server_name)
+        last_err = process_mcp_client().get_last_error(server_name)
         if last_err:
             logs = f"[last connect error] {last_err}\n\n{logs}"
     except Exception:
@@ -360,17 +349,23 @@ async def reload_servers(
     """
     require_integrations_admin(current_user)
     logger.info("User %s requested MCP server reload", current_user.user_id)
-    svc = _service()
-    # Reinitialise servers dict in place so the MCPClient's reference
-    # to this same instance keeps seeing the new catalog.
-    svc.servers.clear()
-    svc._initialize_servers()
+    try:
+        svc = _service()
+        # Reinitialise servers dict in place so the MCPClient's reference
+        # to this same instance keeps seeing the new catalog.
+        svc.servers.clear()
+        svc._initialize_servers()
 
-    new_servers = list(svc.servers.keys())
+        new_servers = list(svc.servers.keys())
 
-    return {
-        "success": True,
-        "message": "MCP servers reloaded successfully",
-        "total_servers": len(new_servers),
-        "servers": new_servers,
-    }
+        return {
+            "success": True,
+            "message": "MCP servers reloaded successfully",
+            "total_servers": len(new_servers),
+            "servers": new_servers,
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to reload MCP servers: {str(e)}"
+        )

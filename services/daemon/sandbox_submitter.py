@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from core.time import utcnow
 from typing import Any, Dict, List, Optional
 from core.config import get_integration_config, get_settings
 
@@ -155,7 +155,7 @@ class SandboxSubmitter:
 
         results = await asyncio.gather(*coros, return_exceptions=True)
 
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = utcnow().isoformat()
         out: Dict[str, Any] = {}
         for name, res in zip(names, results):
             if isinstance(res, Exception):

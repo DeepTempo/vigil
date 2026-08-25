@@ -65,6 +65,14 @@ Per-component names and labels.
 {{- printf "%s-llm-worker" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "vigil.agentWorker.fullname" -}}
+{{- printf "%s-agent-worker" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "vigil.agentServe.fullname" -}}
+{{- printf "%s-agent-serve" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 {{- define "vigil.postgres.fullname" -}}
 {{- printf "%s-postgres" (include "vigil.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
@@ -153,6 +161,12 @@ The "llmWorker" component always reuses the backend image.
   {{- if eq $comp "daemon" -}}{{- $suffix = "daemon" -}}{{- end -}}
   {{- if eq $comp "backend" -}}{{- $suffix = "backend" -}}{{- end -}}
   {{- if eq $comp "llmWorker" -}}{{- $suffix = "backend" -}}{{- end -}}
+  {{- /* The agent layer is Node, not Python — it cannot reuse the backend
+         image the way llm-worker does, and the default above would silently
+         hand it one. Both components share the one image and differ only in
+         which command the Deployment runs (infra/docker/Dockerfile.agent). */ -}}
+  {{- if eq $comp "agentWorker" -}}{{- $suffix = "agent" -}}{{- end -}}
+  {{- if eq $comp "agentServe" -}}{{- $suffix = "agent" -}}{{- end -}}
   {{- $repo = printf "%s/%s-%s" $registry $ns $suffix -}}
 {{- end -}}
 {{- if eq $tag "" -}}
@@ -288,21 +302,31 @@ template here uses the $(REDIS_PASSWORD) placeholder which Kubernetes
 expands from envFrom/env.
 */}}
 {{- define "vigil.redis.url" -}}
+{{- $db := include "vigil.redis.database" . -}}
 {{- if .Values.redis.bitnami.enabled -}}
 {{- $host := .Values.redis.bitnami.fullnameOverride | default (printf "%s-redis-master" .Release.Name) -}}
 {{- $port := 6379 -}}
 {{- if .Values.redis.bitnami.auth.enabled -}}
-{{- printf "redis://:$(REDIS_PASSWORD)@%s:%v/0" $host $port -}}
+{{- printf "redis://:$(REDIS_PASSWORD)@%s:%v/%s" $host $port $db -}}
 {{- else -}}
-{{- printf "redis://%s:%v/0" $host $port -}}
+{{- printf "redis://%s:%v/%s" $host $port $db -}}
 {{- end -}}
 {{- else if .Values.redis.external.url -}}
 {{- .Values.redis.external.url -}}
 {{- else if .Values.redis.enabled -}}
-{{- printf "redis://%s:%v/0" (include "vigil.redis.fullname" .) (.Values.redis.service.port | default 6379) -}}
+{{- printf "redis://%s:%v/%s" (include "vigil.redis.fullname" .) (.Values.redis.service.port | default 6379) $db -}}
 {{- else -}}
 {{- required "redis.external.url is required when redis.enabled=false and redis.bitnami.enabled=false" "" -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+One definition because three have to agree: the URL above, the agent pods' REDIS_DB
+and the KEDA scaler's databaseIndex — a scaler counting a different database reads
+an empty queue. Does not govern redis.external.url, whose database that URL names.
+*/}}
+{{- define "vigil.redis.database" -}}
+0
 {{- end -}}
 
 {{/*

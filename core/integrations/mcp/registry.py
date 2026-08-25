@@ -138,22 +138,93 @@ class MCPRegistry:
         }
 
 
-# Global singleton
-_mcp_registry: Optional[MCPRegistry] = None
+# Where the live MCP tool set comes from. This used to be a side effect of
+# constructing a ClaudeService: the tool loader populated the registry on its way
+# past, so two AI generators depended on somebody having built an LLM client
+# first. Called explicitly at startup instead (#632).
+CACHE_FILE = ("data", "mcp_tools_cache.json")
 
 
-def get_mcp_registry() -> MCPRegistry:
-    """Get or create the global MCP registry instance."""
-    global _mcp_registry
-    if _mcp_registry is None:
-        _mcp_registry = MCPRegistry()
-    return _mcp_registry
+def _cached_tools() -> Dict[str, List[Dict[str, Any]]]:
+    import json
+
+    from core.config import REPO_ROOT
+
+    path = REPO_ROOT.joinpath(*CACHE_FILE)
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except Exception as exc:  # noqa: BLE001 — a warm-start artifact, not state
+            logger.warning("Could not read the MCP tools cache: %s", exc)
+    return {}
 
 
-def get_mcp_tool_names() -> List[str]:
-    """Tool names from the global registry, or [] if it is unavailable."""
+def _server_config(mcp_client, name: str) -> Dict[str, Any]:
+    service = getattr(mcp_client, "mcp_service", None)
+    server = getattr(service, "servers", {}).get(name) if service else None
+    if server is None:
+        return {}
+    return {"command": server.command, "args": server.args, "env": server.env}
+
+
+def _normalised(tool: Dict[str, Any]) -> Dict[str, Any]:
+    schema = tool.get("inputSchema", {})
+    if hasattr(schema, "model_dump"):
+        schema = schema.model_dump()
+    elif not isinstance(schema, dict):
+        schema = dict(schema) if schema else {}
+    return {
+        "name": tool.get("name", "unknown"),
+        "description": tool.get("description", ""),
+        "inputSchema": schema,
+    }
+
+
+# The disk cache is a warm-start artifact: a server can appear there and have
+# failed to connect this boot. Registering it anyway lets a model claim a
+# capability it cannot exercise (#129), so live connection state gates it.
+def populate_from_cache(registry: MCPRegistry) -> int:
+    from core.integrations.mcp.client import process_mcp_client
+
+    mcp_client = process_mcp_client()
+    tools_dict = _cached_tools()
+    if not tools_dict and mcp_client is not None:
+        tools_dict = getattr(mcp_client, "tools_cache", None) or {}
+    if not tools_dict:
+        logger.info("No MCP tools to register: the cache is empty")
+        return 0
+
+    connected: Dict[str, bool] = {}
+    if mcp_client is not None:
+        try:
+            connected = mcp_client.get_connection_status() or {}
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not read MCP connection status: %s", exc)
+
+    registered = 0
+    for name, tools in tools_dict.items():
+        if connected and not connected.get(name, False):
+            logger.debug("Skipping %s: cached but not connected this boot", name)
+            continue
+        registry.register_server(
+            name, _server_config(mcp_client, name), [_normalised(t) for t in tools]
+        )
+        registered += 1
+
+    logger.info("MCP registry populated from %d connected server(s)", registered)
+    return registered
+
+
+def safe_tool_names(registry: Optional[MCPRegistry]) -> List[str]:
+    """Tool names from ``registry``, or [] when it cannot be reached.
+
+    Shared by the agent and workflow AI generators, whose prompt-building is
+    best-effort: an unavailable registry means "recommend no tools", never an
+    error. Takes the registry rather than reaching for a global, so callers
+    keep whatever instance they were injected with.
+    """
     try:
-        return list(get_mcp_registry().get_tool_names() or [])
+        return list((registry or MCPRegistry()).get_tool_names() or [])
     except Exception as e:
         logger.debug(f"MCP registry unavailable: {e}")
         return []

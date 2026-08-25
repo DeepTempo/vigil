@@ -6,6 +6,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime
+from core.time import utcnow
 from typing import Any, Dict, Optional
 
 from core.config import get_integration_config, is_integration_enabled
@@ -85,7 +86,7 @@ class SplunkAdapter:
         last = parse_cursor_since(cursor) or since
         if last is not None:
             # Convert to relative Splunk earliest_time (rounded up to minute)
-            delta_minutes = max(int((datetime.utcnow() - last).total_seconds() // 60) + 1, 1)
+            delta_minutes = max(int((utcnow() - last).total_seconds() // 60) + 1, 1)
             earliest_time = f"-{delta_minutes}m"
         else:
             # First run: tiny window so we don't replay history.
@@ -150,7 +151,7 @@ def _splunk_event_to_finding(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "finding_id": finding_id,
         "data_source": "splunk",
         "external_id": external_id,
-        "timestamp": event.get("_time") or datetime.utcnow().isoformat(),
+        "timestamp": event.get("_time") or utcnow().isoformat(),
         "severity": severity,
         "status": "new",
         "title": event.get("search_name") or event.get("rule_name") or "Splunk Alert",

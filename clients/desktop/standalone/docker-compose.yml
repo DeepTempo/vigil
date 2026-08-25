@@ -88,16 +88,16 @@ services:
     ports:
       - "127.0.0.1:6987:6987"
     volumes:
-      # HOME is /app in the image, so the encrypted secret store resolves to
-      # /app/.vigil. Without this volume every UI-configured key dies on restart.
-      - vigil_home:/app/.vigil
-    # core/reporting/logs_router.py writes logs/ relative to the workdir, but /app is
-    # root-owned and the image runs as vigil(999), so startup dies on
-    # PermissionError. A named volume mounts root-owned and fails the same way;
-    # tmpfs can be given the right owner, and scratch is the correct shape here
-    # since real logs go to stdout.
+      # Must track HOME in Dockerfile.backend, or every UI-configured key dies
+      # on restart. The image pre-creates the dir owned by 1000:1000 so a fresh
+      # named volume inherits that; a volume from before #701 does not, and has
+      # to be recreated.
+      - vigil_home:/home/vigil/.vigil
+    # logs/ is workdir-relative and /app is root-owned, so tmpfs is the only
+    # mount that can carry the right owner. Keep uid/gid in step with
+    # Dockerfile.backend.
     tmpfs:
-      - /app/logs:uid=999,gid=999
+      - /app/logs:uid=1000,gid=1000
     depends_on:
       postgres:
         condition: service_healthy

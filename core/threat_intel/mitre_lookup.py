@@ -11,6 +11,7 @@ Findings in this codebase carry MITRE data in two shapes:
 """
 
 from datetime import datetime, timedelta
+from core.time import utcnow
 from typing import Iterable, Optional
 
 
@@ -21,7 +22,7 @@ def get_time_range(time_range: str) -> tuple[datetime, datetime]:
     and the API routers can both depend on it without either importing the
     other.
     """
-    end_time = datetime.utcnow()
+    end_time = utcnow()
 
     if time_range == "24h":
         start_time = end_time - timedelta(hours=24)

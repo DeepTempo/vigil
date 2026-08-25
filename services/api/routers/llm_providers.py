@@ -19,6 +19,7 @@ from core.llm.bifrost.admin import push_provider_key, sync_all_provider_models
 from core.llm.providers import provider_service
 from core.platform.url_safety import UrlSafetyError, validate_provider_url
 from core.routing import Auth, RouterMeta, UnitOfWorkSession
+from core.time import utcnow
 from core.secrets import delete_secret, get_secret, set_secret
 from core.storage.models import LLMProviderConfig, User
 from core.storage.schemas import LLMProviderConfigSchema
@@ -470,8 +471,6 @@ async def test_provider(
     if row is None:
         raise HTTPException(status_code=404, detail="provider not found")
 
-    from datetime import datetime
-
     success, error = await _probe_provider_connection(
         provider_type=row.provider_type,
         base_url=row.base_url,
@@ -480,7 +479,7 @@ async def test_provider(
         organization=(row.config or {}).get("organization"),
     )
 
-    row.last_test_at = datetime.utcnow()
+    row.last_test_at = utcnow()
     row.last_test_success = success
     row.last_error = None if success else error
 

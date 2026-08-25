@@ -7,9 +7,12 @@ manages the DB-backed custom agents, prefixed with "custom-".
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
+from core.agents.agent_ai_generator import AgentAIGenerator
+from core.deps import provide_agent_ai, provide_mcp_registry
+from core.integrations.mcp.registry import MCPRegistry
 from core.llm.system_prompt import validate_system_prompt
 from core.agents.custom_agent_service import (
     CustomAgentAlreadyExists,
@@ -120,7 +123,9 @@ async def list_custom_agents() -> Dict[str, Any]:
 
 
 @router.get("/agents/custom/_meta/tools")
-async def list_available_tools() -> Dict[str, Any]:
+async def list_available_tools(
+    registry: MCPRegistry = Depends(provide_mcp_registry),
+) -> Dict[str, Any]:
     """Return MCP tool names grouped by server prefix for the UI multiselect.
 
     Sources, in order of preference:
@@ -131,9 +136,6 @@ async def list_available_tools() -> Dict[str, Any]:
     """
     tools: List[str] = []
     try:
-        from core.integrations.mcp.registry import get_mcp_registry
-
-        registry = get_mcp_registry()
         names = registry.get_tool_names() or []
         tools = sorted(set(names))
     except Exception as e:
@@ -182,7 +184,10 @@ async def list_available_tools() -> Dict[str, Any]:
 
 
 @router.post("/agents/custom/generate")
-async def generate_custom_agent(payload: GenerateAgentRequest) -> Dict[str, Any]:
+async def generate_custom_agent(
+    payload: GenerateAgentRequest,
+    generator: AgentAIGenerator = Depends(provide_agent_ai),
+) -> Dict[str, Any]:
     """
     AI-assisted agent generation / refinement (issue #80 Phase 2).
 
@@ -190,9 +195,7 @@ async def generate_custom_agent(payload: GenerateAgentRequest) -> Dict[str, Any]
     and POSTs to /agents/custom to create. Pass ``current_draft`` + ``feedback``
     to iteratively refine a prior draft.
     """
-    from core.agents.agent_ai_generator import get_agent_ai_generator
-
-    result = await get_agent_ai_generator().generate(
+    result = await generator.generate(
         description=payload.description,
         current_draft=payload.current_draft,
         feedback=payload.feedback,
@@ -301,10 +304,16 @@ async def delete_custom_agent(agent_id: str):
             status_code=400,
             detail=f"Refusing to delete built-in agent: {agent_id}",
         )
-    deleted = service.delete_agent(agent_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=404, detail=f"Custom agent not found: {agent_id}"
-        )
-    _refresh_manager()
-    return None
+    try:
+        deleted = service.delete_agent(agent_id)
+        if not deleted:
+            raise HTTPException(
+                status_code=404, detail=f"Custom agent not found: {agent_id}"
+            )
+        _refresh_manager()
+        return None
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting custom agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

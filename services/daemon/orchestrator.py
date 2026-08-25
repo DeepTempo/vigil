@@ -15,16 +15,17 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta
+from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from core.agents.builtins import ORCHESTRATION_DECISION_ID, ORCHESTRATOR_ACTOR
 from core.config import get_settings
-from services.daemon.agent_runner import AgentRunner
 from services.daemon.config import OrchestratorConfig
 
 try:
-    from core.telemetry import get_meter, get_tracer, inject_traceparent
     from opentelemetry.trace import SpanKind
+
+    from core.telemetry import get_meter, get_tracer, inject_traceparent
 
     _tracer = get_tracer("vigil.daemon.orchestrator")
     _orch_meter = get_meter("vigil.daemon.orchestrator")
@@ -56,17 +57,19 @@ try:
 except Exception:
     _tracer = None  # type: ignore[assignment]
     _inv_created = _inv_completed = _inv_failed = _dedup_prevented = _stuck_agents = None  # type: ignore[assignment]
-from services.daemon.plan_generator import (
-    count_steps,
-    generate_case_review_context,
-    generate_case_review_plan,
-    generate_initial_context,
-    generate_initial_state,
-    generate_plan,
-    select_workflow,
-)
+from core.agents.projections import read_projection, run_id_for
+from core.agents.queue import build_start_job, enqueue_run
+from core.response.checkpoints import raise_for_checkpoint
+from services.daemon.plan_generator import (count_steps,
+                                            generate_case_review_context,
+                                            generate_case_review_plan,
+                                            generate_initial_context,
+                                            generate_initial_state,
+                                            generate_plan, select_workflow)
 from services.daemon.shared_intel import SharedIntelligence
 from services.daemon.workdir import WorkdirManager
+from core.integrations.mcp.client import process_mcp_client
+from core.response.approval_service import ApprovalService
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +91,22 @@ def _inv_as_dict(inv):
 class Orchestrator:
     """Master agent that manages autonomous SOC investigations."""
 
-    def __init__(self, config: OrchestratorConfig):
+    def __init__(
+        self,
+        config: OrchestratorConfig,
+        approvals: Optional[ApprovalService] = None,
+        mcp_client=None,
+    ):
         self.config = config
         self._enabled = config.enabled
         self._shutdown_event: Optional[asyncio.Event] = None
+        self._approvals = approvals or ApprovalService()
+        self._mcp_client = (
+            mcp_client if mcp_client is not None else process_mcp_client()
+        )
 
         self.workdir = WorkdirManager(config.workdir_base)
         self.shared_intel = SharedIntelligence()
-        self.agent_runner = AgentRunner(config, self.workdir)
 
         self.investigation_queue: asyncio.Queue = asyncio.Queue()
 
@@ -129,13 +140,14 @@ class Orchestrator:
     async def kill(self):
         """Emergency stop: cancel all running agents immediately."""
         self._enabled = False
-        await self.agent_runner.stop_all()
+        self._abandon_in_flight()
         logger.warning("Orchestrator KILLED - all agents stopped")
 
     def _init_services(self):
         if self._data_service is None:
             try:
-                from core.storage.database_data_service import DatabaseDataService
+                from core.storage.database_data_service import \
+                    DatabaseDataService
 
                 self._data_service = DatabaseDataService()
                 logger.info("Orchestrator: Database service initialized")
@@ -188,7 +200,7 @@ class Orchestrator:
                     "Orchestrator disabled - loops stopped, waiting for re-enable"
                 )
 
-        await self.agent_runner.stop_all()
+        self._abandon_in_flight()
         logger.info("Orchestrator shutdown complete")
 
     def _sync_enabled_from_db(self):
@@ -336,7 +348,7 @@ class Orchestrator:
         shutdown_event: Optional[asyncio.Event] = None,
     ):
         """Core investigation creation logic."""
-        inv_id = f"inv-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+        inv_id = f"inv-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
         total_steps = count_steps(workflow_id)
 
         workdir = self.workdir.create(inv_id)
@@ -363,7 +375,7 @@ class Orchestrator:
         can_start_now = (
             not self.config.dry_run
             and shutdown_event
-            and self.agent_runner.active_count < self.config.max_concurrent_agents
+            and self._in_flight() < self.config.max_concurrent_agents
         )
 
         # Start root investigation span — will be the parent for all agent spans
@@ -404,7 +416,8 @@ class Orchestrator:
             "max_iterations": self.config.max_iterations_per_agent,
             "max_cost_usd": self.config.max_cost_per_investigation,
             "max_runtime_seconds": self.config.max_runtime_per_investigation,
-            "otel_traceparent": _tp,  # propagated to agent_runner across async boundary
+            "otel_traceparent": _tp,
+            "run_id": run_id_for(inv_id),
         }
 
         self._save_investigation(inv_record)
@@ -412,7 +425,6 @@ class Orchestrator:
         if _inv_created is not None:
             _inv_created.add(1)
 
-        # End the root span here — agent_runner will re-attach as a child
         try:
             if _inv_span is not None:
                 _inv_span.end()
@@ -436,7 +448,7 @@ class Orchestrator:
         await self._check_cross_correlations(inv_id)
 
         if can_start_now:
-            await self.agent_runner.start_agent(inv_record, shutdown_event)
+            await self._enqueue_investigation(inv_record)
         else:
             logger.info(f"Agent pool full, {inv_id} queued for pickup")
 
@@ -453,15 +465,13 @@ class Orchestrator:
                 )
                 if not inv_id:
                     continue
-                if self.agent_runner.is_running(inv_id):
-                    continue
-                if self.agent_runner.active_count >= self.config.max_concurrent_agents:
+                if self._in_flight() >= self.config.max_concurrent_agents:
                     return
 
                 self._update_investigation_status(inv_id, "assigned")
                 inv_dict = _inv_as_dict(inv)
                 inv_dict["status"] = "assigned"
-                await self.agent_runner.start_agent(inv_dict, shutdown_event)
+                await self._enqueue_investigation(inv_dict)
 
     # -------------------------------------------------------------------------
     # Supervision Loop
@@ -474,6 +484,14 @@ class Orchestrator:
                 if not self._enabled:
                     await self._sleep(shutdown_event, 10)
                     continue
+
+                # Before anything reads a row: the row is a copy of the ledger,
+                # and a supervisor deciding on a stale copy decides on nothing.
+                for status in ("executing", "waiting_approval"):
+                    for inv in self._get_investigations_by_status(status):
+                        reconciling = _inv_as_dict(inv).get("investigation_id")
+                        if reconciling:
+                            await self._reconcile(reconciling)
 
                 waiting = self._get_investigations_by_status("waiting_approval")
                 for inv in waiting:
@@ -499,7 +517,7 @@ class Orchestrator:
                         )
 
                 executing = self._get_investigations_by_status("executing")
-                now = datetime.utcnow()
+                now = utcnow()
 
                 for inv in executing:
                     inv_dict = _inv_as_dict(inv)
@@ -524,7 +542,6 @@ class Orchestrator:
                                 inv_dict.get("cost_usd", 0.0),
                                 self.config.stale_threshold,
                             )
-                            await self.agent_runner.stop_agent(inv_id)
                             self._update_investigation_status(
                                 inv_id, "failed", "Stale: no activity"
                             )
@@ -557,10 +574,8 @@ class Orchestrator:
                             inv_dict.get("iteration_count"),
                             inv_dict.get("current_activity"),
                         )
-                        await self.agent_runner.stop_agent(inv_id)
-                        # Match agent_runner's failure_reason vocabulary so
-                        # post-mortems treat both supervisor-side and
-                        # runner-side cost kills identically. (Issue #147)
+                        # The budget seam refuses the next call at the same
+                        # ceiling; this is the record catching up, not the kill.
                         self._update_investigation_status(
                             inv_id, "failed", "Cost budget exceeded"
                         )
@@ -584,9 +599,128 @@ class Orchestrator:
 
             await self._sleep(shutdown_event, self.config.loop_interval // 2)
 
+    # -------------------------------------------------------------------------
+    # The run: enqueued here, driven by the agent worker, read back as a projection
+    # -------------------------------------------------------------------------
+
+    IN_FLIGHT = ("assigned", "executing", "waiting_approval")
+
+    def _in_flight(self) -> int:
+        return sum(len(self._get_investigations_by_status(s)) for s in self.IN_FLIGHT)
+
+    # A run belongs to the worker, so nothing here stops one. The record is marked
+    # and the run finishes or hits its ceiling; reaping a stalled worker is #633.
+    def _abandon_in_flight(self) -> None:
+        for status in self.IN_FLIGHT:
+            for inv in self._get_investigations_by_status(status):
+                inv_id = _inv_as_dict(inv).get("investigation_id")
+                if inv_id:
+                    self._update_investigation_status(
+                        inv_id,
+                        "failed",
+                        "Orchestrator stopped while the run was in flight",
+                    )
+
+    async def _enqueue_investigation(self, inv_record: Dict) -> None:
+        inv_id = inv_record["investigation_id"]
+        run_id = inv_record.get("run_id") or run_id_for(inv_id)
+        request = {
+            # The workflow resolves both layers, so no config path travels beside it.
+            "playbook": f"workflow:{inv_record['workflow_id']}",
+            "config": "",
+            "arch": "",
+            "prompt": self.workdir.read_file(inv_id, "context.md") or "",
+            # ORCHESTRATOR_MAX_COST and ORCHESTRATOR_MAX_RUNTIME keep their meaning
+            # as the ceilings the budget seam refuses the next call at.
+            "overrides": {
+                "budgets": {
+                    "max_calls": self.config.max_iterations_per_agent,
+                    "max_cost_usd": self.config.max_cost_per_investigation,
+                    "max_wall_ms": self.config.max_runtime_per_investigation * 1000,
+                }
+            },
+        }
+
+        try:
+            job = build_start_job(
+                run_id, "investigate", request, enqueued_by="orchestrator"
+            )
+            await enqueue_run(job)
+        except Exception as exc:  # noqa: BLE001 — a queue that refuses is not a crash
+            logger.error("could not enqueue %s: %s", inv_id, exc)
+            self._update_investigation_status(
+                inv_id, "failed", f"Could not enqueue: {exc}"
+            )
+            return
+
+        self._update_investigation_status(inv_id, "executing")
+        logger.info("enqueued investigation %s as run %s", inv_id, run_id)
+
+    # The ledger is the record and this row is the copy an operator reads, so the
+    # copy is reconciled from the projection rather than written alongside it.
+    async def _reconcile(self, inv_id: str) -> None:
+        projection = await read_projection(run_id_for(inv_id))
+        if projection is None:
+            return
+
+        self._record_progress(inv_id, projection)
+        checkpoint = projection.get("open_checkpoint")
+        if checkpoint:
+            self._raise_run_approval(inv_id, checkpoint)
+            self._update_investigation_status(inv_id, "waiting_approval")
+            return
+
+        if projection.get("status") != "terminal":
+            self._update_investigation_status(inv_id, "executing")
+            return
+
+        outcome = projection.get("outcome")
+        reason = projection.get("reason") or ""
+        if outcome == "completed":
+            self._update_investigation_status(inv_id, "review_submitted", reason)
+        else:
+            self._update_investigation_status(inv_id, "failed", reason or str(outcome))
+
+    # The heartbeat. A failure here is logged loudly on purpose (#147): swallowed
+    # quietly, last_activity_at stops moving and the supervisor stale-kills a run
+    # that is perfectly healthy.
+    def _record_progress(self, inv_id: str, projection: Dict[str, Any]) -> None:
+        try:
+            from core.storage.connection import get_db_manager
+            from core.storage.models import Investigation
+
+            with get_db_manager().session_scope() as session:
+                inv = (
+                    session.query(Investigation)
+                    .filter_by(investigation_id=inv_id)
+                    .first()
+                )
+                if inv is None:
+                    logger.warning("progress for %s: row not found", inv_id)
+                    return
+                inv.iteration_count = projection.get("iterations", 0)
+                inv.last_activity_at = utcnow()
+                # Null is "the gateway priced nothing", which is not zero spent.
+                cost = projection.get("cost_usd")
+                if cost is not None:
+                    inv.cost_usd = float(cost)
+        except Exception:
+            logger.error("DB update for %s failed", inv_id, exc_info=True)
+
+    def _raise_run_approval(self, inv_id: str, checkpoint: Dict[str, Any]) -> None:
+        question = checkpoint.get("question") or "Approve this action?"
+        raise_for_checkpoint(
+            run_id=run_id_for(inv_id),
+            checkpoint_id=str(checkpoint.get("checkpoint_id")),
+            title=f"Approval required: {inv_id}",
+            description=question,
+            reason="The investigation parked on a call that needs a human",
+            parameters={"investigation_id": inv_id},
+        )
+
     def _track_hourly_cost(self):
         """Track rolling hourly cost for budget enforcement."""
-        now = datetime.utcnow()
+        now = utcnow()
         cutoff = now - timedelta(hours=1)
         self._hourly_costs = [c for c in self._hourly_costs if c["ts"] > cutoff]
         hourly_total = sum(c["cost"] for c in self._hourly_costs)
@@ -724,9 +858,9 @@ class Orchestrator:
     async def _create_approval_action(self, inv_id: str, action: Dict):
         """Create an approval action for proposed response."""
         try:
-            from core.response.approval_service import ActionType, get_approval_service
+            from core.response.approval_service import ActionType
 
-            service = get_approval_service()
+            service = self._approvals
 
             action_str = action.get("action", "unknown")
             try:
@@ -782,7 +916,7 @@ class Orchestrator:
             priority = case_data.get("priority", "medium")
 
             inv_id = (
-                f"inv-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+                f"inv-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
             )
             total_steps = count_steps("case-review")
 
@@ -861,7 +995,8 @@ class Orchestrator:
         try:
             # Route through the single helper (#129) so the daemon,
             # MCP server, and ClaudeService all resolve the same path.
-            from core.platform.mempalace_paths import get_closed_cases_dir, get_palace_path
+            from core.platform.mempalace_paths import (get_closed_cases_dir,
+                                                       get_palace_path)
 
             data_dir = get_palace_path()
             get_closed_cases_dir()  # mkdir side-effect for investigation snapshots
@@ -889,7 +1024,7 @@ class Orchestrator:
                         "proposed_actions": state.get("proposed_actions", []),
                         "completed_steps": state.get("completed_steps", []),
                         "case_id": state.get("case_id"),
-                        "completed_at": datetime.utcnow().isoformat(),
+                        "completed_at": utcnow().isoformat(),
                     },
                     indent=2,
                 )
@@ -1015,9 +1150,7 @@ class Orchestrator:
 
             if case_a and case_b and case_a != case_b:
                 try:
-                    from core.integrations.mcp.client import get_mcp_client
-
-                    client = get_mcp_client()
+                    client = self._mcp_client
                     if client:
                         await client.call_tool(
                             "link_related_cases",
@@ -1262,7 +1395,7 @@ class Orchestrator:
                     if notes:
                         inv.master_review_notes = notes
                     if status == "completed":
-                        inv.completed_at = datetime.utcnow()
+                        inv.completed_at = utcnow()
         except Exception as e:
             logger.error(f"Failed to update investigation status: {e}")
 
@@ -1292,7 +1425,7 @@ class Orchestrator:
         Investigations" button as a hard reset for the auto-investigate
         subsystem.
         """
-        await self.agent_runner.stop_all()
+        self._abandon_in_flight()
 
         deleted = 0
         try:
@@ -1300,9 +1433,7 @@ class Orchestrator:
             from core.storage.models import Investigation
 
             with get_db_manager().session_scope() as session:
-                deleted = session.query(Investigation).delete(
-                    synchronize_session=False
-                )
+                deleted = session.query(Investigation).delete(synchronize_session=False)
         except Exception as e:
             logger.error(f"Failed to delete investigations from DB: {e}")
             raise

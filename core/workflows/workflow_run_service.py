@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
+from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def generate_run_id() -> str:
     """Return a new run_id shaped ``wfr-YYYYMMDD-<uuid8>``."""
-    return f"wfr-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+    return f"wfr-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
 
 
 class WorkflowRunService:
@@ -33,14 +34,18 @@ class WorkflowRunService:
         trigger_context: Optional[Dict[str, Any]] = None,
         triggered_by: Optional[str] = None,
         skill_tools_available: Optional[List[str]] = None,
+        run_id: Optional[str] = None,
     ) -> Optional[str]:
         """Create a ``workflow_runs`` row with ``status='running'``.
 
         Returns the new ``run_id`` on success, ``None`` if the DB
         write fails (the workflow still executes — run history is
         best-effort so a DB outage can't block operations).
+
+        A caller may supply ``run_id`` when the run is already
+        identified elsewhere, so one run carries one id everywhere.
         """
-        run_id = generate_run_id()
+        run_id = run_id or generate_run_id()
         try:
             db = get_db_manager()
             with db.session_scope() as session:
@@ -53,7 +58,7 @@ class WorkflowRunService:
                     status="running",
                     triggered_by=triggered_by,
                     trigger_context=trigger_context or {},
-                    started_at=datetime.utcnow(),
+                    started_at=utcnow(),
                     skill_tools_available=list(skill_tools_available or []),
                 )
                 session.add(row)
@@ -90,6 +95,7 @@ class WorkflowRunService:
         status: str,
         result_summary: Optional[str] = None,
         error: Optional[str] = None,
+        cost_usd: Optional[float] = None,
     ) -> bool:
         """Mark a run terminal. ``status`` must be one of the check-
         constrained values: completed | failed | cancelled."""
@@ -103,7 +109,7 @@ class WorkflowRunService:
                 if row is None:
                     logger.warning("finalize_run: unknown run %s", run_id)
                     return False
-                now = datetime.utcnow()
+                now = utcnow()
                 row.status = status
                 row.finished_at = now
                 # Truncate result_summary to avoid committing megabyte
@@ -113,6 +119,8 @@ class WorkflowRunService:
                     row.result_summary = result_summary[:50_000]
                 if error is not None:
                     row.error = str(error)[:5_000]
+                if cost_usd is not None:
+                    row.total_cost_usd = cost_usd
                 if row.started_at is not None:
                     delta = now - row.started_at
                     row.duration_ms = int(delta.total_seconds() * 1000)
@@ -252,14 +260,3 @@ class WorkflowRunService:
         except SQLAlchemyError as e:
             logger.warning("Error listing phases for run %s: %s", run_id, e)
             return []
-
-
-_service: Optional[WorkflowRunService] = None
-
-
-def get_workflow_run_service() -> WorkflowRunService:
-    """Process-wide singleton."""
-    global _service
-    if _service is None:
-        _service = WorkflowRunService()
-    return _service

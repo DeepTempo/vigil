@@ -1,0 +1,21 @@
+---
+name: beaconing on the finance segment
+
+objectives:
+  - A host on the finance segment is beaconing to attacker-controlled infrastructure.
+  - Credentials taken from that host have been reused on a second host.
+
+scope:
+  segment: finance
+  window_days: 7
+
+directives:
+  workers: |
+    The data set is a seven-day export of endpoint, authentication and network
+    records for the finance segment only. Anything outside it is not missing, it
+    was never collected.
+  threat_intel: |
+    The indicator feed was snapshotted on the first day of the window.
+---
+Finance reported a workstation that stays busy overnight. Nothing has been
+confirmed; the overnight traffic is the only thing anyone has looked at.

@@ -7,6 +7,7 @@ Fetches security findings from AWS Security Hub and converts them to the standar
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+from core.time import utcnow
 import uuid
 
 from core.ingestion.siem_ingestion_service import SIEMIngestionService
@@ -64,9 +65,9 @@ class AWSSecurityHubIngestion(SIEMIngestionService):
             
             # Set time range
             if not start_time:
-                start_time = datetime.utcnow() - timedelta(hours=24)
+                start_time = utcnow() - timedelta(hours=24)
             if not end_time:
-                end_time = datetime.utcnow()
+                end_time = utcnow()
             
             # Build filters
             filters = {
@@ -161,7 +162,7 @@ class AWSSecurityHubIngestion(SIEMIngestionService):
                 "description": alert.get('Description', ''),
                 "severity": severity,
                 "data_source": "aws_security_hub",
-                "timestamp": alert.get('CreatedAt', datetime.utcnow().isoformat()),
+                "timestamp": alert.get('CreatedAt', utcnow().isoformat()),
                 "raw_data": alert,
                 "metadata": {
                     "aws_account_id": alert.get('AwsAccountId'),

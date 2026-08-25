@@ -4,10 +4,10 @@ Vigil integrates with four sandboxes:
 
 | Sandbox | Hosting | MCP source |
 |---|---|---|
-| Hybrid Analysis | cloud (Falcon) | `tools/hybrid_analysis.py` |
-| Any.Run | cloud | `tools/anyrun.py` |
+| Hybrid Analysis | cloud (Falcon) | `core/integrations/hybrid_analysis/tool.py` |
+| Any.Run | cloud | `core/integrations/anyrun/tool.py` |
 | Joe Sandbox | cloud or on-prem | external MCP (`joesandboxMCP`) wired via `mcp-config.json` |
-| CAPE Sandbox | self-hosted (bring your own) | `tools/cape_sandbox.py` (new in #86) |
+| CAPE Sandbox | self-hosted (bring your own) | `core/integrations/cape_sandbox/tool.py` (new in #86) |
 
 The Malware Analyst agent loads all four. The daemon has an opt-in
 auto-submission pipeline that ties sandbox output back to findings and

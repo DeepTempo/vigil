@@ -1,16 +1,18 @@
 import json
 import logging
+import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, List, Optional
 
-from pydantic import field_validator
+from pydantic import ValidationError, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
-_VIGIL_DIRNAME = '.vigil'
-_LEGACY_DIRNAME = '.deeptempo'
+_VIGIL_DIRNAME = ".vigil"
+_LEGACY_DIRNAME = ".deeptempo"
 
 REQUEST_TIMEOUT = 30
 STREAM_TIMEOUT = 120
@@ -19,19 +21,60 @@ DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_SANDBOX_FILE_TYPES = "exe,dll,doc,docx,xls,xlsx,pdf,js,vbs,ps1,bat,msi"
 
 
-# Reads prefer ~/.vigil and fall back to the legacy ~/.deeptempo copy; writes
-# always target ~/.vigil, so data drifts over on the next save.
+# The State Directory: the one per-install directory holding what the metadata
+# DB does not. VIGIL_DIR if exported, else ~/.vigil — nothing else. A write that
+# cannot happen raises; callers that want to degrade catch it themselves.
+#
+# Reads fall back to the legacy ~/.deeptempo copy from before the rename; writes
+# always target the State Directory, so data drifts over on the next save.
 def vigil_path(*parts: str, write: bool = False) -> Path:
-    target = Path.home() / _VIGIL_DIRNAME  # per call, so tests can patch home
-    legacy = Path.home() / _LEGACY_DIRNAME
+    # os.environ, not Settings: resolves before Settings is safe to build, so
+    # VIGIL_DIR must be exported rather than set in .env.
+    override = os.environ.get("VIGIL_DIR")  # noqa: ENV001 - pre-Settings bootstrap
+    if override:
+        target = legacy = Path(override)
+    else:
+        home = Path.home()  # per call, so tests can patch home
+        target, legacy = home / _VIGIL_DIRNAME, home / _LEGACY_DIRNAME
     if parts:
         target, legacy = target.joinpath(*parts), legacy.joinpath(*parts)
     if write:
         (target.parent if parts else target).mkdir(parents=True, exist_ok=True)
         return target
-    if not target.exists() and legacy.exists():
+    # Only ever a per-file shim. Asked for the directory itself it must answer
+    # with the State Directory, or the secrets backend adopts the legacy copy as
+    # its write target.
+    if parts and not target.exists() and legacy.exists():
         return legacy
     return target
+
+
+def state_dir_status() -> dict:
+    """Where the State Directory resolved to, and whether it can be written.
+
+    Read-only: never creates the directory, so a health probe cannot be the
+    thing that brings the credential store into existence. A directory that does
+    not exist yet is probed at its nearest existing ancestor, which answers the
+    question that matters — whether the first save will land.
+    """
+    path = vigil_path()
+    status: dict = {"path": str(path), "exists": path.is_dir()}
+    target = path
+    while not target.is_dir() and target != target.parent:
+        target = target.parent
+    # Unique per process: a shared name races with concurrent health probes,
+    # where one caller's unlink makes the other's look unwritable.
+    probe = target / f".vigil-write-probe.{os.getpid()}"
+    try:
+        probe.touch()
+        return {**status, "writable": True}
+    except OSError as exc:
+        return {**status, "writable": False, "error": str(exc)}
+    finally:
+        try:
+            probe.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -115,6 +158,9 @@ class Settings(BaseSettings):
     # Host-run default: `bifrost` resolves only inside the compose network, and
     # compose, Helm and start.sh all inject the right hostname explicitly.
     bifrost_url: str = "http://localhost:8080"
+    # Where the agent worker listens. Two calls go this way rather than through
+    # the queue: a chat turn, which is synchronous, and a run's projection.
+    agent_url: str = "http://localhost:6989"
     anthropic_base_url: str = ""
     ollama_url: str = "http://localhost:11434"
     default_model: str = "claude-sonnet-4-6"
@@ -257,18 +303,35 @@ def get_settings() -> Settings:
     return Settings()
 
 
+def _format_validation_error(exc: ValidationError) -> str:
+    details = []
+    for error in exc.errors():
+        loc = ".".join(str(part) for part in error.get("loc", ()))
+        msg = error.get("msg", "invalid value")
+        details.append(f"{loc}: {msg}" if loc else msg)
+    return "; ".join(details) or "invalid settings"
+
+
+def validate_settings_or_exit() -> Settings:
+    try:
+        return get_settings()
+    except ValidationError as exc:
+        print(f"configuration error: {_format_validation_error(exc)}", file=sys.stderr)
+        sys.exit(os.EX_CONFIG)
+
+
 def is_demo_mode() -> bool:
     enabled = get_settings().demo_mode
     if enabled is not None:
         return enabled
-    return get_general_config('demo_mode', False)
+    return get_general_config("demo_mode", False)
 
 
 def _load_json_config(path: Path) -> dict:
     if not path.exists():
         return {}
     try:
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             return json.load(f)
     except (json.JSONDecodeError, IOError) as e:
         logger.error(f"Config load error {path}: {e}")
@@ -276,17 +339,17 @@ def _load_json_config(path: Path) -> dict:
 
 
 def get_integration_config(integration_id: str) -> dict[str, Any]:
-    data = _load_json_config(vigil_path('integrations_config.json'))
-    if integration_id not in data.get('enabled_integrations', []):
+    data = _load_json_config(vigil_path("integrations_config.json"))
+    if integration_id not in data.get("enabled_integrations", []):
         return {}
-    return data.get('integrations', {}).get(integration_id, {})
+    return data.get("integrations", {}).get(integration_id, {})
 
 
 def is_integration_enabled(integration_id: str) -> bool:
-    data = _load_json_config(vigil_path('integrations_config.json'))
-    return integration_id in data.get('enabled_integrations', [])
+    data = _load_json_config(vigil_path("integrations_config.json"))
+    return integration_id in data.get("enabled_integrations", [])
 
 
 def get_general_config(key: str, default: Any = None) -> Any:
-    data = _load_json_config(vigil_path('general_config.json'))
+    data = _load_json_config(vigil_path("general_config.json"))
     return data.get(key, default)

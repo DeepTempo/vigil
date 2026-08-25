@@ -23,19 +23,13 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from core.config import get_settings
+from core.config import get_settings, vigil_path
 logger = logging.getLogger(__name__)
-
-# Matches mcp-config.json's default for the mempalace server. Keep in
-# sync with that file — both point at the same directory so the MCP
-# server, daemon, and ClaudeService-side integration all see the same
-# palace without any env var set.
-_DEFAULT_PALACE = Path.home() / ".vigil" / "mempalace" / "palace"
 
 
 def get_palace_path(*, ensure_exists: bool = True) -> Path:
     raw = get_settings().mempalace_palace_path
-    palace = Path(raw).expanduser() if raw else _DEFAULT_PALACE
+    palace = Path(raw).expanduser() if raw else vigil_path("mempalace", "palace")
     if ensure_exists:
         try:
             palace.mkdir(parents=True, exist_ok=True)

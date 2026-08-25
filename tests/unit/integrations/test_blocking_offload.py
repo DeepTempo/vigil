@@ -120,9 +120,9 @@ async def test_defender_fetch_alerts_does_not_block_the_loop():
 
 @pytest.mark.asyncio
 async def test_slack_escalation_does_not_block_the_loop():
-    from core.response.autonomous_response_service import get_autonomous_response_service
+    from core.response.autonomous_response_service import AutonomousResponseService
 
-    svc = get_autonomous_response_service()
+    svc = AutonomousResponseService()
     response = MagicMock()
     response.status_code = 200
     response.json.return_value = {"ok": True}

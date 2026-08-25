@@ -1,21 +1,25 @@
 """Configuration API endpoints."""
 
 from typing import Any, Dict, Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from pathlib import Path
 import json
 import logging
 import os
 
+from core.deps import (
+    provide_demo_data,
+    provide_integration_bridge,
+    provide_mcp_client,
+)
+from core.integrations.integration_bridge_service import IntegrationBridgeService
 from core.routing import Auth, RouterMeta
 from core.secrets import get_secret, set_secret
 from core.storage.config_service import get_config_service
 from core.llm.defaults import DEFAULT_MODEL
 from core.integrations.integration_secrets import redact_secrets, secret_fields_for, split_secrets
-from core.config import get_settings, vigil_path
-
-from core.integrations.integration_bridge_service import get_integration_bridge
+from core.config import get_settings, state_dir_status, vigil_path
 from core.secrets_manager import get_secrets_manager
 
 router = APIRouter()
@@ -26,6 +30,19 @@ ROUTER_META = RouterMeta(
     auth=Auth.REQUIRED,
 )
 logger = logging.getLogger(__name__)
+
+
+def _mirror_to_file(filename: str, config_data: Dict[str, Any]) -> None:
+    """Copy config the database already owns, for backward compatibility.
+
+    Best-effort: the database write has committed, so an unwritable State
+    Directory must not fail a request that succeeded.
+    """
+    try:
+        with open(vigil_path(filename, write=True), "w") as f:
+            json.dump(config_data, f, indent=2)
+    except OSError as e:
+        logger.warning(f"Could not mirror {filename} to the State Directory: {e}")
 
 
 class ClaudeConfig(BaseModel):
@@ -170,21 +187,16 @@ async def set_demo_mode(config: DemoModeConfig):
 
 
 @router.post("/demo-mode/reset")
-async def reset_demo_data():
+async def reset_demo_data(demo_service=Depends(provide_demo_data)):
     """
     Reset demo data to regenerate sample findings and cases.
 
     Returns:
         Success status
     """
-    from core.config import is_demo_mode
-
-    if not is_demo_mode():
+    if demo_service is None:
         raise HTTPException(status_code=400, detail="Demo mode is not enabled")
 
-    from core.platform.demo_data_service import get_demo_service
-
-    demo_service = get_demo_service()
     demo_service.reset()
 
     return {
@@ -234,7 +246,7 @@ async def set_claude_config(config: ClaudeConfig):
     Returns:
         Success status
     """
-    # Use standard environment variable name
+        # Use standard environment variable name
     success = set_secret("CLAUDE_API_KEY", config.api_key)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save API key")
@@ -377,10 +389,7 @@ async def set_s3_config(config: S3Config):
             status_code=500, detail="Failed to save S3 config to database"
         )
 
-    # Also save to file for backward compatibility
-    config_file = vigil_path("s3_config.json", write=True)
-    with open(config_file, "w") as f:
-        json.dump(config_data, f, indent=2)
+    _mirror_to_file("s3_config.json", config_data)
 
     # Only overwrite credentials if new values were provided
     if config.access_key_id:
@@ -458,60 +467,54 @@ async def set_platform_database_config(config: PlatformDatabaseProxyConfig):
 
     Empty-string secrets mean "leave existing value untouched".
     """
-    try:
-        proxy_type = (config.proxy_type or "none").strip().lower()
-        if proxy_type not in ("none", "pgbouncer", "ssh_tunnel"):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "proxy_type must be one of: none, pgbouncer, ssh_tunnel "
-                    "(http/socks5 are not supported for the platform DB)"
-                ),
-            )
-
-        # Non-secret fields — always overwrite so disabling a setting
-        # actually clears the stored value.
-        set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_type"], proxy_type)
-        set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_host"], config.proxy_host or "")
-        set_secret(
-            _PLATFORM_DB_PROXY_KEYS["proxy_port"],
-            str(config.proxy_port) if config.proxy_port else "",
-        )
-        set_secret(
-            _PLATFORM_DB_PROXY_KEYS["proxy_username"], config.proxy_username or ""
-        )
-        set_secret(
-            _PLATFORM_DB_PROXY_KEYS["ssh_private_key_path"],
-            config.ssh_private_key_path or "",
-        )
-        set_secret(
-            _PLATFORM_DB_PROXY_KEYS["verify_proxy_tls"],
-            "true" if config.verify_proxy_tls else "false",
-        )
-
-        # Secret fields — only overwrite when caller supplied a non-empty
-        # value, matching the integrations-config convention.
-        if config.proxy_password:
-            set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_password"], config.proxy_password)
-        if config.ssh_key_passphrase:
-            set_secret(
-                _PLATFORM_DB_PROXY_KEYS["ssh_key_passphrase"],
-                config.ssh_key_passphrase,
-            )
-
-        return {
-            "success": True,
-            "message": (
-                "Platform DB proxy configuration saved. "
-                "Restart the backend for changes to take effect."
+    proxy_type = (config.proxy_type or "none").strip().lower()
+    if proxy_type not in ("none", "pgbouncer", "ssh_tunnel"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "proxy_type must be one of: none, pgbouncer, ssh_tunnel "
+                "(http/socks5 are not supported for the platform DB)"
             ),
-            "restart_required": True,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error setting platform DB proxy config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        )
+
+    # Non-secret fields — always overwrite so disabling a setting
+    # actually clears the stored value.
+    set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_type"], proxy_type)
+    set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_host"], config.proxy_host or "")
+    set_secret(
+        _PLATFORM_DB_PROXY_KEYS["proxy_port"],
+        str(config.proxy_port) if config.proxy_port else "",
+    )
+    set_secret(
+        _PLATFORM_DB_PROXY_KEYS["proxy_username"], config.proxy_username or ""
+    )
+    set_secret(
+        _PLATFORM_DB_PROXY_KEYS["ssh_private_key_path"],
+        config.ssh_private_key_path or "",
+    )
+    set_secret(
+        _PLATFORM_DB_PROXY_KEYS["verify_proxy_tls"],
+        "true" if config.verify_proxy_tls else "false",
+    )
+
+    # Secret fields — only overwrite when caller supplied a non-empty
+    # value, matching the integrations-config convention.
+    if config.proxy_password:
+        set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_password"], config.proxy_password)
+    if config.ssh_key_passphrase:
+        set_secret(
+            _PLATFORM_DB_PROXY_KEYS["ssh_key_passphrase"],
+            config.ssh_key_passphrase,
+        )
+
+    return {
+        "success": True,
+        "message": (
+            "Platform DB proxy configuration saved. "
+            "Restart the backend for changes to take effect."
+        ),
+        "restart_required": True,
+    }
 
 
 @router.post("/s3/test")
@@ -657,10 +660,7 @@ async def set_theme_config(config: ThemeConfig):
             status_code=500, detail="Failed to save theme to database"
         )
 
-    # Also save to file for backward compatibility
-    config_file = vigil_path("theme_config.json", write=True)
-    with open(config_file, "w") as f:
-        json.dump(config_data, f, indent=2)
+    _mirror_to_file("theme_config.json", config_data)
 
     return {"success": True, "message": "Theme saved"}
 
@@ -737,7 +737,10 @@ async def get_integrations_config():
 
 
 @router.post("/integrations")
-async def set_integrations_config(config: IntegrationsConfig):
+async def set_integrations_config(
+    config: IntegrationsConfig,
+    bridge: IntegrationBridgeService = Depends(provide_integration_bridge),
+):
     """
     Set integrations configuration.
 
@@ -754,80 +757,86 @@ async def set_integrations_config(config: IntegrationsConfig):
     Returns:
         Success status
     """
-    try:
-        config_service = get_config_service(user_id="web_ui")
+    config_service = get_config_service(user_id="web_ui")
 
-        # Build a sanitized integrations dict (no secrets) for DB/JSON
-        # persistence. Apply secret writes to the encrypted store.
-        sanitized_integrations: dict = {}
-        for integration_id, raw_config in config.integrations.items():
-            secrets, non_secrets = split_secrets(integration_id, raw_config)
+    # Build a sanitized integrations dict (no secrets) for DB/JSON
+    # persistence. Apply secret writes to the encrypted store.
+    sanitized_integrations: dict = {}
+    for integration_id, raw_config in config.integrations.items():
+        secrets, non_secrets = split_secrets(integration_id, raw_config)
 
-            # Empty string ⇒ user didn't re-type the secret on edit; leave
-            # the existing encrypted value untouched. Non-empty ⇒ overwrite.
-            for env_key, value in secrets.items():
-                if value == "":
-                    continue
-                if not set_secret(env_key, value):
-                    logger.error(
-                        f"Failed to write secret '{env_key}' for "
-                        f"integration '{integration_id}'"
-                    )
+        # Empty string ⇒ user didn't re-type the secret on edit; leave
+        # the existing encrypted value untouched. Non-empty ⇒ overwrite.
+        for env_key, value in secrets.items():
+            if value == "":
+                continue
+            if not set_secret(env_key, value):
+                logger.error(
+                    f"Failed to write secret '{env_key}' for "
+                    f"integration '{integration_id}'"
+                )
 
-            sanitized_integrations[integration_id] = non_secrets
+        sanitized_integrations[integration_id] = non_secrets
 
-            enabled = integration_id in config.enabled_integrations
-            success = config_service.set_integration_config(
-                integration_id=integration_id,
-                config=non_secrets,
-                enabled=enabled,
-                change_reason="Updated via Settings UI",
-            )
-            if not success:
-                logger.error(f"Failed to save integration '{integration_id}'")
+        enabled = integration_id in config.enabled_integrations
+        success = config_service.set_integration_config(
+            integration_id=integration_id,
+            config=non_secrets,
+            enabled=enabled,
+            change_reason="Updated via Settings UI",
+        )
+        if not success:
+            logger.error(f"Failed to save integration '{integration_id}'")
 
-        # Also save to file for backward compatibility — sanitized only.
-        config_file = vigil_path("integrations_config.json", write=True)
-        config_data = {
+    _mirror_to_file(
+        "integrations_config.json",
+        {
             "enabled_integrations": config.enabled_integrations,
             "integrations": sanitized_integrations,
-        }
-        with open(config_file, "w") as f:
-            json.dump(config_data, f, indent=2)
+        },
+    )
 
-        # Derive <ID>_MCP_URL env vars (e.g. LOGLM_MCP_URL) from any
-        # connectorUrl just saved, so static mcp-config.json remote-MCP
-        # entries resolve without a separately-set env var. Best-effort.
-        try:
-            from core.integrations.integration_bridge_service import get_integration_bridge
-
-            get_integration_bridge().derive_remote_mcp_env()
-        except Exception as e:
-            logger.warning(f"Could not derive remote MCP env vars: {e}")
-
-        return {"success": True, "message": "Integrations configuration saved"}
+    # Derive <ID>_MCP_URL env vars (e.g. LOGLM_MCP_URL) from any
+    # connectorUrl just saved, so static mcp-config.json remote-MCP
+    # entries resolve without a separately-set env var. Best-effort.
+    try:
+        bridge.derive_remote_mcp_env()
     except Exception as e:
-        logger.error(f"Error setting integrations config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"Could not derive remote MCP env vars: {e}")
+
+    return {"success": True, "message": "Integrations configuration saved"}
+
+
+@router.get("/state-directory")
+async def get_state_directory():
+    """Resolved State Directory path and writability.
+
+    Authenticated: /api/health carries only the booleans, since it is public and
+    this names where credentials live.
+    """
+    return {"success": True, "state_directory": state_dir_status()}
 
 
 @router.get("/integrations/status")
-async def get_integrations_status():
+async def get_integrations_status(
+    bridge: IntegrationBridgeService = Depends(provide_integration_bridge),
+):
     """
     Get status of all integrations.
 
     Returns:
         Status information for all integrations
     """
-
-    bridge = get_integration_bridge()
     statuses = bridge.get_all_integration_statuses()
 
     return {"success": True, "statuses": statuses}
 
 
 @router.post("/integrations/{integration_id}/test")
-async def test_integration(integration_id: str):
+async def test_integration(
+    integration_id: str,
+    bridge: IntegrationBridgeService = Depends(provide_integration_bridge),
+):
     """
     Test an integration connection.
 
@@ -837,8 +846,6 @@ async def test_integration(integration_id: str):
     Returns:
         Test result with success/failure and message
     """
-
-    bridge = get_integration_bridge()
     status = bridge.get_integration_status(integration_id)
 
     if not status["configured"]:
@@ -960,15 +967,10 @@ async def set_general_config(config: GeneralConfig):
             status_code=500, detail="Failed to save configuration to database"
         )
 
-    # Also save to file for backward compatibility (during transition)
-    config_file = vigil_path("general_config.json", write=True)
-    with open(config_file, "w") as f:
-        json.dump(config_data, f, indent=2)
+    _mirror_to_file("general_config.json", config_data)
 
     # Update the global secrets manager if keyring setting changed
     try:
-        from core.secrets_manager import get_secrets_manager
-
         # Force reinitialize with new setting
         from core import secrets_manager as sm_module
 
@@ -1393,7 +1395,7 @@ def _count_memories(palace_path: Path) -> Dict[str, Any]:
 
 
 @router.get("/mempalace/health")
-async def get_mempalace_health():
+async def get_mempalace_health(mcp_client=Depends(provide_mcp_client)):
     """Health snapshot for the mempalace memory store.
 
     Aggregates MCP connection state with filesystem facts about the
@@ -1414,9 +1416,6 @@ async def get_mempalace_health():
     connected = False
     error: Optional[str] = None
     try:
-        from core.integrations.mcp.client import get_mcp_client
-
-        mcp_client = get_mcp_client()
         if mcp_client is not None:
             statuses = mcp_client.get_connection_status() or {}
             connected = bool(statuses.get("mempalace", False))
@@ -1485,7 +1484,6 @@ async def secrets_status() -> Dict[str, Any]:
     write backend, what was expected per ``SECRETS_BACKEND`` env, whether
     cryptography imported, and where each backend lives on disk.
     """
-
     mgr = get_secrets_manager()
     return mgr.get_backend_status()
 
@@ -1506,7 +1504,6 @@ async def secrets_reinit(
     just edited ``.env`` to switch from dotenv to encrypted but haven't
     bounced the process.
     """
-
     write_backend = request.write_backend if request else None
     mgr = get_secrets_manager(write_backend=write_backend, force_reload=True)
     return {

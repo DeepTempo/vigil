@@ -1,14 +1,14 @@
-"""Unit tests for tools/cape_sandbox.py.
+"""Unit tests for core/integrations/cape_sandbox/tool.py.
 
 We test the pure helpers (IOC extraction from a CAPE report) and the tool
-dispatcher with ``requests`` fully mocked. No CAPE instance required.
+dispatcher with ``httpx`` fully mocked. No CAPE instance required.
 """
 
 import json
 
 import pytest
 
-import tools.cape_sandbox as cape
+import core.integrations.cape_sandbox.tool as cape
 
 
 @pytest.mark.unit
@@ -67,7 +67,7 @@ class TestCallTool:
             calls.append(url)
             return FakeResp()
 
-        monkeypatch.setattr(cape.requests, "get", fake_get)
+        monkeypatch.setattr(cape.httpx, "get", fake_get)
 
         out = await cape.handle_call_tool("cape_search_hash", {"hash": "a" * 64})
         body = json.loads(out[0].text)
@@ -89,7 +89,7 @@ class TestCallTool:
             def json(self):
                 return {"data": []}
 
-        monkeypatch.setattr(cape.requests, "get", lambda *a, **kw: FakeResp())
+        monkeypatch.setattr(cape.httpx, "get", lambda *a, **kw: FakeResp())
 
         out = await cape.handle_call_tool("cape_search_hash", {"hash": "a" * 64})
         body = json.loads(out[0].text)
@@ -115,7 +115,7 @@ class TestCallTool:
                     }
                 }
 
-        monkeypatch.setattr(cape.requests, "get", lambda *a, **kw: FakeResp())
+        monkeypatch.setattr(cape.httpx, "get", lambda *a, **kw: FakeResp())
 
         out = await cape.handle_call_tool("cape_get_iocs", {"task_id": "5"})
         body = json.loads(out[0].text)

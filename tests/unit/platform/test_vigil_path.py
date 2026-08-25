@@ -1,10 +1,16 @@
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from core.config import vigil_path
+# chmod cannot deny root, so the unwritable cases prove nothing there.
+needs_unprivileged = pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0, reason="requires a non-root user"
+)
+
+from core.config import state_dir_status, vigil_path
 
 
 @pytest.fixture
@@ -50,3 +56,71 @@ def test_write_always_targets_vigil_dir_even_when_legacy_exists(home):
 def test_write_with_no_parts_creates_the_directory_itself(home):
     assert vigil_path(write=True) == home / ".vigil"
     assert (home / ".vigil").is_dir()
+
+
+@pytest.mark.unit
+def test_vigil_dir_overrides_home(tmp_path, monkeypatch):
+    custom = tmp_path / "state"
+    monkeypatch.setenv("VIGIL_DIR", str(custom))
+    assert vigil_path("a.json") == custom / "a.json"
+    assert vigil_path("a.json", write=True) == custom / "a.json"
+    assert custom.is_dir()
+
+
+@pytest.mark.unit
+def test_vigil_dir_has_no_legacy_fallback(home, tmp_path, monkeypatch):
+    # An explicit override means exactly that directory.
+    (home / ".deeptempo").mkdir()
+    (home / ".deeptempo" / "a.json").write_text("{}")
+    custom = tmp_path / "state"
+    monkeypatch.setenv("VIGIL_DIR", str(custom))
+    assert vigil_path("a.json") == custom / "a.json"
+
+
+@pytest.mark.unit
+@needs_unprivileged
+def test_write_failure_raises_rather_than_relocating(home):
+    # A silent /tmp relocation applied to writes only, so the save looked fine
+    # and the value was gone. Callers that want to degrade catch this themselves.
+    home.chmod(0o500)
+    try:
+        with pytest.raises(OSError):
+            vigil_path("a.json", write=True)
+    finally:
+        home.chmod(0o700)
+
+
+@pytest.mark.unit
+def test_state_dir_status_reports_path_and_writability(home):
+    status = state_dir_status()
+    assert status == {"path": str(home / ".vigil"), "exists": False, "writable": True}
+    (home / ".vigil").mkdir()
+    assert state_dir_status()["exists"] is True
+
+
+@pytest.mark.unit
+@needs_unprivileged
+def test_state_dir_status_reports_unwritable_without_raising(home):
+    home.chmod(0o500)
+    try:
+        status = state_dir_status()
+        assert status["writable"] is False
+        assert status["path"] == str(home / ".vigil")
+    finally:
+        home.chmod(0o700)
+
+
+@pytest.mark.unit
+def test_bare_directory_never_resolves_to_legacy(home):
+    # The secrets backend asks for the directory itself; answering ~/.deeptempo
+    # would send every credential written after it there.
+    (home / ".deeptempo").mkdir()
+    assert vigil_path() == home / ".vigil"
+
+
+@pytest.mark.unit
+def test_bare_directory_is_not_created_on_read(home):
+    assert not (home / ".vigil").exists()
+    vigil_path()
+    state_dir_status()
+    assert not (home / ".vigil").exists()

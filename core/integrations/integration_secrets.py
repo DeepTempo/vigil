@@ -23,8 +23,10 @@ uses it to:
    back to the frontend.
 
 When you add a new integration that has password-typed fields in
-``clients/web/src/config/integrations.ts``, add a tuple entry to
-``_SECRET_FIELDS`` below. The default ``<INTEGRATION_ID>_<FIELD>``
+``clients/web/src/config/integrations.ts``, mark those fields ``secret=True``
+on the vendor's descriptor; the map below derives itself from the descriptors,
+and only a Catalog Entry with no code behind it is listed literally in
+``_CATALOG_ONLY_SECRET_FIELDS``. The default ``<INTEGRATION_ID>_<FIELD>``
 convention is built automatically; add an ``_ENV_VAR_OVERRIDES`` entry
 only when the consumer reads the secret under a non-canonical name
 (e.g. CrowdStrike's official MCP server reads ``FALCON_*``).
@@ -34,61 +36,19 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, Mapping
 
-from core.integrations.aws_security_hub.descriptor import AWS_SECURITY_HUB
-from core.integrations.azure_sentinel.descriptor import AZURE_SENTINEL
-from core.integrations.cloudflare.descriptor import CLOUDFLARE
-from core.integrations.crowdstrike.descriptor import CROWDSTRIKE
-from core.integrations.elastic.descriptor import ELASTIC
-from core.integrations.jira.descriptor import JIRA
-from core.integrations.microsoft_defender.descriptor import MICROSOFT_DEFENDER
-from core.integrations.slack.descriptor import SLACK
-from core.integrations.splunk.descriptor import SPLUNK
-from core.integrations.vstrike.descriptor import VSTRIKE
-
-# Default form-field → env-var-suffix translations. Mirrors
-# ``core.integrations.integration_bridge_service.IntegrationBridgeService.FIELD_TO_ENV_MAP``
-# so credentials saved via the Settings UI land under the same env-var
-# names that the bridge service uses when injecting env vars into MCP
-# server child processes.
-_DEFAULT_FIELD_SUFFIX: Mapping[str, str] = {
-    "api_key": "API_KEY",
-    "api_token": "API_TOKEN",
-    "api_secret": "API_SECRET",
-    "access_key": "ACCESS_KEY",
-    "secret_key": "SECRET_KEY",
-    "client_id": "CLIENT_ID",
-    "client_secret": "CLIENT_SECRET",
-    "username": "USERNAME",
-    "password": "PASSWORD",
-    "token": "TOKEN",
-    "bot_token": "BOT_TOKEN",
-    "auth_token": "AUTH_TOKEN",
-    "webhook_url": "WEBHOOK_URL",
-    "integration_key": "INTEGRATION_KEY",
-    "credentials_json": "CREDENTIALS_JSON",
-    "secret_access_key": "SECRET_ACCESS_KEY",
-    "smtp_password": "SMTP_PASSWORD",
-    "sec_token": "SEC_TOKEN",
-    "api_key_secret": "API_KEY_SECRET",
-    "inbound_api_key": "INBOUND_API_KEY",
-    # Proxy / SSH-tunnel credentials. Registered here so any integration
-    # that opts into the shared proxy field block (see PROXY_SUPPORTED
-    # below) gets its proxy secrets routed to the encrypted store too.
-    "proxy_password": "PROXY_PASSWORD",
-    "ssh_key_passphrase": "SSH_KEY_PASSPHRASE",
-}
+from core.integrations._base.descriptor import iter_descriptors
 
 
-def _default_env_var(integration_id: str, field_name: str) -> str:
+def default_env_var(integration_id: str, field_name: str) -> str:
     """Build the canonical env-var name for a given integration + field.
 
-    Convention: ``<UPPER_SNAKE_INTEGRATION_ID>_<FIELD_SUFFIX>`` where the
-    suffix comes from ``_DEFAULT_FIELD_SUFFIX`` if known, otherwise the
-    upper-snake-cased field name. Matches ``IntegrationBridgeService``'s
-    convention for env-var injection into MCP server child processes.
+    Convention: ``<UPPER_SNAKE_INTEGRATION_ID>_<UPPER_FIELD_NAME>``. Matches
+    ``IntegrationBridgeService``'s convention for env-var injection into MCP
+    server child processes — the two lookup tables that used to state this
+    were pure identity maps, so the convention alone is the rule.
     """
     prefix = integration_id.upper().replace("-", "_")
-    suffix = _DEFAULT_FIELD_SUFFIX.get(field_name, field_name.upper())
+    suffix = field_name.upper()
     return f"{prefix}_{suffix}"
 
 
@@ -96,22 +56,12 @@ def _default_env_var(integration_id: str, field_name: str) -> str:
 # 'password'` entries in ``clients/web/src/config/integrations.ts``). The
 # values get routed through the secrets manager rather than persisted
 # plaintext to the DB / JSON file.
-_SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
+_CATALOG_ONLY_SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "github": ("token",),
     # mint_secret: HMAC for minting session tokens (services/api/routers/extensions.py).
     # mcp_token: static bearer the LogLM MCP tools present to the connector.
     "loglm": ("mint_secret", "mcp_token"),
-    "virustotal": ("api_key",),
-    "alienvault-otx": ("api_key",),
-    "shodan": ("api_key",),
-    "misp": ("api_key",),
     "gcp-threat-intel": ("api_key",),
-    "url-analysis": ("api_key",),
-    "ip-geolocation": ("api_key",),
-    CROWDSTRIKE.id: CROWDSTRIKE.secret_fields,
-    "sentinelone": ("api_token",),
-    "carbon-black": ("api_key",),
-    MICROSOFT_DEFENDER.id: MICROSOFT_DEFENDER.secret_fields,
     "cortex-xdr": ("api_key",),
     "trend-micro-vision-one": ("api_token",),
     "sophos-intercept-x": ("client_secret",),
@@ -125,10 +75,7 @@ _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "kaspersky": ("password",),
     "cisco-secure-endpoint": ("api_key",),
     "symantec-edr": ("client_secret",),
-    SPLUNK.id: SPLUNK.secret_fields,
     "cribl-stream": ("password",),
-    ELASTIC.id: ELASTIC.secret_fields,
-    AZURE_SENTINEL.id: AZURE_SENTINEL.secret_fields,
     "qradar": ("sec_token",),
     "arcsight": ("password",),
     "logrhythm": ("api_token",),
@@ -136,7 +83,6 @@ _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "securonix": ("password",),
     "sumo-logic": ("access_key",),
     "graylog": ("api_token",),
-    AWS_SECURITY_HUB.id: AWS_SECURITY_HUB.secret_fields,
     "aws-guardduty": ("secret_access_key",),
     "gcp-security": ("credentials_json",),
     "azure-defender": ("client_secret",),
@@ -146,8 +92,6 @@ _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "lacework": ("api_secret",),
     "aqua-security": ("password",),
     "snyk": ("api_token",),
-    "okta": ("api_token",),
-    "azure-ad": ("client_secret",),
     "ping-identity": ("client_secret",),
     "auth0": ("client_secret",),
     "onelogin": ("client_secret",),
@@ -156,45 +100,35 @@ _SECRET_FIELDS: Mapping[str, tuple[str, ...]] = {
     "sailpoint": ("client_secret",),
     "cyberark": ("password",),
     "beyond-trust": ("api_key",),
-    "palo-alto": ("api_key",),
     "cisco-firepower": ("password",),
     "fortinet": ("api_key",),
     "checkpoint": ("password",),
     "zscaler": ("api_key", "password"),
     "sophos": ("api_token",),
-    CLOUDFLARE.id: CLOUDFLARE.secret_fields,
     "cloudforce_one": ("api_token",),
     "juniper-srx": ("password",),
-    JIRA.id: JIRA.secret_fields,
     "servicenow": ("password",),
     "thehive": ("api_key",),
     "cortex-xsoar": ("api_key",),
     "swimlane": ("password",),
     "ibm-resilient": ("api_key_secret",),
     "opsgenie": ("api_key",),
-    SLACK.id: SLACK.secret_fields,
-    "pagerduty": ("api_token", "integration_key"),
-    "microsoft-teams": ("webhook_url",),
     "email": ("smtp_password",),
     "webhook": ("auth_token",),
     "discord": ("webhook_url",),
     "mattermost": ("webhook_url",),
-    "hybrid-analysis": ("api_key",),
-    "joe-sandbox": ("api_key",),
-    "anyrun": ("api_key",),
     "timesketch": ("password", "api_token"),
     "velociraptor": ("api_key",),
     "grr": ("password",),
     "autopsy": ("password",),
     "osquery": ("api_token",),
     "cuckoo": ("api_token",),
-    VSTRIKE.id: VSTRIKE.secret_fields,
 }
 
 
 # Per-integration overrides where the consumer reads the secret under a
 # name that doesn't match the default ``<ID>_<FIELD>`` convention.
-# Anything NOT listed here uses ``_default_env_var(integration_id, field)``.
+# Anything NOT listed here uses ``default_env_var(integration_id, field)``.
 #
 # Each entry is keyed by integration_id; values are partial maps from
 # form-field name → env-var name. Missing fields fall back to the default.
@@ -238,16 +172,35 @@ PROXY_SUPPORTED: frozenset[str] = frozenset(
 )
 
 
-def _resolve_env_var(integration_id: str, field_name: str) -> str:
-    """Resolve the secrets-store key for one integration field."""
+def env_var_for(integration_id: str, field_name: str) -> str:
+    """Resolve the env-var name for one integration field, overrides included.
+
+    The rule cannot depend on whether the field is a secret: the resolver reads
+    non-secret fields out of the same env channel, so a field named here has
+    one name everywhere or the two halves drift.
+    """
     overrides = _ENV_VAR_OVERRIDES.get(integration_id, {})
-    return overrides.get(field_name) or _default_env_var(integration_id, field_name)
+    return overrides.get(field_name) or default_env_var(integration_id, field_name)
+
+
+def _secret_fields() -> Dict[str, tuple[str, ...]]:
+    """Every integration's secret fields: descriptors first, catalog-only after.
+
+    A code-backed integration states its secret fields once, on its descriptor.
+    Only Catalog Entries — a credential form with no Vigil code behind it — are
+    listed literally above.
+    """
+    merged: Dict[str, tuple[str, ...]] = dict(_CATALOG_ONLY_SECRET_FIELDS)
+    for descriptor in iter_descriptors():
+        if descriptor.secret_fields:
+            merged[descriptor.id] = descriptor.secret_fields
+    return merged
 
 
 def _fields_for(integration_id: str) -> Iterable[str]:
     """All secret-field names for an integration, including proxy fields
     contributed by the shared block when the integration opts in."""
-    base = _SECRET_FIELDS.get(integration_id, ())
+    base = _secret_fields().get(integration_id, ())
     if integration_id in PROXY_SUPPORTED:
         return (*base, *_PROXY_SECRET_FIELDS)
     return base
@@ -255,10 +208,10 @@ def _fields_for(integration_id: str) -> Iterable[str]:
 
 def _build_registry() -> Dict[str, Dict[str, str]]:
     """Materialize the per-integration secret registry from the field list."""
-    integration_ids = set(_SECRET_FIELDS) | PROXY_SUPPORTED
+    integration_ids = set(_secret_fields()) | PROXY_SUPPORTED
     return {
         integration_id: {
-            field: _resolve_env_var(integration_id, field)
+            field: env_var_for(integration_id, field)
             for field in _fields_for(integration_id)
         }
         for integration_id in integration_ids

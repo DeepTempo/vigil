@@ -7,6 +7,7 @@ Fetches notable events from Splunk ES and converts them to findings.
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
+from core.time import utcnow
 import uuid
 
 from core.ingestion.siem_ingestion_service import SIEMIngestionService
@@ -87,12 +88,12 @@ class SplunkIngestion(SIEMIngestionService):
             
             # Set time range
             if not start_time:
-                start_time = datetime.utcnow() - timedelta(hours=24)
+                start_time = utcnow() - timedelta(hours=24)
             if not end_time:
-                end_time = datetime.utcnow()
+                end_time = utcnow()
             
             # Calculate relative time
-            hours_ago = int((datetime.utcnow() - start_time).total_seconds() / 3600)
+            hours_ago = int((utcnow() - start_time).total_seconds() / 3600)
             earliest_time = f"-{hours_ago}h"
             
             # Search for notable events (Splunk ES)
@@ -196,7 +197,7 @@ class SplunkIngestion(SIEMIngestionService):
                 "description": description,
                 "severity": self.normalize_severity(severity),
                 "data_source": "splunk",
-                "timestamp": alert.get('_time', datetime.utcnow().isoformat()),
+                "timestamp": alert.get('_time', utcnow().isoformat()),
                 "raw_data": alert,
                 "metadata": {
                     "event_id": event_id,

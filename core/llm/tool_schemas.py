@@ -442,11 +442,44 @@ APPROVAL_TOOLS = [
     }
 ]
 
+# The local indicator database the threat-feed poller fills. Present whether or
+# not a deployment carries an external intel integration, which is why it is here
+# rather than left to MCP.
+THREAT_INTEL_TOOLS = [
+    {
+        "name": "lookup_indicators",
+        "description": (
+            "Look up observables in Vigil's threat-indicator database, populated "
+            "from the configured threat feeds. Returns one row per value asked "
+            "about, with known=false for any the feeds do not carry -- an "
+            "indicator no feed knows is a finding about the indicator."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "indicator_type": {
+                    "type": "string",
+                    "description": "What kind of observable these are",
+                    "enum": ["ip", "domain", "url", "md5", "sha1", "sha256"],
+                    "default": "ip"
+                },
+                "values": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "The observables to look up, in one batch"
+                }
+            },
+            "required": ["values"]
+        }
+    }
+]
+
 # Combine all tools
 ALL_TOOLS = (
     SECURITY_DETECTION_TOOLS +
     DEEPTEMPO_FINDING_TOOLS +
     ATTACK_LAYER_TOOLS +
+    THREAT_INTEL_TOOLS +
     APPROVAL_TOOLS
 )
 

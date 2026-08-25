@@ -1,0 +1,74 @@
+{{- if and .Values.agentWorker.enabled .Values.agentWorker.autoscaling.keda.enabled }}
+{{- /*
+KEDA ScaledObject for agent-worker. Same `redis` list scaler as llm-worker,
+pointed at a different key: BullMQ keeps waiting jobs in the Redis list
+`bull:agent-runs:wait`, so LLEN is still the right primitive.
+
+Two things that are not visible from this file:
+
+  * minReplicaCount must never be 0. BullMQ promotes delayed jobs into `wait`
+    from a *worker's* own timer, so with zero replicas nothing promotes them,
+    the list reads empty, and the run never starts.
+
+  * LLEN is exact only while nothing sets a job priority. BullMQ routes
+    prioritised jobs to `bull:agent-runs:prioritized`, a ZSET, bypassing `wait`
+    entirely — and KEDA ships no ZSET scaler. core/agents/queue.py sets neither
+    priority nor delay today, so the count is accurate; that accuracy is a
+    property of the producer, not of this template.
+
+Prerequisite: KEDA installed in the cluster
+  (https://keda.sh/docs/latest/deploy/).
+*/ -}}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "vigil.agentWorker.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "agent-worker") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "vigil.agentWorker.fullname" . }}
+  minReplicaCount: {{ max (.Values.agentWorker.autoscaling.keda.minReplicas | default 1 | int) 1 }}
+  maxReplicaCount: {{ .Values.agentWorker.autoscaling.keda.maxReplicas | default 20 }}
+  cooldownPeriod: {{ .Values.agentWorker.autoscaling.keda.cooldownPeriod | default 300 }}
+  pollingInterval: {{ .Values.agentWorker.autoscaling.keda.pollingInterval | default 15 }}
+  triggers:
+    - type: redis
+      metadata:
+        {{- if .Values.redis.bitnami.enabled }}
+        address: "{{ .Values.redis.bitnami.fullnameOverride | default (printf "%s-redis-master" .Release.Name) }}:6379"
+        {{- else if .Values.redis.enabled }}
+        address: "{{ include "vigil.redis.fullname" . }}:{{ .Values.redis.service.port }}"
+        {{- else }}
+        # External Redis — extract host:port from redis.external.url or set
+        # agentWorker.autoscaling.keda.redisAddress explicitly.
+        address: {{ .Values.agentWorker.autoscaling.keda.redisAddress | quote }}
+        {{- end }}
+        listName: {{ .Values.agentWorker.autoscaling.keda.queueName | default "bull:agent-runs:wait" | quote }}
+        listLength: {{ .Values.agentWorker.autoscaling.keda.listLength | default "5" | quote }}
+        # From the helper the URL and REDIS_DB also come from, so the three cannot
+        # drift. The value exists for an external Redis, whose database is its own.
+        databaseIndex: {{ .Values.agentWorker.autoscaling.keda.databaseIndex | default (include "vigil.redis.database" .) | quote }}
+      {{- if and .Values.redis.bitnami.enabled .Values.redis.bitnami.auth.enabled }}
+      authenticationRef:
+        name: {{ include "vigil.agentWorker.fullname" . }}-keda-auth
+      {{- end }}
+{{- if and .Values.redis.bitnami.enabled .Values.redis.bitnami.auth.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "vigil.agentWorker.fullname" . }}-keda-auth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vigil.componentLabels" (dict "context" . "component" "agent-worker") | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: {{ include "vigil.redis.bitnami.passwordSecret" . }}
+      key: {{ include "vigil.redis.bitnami.passwordSecretKey" . }}
+{{- end }}
+{{- end }}

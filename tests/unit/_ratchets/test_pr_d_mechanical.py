@@ -25,146 +25,14 @@ pytestmark = pytest.mark.unit
 # ---------------------------------------------------------------------------
 
 
-class TestFilterToolsByName:
-    def test_none_recommended_is_noop(self):
-        from core.llm.harness.claude import ClaudeService
-
-        tools = [{"name": "a"}, {"name": "b"}]
-        assert ClaudeService._filter_tools_by_name(tools, None) is tools
-
-    def test_empty_recommended_is_noop(self):
-        from core.llm.harness.claude import ClaudeService
-
-        tools = [{"name": "a"}, {"name": "b"}]
-        # Empty list returns the original (falsy guard).
-        assert ClaudeService._filter_tools_by_name(tools, []) is tools
-
-    def test_exact_name_match(self):
-        from core.llm.harness.claude import ClaudeService
-
-        tools = [{"name": "get_finding"}, {"name": "create_case"}, {"name": "list_findings"}]
-        out = ClaudeService._filter_tools_by_name(
-            tools, ["get_finding", "list_findings"]
-        )
-        assert [t["name"] for t in out] == ["get_finding", "list_findings"]
-
-    def test_mcp_prefixed_name_matches_bare_recommendation(self):
-        """Tools arrive as ``<server>_<tool_name>`` from the MCP layer but
-        recommended_tools in core/agents/builtins.py use bare names. The filter must
-        match both forms so agents don't accidentally ship an empty tool
-        block.
-        """
-        from core.llm.harness.claude import ClaudeService
-
-        tools = [
-            {"name": "vt_get_file_report"},
-            {"name": "splunk_search"},
-            {"name": "get_finding"},  # backend tool — already bare
-        ]
-        out = ClaudeService._filter_tools_by_name(
-            tools, ["get_file_report", "get_finding"]
-        )
-        names = [t["name"] for t in out]
-        assert "vt_get_file_report" in names  # matched via strip-prefix
-        assert "get_finding" in names  # matched directly
-        assert "splunk_search" not in names
-
-    def test_unknown_name_is_dropped(self):
-        from core.llm.harness.claude import ClaudeService
-
-        tools = [{"name": "a"}, {"name": "b"}]
-        assert ClaudeService._filter_tools_by_name(tools, ["c"]) == []
-
-
 # ---------------------------------------------------------------------------
 # 2. Sliding-window history
 # ---------------------------------------------------------------------------
 
 
-class TestApplyHistoryWindow:
-    def test_short_history_untouched(self, monkeypatch):
-        from core.llm.harness.claude import ClaudeService
-
-        monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "20")
-        msgs = [{"role": "user", "content": f"m{i}"} for i in range(5)]
-        assert ClaudeService._apply_history_window(msgs) == msgs
-
-    def test_long_history_trimmed_to_tail(self, monkeypatch):
-        from core.llm.harness.claude import ClaudeService
-
-        monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "3")
-        # 3 turns = 6 messages; build 10 messages and confirm the last 6 win.
-        msgs = [{"role": "user", "content": f"m{i}"} for i in range(10)]
-        out = ClaudeService._apply_history_window(msgs)
-        assert len(out) == 6
-        assert out[0]["content"] == "m4"
-        assert out[-1]["content"] == "m9"
-
-    def test_zero_disables_window(self, monkeypatch):
-        from core.llm.harness.claude import ClaudeService
-
-        monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "0")
-        msgs = [{"role": "user", "content": f"m{i}"} for i in range(100)]
-        assert ClaudeService._apply_history_window(msgs) == msgs
-
-    def test_bad_env_value_falls_back_to_default(self, monkeypatch):
-        from core.llm.harness.claude import ClaudeService
-
-        monkeypatch.setenv("CLAUDE_HISTORY_WINDOW", "not-a-number")
-        # Default is 20 turns = 40 messages; 30 messages fits untrimmed.
-        msgs = [{"role": "user", "content": f"m{i}"} for i in range(30)]
-        assert ClaudeService._apply_history_window(msgs) == msgs
-
-
 # ---------------------------------------------------------------------------
 # 3. Tiered tool-result truncation
 # ---------------------------------------------------------------------------
-
-
-class TestTieredTruncation:
-    def test_per_tool_override_wins_over_default(self, monkeypatch):
-        from core.llm.harness.claude import ClaudeService
-
-        monkeypatch.setenv("TOOL_RESPONSE_BUDGET_DEFAULT", "1000")
-        assert ClaudeService._response_budget_for("get_raw_logs") == 30000
-        assert ClaudeService._response_budget_for("list_findings") == 12000
-        # Unknown tool falls through to env default.
-        assert ClaudeService._response_budget_for("never_heard_of_it") == 1000
-
-    def test_mcp_prefixed_lookup(self):
-        from core.llm.harness.claude import ClaudeService
-
-        # "splunk_search" is registered; "logs_splunk_search" (prefixed by
-        # server name) must still resolve to the same budget.
-        assert ClaudeService._response_budget_for("logs_splunk_search") == 30000
-
-    def test_no_name_falls_through_to_default(self, monkeypatch):
-        from core.llm.harness.claude import ClaudeService
-
-        monkeypatch.setenv("TOOL_RESPONSE_BUDGET_DEFAULT", "5000")
-        assert ClaudeService._response_budget_for(None) == 5000
-        assert ClaudeService._response_budget_for("") == 5000
-
-    def test_hard_default_when_env_missing(self, monkeypatch):
-        from core.llm.harness.claude import ClaudeService
-
-        monkeypatch.delenv("TOOL_RESPONSE_BUDGET_DEFAULT", raising=False)
-        assert ClaudeService._response_budget_for("unknown") == 8000
-
-    def test_truncate_respects_per_tool_budget(self, monkeypatch):
-        """Regression: previously everything used the 30k constant."""
-        from core.llm.harness.claude import ClaudeService
-
-        monkeypatch.setenv("TOOL_RESPONSE_BUDGET_DEFAULT", "100")
-        svc = ClaudeService.__new__(ClaudeService)
-        # content encodes roughly (len // 4) tokens. 1200 chars ≈ 300 tokens,
-        # which exceeds 100 tokens (default) and will be truncated.
-        content = "x" * 1200
-        out = svc._truncate_tool_response(content, tool_name="unknown_tool")
-        assert "[TRUNCATED" in out
-        # But an overridden tool (get_raw_logs → 30k) keeps the full body.
-        full = svc._truncate_tool_response(content, tool_name="get_raw_logs")
-        assert full == content
 
 
 # ---------------------------------------------------------------------------
@@ -222,21 +90,22 @@ class TestAgentProfileThinkingBudget:
 # ---------------------------------------------------------------------------
 
 
-class TestDaemonDefaultThinkingBudget:
-    def test_default_value(self, monkeypatch):
-        monkeypatch.delenv("CLAUDE_THINKING_BUDGET", raising=False)
-        from services.daemon.agent_runner import _default_thinking_budget
-
-        assert _default_thinking_budget() == 10000
-
-    def test_env_override(self, monkeypatch):
-        monkeypatch.setenv("CLAUDE_THINKING_BUDGET", "4096")
-        from services.daemon.agent_runner import _default_thinking_budget
-
-        assert _default_thinking_budget() == 4096
-
-    def test_bad_env_falls_back_to_default(self, monkeypatch):
-        monkeypatch.setenv("CLAUDE_THINKING_BUDGET", "not-a-number")
-        from services.daemon.agent_runner import _default_thinking_budget
-
-        assert _default_thinking_budget() == 10000
+# TestDaemonDefaultThinkingBudget dropped with agent_runner (#629). The helper
+# was the runner's, and the run's ceilings are the budget seam's now. The
+# thinking_budget system_config row it read has no consumer left -- ADR 0011
+# carries no thinking blocks -- so retiring the setting belongs to #642.
+#
+# Dropped with the helpers these covered (#631), and where the guarantee moved:
+#
+# TestFilterToolsByName — a role sees what the arch granted it, deny by default,
+#   rather than a catalogue filtered after the fact. See the registry and
+#   services/agent/tests/core/stream.test.ts, "refuses a tool the role was not
+#   granted without stopping the loop".
+#
+# TestApplyHistoryWindow — a flat tail window is replaced by a fold that holds
+#   both edges and never strands a tool result. See
+#   services/agent/tests/core/context.test.ts.
+#
+# TestTieredTruncation — per-tool response budgets are one result_cap applied at
+#   the single place a result is rendered. See core/security.ts and
+#   services/agent/tests/core/security.test.ts.

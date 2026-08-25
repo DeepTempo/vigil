@@ -262,6 +262,24 @@ function AnalyticsTab({ s, phase, error, reload }: { s: DecisionStats | null; ph
 }
 
 /* ---------------- Pending Approvals tab ---------------- */
+
+/**
+ * What the row is waiting on. A phase id for a compose step, or the checkpoint
+ * class the agent layer parked on — hunt and investigate raise those, and they
+ * are not phases.
+ */
+export function checkpointChip(a: ApprovalAction) {
+  const params = (a.parameters || {}) as Record<string, unknown>
+  const klass = typeof params.checkpoint_class === 'string' ? params.checkpoint_class : null
+  const label = a.workflow_phase_id || klass
+  if (!label) return <span className="muted">—</span>
+  return (
+    <span className="chip" title={typeof params.checkpoint_id === 'string' ? params.checkpoint_id : undefined}>
+      {label}
+    </span>
+  )
+}
+
 function ApprovalsTab({
   actions,
   phase,
@@ -288,7 +306,7 @@ function ApprovalsTab({
         <table className="tbl">
           <thead>
             <tr>
-              <th>Action</th><th>Target / Run</th><th>Phase</th><th>Reason</th><th>Created</th>
+              <th>Action</th><th>Target / Run</th><th>Phase / Checkpoint</th><th>Reason</th><th>Created</th>
               <th style={{ textAlign: 'right' }}>Decision</th>
             </tr>
           </thead>
@@ -313,7 +331,7 @@ function ApprovalsTab({
                     {a.description && <div className="muted" style={{ maxWidth: 320, fontSize: 12 }}>{a.description}</div>}
                   </td>
                   <td><span className="mono" style={{ fontSize: 11 }}>{a.workflow_run_id || a.target || '—'}</span></td>
-                  <td>{a.workflow_phase_id ? <span className="chip">{a.workflow_phase_id}</span> : <span className="muted">—</span>}</td>
+                  <td>{checkpointChip(a)}</td>
                   <td className="muted" title={a.reason} style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.reason || '—'}</td>
                   <td className="muted">{fmtTime(a.created_at)}</td>
                   <td>

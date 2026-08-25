@@ -5,20 +5,18 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, List
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from core.llm.router.router import (  # noqa: E402
-    LLMRouter,
-    ProviderSpec,
-    _pre_dispatch_sanitize,
-    _wrap_tool_results_in_messages,
-)
+from core.llm.router.router import (LLMRouter, ProviderSpec,  # noqa: E402
+                                    _pre_dispatch_sanitize,
+                                    _wrap_tool_results_in_messages)
 from core.llm.security import PromptInjectionBlocked  # noqa: E402
 
 pytestmark = pytest.mark.unit
@@ -153,29 +151,24 @@ def test_pre_dispatch_clean_corpus_silent(caplog, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_dispatch_invokes_sanitize_hook(monkeypatch):
-    """Tool_result blocks must be wrapped before they hit Anthropic SDK."""
+    """Tool_result blocks must be wrapped before they leave for the provider.
+
+    Asserted on the Anthropic SDK path until #644 collapsed the two schemas.
+    The hook runs in dispatch(), ahead of the translation, so the guarantee is
+    the same one on the surviving OpenAI egress.
+    """
     monkeypatch.delenv("PROMPT_INJECTION_BLOCK", raising=False)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
 
-    captured: Dict[str, Any] = {}
+    fake_resp = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="", tool_calls=None))],
+        model="claude-sonnet-4-5-20250929",
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+    )
+    mock_client = MagicMock()
+    mock_client.close = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=fake_resp)
 
-    fake_client = AsyncMock()
-
-    class _Resp:
-        content = []
-        usage = None
-        model = "claude-sonnet-4-5-20250929"
-
-    async def _fake_create(**kwargs):
-        captured.update(kwargs)
-        return _Resp()
-
-    fake_client.messages.create = _fake_create
-
-    with patch(
-        "core.llm.providers.clients.create_async_anthropic_client",
-        return_value=fake_client,
-    ):
+    with patch("openai.AsyncOpenAI", return_value=mock_client):
         router = LLMRouter()
         await router.dispatch(
             provider=_spec(),
@@ -184,11 +177,14 @@ async def test_dispatch_invokes_sanitize_hook(monkeypatch):
             max_tokens=128,
         )
 
-    sent_msgs = captured["messages"]
-    inner = sent_msgs[1]["content"][0]["content"][0]["text"]
-    assert "<vigil:tool_result" in inner
-    # Attacker close tag must have been escaped — the only </vigil:tool_result>
+    # A tool_result becomes a role:tool message on the OpenAI shape, and the
+    # wrapper the hook applied has to survive that translation intact.
+    sent = mock_client.chat.completions.create.call_args.kwargs["messages"]
+    wrapped = next(m["content"] for m in sent if m.get("role") == "tool")
+
+    assert "<vigil:tool_result" in wrapped
+    # Attacker close tag must have been escaped -- the only </vigil:tool_result>
     # is the wrapper's own.
-    assert inner.count("</vigil:tool_result>") == 1
+    assert wrapped.count("</vigil:tool_result>") == 1
     # The dangerous </system> opener still appears in the wrapped, escaped form.
-    assert "&lt;/system&gt;" in inner or "&lt;/system>" in inner
+    assert "&lt;/system&gt;" in wrapped or "&lt;/system>" in wrapped

@@ -47,6 +47,7 @@ spec:
                   name: {{ include "vigil.postgres.passwordSecret" . }}
                   key: {{ include "vigil.postgres.passwordSecretKey" . }}
             {{- include "vigil.env" . | nindent 12 }}
+            {{- include "vigil.stateEnv" . | nindent 12 }}
             {{- range $k, $v := .Values.backend.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
@@ -88,6 +89,10 @@ spec:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            {{- include "vigil.stateVolumeMount" . | nindent 12 }}
+      volumes:
+        {{- include "vigil.stateVolume" . | nindent 8 }}
       {{- with .Values.backend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

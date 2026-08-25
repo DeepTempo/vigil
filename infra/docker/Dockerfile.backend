@@ -41,16 +41,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # from the copied source, so the runtime stage needs only /usr/local and no
 # editable source tree (an `-e` install writes a .pth pointing at the build
 # path, which won't exist in the runtime stage). Keep this COPY list in sync
-# with the `-e ./` lines in requirements.txt: deeptempo-core, mcp-servers,
-# mempalace.
+# with the `-e ./` lines in requirements.txt: mempalace is the only one left,
+# since #654 dropped the deeptempo-core and mcp-servers submodules.
 COPY requirements.txt .
-COPY deeptempo-core/ ./deeptempo-core/
-COPY mcp-servers/    ./mcp-servers/
 COPY mempalace/      ./mempalace/
 RUN grep -vE '^[[:space:]]*-e[[:space:]]+\./' requirements.txt > requirements.runtime.txt \
     && pip install --no-cache-dir --prefix=/install/deps \
          -r requirements.runtime.txt \
-         ./deeptempo-core ./mcp-servers ./mempalace
+         ./mempalace
 
 # ---------------------------------------------------------------------------
 # Stage 3: runtime image
@@ -66,8 +64,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root user
-RUN groupadd -r vigil && useradd -r -g vigil -d /app -s /sbin/nologin vigil
+# Non-root user (matching UID/GID 1000 from podSecurityContext in Helm chart)
+RUN groupadd -g 1000 vigil && useradd -u 1000 -g 1000 -d /home/vigil -m -s /sbin/nologin vigil
 
 WORKDIR /app
 
@@ -84,7 +82,6 @@ COPY --chown=vigil:vigil tools/       ./tools/
 # <cid>:/app/database/init`) and the initdb mount are unaffected.
 COPY --chown=vigil:vigil infra/database/init/ ./database/init/
 COPY --chown=vigil:vigil data/        ./data/
-COPY --chown=vigil:vigil mcp-servers/ ./mcp-servers/
 COPY --chown=vigil:vigil mempalace/   ./mempalace/
 COPY --chown=vigil:vigil VERSION      ./VERSION
 COPY --chown=vigil:vigil setup.cfg    ./setup.cfg
@@ -93,8 +90,8 @@ COPY --chown=vigil:vigil setup.cfg    ./setup.cfg
 COPY --from=web-builder --chown=vigil:vigil /build/web/build ./clients/web/build/
 
 # Writable dirs the app needs at runtime
-RUN mkdir -p /app/data/investigations /app/data/mempalace \
-    && chown -R vigil:vigil /app/data
+RUN mkdir -p /app/data/investigations /app/data/mempalace /home/vigil/.vigil \
+    && chown -R vigil:vigil /app/data /home/vigil
 
 # Bake version into the image so `backend.__version__` resolves at import time
 # (core/version.py reads VERSION from disk)
@@ -102,7 +99,8 @@ RUN echo "${VIGIL_VERSION}" > /app/VERSION
 
 USER vigil
 
-ENV PYTHONPATH=/app \
+ENV HOME=/home/vigil \
+    PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PORT=6987
 

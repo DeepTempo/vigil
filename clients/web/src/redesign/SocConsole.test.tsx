@@ -9,7 +9,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from '../contexts/ThemeContext'
 import SocConsole from './SocConsole'
 // these resolve to the mocked implementations (vi.mock below is hoisted)
-import { streamFetch, aiDecisionsApi } from '../services/api'
+import { streamFetch, aiDecisionsApi, approvalsApi } from '../services/api'
 
 // SocConsole reads the session from AuthContext (user menu + permission-gated
 // nav). Stub it with a full-permission user so every rail item + screen renders.
@@ -135,7 +135,7 @@ vi.mock('../services/api', () => ({
     submitFeedback: vi.fn(() => Promise.resolve({})),
   },
   approvalsApi: {
-    listPending: () => Promise.resolve({ data: { actions: [] } }),
+    listPending: vi.fn(() => Promise.resolve({ data: { actions: [] } })),
     approve: vi.fn(() => Promise.resolve({})),
     reject: vi.fn(() => Promise.resolve({})),
   },
@@ -354,9 +354,23 @@ describe('SocConsole redesign', () => {
     // MCP status resolves from the mocked api (2 of 2 servers ok)
     expect(await screen.findByText('2/2')).toBeInTheDocument()
     expect(screen.getByText(/Context ~/)).toBeInTheDocument()
-    // extended-thinking switch + system-prompt override
-    expect(screen.getByRole('switch', { name: 'Extended thinking' })).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/Override default system prompt/)).toBeInTheDocument()
+    // Extended thinking went with the move to the harness: one provider schema
+    // through Bifrost has no thinking blocks, so the control would do nothing.
+    expect(screen.queryByRole('switch', { name: 'Extended thinking' })).toBeNull()
+  })
+
+  // A parked run waits on a person, and the rail is the only thing on screen from
+  // every other view. Without the count the question sat in a tab nobody opened.
+  it('counts the runs waiting on someone in the rail', async () => {
+    vi.mocked(approvalsApi.listPending).mockResolvedValue({
+      data: { actions: [{ action_id: 'a' }, { action_id: 'b' }] },
+    } as never)
+
+    renderConsole()
+
+    expect(await screen.findByRole('button', { name: 'AI Decisions (2 waiting)' })).toBeInTheDocument()
+    vi.mocked(approvalsApi.listPending).mockResolvedValue({ data: { actions: [] } } as never)
   })
 
   it('streams an assistant response through the chat SSE pipe', async () => {

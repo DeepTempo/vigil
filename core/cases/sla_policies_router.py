@@ -3,7 +3,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from datetime import datetime
+from core.time import utcnow
 
 from core.storage.models import Case, CaseSLA, SLAPolicy
 
@@ -261,7 +261,7 @@ async def update_sla_policy(
         
         policy.is_default = data.is_default
     
-    policy.updated_at = datetime.utcnow()
+    policy.updated_at = utcnow()
     # Flush so the read-back sees server defaults; the request's
     # unit of work commits.
     session.flush()
@@ -340,7 +340,7 @@ async def set_default_policy(policy_id: str, session: UnitOfWorkSession):
     
     # Set this as default
     policy.is_default = True
-    policy.updated_at = datetime.utcnow()
+    policy.updated_at = utcnow()
     # Flush so the read-back sees server defaults; the request's
     # unit of work commits.
     session.flush()
@@ -366,9 +366,6 @@ async def get_policy_usage(policy_id: str, session: UnitOfWorkSession):
 
     if not policy:
         raise HTTPException(status_code=404, detail="SLA policy not found")
-
-    from sqlalchemy import func
-
     # Total cases using this policy
     total_cases = session.query(CaseSLA).filter(
         CaseSLA.sla_policy_id == policy_id

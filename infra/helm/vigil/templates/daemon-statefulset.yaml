@@ -65,6 +65,7 @@ spec:
                   name: {{ include "vigil.postgres.passwordSecret" . }}
                   key: {{ include "vigil.postgres.passwordSecretKey" . }}
             {{- include "vigil.env" . | nindent 12 }}
+            {{- include "vigil.stateEnv" . | nindent 12 }}
             {{- with .Values.daemon.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -102,11 +103,14 @@ spec:
             {{- toYaml .Values.daemon.resources | nindent 12 }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
-          {{- if .Values.daemon.persistence.enabled }}
           volumeMounts:
+            {{- include "vigil.stateVolumeMount" . | nindent 12 }}
+            {{- if .Values.daemon.persistence.enabled }}
             - name: investigations
               mountPath: {{ .Values.daemon.persistence.mountPath }}
-          {{- end }}
+            {{- end }}
+      volumes:
+        {{- include "vigil.stateVolume" . | nindent 8 }}
       {{- with .Values.daemon.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

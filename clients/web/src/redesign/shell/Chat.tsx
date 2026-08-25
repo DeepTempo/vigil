@@ -1,7 +1,7 @@
 /* ============================================================
    Vigil chat dock — Cursor-style, wired to the real Claude stream.
-   POSTs /api/claude/chat/stream and renders the SSE thinking/text
-   events live. Agent list comes from agentsApi. Styling uses the
+   POSTs /api/claude/chat/stream and renders the SSE text events
+   live. Agent list comes from agentsApi. Styling uses the
    Tailwind-authored chat-* component classes in styles.css plus
    utilities for one-offs.
    ============================================================ */
@@ -45,7 +45,6 @@ type Role = 'user' | 'vigil' | 'error'
 interface ChatMsg {
   role: Role
   text: string
-  thinking?: string
   ms?: number
 }
 
@@ -161,11 +160,7 @@ function toChatMsgs(msgs: ConversationDetail['messages']): ChatMsg[] {
     .map((m) =>
       m.role === 'user'
         ? { role: 'user' as Role, text: m.content }
-        : {
-            role: 'vigil' as Role,
-            text: m.content || '_(no response)_',
-            thinking: m.thinking || undefined,
-          },
+        : { role: 'vigil' as Role, text: m.content || '_(no response)_' },
     )
 }
 
@@ -173,12 +168,10 @@ function toChatMsgs(msgs: ConversationDetail['messages']): ChatMsg[] {
 interface ChatSettings {
   model: string
   maxTokens: number
-  enableThinking: boolean
-  thinkingBudget: number
   systemPrompt: string
 }
 const SETTINGS_KEY = 'soc.chat.settings'
-const DEFAULT_SETTINGS: ChatSettings = { model: MODEL, maxTokens: 4096, enableThinking: false, thinkingBudget: 10000, systemPrompt: '' }
+const DEFAULT_SETTINGS: ChatSettings = { model: MODEL, maxTokens: 4096, systemPrompt: '' }
 function loadSettings(): ChatSettings {
   try {
     return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }
@@ -205,16 +198,9 @@ function safeJson(v: unknown): string {
   }
 }
 
-function VigilMessage({ text, thinking, ms }: { text: string; thinking?: string; ms?: number }) {
-  const [open, setOpen] = useState(false)
+function VigilMessage({ text }: { text: string; ms?: number }) {
   return (
     <div className="msg vigil">
-      {thinking && (
-        <div className="thought toggle" onClick={() => setOpen((o) => !o)}>
-          {`Reasoned${ms != null ? ` for ${(ms / 1000).toFixed(1)}s` : ''} ${open ? '▾' : '▸'}`}
-        </div>
-      )}
-      {thinking && open && <div className="thinking-body">{thinking}</div>}
       <div className="body"><Markdown>{text}</Markdown></div>
       <div className="msg-actions">
         <button title="Copy" onClick={() => navigator.clipboard?.writeText(text)}><Icon name="copy" size={15} /></button>
@@ -253,8 +239,6 @@ export default function Chat({
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
   const [streamText, setStreamText] = useState('')
-  const [streamThinking, setStreamThinking] = useState('')
-  const [isThinking, setIsThinking] = useState(false)
   // true between a `tool_processing` event and the next `text` chunk — the
   // backend is executing MCP tools, mirroring the classic drawer's indicator
   const [isProcessingTools, setIsProcessingTools] = useState(false)
@@ -280,8 +264,6 @@ export default function Chat({
   const [savedSettings] = useState(loadSettings)
   const [model, setModel] = useState(savedSettings.model)
   const [maxTokens, setMaxTokens] = useState(savedSettings.maxTokens)
-  const [enableThinking, setEnableThinking] = useState(savedSettings.enableThinking)
-  const [thinkingBudget, setThinkingBudget] = useState(savedSettings.thinkingBudget)
   const [systemPrompt, setSystemPrompt] = useState(savedSettings.systemPrompt)
   const [models, setModels] = useState<{ id: string; name: string }[]>([])
   // chat_default from AI Config + whether that fetch has settled — used by the
@@ -464,17 +446,17 @@ export default function Chat({
   // persist settings on change ("automatically saved", like the classic drawer)
   useEffect(() => {
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ model, maxTokens, enableThinking, thinkingBudget, systemPrompt }))
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ model, maxTokens, systemPrompt }))
     } catch {
       /* ignore — settings stay in memory for the session */
     }
-  }, [model, maxTokens, enableThinking, thinkingBudget, systemPrompt])
+  }, [model, maxTokens, systemPrompt])
 
   // autoscroll on new content
   useEffect(() => {
     const el = bodyRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages, streamText, streamThinking, loading])
+  }, [messages, streamText, loading])
 
   // autosize the composer
   useEffect(() => {
@@ -543,9 +525,9 @@ export default function Chat({
   const heuristicTokens = useMemo(() => {
     const chars =
       messages.reduce((n, m) => n + m.text.length, 0) +
-      streamText.length + streamThinking.length + systemPrompt.length + draft.length
+      streamText.length + systemPrompt.length + draft.length
     return Math.round(chars / 4)
-  }, [messages, streamText, streamThinking, systemPrompt, draft])
+  }, [messages, streamText, systemPrompt, draft])
   const estimatedTokens = exactTokens ?? heuristicTokens
   const ctxPct = Math.min((estimatedTokens / CONTEXT_WINDOW) * 100, 100)
   const ctxState = estimatedTokens > 150000 ? 'danger' : estimatedTokens > 100000 ? 'warn' : 'ok'
@@ -570,8 +552,6 @@ export default function Chat({
     setDraft('')
     setLoading(true)
     setStreamText('')
-    setStreamThinking('')
-    setIsThinking(false)
     setIsProcessingTools(false)
     const start = Date.now()
 
@@ -585,8 +565,6 @@ export default function Chat({
           messages: next.map((m) => ({ role: m.role === 'vigil' ? 'assistant' : 'user', content: m.text })),
           model,
           max_tokens: maxTokens,
-          enable_thinking: enableThinking,
-          thinking_budget: enableThinking ? thinkingBudget : undefined,
           system_prompt: systemPrompt || undefined,
           agent_id: agentId || undefined,
           session_id: sessionRef.current,
@@ -597,7 +575,6 @@ export default function Chat({
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
       let curText = ''
-      let curThinking = ''
       let buf = ''
       if (reader) {
         for (;;) {
@@ -623,15 +600,7 @@ export default function Chat({
               continue
             }
             if (ev.error) throw new Error(ev.error)
-            if (ev.type === 'thinking_start') {
-              setIsThinking(true)
-              curThinking = ''
-            } else if (ev.type === 'thinking') {
-              curThinking += ev.content || ''
-              setStreamThinking(curThinking)
-            } else if (ev.type === 'thinking_end') {
-              setIsThinking(false)
-            } else if (ev.type === 'tool_processing') {
+            if (ev.type === 'tool_processing') {
               // backend is running MCP tools — show the live indicator and
               // separate any tool output from the prose preceding it
               setIsProcessingTools(true)
@@ -651,7 +620,7 @@ export default function Chat({
         }
       }
       const ms = Date.now() - start
-      setMessages((m) => [...m, { role: 'vigil', text: curText || '_(no response)_', thinking: curThinking || undefined, ms }])
+      setMessages((m) => [...m, { role: 'vigil', text: curText || '_(no response)_', ms }])
       // Fire a desktop notification on completion, matching the classic
       // drawer (which notifies when an investigation-seeded thread finishes).
       // Gated inside notificationService by the `show_notifications` setting +
@@ -687,8 +656,6 @@ export default function Chat({
     } finally {
       setLoading(false)
       setStreamText('')
-      setStreamThinking('')
-      setIsThinking(false)
       setIsProcessingTools(false)
       abortRef.current = null
     }
@@ -871,11 +838,7 @@ export default function Chat({
         title: c.title,
         messages: (c.messages || [])
           .filter((m) => m.role !== 'error')
-          .map((m) => ({
-            role: m.role === 'vigil' ? 'assistant' : 'user',
-            content: m.text,
-            thinking: m.role === 'vigil' ? m.thinking || null : null,
-          })),
+          .map((m) => ({ role: m.role === 'vigil' ? 'assistant' : 'user', content: m.text, thinking: null })),
       }))
       // preserve investigation dedup keys across the migration
       for (const c of local) if (c.key) setKeymapEntry(c.key, c.id)
@@ -1019,7 +982,7 @@ export default function Chat({
           ) : m.role === 'error' ? (
             <div className="msg vigil err" key={i}><div className="body">{m.text}</div></div>
           ) : (
-            <VigilMessage key={i} text={m.text} thinking={m.thinking} ms={m.ms} />
+            <VigilMessage key={i} text={m.text} ms={m.ms} />
           )
         )}
         {loading && (
@@ -1029,17 +992,10 @@ export default function Chat({
             <div className="vigil-status" aria-live="polite">
               <span className="vs-dots" aria-hidden="true"><i /><i /><i /></span>
               <span className="vs-label">
-                {isThinking
-                  ? 'Vigil is reasoning'
-                  : isProcessingTools
-                    ? 'Vigil is running tools'
-                    : streamText
-                      ? 'Vigil is responding'
-                      : 'Vigil is working on it'}
+                {isProcessingTools ? 'Vigil is running tools' : streamText ? 'Vigil is responding' : 'Vigil is working on it'}
                 …
               </span>
             </div>
-            {isThinking && streamThinking && <div className="thinking-body">{streamThinking}</div>}
             {streamText && <div className="body"><Markdown>{streamText}</Markdown></div>}
           </div>
         )}
@@ -1277,36 +1233,6 @@ export default function Chat({
               onChange={(e) => setMaxTokens(parseInt(e.target.value, 10) || 4096)}
             />
           </div>
-          <div className="cs-row">
-            <span className="cs-text">
-              <span className="cs-name">Extended thinking</span>
-              <span className="cs-help">Stream Vigil’s reasoning before each answer.</span>
-            </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={enableThinking}
-              aria-label="Extended thinking"
-              className={`cs-switch${enableThinking ? ' on' : ''}`}
-              onClick={() => setEnableThinking((v) => !v)}
-            >
-              <span className="cs-knob" />
-            </button>
-          </div>
-          {enableThinking && (
-            <div className="cs-field">
-              <span className="cs-name">Thinking budget (tokens)</span>
-              <input
-                className="cs-input"
-                type="number"
-                min={1024}
-                max={maxTokens}
-                value={thinkingBudget}
-                onChange={(e) => setThinkingBudget(parseInt(e.target.value, 10) || 10000)}
-              />
-              <span className="cs-help">Max tokens Vigil can use for reasoning.</span>
-            </div>
-          )}
         </section>
 
         {/* Advanced */}

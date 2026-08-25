@@ -9,15 +9,25 @@ context about the available agents, MCP tools, and existing workflow patterns.
 import json
 import logging
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from core.integrations.mcp.registry import get_mcp_tool_names
+from core.integrations.mcp.registry import MCPRegistry, safe_tool_names
+from core.workflows.workflows_service import WorkflowsService
 
 logger = logging.getLogger(__name__)
 
 
 class WorkflowAIGenerator:
     """Generates draft workflow definitions from natural-language descriptions."""
+
+    def __init__(
+        self,
+        workflows: Optional[WorkflowsService] = None,
+        mcp_registry: Optional[MCPRegistry] = None,
+    ):
+        self._workflows = workflows
+        self._mcp_registry = mcp_registry
+        self._mcp_tool_names_cache: Optional[List[str]] = None
 
     async def generate(self, description: str) -> Dict[str, Any]:
         """
@@ -45,7 +55,7 @@ class WorkflowAIGenerator:
 
         from core.llm.harness.claude import ClaudeService
 
-        claude = ClaudeService(use_backend_tools=False, use_mcp_tools=False)
+        claude = ClaudeService()
         if not claude.has_api_key():
             return {
                 "success": False,
@@ -161,7 +171,7 @@ class WorkflowAIGenerator:
         return "\n".join(lines)
 
     def _tools_context(self) -> str:
-        tool_names = get_mcp_tool_names()
+        tool_names = self._get_mcp_tool_names()
         if not tool_names:
             return (
                 "(MCP registry unavailable; use tool names from the existing "
@@ -169,11 +179,14 @@ class WorkflowAIGenerator:
             )
         return ", ".join(sorted(tool_names)[:80])
 
+    def _get_mcp_tool_names(self) -> List[str]:
+        if self._mcp_tool_names_cache is None:
+            self._mcp_tool_names_cache = safe_tool_names(self._mcp_registry)
+        return self._mcp_tool_names_cache
+
     def _exemplars_context(self) -> str:
         try:
-            from core.workflows.workflows_service import get_workflows_service
-
-            service = get_workflows_service()
+            service = self._workflows or WorkflowsService()
             workflows = service.list_workflows()
         except Exception as e:
             logger.debug(f"Could not load existing workflows: {e}")
@@ -230,14 +243,3 @@ class WorkflowAIGenerator:
             "phases": phases,
             "graph_layout": {},
         }
-
-
-_generator: Optional[WorkflowAIGenerator] = None
-
-
-def get_workflow_ai_generator() -> WorkflowAIGenerator:
-    """Get the singleton WorkflowAIGenerator instance."""
-    global _generator
-    if _generator is None:
-        _generator = WorkflowAIGenerator()
-    return _generator

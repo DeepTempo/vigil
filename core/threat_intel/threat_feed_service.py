@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from core.time import utcnow
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -225,7 +226,7 @@ def upsert_indicators(indicators: List[NormalizedIndicator]) -> Dict[str, int]:
     inserted = 0
     updated = 0
     skipped = 0
-    now = datetime.utcnow()
+    now = utcnow()
     with db.session_scope() as session:
         for ind in indicators:
             try:

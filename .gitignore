@@ -251,6 +251,17 @@ index.scip.stamp
 slop.toml
 .zed/
 
-# Bifrost's local gateway state (81MB of SQLite) and agent run logs
-bifrost/
+# Bifrost's local gateway state: 81MB of SQLite at the repo root. Anchored --
+# an unanchored `bifrost/` also swallows core/llm/bifrost/ and
+# infra/docker/bifrost/, both of which are tracked source.
+/bifrost/
+
+# Where a file-ledger hunt writes its output. Real run data: sanitise it before it
+# goes anywhere near the tree -- services/agent/scripts/sanitise-hunt-ledgers.ts.
+# Left unanchored on purpose: a hunt run from services/agent/ writes its ledgers
+# there, not at the repo root, and anchoring this to the root stopped ignoring
+# them. The sanitised fixtures live under a runs/ too and are committed, so that
+# one directory is negated -- git will not descend into an ignored directory, so
+# the directory itself has to be unignored, not just the files in it.
 runs/
+!services/agent/tests/fixtures/runs/

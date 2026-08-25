@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from typing import Optional, List, Dict, Tuple
 from datetime import datetime
+from core.time import utcnow
 import uuid
 
 import numpy as np
@@ -40,7 +41,7 @@ class DatabaseDataService:
     # in JSON-file fallback for the rest of the process lifetime.
     _RECONNECT_INTERVAL_SECONDS = 10.0
 
-    def __init__(self, require_db: bool = False):
+    def __init__(self, require_db: bool = False, demo_data=None):
         self._db_service = None
         self._db_connected = False
         self._use_json_fallback = False
@@ -51,8 +52,9 @@ class DatabaseDataService:
 
         if self._demo_mode:
             logger.info("Demo mode enabled - using generated sample data")
-            from core.platform.demo_data_service import get_demo_service
-            self._demo_service = get_demo_service()
+            from core.platform.demo_data_service import DemoDataService
+
+            self._demo_service = demo_data or DemoDataService()
         else:
             self._init_database(require_db)
         DATA_DIR.mkdir(exist_ok=True)
@@ -365,7 +367,7 @@ class DatabaseDataService:
                     embedding=finding_data.get('embedding', [0.0] * 768),
                     mitre_predictions=finding_data.get('mitre_predictions', {}),
                     anomaly_score=float(finding_data.get('anomaly_score', 0.0)),
-                    timestamp=finding_data.get('timestamp', datetime.utcnow()),
+                    timestamp=finding_data.get('timestamp', utcnow()),
                     data_source=finding_data.get('data_source', 'imported'),
                     description=finding_data.get('description'),
                     entity_context=finding_data.get('entity_context'),
@@ -457,7 +459,7 @@ class DatabaseDataService:
                 logger.error(f"Error creating case in DB: {e}")
                 return None
         elif self._use_json_fallback:
-            now = datetime.utcnow().isoformat()
+            now = utcnow().isoformat()
             case_data = {
                 'case_id': case_id,
                 'title': title,
@@ -491,7 +493,7 @@ class DatabaseDataService:
             for c in cases:
                 if c.get('case_id') == case_id:
                     c.update(updates)
-                    c['updated_at'] = datetime.utcnow().isoformat()
+                    c['updated_at'] = utcnow().isoformat()
                     return self._save_cases_json(cases)
         return False
     
@@ -576,7 +578,7 @@ class DatabaseDataService:
                         c['finding_ids'] = []
                     if finding_id not in c['finding_ids']:
                         c['finding_ids'].append(finding_id)
-                        c['updated_at'] = datetime.utcnow().isoformat()
+                        c['updated_at'] = utcnow().isoformat()
                     return self._save_cases_json(cases)
             return False
         return False
@@ -745,7 +747,7 @@ class DatabaseDataService:
                                     embedding=finding.get('embedding', [0.0] * 768),
                                     mitre_predictions=finding.get('mitre_predictions', {}),
                                     anomaly_score=float(finding.get('anomaly_score', 0.0)),
-                                    timestamp=finding.get('timestamp', datetime.utcnow()),
+                                    timestamp=finding.get('timestamp', utcnow()),
                                     data_source=finding.get('data_source', 's3_import'),
                                     entity_context=finding.get('entity_context'),
                                     evidence_links=finding.get('evidence_links'),

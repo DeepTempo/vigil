@@ -307,12 +307,11 @@ class EncryptedFileBackend(SecretsBackend):
     are never written to ``.env`` and are not exposed to other processes.
     """
 
-    DEFAULT_DIR = Path.home() / ".vigil"
     SECRETS_FILENAME = "secrets.enc"
     MASTER_KEY_FILENAME = "master.key"
 
     def __init__(self, data_dir: Optional[Path] = None):
-        self.data_dir = data_dir or self.DEFAULT_DIR
+        self.data_dir = data_dir or vigil_path()
         self.secrets_path = self.data_dir / self.SECRETS_FILENAME
         self.master_key_path = self.data_dir / self.MASTER_KEY_FILENAME
         self._fernet = None  # lazy

@@ -1,3 +1,33 @@
+# Both agent processes run the same image against the same seam, so they take
+# the same environment; only the command and the port differ. Anchored here
+# rather than duplicated, because a URL that drifts between the two is a run
+# that behaves differently depending on which process picked it up.
+x-agent-env: &agent-env
+  # No DATABASE_URL: the agent assembles the connection from these, the same way
+  # the Helm chart supplies it.
+  - POSTGRES_HOST=postgres
+  - POSTGRES_PORT=5432
+  - POSTGRES_DB=deeptempo_soc
+  - POSTGRES_USER=deeptempo
+  - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-deeptempo_secure_password_change_me}
+  - REDIS_URL=redis://redis:6379/0
+  # The four /internal endpoints. Each defaults to localhost:6987 in-process,
+  # which is the agent container itself here, so all four have to be named.
+  # VIGIL_RUNS_URL unset is the quiet one: progress stops reaching the UI and a
+  # run that needs an approval parks with nothing able to answer it.
+  - VIGIL_PLAYBOOKS_URL=http://backend:6987/internal/playbooks
+  - VIGIL_PRICING_URL=http://backend:6987/internal/pricing
+  - VIGIL_RUNS_URL=http://backend:6987/internal/runs
+  - VIGIL_TOOLS_URL=http://backend:6987/internal/tools/invoke
+  # Same secret the backend checks. Empty on both sides means every /internal
+  # call answers 503, so a run fails before its first model call.
+  - AGENT_INTERNAL_TOKEN=${AGENT_INTERNAL_TOKEN:-}
+  - BIFROST_URL=${BIFROST_URL:-http://bifrost:8080}
+  # Pass-through, not `${BIFROST_API_KEY:-}`: the harness falls back to a
+  # placeholder only when the variable is absent, and the := form would set it
+  # to an empty string the OpenAI client then sends as a real credential.
+  - BIFROST_API_KEY
+
 services:
   postgres:
     # pgvector-capable image (findings.embedding uses vector(768) + HNSW).
@@ -60,6 +90,12 @@ services:
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - BIFROST_URL=${BIFROST_URL:-http://bifrost:8080}
       - REDIS_URL=redis://redis:6379/0
+      # Shared secret the agent worker presents on /internal. Unset means every
+      # such call answers 503, so no workflow can run.
+      - AGENT_INTERNAL_TOKEN=${AGENT_INTERNAL_TOKEN:-}
+      # Chat and run projections. core/config.py defaults this to localhost:6989,
+      # which was the agent layer's address while it shared the backend process.
+      - AGENT_URL=http://agent-serve:6989
       - PYTHONUNBUFFERED=1
     ports:
       - "6987:6987"
@@ -192,6 +228,74 @@ services:
       redis:
         condition: service_healthy
       bifrost:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+
+  # ─── Agent layer (TypeScript) ─────────────────────────────────────────────
+  # One image, two commands (infra/docker/Dockerfile.agent), the same split the
+  # chart deploys: a queue consumer and an HTTP surface scale on unrelated
+  # signals, so they are separate services here too.
+  #
+  # Drains the BullMQ `agent-runs` queue that core/agents/queue.py enqueues to.
+  # Runs alongside llm-worker rather than replacing it — see
+  # infra/helm/vigil/templates/agent-worker-deployment.yaml for what has to
+  # stop using arq:llm before that one can go away.
+  agent-worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.agent
+    container_name: deeptempo-agent-worker
+    # The image's default CMD. Named anyway, so the two services read as the
+    # pair they are rather than one command and one absence.
+    command: ["node", "dist/worker.js"]
+    environment: *agent-env
+    healthcheck:
+      # The image declares no HEALTHCHECK: the port depends on the command.
+      # 6990 is probes only here — nothing routes to a queue consumer. Node 20
+      # has global fetch, so this needs no curl in the image.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:6990/healthz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+
+  # Chat over SSE and the run projections a supervisor reads. The backend calls
+  # it at AGENT_URL. No `ports:` on purpose — ADR 0014 dropped the loopback
+  # check, so what keeps this off the host is the private bridge plus the bearer
+  # token, exactly as the chart relies on ClusterIP plus a NetworkPolicy.
+  agent-serve:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.agent
+    container_name: deeptempo-agent-serve
+    command: ["node", "dist/serve.js"]
+    environment: *agent-env
+    healthcheck:
+      # Deliberately the traffic port: a health check on a side port cannot
+      # notice the one that serves requests wedging.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:6989/healthz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # An SSE stream can sit on one model call for minutes; the chart's
+    # terminationGracePeriodSeconds says the same thing.
+    stop_grace_period: 120s
+    # Postgres only. Serve reads and writes the ledger and never touches the
+    # queue, which is the reason it is a separate service at all; waiting on
+    # Redis would say otherwise.
+    depends_on:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
     networks:

@@ -3,13 +3,17 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from core.integrations.mcp.registry import get_mcp_tool_names
+from core.integrations.mcp.registry import MCPRegistry, safe_tool_names
 
 logger = logging.getLogger(__name__)
 
 
 class AgentAIGenerator:
     """Generates / refines draft custom agent configurations from natural language."""
+
+    def __init__(self, mcp_registry: Optional[MCPRegistry] = None) -> None:
+        self._mcp_registry = mcp_registry
+        self._mcp_tool_names_cache: Optional[List[str]] = None
 
     async def generate(
         self,
@@ -43,7 +47,7 @@ class AgentAIGenerator:
 
         from core.llm.harness.claude import ClaudeService
 
-        claude = ClaudeService(use_backend_tools=False, use_mcp_tools=False)
+        claude = ClaudeService()
         if not claude.has_api_key():
             return {
                 "success": False,
@@ -207,7 +211,7 @@ class AgentAIGenerator:
         return "\n".join(lines) or "(no existing agents)"
 
     def _tools_context(self) -> str:
-        tool_names = get_mcp_tool_names()
+        tool_names = self._get_mcp_tool_names()
         if not tool_names:
             return (
                 "(MCP registry unavailable; leave `recommended_tools` empty "
@@ -222,6 +226,11 @@ class AgentAIGenerator:
         for server, names in grouped.items():
             lines.append(f"- **{server}**: {', '.join(names)}")
         return "\n".join(lines)
+
+    def _get_mcp_tool_names(self) -> List[str]:
+        if self._mcp_tool_names_cache is None:
+            self._mcp_tool_names_cache = safe_tool_names(self._mcp_registry)
+        return self._mcp_tool_names_cache
 
     def _base_prompt_shape(self) -> str:
         return (
@@ -286,14 +295,3 @@ class AgentAIGenerator:
             "max_tokens": max_tokens,
             "enable_thinking": bool(draft.get("enable_thinking") or False),
         }
-
-
-_generator: Optional[AgentAIGenerator] = None
-
-
-def get_agent_ai_generator() -> AgentAIGenerator:
-    """Return the singleton AgentAIGenerator instance."""
-    global _generator
-    if _generator is None:
-        _generator = AgentAIGenerator()
-    return _generator

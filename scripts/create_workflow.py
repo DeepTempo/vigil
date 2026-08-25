@@ -20,19 +20,6 @@ from core.agents.builtins import AgentId  # noqa: E402
 
 AVAILABLE_AGENTS = [a.value for a in AgentId]
 
-COMMON_TOOLS = [
-    "get_finding",
-    "list_findings",
-    "nearest_neighbors",
-    "search_detections",
-    "create_approval_action",
-    "update_case",
-    "create_case",
-    "get_case",
-    "create_attack_layer",
-    "get_technique_rollup",
-]
-
 
 def slugify(name: str) -> str:
     """Convert a name to a valid workflow directory slug."""
@@ -41,41 +28,40 @@ def slugify(name: str) -> str:
 
 def build_template(workflow_id: str, agents: list[str]) -> str:
     """Generate a commented WORKFLOW.md template."""
-    agents_yaml = "\n".join(f"  - {a}" for a in agents)
-    tools_yaml = "\n".join(f"  - {t}" for t in COMMON_TOOLS[:6])
     display_name = workflow_id.replace("-", " ").title()
 
+    # The phase list is the definition: agents and tools are read off it, so a
+    # template that stated them beside it would be one edit from disagreeing.
     phase_sections = []
     for i, agent in enumerate(agents, 1):
         agent_display = agent.replace("_", " ").title()
         phase_sections.append(
-            f"""### Phase {i}: TODO ({agent_display} Agent)
+            f"""  - id: phase-{i}
+    agent: {agent}
+    name: "TODO: name the {agent_display} step"
+    tools: [get_finding, list_findings]
+    instructions: |
+      TODO: Describe what this phase accomplishes.
 
-**Purpose:** Describe what this phase accomplishes.
+      1. TODO — describe the first step
+      2. TODO — describe the next step
 
-**Tools:** `get_finding`, `list_findings`
-
-**Steps:**
-1. TODO — describe the first step
-2. TODO — describe the next step
-3. TODO — add more steps as needed
-
-**Output:** Describe the expected output of this phase."""
+      Hand on: TODO — say what the next phase is given."""
         )
 
-    phases_body = "\n\n".join(phase_sections)
+    phases_yaml = "\n\n".join(phase_sections)
 
     return f"""---
 name: {workflow_id}
 description: "TODO: Describe what this workflow does in one sentence."
-agents:
-{agents_yaml}
-tools-used:
-{tools_yaml}
-use-case: "TODO: Describe the scenario that triggers this workflow."
-trigger-examples:
+use_case: "TODO: Describe the scenario that triggers this workflow."
+trigger_examples:
   - "Run {display_name.lower()} on finding f-20260401-abc123"
   - "TODO: Add another example trigger"
+objectives:
+  - "TODO: State what this workflow is for"
+phases:
+{phases_yaml}
 ---
 
 # {display_name} Workflow
@@ -87,10 +73,6 @@ it sequences, and what kind of output it produces.
 
 - TODO: Describe situation 1
 - TODO: Describe situation 2
-
-## Agent Sequence
-
-{phases_body}
 
 ## Example Invocation
 

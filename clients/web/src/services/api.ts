@@ -471,56 +471,6 @@ export const mcpApi = {
 
 // Claude API
 export const claudeApi = {
-  chat: (data: {
-    messages: Array<{ 
-      role: string
-      content: string | Array<{
-        type: string
-        text?: string
-        source?: {
-          type: string
-          media_type: string
-          data: string
-        }
-      }>
-    }>
-    system_prompt?: string
-    model?: string
-    max_tokens?: number
-    enable_thinking?: boolean
-    thinking_budget?: number
-    agent_id?: string
-    streaming?: boolean
-    use_agent_sdk?: boolean
-  }) => api.post('/claude/chat', data, { timeout: LLM_TIMEOUT }),
-  
-  chatStream: (data: {
-    messages: Array<{ 
-      role: string
-      content: string | Array<{
-        type: string
-        text?: string
-        source?: {
-          type: string
-          media_type: string
-          data: string
-        }
-      }>
-    }>
-    system_prompt?: string
-    model?: string
-    max_tokens?: number
-    enable_thinking?: boolean
-    thinking_budget?: number
-    agent_id?: string
-  }) => api.post('/claude/chat/stream', data, {
-    responseType: 'stream',
-    timeout: 0,
-    headers: {
-      'Accept': 'text/event-stream',
-    }
-  }),
-  
   uploadFile: (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -532,8 +482,6 @@ export const claudeApi = {
   },
   
   getModels: () => api.get('/claude/models'),
-  
-  getSdkStatus: () => api.get('/claude/sdk-status'),
   
   summarizeConversation: (data: {
     messages: Array<{
@@ -565,33 +513,6 @@ export const claudeApi = {
     }>
     notes?: string
   }) => api.post('/claude/generate-chat-report', data, { timeout: LLM_TIMEOUT }),
-  
-  // Agent SDK endpoints
-  runAgentTask: (data: {
-    task: string
-    system_prompt?: string
-    allowed_tools?: string[]
-    max_turns?: number
-    model?: string
-    session_id?: string
-    agent_id?: string
-  }) => api.post('/claude/agent/task', data, { timeout: LLM_TIMEOUT }),
-  
-  streamAgentTask: (data: {
-    task: string
-    system_prompt?: string
-    allowed_tools?: string[]
-    max_turns?: number
-    model?: string
-    session_id?: string
-    agent_id?: string
-  }) => api.post('/claude/agent/stream', data, {
-    responseType: 'stream',
-    timeout: 0,
-    headers: {
-      'Accept': 'text/event-stream',
-    }
-  }),
 }
 
 // Agents API
@@ -608,14 +529,6 @@ export const agentsApi = {
     agent_id?: string
     additional_context?: string
   }) => api.post('/agents/agents/investigate', data, { timeout: LLM_TIMEOUT }),
-
-  runAgent: (data: {
-    finding_id?: string
-    case_id?: string
-    task?: string
-    agent_id?: string
-    use_agent_sdk?: boolean
-  }) => api.post('/agents/agents/run', data, { timeout: LLM_TIMEOUT }),
 
   // Custom Agent Builder (issue #80)
   listCustom: () => api.get('/agents/custom'),
@@ -1241,6 +1154,11 @@ export const workflowApi = {
   listRuns: (id: string, params: { limit?: number; offset?: number; status?: string } = {}) =>
     api.get(`/workflows/${id}/runs`, { params }),
   getRun: (runId: string) => api.get(`/workflows/runs/${runId}`),
+
+  // Steer a run that is already going. Queued rather than journalled: the worker
+  // holding the ledger is what turns a directive into an event on it.
+  steer: (runId: string, kind: string, text = '') =>
+    api.post(`/agent-runs/${runId}/directives`, { kind, text }),
 
   // Custom (database-backed) CRUD
   listCustom: (activeOnly: boolean = true) =>

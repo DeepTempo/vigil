@@ -259,6 +259,10 @@ _TIER_HEURISTIC: Dict[str, Tuple[_TierPattern, ...]] = {
     "ollama": (),  # always $0 — handled as a separate branch
 }
 
+# Who this catalog can put a number on. A gateway is not one of them: it bills
+# nothing of its own and serves whichever of these actually answered.
+_PRICED_PROVIDERS = frozenset(_TIER_HEURISTIC) | {provider for provider, _ in _CATALOG}
+
 
 # ---------------------------------------------------------------------------
 # Cache token pricing multipliers (#184 Phase 3)
@@ -304,9 +308,15 @@ def infer_provider_type(model_id: str) -> str:
     look up pricing. This is good enough for cost-source badging — if it
     misclassifies, the worst case is the badge shows ``"unknown"`` which
     is exactly what we want a reader to see.
+
+    A ``provider/model`` id is Bifrost's own wire form and names the
+    provider outright, so it is read rather than guessed at.
     """
     if not model_id:
         return "unknown"
+    named, _, rest = model_id.partition("/")
+    if rest and named.lower() in _PRICED_PROVIDERS:
+        return named.lower()
     mid = model_id.lower()
     if mid.startswith("claude-"):
         return "anthropic"

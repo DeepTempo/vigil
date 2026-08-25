@@ -6,7 +6,7 @@ and task automation.
 """
 
 import logging
-from datetime import datetime
+from core.time import utcnow
 from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
@@ -59,7 +59,7 @@ class CaseWorkflowService:
         """
         with unit_of_work(session) as session:
             # Generate template ID
-            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            timestamp = utcnow().strftime("%Y%m%d%H%M%S")
             template_id = f"template-{template_type}-{timestamp}"
 
             template = CaseTemplate(
@@ -170,7 +170,7 @@ class CaseWorkflowService:
                 return None
 
             # Generate case ID
-            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            timestamp = utcnow().strftime("%Y%m%d%H%M%S")
             case_id = f"case-{timestamp}"
 
             # Create case
@@ -190,7 +190,7 @@ class CaseWorkflowService:
                 notes=[],
                 timeline=[
                     {
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": utcnow().isoformat(),
                         "event": f"Case created from template: {template.name}",
                     }
                 ],
@@ -290,7 +290,7 @@ class CaseWorkflowService:
             case.assignee = escalated_to
             case.timeline.append(
                 {
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": utcnow().isoformat(),
                     "event": f"Escalated to {escalated_to}: {reason}",
                 }
             )
@@ -458,7 +458,7 @@ class CaseWorkflowService:
             )
             target.tags = list(set((target.tags or []) + (source.tags or [])))
 
-            now = datetime.utcnow()
+            now = utcnow()
             target.activities.append(
                 {
                     "timestamp": now.isoformat() + "Z",

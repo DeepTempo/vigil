@@ -21,7 +21,7 @@
 ### Where it lives
 - [ ] New agent: `backend/agents/[agent_name].py`
 - [ ] New skill: `skills/[skill-name]/SKILL.md`
-- [ ] New MCP server: `mcp-servers/[server-name]/`
+- [ ] New MCP server: `tools/[server-name].py`
 - [ ] Enhancement to: `[existing file path]`
 - [ ] Detection rules: `data/[rules location]`
 - [ ] Other: [describe]

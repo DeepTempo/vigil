@@ -1,16 +1,21 @@
 """SOC Daemon - Main entry point and orchestration."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import signal
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 # Add the repo root to sys.path (this file is services/daemon/main.py).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from services.daemon.config import DaemonConfig
+from core.config import validate_settings_or_exit
+
+if TYPE_CHECKING:
+    from services.daemon.config import DaemonConfig
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +24,11 @@ class SOCDaemon:
     """Main daemon orchestrator for autonomous SOC operations."""
     
     def __init__(self, config: Optional[DaemonConfig] = None):
-        self.config = config or DaemonConfig.from_env()
+        if config is None:
+            from services.daemon.config import DaemonConfig
+
+            config = DaemonConfig.from_env()
+        self.config = config
         self.config.setup_logging()
 
         # Initialize OTEL telemetry after logging is set up
@@ -41,12 +50,13 @@ class SOCDaemon:
         self._orchestrator = None
         self._llm_worker_manager = None
         self._metrics_server = None
+        self._mcp_client = None
         
         logger.info("SOC Daemon initialized")
     
     def _setup_signal_handlers(self):
         """Setup graceful shutdown handlers."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self._handle_shutdown)
@@ -61,6 +71,11 @@ class SOCDaemon:
         logger.info("Initializing daemon components...")
         
         # Import here to avoid circular imports
+        from core.integrations.mcp.client import (build_mcp_client,
+                                                  set_process_mcp_client)
+        from core.response.approval_service import ApprovalService
+        from core.response.autonomous_response_service import \
+            AutonomousResponseService
         from services.daemon.poller import DataPoller
         from services.daemon.processor import FindingProcessor
         from services.daemon.responder import AutonomousResponder
@@ -73,9 +88,24 @@ class SOCDaemon:
         self._poller = DataPoller(self.config.polling)
         self._kafka_ingestor = KafkaIngestor(self.config.kafka)
         self._processor = FindingProcessor(self.config.processing)
-        self._responder = AutonomousResponder(self.config.response, self.config.escalation)
+        # The daemon owns its own copies: it is a separate process from the API, so
+        # nothing on the API's app.state is reachable from here.
+        self._mcp_client = build_mcp_client()
+        set_process_mcp_client(self._mcp_client)
+        approvals = ApprovalService()
+
+        self._responder = AutonomousResponder(
+            self.config.response,
+            self.config.escalation,
+            response_service=AutonomousResponseService(approvals=approvals),
+            approvals=approvals,
+        )
         self._scheduler = TaskScheduler(self.config.scheduler)
-        self._orchestrator = Orchestrator(self.config.orchestrator)
+        self._orchestrator = Orchestrator(
+            self.config.orchestrator,
+            approvals=approvals,
+            mcp_client=self._mcp_client,
+        )
         self._llm_worker_manager = LLMWorkerManager()
 
         if self.config.metrics.enabled:
@@ -181,6 +211,9 @@ class SOCDaemon:
 
 def main():
     """Entry point for the daemon."""
+    validate_settings_or_exit()
+    from services.daemon.config import DaemonConfig
+
     config = DaemonConfig.from_env()
     daemon = SOCDaemon(config)
     

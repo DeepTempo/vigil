@@ -11,11 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.workflows.workflow_run_service import (
-    WorkflowRunService,
-    generate_run_id,
-    get_workflow_run_service,
-)
+from core.workflows.workflow_run_service import WorkflowRunService, generate_run_id
 
 
 def _db_available() -> bool:
@@ -175,10 +171,3 @@ class TestListRuns:
         # ``list_runs`` calls to_dict(include_result=False) — result_summary
         # should not be in the envelope so list responses stay small.
         assert "result_summary" not in runs[0]
-
-
-class TestSingleton:
-    def test_get_workflow_run_service_returns_same_instance(self):
-        a = get_workflow_run_service()
-        b = get_workflow_run_service()
-        assert a is b

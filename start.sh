@@ -49,7 +49,7 @@ elif ! node -e "process.exit(parseInt(process.version.slice(1))>=18?0:1)" 2>/dev
 fi
 
 # --- Git submodules ---
-if [ -d ".git" ] && [ ! -f "deeptempo-core/pyproject.toml" ] && [ ! -f "deeptempo-core/setup.py" ]; then
+if [ -d ".git" ] && [ ! -f "mempalace/pyproject.toml" ] && [ ! -f "mempalace/setup.py" ]; then
     git submodule update --init --recursive || echo "Warning: submodule init failed."
 fi
 

@@ -24,6 +24,7 @@ except ImportError:
             ClientSession = Any
             StdioServerParameters = Any
 
+from core.integrations.mcp.child_env import ca_bundle_env
 from core.integrations.mcp.service import MCPService
 
 from core.secrets import get_secret
@@ -248,11 +249,13 @@ class MCPClient:
             return False
 
         try:
-            # Create stdio server parameters
+            # Create stdio server parameters. stdio_client narrows the child
+            # environment to a six-name allowlist, so a CA bundle set in the
+            # backend's environment has to be forwarded rather than inherited.
             server_params = StdioServerParameters(
                 command=server.command,
                 args=server.args,
-                env=server.env
+                env={**ca_bundle_env(), **(server.env or {})}
             )
             
             if persistent:
@@ -610,21 +613,25 @@ class MCPClient:
         logger.info("All MCP connections closed")
 
 
-# Global MCP client instance
-_mcp_client: Optional[MCPClient] = None
+# An MCPClient owns persistent stdio child processes that only its creator closes, so
+# exactly one may exist per process. The owner builds it and installs it here.
+_process_client: Optional[MCPClient] = None
 
 
-def get_mcp_client() -> Optional[MCPClient]:
-    """Get or create the global MCP client instance."""
-    global _mcp_client
-    
+def build_mcp_client() -> Optional[MCPClient]:
+    """Build a client, or None when the MCP SDK is not installed."""
     if not MCP_AVAILABLE:
         logger.warning("MCP SDK not available. Install with: pip install mcp")
         return None
+    return MCPClient(MCPService())
     
-    if _mcp_client is None:
-        mcp_service = MCPService()
-        _mcp_client = MCPClient(mcp_service)
+
+def set_process_mcp_client(client: Optional[MCPClient]) -> None:
+    global _process_client
+    _process_client = client
     
-    return _mcp_client
+
+# None until an owner (the API lifespan, daemon startup) has installed a client.
+def process_mcp_client() -> Optional[MCPClient]:
+    return _process_client
 
