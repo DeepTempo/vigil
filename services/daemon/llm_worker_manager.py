@@ -29,6 +29,8 @@ class LLMWorkerManager:
         while not shutdown_event.is_set():
             self._sync_enabled_from_db()
 
+            # Restart on any child death, including EX_CONFIG (78). This
+            # child inherited the daemon's already-validated env.
             if self._enabled and not self._is_running():
                 self._start_worker()
             elif not self._enabled and self._is_running():

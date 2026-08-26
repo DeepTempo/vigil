@@ -16,7 +16,9 @@ class _EmptyValidationError:
         return []
 
 
-def _run_startup(command: str) -> subprocess.CompletedProcess[str]:
+def _run_startup(
+    command: str | None = None, *, module: str | None = None
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["DAEMON_HEALTH_PORT"] = "not-an-int"
     env["DEV_MODE"] = "true"
@@ -25,13 +27,19 @@ def _run_startup(command: str) -> subprocess.CompletedProcess[str]:
         if env.get("PYTHONPATH")
         else str(REPO_ROOT)
     )
+    if module is not None:
+        argv = [sys.executable, "-m", module]
+    else:
+        assert command is not None
+        argv = [sys.executable, "-c", command]
     return subprocess.run(
-        [sys.executable, "-c", command],
+        argv,
         cwd=REPO_ROOT,
         env=env,
         text=True,
         capture_output=True,
         check=False,
+        timeout=30,
     )
 
 
@@ -47,6 +55,16 @@ def test_api_startup_reports_labeled_configuration_error():
 
 def test_daemon_entrypoint_reports_labeled_configuration_error():
     result = _run_startup("from services.daemon.main import main; main()")
+
+    assert result.returncode == os.EX_CONFIG
+    assert result.stderr.count("configuration error:") == 1
+    assert "daemon_health_port" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert "ValidationError" not in result.stderr
+
+
+def test_worker_entrypoint_reports_labeled_configuration_error():
+    result = _run_startup(module="services.worker")
 
     assert result.returncode == os.EX_CONFIG
     assert result.stderr.count("configuration error:") == 1
