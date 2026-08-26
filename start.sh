@@ -38,7 +38,6 @@ done
 [ "$ALL_PROFILES" -eq 1 ] && EXTRA_SERVICES="$EXTRA_SERVICES pgadmin splunk kafka jaeger prometheus grafana otel-collector"
 
 # --- Prerequisites ---
-PYTHON=$(find_python)
 ensure_docker || exit 1
 
 SKIP_FRONTEND=0
@@ -54,10 +53,8 @@ if [ -d ".git" ] && [ ! -f "mempalace/pyproject.toml" ] && [ ! -f "mempalace/set
 fi
 
 # --- Python environment ---
-ensure_venv "$PYTHON"
+ensure_venv
 install_python_deps
-
-command -v uvicorn &>/dev/null || { echo "uvicorn not found after install."; exit 1; }
 
 # --- Environment ---
 _CALLER_BIND_HOST="${BIND_HOST:-}"

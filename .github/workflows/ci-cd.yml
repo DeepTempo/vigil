@@ -8,7 +8,7 @@ on:
   workflow_dispatch:  # Allows manual triggering from GitHub UI
 
 env:
-  PYTHON_VERSION: '3.10'
+  PYTHON_VERSION: '3.12'
   NODE_VERSION: '18'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}

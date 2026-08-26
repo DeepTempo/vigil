@@ -129,7 +129,7 @@ first-run bootstrap are the point.
 
 ### Prerequisites
 
-- **Python 3.10+** (required by claude-agent-sdk)
+- **Python 3.12** — provisioned automatically by `uv` (see `.python-version`); no host Python needed
 - **Node.js 18+**
 - **Docker Desktop** (must be running — used for PostgreSQL and Redis)
 - **Git** with submodule support

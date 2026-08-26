@@ -265,3 +265,9 @@ slop.toml
 # the directory itself has to be unignored, not just the files in it.
 runs/
 !services/agent/tests/fixtures/runs/
+
+# Local scratch space -- notes and throwaway files, never committed.
+/.scratch/
+
+# Repo-local uv install, created by scripts/lib.sh when the host has no uv.
+/.uv/

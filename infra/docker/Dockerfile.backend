@@ -27,7 +27,7 @@ RUN npm run build
 # Stage 2: install Python dependencies
 # (separate stage so dep layer is cached independently of app code)
 # ---------------------------------------------------------------------------
-FROM python:3.11-slim AS python-deps
+FROM python:3.12-slim AS python-deps
 
 WORKDIR /install
 
@@ -53,7 +53,7 @@ RUN grep -vE '^[[:space:]]*-e[[:space:]]+\./' requirements.txt > requirements.ru
 # ---------------------------------------------------------------------------
 # Stage 3: runtime image
 # ---------------------------------------------------------------------------
-FROM python:3.11-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 ARG VIGIL_VERSION=dev
 LABEL org.opencontainers.image.version="${VIGIL_VERSION}"
