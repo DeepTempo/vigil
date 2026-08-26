@@ -8,7 +8,6 @@ on:
   workflow_dispatch:  # Allows manual triggering from GitHub UI
 
 env:
-  PYTHON_VERSION: '3.12'
   NODE_VERSION: '18'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -33,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
       
       - name: Install dependencies
@@ -278,7 +277,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
       
       - name: Install dependencies
@@ -448,7 +447,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
 
       - name: Set up Node.js
@@ -537,7 +536,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
 
       - name: Install dependencies
@@ -575,7 +574,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
       
       - name: Install Bandit
         run: pip install bandit[toml]

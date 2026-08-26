@@ -23,8 +23,13 @@ _container_ollama_url() {
               -e 's|//127\.0\.0\.1:|//host.docker.internal:|' \
               -e 's|//0\.0\.0\.0:|//host.docker.internal:|'
 }
+# PYTHON_VERSION feeds the images' base-image build arg. Exported here for the
+# same reason as OLLAMA_URL: compose substitutes from the environment and cannot
+# read .python-version itself, so the pin is injected at the one boundary where
+# compose is invoked, rather than copied into the compose file.
 dc() {
     OLLAMA_URL="$(_container_ollama_url)" \
+    PYTHON_VERSION="$(python_pin 2>/dev/null || true)" \
         "${_DC_CMD[@]}" -f "$REPO_ROOT/infra/docker/docker-compose.yml" "$@"
 }
 

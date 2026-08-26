@@ -7,7 +7,6 @@ on:
   workflow_dispatch:  # Allow manual trigger
 
 env:
-  PYTHON_VERSION: '3.12'
 
 jobs:
   # ============================================================================
@@ -42,7 +41,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
       
       - name: Install dependencies
@@ -77,7 +76,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
       
       - name: Install dependencies

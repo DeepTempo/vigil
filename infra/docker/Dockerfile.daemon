@@ -12,7 +12,12 @@
 # ---------------------------------------------------------------------------
 # Stage 1: install Python dependencies
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim AS python-deps
+# The Python version comes from .python-version, the repo's single pin. The
+# default below only applies to a bare `docker build` with no --build-arg; every
+# path that ships an image (docker-compose.yml, release.yml) passes the value
+# read from that file, so the images cannot drift from the venv and CI.
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim AS python-deps
 
 WORKDIR /install
 
@@ -38,7 +43,7 @@ RUN grep -vE '^[[:space:]]*-e[[:space:]]+\./' requirements.lock > requirements.r
 # ---------------------------------------------------------------------------
 # Stage 2: runtime image
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim AS runtime
+FROM python:${PYTHON_VERSION}-slim AS runtime
 
 ARG VIGIL_VERSION=dev
 LABEL org.opencontainers.image.version="${VIGIL_VERSION}"

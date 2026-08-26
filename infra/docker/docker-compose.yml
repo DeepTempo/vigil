@@ -78,6 +78,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.12}
     container_name: deeptempo-backend
     environment:
       - POSTGRES_HOST=postgres
@@ -115,6 +117,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.daemon
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.12}
     container_name: deeptempo-daemon
     environment:
       # Database
@@ -204,6 +208,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.12}
     container_name: deeptempo-llm-worker
     command: ["python", "-m", "services.worker"]
     healthcheck:
