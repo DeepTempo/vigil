@@ -26,6 +26,19 @@ def special_char_config(monkeypatch):
     monkeypatch.setenv("POSTGRES_PORT", "5432")
     monkeypatch.setenv("POSTGRES_DB", "deeptempo_soc")
     monkeypatch.setenv("POSTGRES_SSL_MODE", "prefer")
+    # `DatabaseConfig` reads the password through `get_secret`, whose lookup
+    # order is encrypted store -> environment -> dotenv. Setting the env var is
+    # therefore not enough: on any machine with a real POSTGRES_PASSWORD in
+    # ~/.vigil/secrets.enc the store wins, and these assertions end up
+    # comparing against the developer's own credential rather than the
+    # special-character fixture. Patching the accessor is what makes the
+    # fixture actually control what the config sees.
+    monkeypatch.setattr(
+        "core.storage.connection.get_secret",
+        lambda key, default=None: (
+            SPECIAL_PASSWORD if key == "POSTGRES_PASSWORD" else default
+        ),
+    )
     return DatabaseConfig()
 
 
