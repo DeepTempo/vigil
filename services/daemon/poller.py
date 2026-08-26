@@ -595,7 +595,9 @@ class DataPoller:
 
         try:
             from core.ingestion.ingestion_service import IngestionService
-            IngestionService().ingest_finding(finding)
+            # Synchronous SQLAlchemy — off the event loop, otherwise this
+            # fallback blocks the polling loop for the whole write.
+            await asyncio.to_thread(IngestionService().ingest_finding, finding)
             return True
         except Exception:
             logger.exception(

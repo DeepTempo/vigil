@@ -395,7 +395,9 @@ class FindingProcessor:
                 continue
 
             try:
-                batch = self._data_service.get_findings_missing_enrichment(
+                # Synchronous SQLAlchemy — off the event loop, see _store_finding.
+                batch = await asyncio.to_thread(
+                    self._data_service.get_findings_missing_enrichment,
                     limit=self.config.enrich_backfill_batch,
                     max_age_hours=self.config.enrich_backfill_max_age_hours,
                 )
@@ -422,7 +424,7 @@ class FindingProcessor:
             from core.ingestion.ingestion_service import IngestionService
 
             ingestion = IngestionService()
-            return bool(ingestion.ingest_finding(finding))
+            return bool(await asyncio.to_thread(ingestion.ingest_finding, finding))
         except Exception as e:
             logger.error(f"Failed to store finding: {e}")
             return False
@@ -449,7 +451,11 @@ class FindingProcessor:
         if not updates:
             return
         # update_finding reports failure by returning False rather than raising.
-        if not self._data_service.update_finding(finding_id, **updates):
+        # Synchronous SQLAlchemy — off the event loop, see _store_finding.
+        stored = await asyncio.to_thread(
+            self._data_service.update_finding, finding_id, **updates
+        )
+        if not stored:
             logger.error(
                 "Failed to persist triage result for %s; the enrichment backfill "
                 "will re-queue it", finding_id,

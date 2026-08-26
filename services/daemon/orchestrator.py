@@ -888,25 +888,32 @@ class Orchestrator:
             from core.storage.connection import get_db_manager
             from core.storage.models import Investigation as InvModel
 
-            with get_db_manager().session_scope() as session:
-                existing = (
-                    session.query(InvModel)
-                    .filter(
-                        InvModel.workflow_id == "case-review",
-                        InvModel.case_id == case_id,
-                        InvModel.status.notin_(["failed"]),
+            def _existing_review_id() -> Optional[str]:
+                """Synchronous SQLAlchemy — the caller runs this in a worker
+                thread. The id is read inside the session scope so the caller
+                never touches a detached instance."""
+                with get_db_manager().session_scope() as session:
+                    row = (
+                        session.query(InvModel)
+                        .filter(
+                            InvModel.workflow_id == "case-review",
+                            InvModel.case_id == case_id,
+                            InvModel.status.notin_(["failed"]),
+                        )
+                        .first()
                     )
-                    .first()
-                )
-                if existing:
-                    logger.debug(
-                        f"Case-review already exists for {case_id}: {existing.investigation_id}"
-                    )
-                    return
+                    return row.investigation_id if row else None
+
+            existing_id = await asyncio.to_thread(_existing_review_id)
+            if existing_id:
+                logger.debug(f"Case-review already exists for {case_id}: {existing_id}")
+                return
 
             case_data = None
             if self._data_service:
-                case_data = self._data_service.get_case(case_id)
+                case_data = await asyncio.to_thread(
+                    self._data_service.get_case, case_id
+                )
             if not case_data:
                 logger.warning(f"Case {case_id} not found, skipping case review")
                 return
