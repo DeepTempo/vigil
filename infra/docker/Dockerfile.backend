@@ -36,16 +36,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# requirements.txt pins the submodules as editable installs (`-e ./<dir>`)
+# requirements.lock pins the submodules as editable installs (`-e ./<dir>`)
 # for local development. In the image we install them as regular packages
 # from the copied source, so the runtime stage needs only /usr/local and no
 # editable source tree (an `-e` install writes a .pth pointing at the build
 # path, which won't exist in the runtime stage). Keep this COPY list in sync
-# with the `-e ./` lines in requirements.txt: mempalace is the only one left,
+# with the `-e ./` lines in requirements.lock: mempalace is the only one left,
 # since #654 dropped the deeptempo-core and mcp-servers submodules.
-COPY requirements.txt .
+COPY requirements.lock .
 COPY mempalace/      ./mempalace/
-RUN grep -vE '^[[:space:]]*-e[[:space:]]+\./' requirements.txt > requirements.runtime.txt \
+RUN grep -vE '^[[:space:]]*-e[[:space:]]+\./' requirements.lock > requirements.runtime.txt \
     && pip install --no-cache-dir --prefix=/install/deps \
          -r requirements.runtime.txt \
          ./mempalace

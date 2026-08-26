@@ -177,8 +177,21 @@ ensure_npm_on_path() {
     return 1
 }
 
+# Where dependency versions come from. requirements.lock is fully pinned and
+# resolved for every supported platform, so two people installing months apart
+# get the same tree; requirements.txt (open ranges) is the fallback for a
+# checkout that predates the lock. Regenerate with scripts/update_lock.sh.
+deps_source() {
+    if [ -f "$REPO_ROOT/requirements.lock" ]; then
+        echo "$REPO_ROOT/requirements.lock"
+    else
+        echo "$REPO_ROOT/requirements.txt"
+    fi
+}
+
 # --- Build filtered requirements (skip uninitialized submodule editable installs) ---
 filtered_reqs() {
+    local src="${1:-$REPO_ROOT/requirements.txt}"
     local tmp; tmp=$(mktemp)
     while IFS= read -r line; do
         if [[ "$line" =~ ^-e[[:space:]]+\. ]]; then
@@ -187,7 +200,7 @@ filtered_reqs() {
             [ -f "$dir/setup.py" ] || [ -f "$dir/pyproject.toml" ] || continue
         fi
         echo "$line"
-    done < "$REPO_ROOT/requirements.txt" > "$tmp"
+    done < "$src" > "$tmp"
     echo "$tmp"
 }
 
@@ -262,11 +275,12 @@ ensure_venv() {
 install_python_deps() {
     ensure_uv || return 1
     local venv="$REPO_ROOT/venv"
-    local reqs; reqs=$(filtered_reqs)
+    local src; src=$(deps_source)
+    local reqs; reqs=$(filtered_reqs "$src")
     local log="$REPO_ROOT/logs/pip-install.log"
     mkdir -p "$REPO_ROOT/logs"
 
-    echo "Installing Python dependencies (log: $log)..."
+    echo "Installing Python dependencies from $(basename "$src") (log: $log)..."
     if ! "$UV" pip install --python "$venv/bin/python" -r "$reqs" >"$log" 2>&1; then
         rm -f "$reqs"
         echo "" >&2
