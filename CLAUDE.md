@@ -127,6 +127,33 @@ first-run bootstrap are the point.
 ./setup_dev.sh   # Creates venv, installs all Python + npm deps
 ```
 
+### The Python toolchain
+
+Vigil **provisions** its interpreter rather than discovering one. `.python-version`
+pins the version (3.12) and `scripts/lib.sh` uses `uv` to download a standalone
+CPython matching it and the host's architecture — so conda, pyenv, or a system
+Python on `PATH` cannot influence what the venv is built from. There is no
+`find_python`; do not reintroduce `PATH` scanning.
+
+Two details are load-bearing and easy to undo by accident:
+
+- `--python-preference only-managed` is passed as a **flag** to `uv venv`.
+  Without it uv reuses any same-version interpreter on `PATH`; as an env var it
+  loses to a user who has `UV_PYTHON_PREFERENCE` set.
+- A `uv` found on `PATH` is used only when its own target triple matches
+  `uname -m`. An x86_64 uv provisions x86_64 interpreters even under
+  `only-managed`.
+
+The venv is disposable: one that doesn't match the pin is deleted and rebuilt
+(~2s warm) rather than repaired. `install_python_deps` is fatal on failure and
+ends by importing what the services need, so breakage reports at its cause.
+
+Dependencies install from **`requirements.lock`** (fully pinned, `--universal`
+so one file covers macOS/Linux and arm64/x86_64). `requirements.txt` remains the
+list of direct dependencies with acceptable ranges. After changing it, run
+`./scripts/update_lock.sh` and commit both. CI and both Docker images install
+from the lock too.
+
 ### Prerequisites
 
 - **Python 3.12** — provisioned automatically by `uv` (see `.python-version`); no host Python needed
@@ -465,6 +492,8 @@ All CI checks must pass before merging.
 | `services/mcp_service.py` | MCP protocol coordination |
 | `infra/database/init/` | Schema SQL — see Database section for the add/modify checklist |
 | `mcp-config.json` | All MCP server definitions |
+| `.python-version` | The pinned interpreter — venv, both Docker images, and CI |
+| `requirements.lock` | Fully pinned dependency tree; what actually gets installed |
 | `env.example` | Every supported environment variable |
 | `infra/docker/docker-compose.yml` | Full local stack definition |
 | `docs/AGENTS.md` | Agent reference |
