@@ -156,7 +156,9 @@ Auth bypass is enabled by default (`DEV_MODE=true`) for quick development. Full 
 
 ### Prerequisites
 
-- **Python 3.10+**
+- **No Python needed** — `./start.sh` provisions the pinned interpreter
+  (`.python-version`, currently 3.12) with [uv](https://docs.astral.sh/uv/),
+  independent of any system, conda, or pyenv Python you already have
 - **Node.js 18+** (for frontend)
 - **Docker Desktop** (must be running — used for PostgreSQL)
 - **Git** (with submodule support)
@@ -189,10 +191,13 @@ cp env.example .env
 # LLM provider keys (Anthropic / OpenAI / Ollama) are configured in the
 # web UI at Settings → AI / LLM Providers — not in .env.
 
-# Backend setup
-python3 -m venv venv
+# Backend setup. uv fetches the interpreter named in .python-version, so this
+# does not use (or disturb) any Python already on your PATH. Installing uv:
+# https://docs.astral.sh/uv/getting-started/installation/
+uv python install
+uv venv --python "$(cat .python-version)" --python-preference only-managed venv
 source venv/bin/activate
-pip install -r requirements.txt
+uv pip install -r requirements.lock
 
 # Frontend setup
 cd clients/web

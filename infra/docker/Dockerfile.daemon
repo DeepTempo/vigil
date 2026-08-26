@@ -12,7 +12,12 @@
 # ---------------------------------------------------------------------------
 # Stage 1: install Python dependencies
 # ---------------------------------------------------------------------------
-FROM python:3.11-slim AS python-deps
+# The Python version comes from .python-version, the repo's single pin. The
+# default below only applies to a bare `docker build` with no --build-arg; every
+# path that ships an image (docker-compose.yml, release.yml) passes the value
+# read from that file, so the images cannot drift from the venv and CI.
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim AS python-deps
 
 WORKDIR /install
 
@@ -21,16 +26,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# requirements.txt pins the submodules as editable installs (`-e ./<dir>`)
+# requirements.lock pins the submodules as editable installs (`-e ./<dir>`)
 # for local development. In the image we install them as regular packages
 # from the copied source, so the runtime stage needs only /usr/local and no
 # editable source tree (an `-e` install writes a .pth pointing at the build
 # path, which won't exist in the runtime stage). Keep this COPY list in sync
-# with the `-e ./` lines in requirements.txt: mempalace is the only one left,
+# with the `-e ./` lines in requirements.lock: mempalace is the only one left,
 # since #654 dropped the deeptempo-core and mcp-servers submodules.
-COPY requirements.txt .
+COPY requirements.lock .
 COPY mempalace/      ./mempalace/
-RUN grep -vE '^[[:space:]]*-e[[:space:]]+\./' requirements.txt > requirements.runtime.txt \
+RUN grep -vE '^[[:space:]]*-e[[:space:]]+\./' requirements.lock > requirements.runtime.txt \
     && pip install --no-cache-dir --prefix=/install/deps \
          -r requirements.runtime.txt \
          ./mempalace
@@ -38,7 +43,7 @@ RUN grep -vE '^[[:space:]]*-e[[:space:]]+\./' requirements.txt > requirements.ru
 # ---------------------------------------------------------------------------
 # Stage 2: runtime image
 # ---------------------------------------------------------------------------
-FROM python:3.11-slim AS runtime
+FROM python:${PYTHON_VERSION}-slim AS runtime
 
 ARG VIGIL_VERSION=dev
 LABEL org.opencontainers.image.version="${VIGIL_VERSION}"
