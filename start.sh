@@ -169,6 +169,10 @@ else
     nohup "${PWD}/venv/bin/python" services/daemon/main.py > logs/daemon.log 2>&1 &
     echo $! > logs/daemon.pid
 
+    # Started unconditionally, independent of orchestrator.settings (#581).
+    nohup "${PWD}/venv/bin/python" -m services.worker > logs/llm_worker.log 2>&1 &
+    echo $! > logs/llm_worker.pid
+
     if [ "$SKIP_FRONTEND" -eq 0 ] && [ -d "clients/web/node_modules" ]; then
         # Absolute log dir: the `cd clients/web` only applies inside the
         # backgrounded (&) job, not the subsequent `echo`, which still runs
@@ -181,6 +185,6 @@ else
 
     print_ready
     echo ""
-    echo "Logs: tail -f logs/{backend,daemon,frontend}.log"
+    echo "Logs: tail -f logs/{backend,daemon,llm_worker,frontend}.log"
     echo "Stop: ./shutdown_all.sh"
 fi
