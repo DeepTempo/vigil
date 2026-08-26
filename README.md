@@ -425,6 +425,7 @@ Claude: ✓ Found 3 similar findings via embedding search
 | [docs/SPLUNK_TESTING_GUIDE.md](docs/SPLUNK_TESTING_GUIDE.md) | Splunk test data and integration testing |
 | [contrib/auto-contributor/](contrib/auto-contributor/SKILL.md) | Competitive research and contribution planning tool |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute, auto-contributor workflow, DCO |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting, supported versions, disclosure policy |
 
 ## Testing with Splunk & Claude
 

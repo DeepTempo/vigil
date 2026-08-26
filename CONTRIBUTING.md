@@ -211,6 +211,15 @@ You can update the title at any point before merge by editing the PR. If
 you forget, a maintainer may adjust it before merging, but please don't
 rely on that.
 
+## Reporting a Security Vulnerability
+
+Do **not** open a public issue or pull request for a security vulnerability.
+Report it privately through [GitHub's private vulnerability
+reporting](https://github.com/Vigil-SOC/vigil/security/advisories/new) or by
+email to [security@deeptempo.ai](mailto:security@deeptempo.ai). See
+[SECURITY.md](SECURITY.md) for scope, response targets, our coordinated
+disclosure window, and safe harbor.
+
 ## Community
 
 Join us on [Discord](https://discord.gg/Kw68sPJU) to discuss ideas, get help, and collaborate.
