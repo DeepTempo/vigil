@@ -72,6 +72,19 @@ jobs:
         run: python scripts/check_comment_style.py
         continue-on-error: true
 
+      # The workflow files themselves. Gates, because a schema error takes the
+      # whole workflow down: GitHub rejects the file before scheduling anything,
+      # so the run reports zero jobs and nothing points at the cause. A local
+      # YAML parse does not catch this class — an `env:` with no keys is valid
+      # YAML (it reads as null) and invalid to Actions.
+      #
+      # What is in and out of the gate lives in .github/actionlint.yaml, rather
+      # than as -ignore flags here: quoting inside a docker:// action's `args`
+      # is unreliable, and a silently-mis-parsed regex would turn this step into
+      # a no-op that still reports green.
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+
   lint-frontend:
     name: Lint Frontend
     if: github.repository == 'Vigil-SOC/vigil'
