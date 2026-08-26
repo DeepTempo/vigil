@@ -6,8 +6,6 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:  # Allow manual trigger
 
-env:
-
 jobs:
   # ============================================================================
   # Full Test Suite
