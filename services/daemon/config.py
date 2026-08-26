@@ -150,6 +150,7 @@ class DaemonConfig:
         config.processing.auto_triage_enabled = settings.daemon_auto_triage
         config.processing.auto_enrich_enabled = settings.daemon_auto_enrich
         config.processing.batch_size = settings.daemon_batch_size
+        config.processing.max_concurrent_tasks = settings.daemon_max_concurrent_tasks
         config.processing.enrich_max_inflight = settings.daemon_enrich_max_inflight
         config.processing.enrich_backfill_enabled = settings.daemon_enrich_backfill
         config.processing.enrich_backfill_interval = settings.daemon_enrich_backfill_interval

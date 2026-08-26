@@ -105,3 +105,15 @@ async def test_case_review_lookup_offloads_the_query():
         await orchestrator._maybe_trigger_case_review("case-1")
 
     _assert_offloaded(recorder, loop_thread, "get_case")
+
+
+async def test_max_concurrent_tasks_is_settings_driven():
+    """It gates both the worker-coroutine count and the enrichment LLM cap, so
+    it has to be reachable from configuration rather than hard-coded."""
+    from core.config import Settings
+
+    assert hasattr(Settings(), "daemon_max_concurrent_tasks")
+
+    config = ProcessingConfig(max_concurrent_tasks=17)
+    processor = FindingProcessor(config)
+    assert processor._semaphore._value == 17

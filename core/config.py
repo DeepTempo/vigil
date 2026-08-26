@@ -196,6 +196,10 @@ class Settings(BaseSettings):
     daemon_auto_triage: bool = True
     daemon_auto_enrich: bool = True
     daemon_batch_size: int = 10
+    # Processor worker coroutines, and the cap on concurrent enrichment LLM
+    # calls — processor.py uses this value for both. Was hard-coded at 5 with
+    # no way to raise it, which put a ceiling on daemon throughput.
+    daemon_max_concurrent_tasks: int = 5
     daemon_enrich_max_inflight: int = 50
     daemon_enrich_backfill: bool = True
     daemon_enrich_backfill_interval: int = 300
