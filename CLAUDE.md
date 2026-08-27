@@ -43,9 +43,9 @@ vigil/
 │   │   ├── poller.py         # Fetches alerts from SIEM/EDR
 │   │   ├── processor.py      # Processes findings through AI pipeline
 │   │   ├── responder.py      # Executes containment actions
-│   │   ├── scheduler.py      # Cron-style scheduled tasks
-│   │   └── llm_worker_manager.py  # Supervises the worker subprocess (dev/daemon mode)
-│   └── worker/           # ARQ llm-worker — drains the arq:llm queue (python -m services.worker)
+│   │   └── scheduler.py      # Cron-style scheduled tasks
+│   └── worker/           # ARQ llm-worker, drains the arq:llm queue, started directly by
+│                          # start.sh/compose/Helm (python -m services.worker), never supervised
 ├── clients/web/             # React + TypeScript + Vite SPA
 │   └── src/
 │       ├── redesign/     # The SOC console — screens/, shell/, shared/
