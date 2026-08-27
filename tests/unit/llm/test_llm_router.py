@@ -55,6 +55,39 @@ def _openai_spec() -> ProviderSpec:
     )
 
 
+def _bedrock_spec() -> ProviderSpec:
+    return ProviderSpec(
+        provider_id="bedrock-prod",
+        provider_type="bedrock",
+        base_url=None,
+        api_key_ref=None,  # credential-chain posture — Bifrost resolves AWS creds itself
+        default_model="us.anthropic.claude-sonnet-4-5",
+        config={"region": "us-east-1"},
+    )
+
+
+def _lemonade_spec() -> ProviderSpec:
+    return ProviderSpec(
+        provider_id="lemonade-local",
+        provider_type="lemonade",
+        base_url="http://localhost:8020",
+        api_key_ref=None,  # keyless, externally managed — joins _UNMANAGED_PROVIDER_TYPES
+        default_model="Llama-3.2-1B-Instruct-Hybrid",
+        config={},
+    )
+
+
+def _cloudflare_spec() -> ProviderSpec:
+    return ProviderSpec(
+        provider_id="cloudflare-gateway",
+        provider_type="cloudflare",
+        base_url="https://gateway.ai.cloudflare.com/v1/acct/gw/openai",
+        api_key_ref="llm_provider_cloudflare-gateway_api_key",
+        default_model="@cf/meta/llama-3.1-8b-instruct",
+        config={"upstream": "openai"},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Path selection (pure logic)
 # ---------------------------------------------------------------------------
@@ -102,6 +135,47 @@ async def test_dispatch_bifrost_for_ollama():
     assert out["input_tokens"] == 5
     assert out["output_tokens"] == 7
     # The OpenAI-format dispatcher must close its client (no httpx pool leak).
+    mock_client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "spec_factory",
+    [_bedrock_spec, _lemonade_spec, _cloudflare_spec],
+    ids=["bedrock", "lemonade", "cloudflare"],
+)
+async def test_dispatch_bifrost_for_new_provider_types(spec_factory):
+    """Bedrock, lemonade, and Cloudflare are registration-layer additions
+    only (#T5) — dispatch itself is untouched. Each must ride the same
+    ``model=f"{provider_type}/{model}"`` convention through Bifrost's /v1
+    surface as anthropic/openai/ollama, with no per-type branching.
+    """
+    provider = spec_factory()
+    router = LLMRouter(bifrost_url="http://test-bifrost:8080")
+    fake_resp = SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content="hello", tool_calls=None))
+        ],
+        model=f"{provider.provider_type}/{provider.default_model}",
+        usage=SimpleNamespace(prompt_tokens=3, completion_tokens=4),
+    )
+    mock_client = MagicMock()
+    mock_client.close = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=fake_resp)
+
+    with patch("openai.AsyncOpenAI", return_value=mock_client) as oai_ctor:
+        out = await router.dispatch(
+            provider=provider,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+
+    assert oai_ctor.call_args.kwargs["base_url"] == "http://test-bifrost:8080/v1"
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == f"{provider.provider_type}/{provider.default_model}"
+
+    assert out["path"] == "bifrost"
+    assert out["provider"] == provider.provider_type
+    assert out["content"] == "hello"
     mock_client.close.assert_awaited_once()
 
 
@@ -494,6 +568,78 @@ def test_provider_spec_from_row_copies_fields():
     assert spec.default_model == "gpt-4o"
     assert spec.config == {"organization": "o"}
     assert spec.config == {"organization": "o"}
+
+
+# ---------------------------------------------------------------------------
+# get_provider_spec — no-id resolution must not hardcode provider_type ==
+# 'anthropic' (#T5): a Bedrock/lemonade/Cloudflare default must resolve the
+# same way an Anthropic or Ollama default always did.
+# ---------------------------------------------------------------------------
+
+
+def test_get_provider_spec_no_id_resolves_default_row_of_any_type():
+    """get_provider_spec(None) must resolve the is_default row regardless of
+    provider_type — it should behave exactly like get_default_provider_spec(),
+    not a fixed anthropic-only filter."""
+    from core.llm.router import router as llm_router
+
+    cloudflare_default = SimpleNamespace(
+        provider_id="cloudflare-default",
+        provider_type="cloudflare",
+        base_url="https://gateway.ai.cloudflare.com/v1/acct/gw/openai",
+        api_key_ref="llm_provider_cloudflare-default_api_key",
+        default_model="@cf/meta/llama-3.1-8b-instruct",
+        config={"upstream": "openai"},
+        is_default=True,
+        is_active=True,
+    )
+    session = MagicMock()
+    session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+        cloudflare_default
+    )
+
+    with patch("core.storage.connection.get_db_session", return_value=session):
+        spec = llm_router.get_provider_spec(None)
+
+    assert spec is not None
+    assert spec.provider_type == "cloudflare"
+    assert spec.provider_id == "cloudflare-default"
+
+
+def test_get_provider_spec_no_id_delegates_to_get_default_provider_spec(monkeypatch):
+    """The no-id branch must be a straight delegation, not a re-implementation
+    — one query path for "the default provider", used everywhere."""
+    from core.llm.router import router as llm_router
+
+    sentinel = _lemonade_spec()
+    monkeypatch.setattr(llm_router, "get_default_provider_spec", lambda: sentinel)
+
+    assert llm_router.get_provider_spec(None) is sentinel
+    assert llm_router.get_provider_spec("") is sentinel
+
+
+def test_get_provider_spec_with_id_looks_up_by_primary_key():
+    """An explicit provider_id must still resolve via session.get — the fix
+    only changes the no-id branch."""
+    from core.llm.router import router as llm_router
+
+    row = SimpleNamespace(
+        provider_id="bedrock-1",
+        provider_type="bedrock",
+        base_url=None,
+        api_key_ref=None,
+        default_model="us.anthropic.claude-sonnet-4-5",
+        config={"region": "us-east-1"},
+    )
+    session = MagicMock()
+    session.get.return_value = row
+
+    with patch("core.storage.connection.get_db_session", return_value=session):
+        spec = llm_router.get_provider_spec("bedrock-1")
+
+    session.get.assert_called_once()
+    assert spec.provider_type == "bedrock"
+    assert spec.provider_id == "bedrock-1"
 
 
 # ---------------------------------------------------------------------------

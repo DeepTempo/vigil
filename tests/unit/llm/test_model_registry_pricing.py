@@ -82,6 +82,66 @@ def test_pricing_source_zero_for_ollama():
     assert get_registry().get_pricing_source("llama3.1", "ollama") == "zero"
 
 
+def test_lemonade_resolves_zero_cost_self_hosted():
+    """lemonade is the fourth self-hosted type (#T5) — $0, but tagged
+    'self_hosted' rather than ollama's 'zero' so dashboards can tell the two
+    self-hosted providers apart."""
+    from core.llm.providers.registry import get_registry
+
+    registry = get_registry()
+    assert registry.get_pricing_source("Llama-3.2-1B-Instruct-Hybrid", "lemonade") == (
+        "self_hosted"
+    )
+    in_rate, out_rate = registry.get_cost_rates(
+        "Llama-3.2-1B-Instruct-Hybrid", "lemonade"
+    )
+    assert in_rate == 0.0
+    assert out_rate == 0.0
+
+
+def test_cloudflare_resolves_via_tier_heuristic():
+    """Cloudflare AI Gateway passes upstream pricing straight through —
+    resolved via the same model-id-prefix tier heuristic as Anthropic/OpenAI,
+    not a per-exact-model catalog entry."""
+    from core.llm.providers.registry import get_registry
+
+    registry = get_registry()
+    src = registry.get_pricing_source("@cf/meta/llama-3.1-8b-instruct", "cloudflare")
+    assert src == "heuristic"
+    in_rate, out_rate = registry.get_cost_rates(
+        "@cf/meta/llama-3.1-8b-instruct", "cloudflare"
+    )
+    assert in_rate > 0.0
+    assert out_rate > 0.0
+
+
+def test_bedrock_resolves_unknown_and_fires_otel_counter(monkeypatch):
+    """Bedrock deliberately gets NO client-side pricing table — its
+    region/throughput-mode variance makes static tiers fragile. It must fall
+    through to the existing non-silent 'unknown' path (#184), OTEL counter
+    included, exactly like any other unrecognized (provider, model) pair."""
+    from core.llm.providers import registry as model_registry
+
+    calls = []
+    monkeypatch.setattr(
+        model_registry,
+        "_record_pricing_unknown",
+        lambda provider_type, model_id: calls.append((provider_type, model_id)),
+    )
+
+    src = model_registry.get_registry().get_pricing_source(
+        "us.anthropic.claude-sonnet-4-5", "bedrock"
+    )
+    assert src == "unknown"
+    assert ("bedrock", "us.anthropic.claude-sonnet-4-5") in calls
+
+    in_rate, out_rate = model_registry.get_registry().get_cost_rates(
+        "us.anthropic.claude-sonnet-4-5", "bedrock"
+    )
+    assert in_rate == 0.0
+    assert out_rate == 0.0
+
+
 def test_pricing_source_unknown_for_novel_provider():
     from core.llm.providers.registry import get_registry
 
