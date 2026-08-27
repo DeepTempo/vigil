@@ -109,10 +109,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
-      
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+
       - name: Run pip-audit
         run: |
-          pip install pip-audit
+          # Pinned: a pip-audit that cannot run now fails this job, so an
+          # upstream release is not allowed to decide whether nightly is red.
+          pip install pip-audit==2.10.1
           # The lock, not requirements.txt: open ranges audit versions nothing installs.
           # Findings are not a build failure. pip-audit not running is -- and it
           # writes no report at all when it fails, so an empty file is the tell.

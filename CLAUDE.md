@@ -70,9 +70,9 @@ vigil/
 
 > **Layering:** `core/` is a library and must never import `services/`, and the
 > shared-infrastructure tier (`core/storage`, `core/platform`) must never import a
-> capability domain. `.importlinter` enforces both on every PR — the `lint-imports`
-> step is the one gating check in an otherwise advisory lint job. Run it locally
-> with `lint-imports`.
+> capability domain. `.importlinter` enforces both on every PR — `lint-imports`
+> gates, alongside `flake8`, `black` and `isort`. Only `mypy` and the
+> comment-style check are advisory. Run it locally with `lint-imports`.
 >
 > The only sanctioned `sys.path` entry is the repo root, added by
 > `services/api/main.py` and `services/daemon/main.py` so `core.*` and `services.*`

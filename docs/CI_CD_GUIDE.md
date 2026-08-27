@@ -124,6 +124,11 @@ Vigil uses **GitHub Actions** for CI/CD with three main workflows:
 3. `security-audit` - pip-audit vulnerability scan
 4. `migration-tests` - Database migration validation
 
+`security-audit` audits `requirements.lock`, not `requirements.txt`, so it sees
+the versions that actually install. Findings are reported, not fatal — but a
+pip-audit that fails to *run* is, because it writes no report at all when it
+errors and the job used to pass on that silence.
+
 ---
 
 ## Pipeline Stages
@@ -132,11 +137,15 @@ Vigil uses **GitHub Actions** for CI/CD with three main workflows:
 
 **Backend Linting**:
 ```yaml
-- flake8: Style checking
-- black: Code formatting
-- isort: Import sorting
-- mypy: Type checking
+- flake8: Style checking          (gates)
+- black: Code formatting          (gates)
+- isort: Import sorting           (gates)
+- import-linter: Layering         (gates)
+- mypy: Type checking             (advisory)
 ```
+
+Versions are pinned in `requirements-dev.txt`, which is also what
+`.pre-commit-config.yaml` mirrors, so a local `pre-commit run` and CI agree.
 
 **Frontend Linting**:
 ```yaml
@@ -192,10 +201,9 @@ bandit -r services/ core/ -f json -o bandit-report.json
 npm audit --audit-level=moderate
 ```
 
-**Exit Criteria**:
-- No critical vulnerabilities
-- High severity issues triaged
-- Report uploaded as artifact
+**Exit Criteria**: neither tool gates — both are `continue-on-error`, so this
+stage cannot fail the pipeline today. It produces a report, uploaded as an
+artifact, for triage by hand.
 
 ### Stage 5: Build Images
 

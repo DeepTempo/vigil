@@ -53,8 +53,8 @@ jobs:
         run: mypy services/ core/ --ignore-missing-imports
         continue-on-error: true
 
-      # The layering contracts in .importlinter (epic #481). Deliberately no
-      # continue-on-error: the rest of this job is advisory, this one gates.
+      # The layering contracts in .importlinter (epic #481). No
+      # continue-on-error: this gates, as flake8, black and isort now do.
       - name: Run import-linter
         run: lint-imports
 

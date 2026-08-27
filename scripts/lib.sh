@@ -313,8 +313,13 @@ install_dev_deps() {
         echo "Warning: lint toolchain install failed (see $log) - continuing." >&2
         return 0
     fi
-    "$venv/bin/pre-commit" install >/dev/null 2>&1 \
-        || echo "Warning: could not install the pre-commit hook - continuing." >&2
+    # Announced, not silent: the next commit reformatting itself is otherwise
+    # unexplained.
+    if "$venv/bin/pre-commit" install >/dev/null 2>&1; then
+        echo "Installed the pre-commit hook (black, isort, flake8 on services/ and core/)."
+    else
+        echo "Warning: could not install the pre-commit hook - continuing." >&2
+    fi
 }
 
 # Prove the venv can import what the services actually need. Cause-agnostic by

@@ -127,6 +127,17 @@ vigil/
 
 ### Style
 
+`flake8`, `black` and `isort` gate CI over `services/` and `core/`. Install the
+pinned toolchain and the hook that matches it once:
+
+```bash
+pip install -r requirements-dev.txt && pre-commit install
+```
+
+Pass the tools no arguments — `setup.cfg` is the only config, and pre-commit
+reads the same file, so formatting locally cannot produce a tree CI rejects.
+`./setup_dev.sh` does both steps for you.
+
 - Python: follow existing patterns in `core/`. Use type hints. `core/` must not
   import `services/`, and `core/storage` + `core/platform` must not import a
   capability domain — `.importlinter` gates both; run `lint-imports` locally.
