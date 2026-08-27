@@ -125,7 +125,8 @@
       "args": ["core/integrations/elastic/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
-        "_setup_note": "Elastic Security via Elasticsearch REST API. Set ELASTIC_HOST (e.g., https://elasticsearch.example.com:9200), ELASTIC_API_KEY or ELASTIC_USERNAME/ELASTIC_PASSWORD, and optionally ELASTIC_KIBANA_URL in .env."
+        "_setup_note": "Elastic Security via Elasticsearch REST API. Set ELASTIC_HOST (e.g., https://elasticsearch.example.com:9200); for a secured cluster also set ELASTIC_API_KEY or ELASTIC_USERNAME/ELASTIC_PASSWORD, and optionally ELASTIC_KIBANA_URL in .env. ELASTIC_HOST is the only required var (a local security-disabled cluster needs no credentials); the tool loads the rest from .env directly.",
+        "ELASTIC_HOST": "${ELASTIC_HOST}"
       }
     },
 
