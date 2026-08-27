@@ -381,13 +381,23 @@ class TaskScheduler:
         # Calculate cutoff date
         cutoff = utcnow() - timedelta(days=self.config.cleanup_retention_days)
         
-        # For now, just log what would be cleaned
-        # In production, would delete old findings/processed events
+        # Findings/processed events are still only logged, not deleted.
         logger.info(f"Cleanup would remove data older than {cutoff.isoformat()}")
         
         # Dedup sets are pruned by RedisDedupSet itself (TTL + size cap)
 
-        return {"cutoff_date": cutoff.isoformat()}
+        # Approvals nobody will ever answer (#675). Off-thread because each
+        # expiry is its own write and the sweep is unbounded, while this runs on
+        # the daemon's event loop.
+        from core.response.checkpoints import expire_stale
+
+        expired = await asyncio.to_thread(
+            expire_stale, self.config.approval_expiry_days
+        )
+        if expired:
+            logger.info("Cleanup expired %d unanswered approvals", expired)
+
+        return {"cutoff_date": cutoff.isoformat(), "approvals_expired": expired}
     
     async def _run_sandbox_poll(self):
         """Advance pending sandbox submissions to completed reports."""

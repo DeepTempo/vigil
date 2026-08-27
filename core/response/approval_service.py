@@ -351,6 +351,30 @@ class ApprovalService:
             logger.error("DB error listing actions: %s", e)
             return []
 
+    def list_stale_pending(self, cutoff: datetime) -> List[str]:
+        """Ids of pending actions created before ``cutoff``, oldest first.
+
+        Deliberately not expressed as ``list_actions(...)`` filtered in Python:
+        that orders newest-first and caps at 500, so once the queue is larger
+        than the cap it hides the oldest rows — the exact ones a sweep is for.
+        Ids rather than ``PendingAction`` because the caller only rejects them,
+        and because ``PendingAction.created_at`` is a serialized string, not a
+        datetime to compare against.
+        """
+        try:
+            db = get_db_manager()
+            with db.session_scope() as session:
+                stmt = (
+                    select(ApprovalActionRow.action_id)
+                    .where(ApprovalActionRow.status == ActionStatus.PENDING.value)
+                    .where(ApprovalActionRow.created_at < cutoff)
+                    .order_by(ApprovalActionRow.created_at.asc())
+                )
+                return list(session.execute(stmt).scalars().all())
+        except SQLAlchemyError as e:
+            logger.error("DB error listing stale pending actions: %s", e)
+            return []
+
     def approve_action(
         self,
         action_id: str,
