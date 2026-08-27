@@ -34,7 +34,36 @@ ROUTER_META = RouterMeta(
     auth=Auth.REQUIRED,
 )
 
-VALID_PROVIDER_TYPES = {"anthropic", "openai", "ollama"}
+VALID_PROVIDER_TYPES = {
+    "anthropic",
+    "openai",
+    "ollama",
+    "bedrock",
+    "lemonade",
+    "cloudflare",
+}
+
+# Bedrock accepts either posture; the message is shared by create/update so a
+# 422 from either path reads identically.
+_BEDROCK_POSTURE_ERROR = (
+    "bedrock provider requires either config.region (credential-chain "
+    "posture, api_key left unset) or an api_key holding a JSON blob "
+    '{"aws_access_key_id": ..., "aws_secret_access_key": ...} (access-key posture)'
+)
+
+# Bifrost's Bedrock request builders hardcode the
+# bedrock-runtime.<region>.amazonaws.com endpoint and ignore
+# network_config.base_url for this provider (verified against Bifrost's
+# source) — Bifrost itself silently accepts and echoes the field back, so
+# the guard has to live here or a configured base_url no-ops downstream
+# with no signal to the admin who set it.
+_BEDROCK_BASE_URL_ERROR = (
+    "bedrock provider does not support base_url — Bifrost's Bedrock "
+    "request builders hardcode the regional bedrock-runtime endpoint and "
+    "ignore it, so a configured value would silently no-op"
+)
+
+_CLOUDFLARE_UPSTREAMS = {"openai", "anthropic"}
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
 
 # Anthropic's live /v1/models endpoint is consulted via
@@ -144,6 +173,47 @@ def _validate_type(provider_type: str) -> None:
         )
 
 
+def _validate_bedrock_access_key_blob(raw_api_key: str) -> None:
+    """Reject an access-key-posture Bedrock ``api_key`` before it is ever
+    written to the secrets store — it must be a JSON blob carrying both AWS
+    key fields, not a bare string.
+    """
+    import json
+
+    try:
+        blob = json.loads(raw_api_key)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail=_BEDROCK_POSTURE_ERROR)
+    if (
+        not isinstance(blob, dict)
+        or not blob.get("aws_access_key_id")
+        or not blob.get("aws_secret_access_key")
+    ):
+        raise HTTPException(status_code=422, detail=_BEDROCK_POSTURE_ERROR)
+
+
+def _validate_bedrock_posture(*, has_api_key: bool, config: Dict[str, Any]) -> None:
+    """A Bedrock row must land in exactly one of two valid postures:
+    credential-chain (no secret, ``config.region`` set) or access-key
+    (secret present, validated separately). Neither present is a 422, not a
+    silent accept that fails later at dispatch.
+    """
+    if not has_api_key and not (config or {}).get("region"):
+        raise HTTPException(status_code=422, detail=_BEDROCK_POSTURE_ERROR)
+
+
+def _validate_cloudflare_config(config: Dict[str, Any]) -> None:
+    upstream = (config or {}).get("upstream")
+    if upstream not in _CLOUDFLARE_UPSTREAMS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "cloudflare provider requires config.upstream to be one of "
+                f"{sorted(_CLOUDFLARE_UPSTREAMS)}"
+            ),
+        )
+
+
 def _schedule_catalog_resync(reason: str) -> None:
     """Invalidate the model-list cache and fire a background sync.
 
@@ -183,6 +253,16 @@ async def create_provider(
     require_settings_admin(current_user)
     _validate_type(payload.provider_type)
     _validate_provider_base_url_shape(payload.base_url)
+    if payload.provider_type == "bedrock":
+        if payload.base_url:
+            raise HTTPException(status_code=422, detail=_BEDROCK_BASE_URL_ERROR)
+        if payload.api_key:
+            _validate_bedrock_access_key_blob(payload.api_key)
+        _validate_bedrock_posture(
+            has_api_key=bool(payload.api_key), config=payload.config or {}
+        )
+    elif payload.provider_type == "cloudflare":
+        _validate_cloudflare_config(payload.config or {})
 
     provider_id = payload.provider_id or _slugify(payload.name)
     if provider_service.get_provider(db, provider_id) is not None:
@@ -227,6 +307,31 @@ async def update_provider(
     row = provider_service.get_provider(db, provider_id)
     if row is None:
         raise HTTPException(status_code=404, detail="provider not found")
+
+    # Validate the resulting posture up front, against the effective (not
+    # yet applied) state — a rejected request must never delete a secret or
+    # mutate the row first.
+    effective_config = (
+        payload.config if payload.config is not None else (row.config or {})
+    )
+    if row.provider_type == "bedrock":
+        effective_base_url = (
+            payload.base_url if payload.base_url is not None else row.base_url
+        )
+        if effective_base_url:
+            raise HTTPException(status_code=422, detail=_BEDROCK_BASE_URL_ERROR)
+        if payload.api_key:
+            _validate_bedrock_access_key_blob(payload.api_key)
+        effective_has_key = (
+            bool(payload.api_key)
+            if payload.api_key is not None
+            else bool(row.api_key_ref)
+        )
+        _validate_bedrock_posture(
+            has_api_key=effective_has_key, config=effective_config
+        )
+    elif row.provider_type == "cloudflare":
+        _validate_cloudflare_config(effective_config)
 
     if payload.name is not None:
         row.name = payload.name

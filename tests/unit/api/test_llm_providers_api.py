@@ -407,6 +407,218 @@ def test_update_clear_last_of_type_blanks_bifrost_key(
     assert ("openai", "") in bifrost_pushes
 
 
+def test_create_lemonade_no_key(client, secrets_store):
+    """lemonade is keyless and self-hosted, like ollama — no special fields."""
+    r = client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_type": "lemonade",
+            "name": "Local lemonade",
+            "base_url": "http://localhost:8020",
+            "default_model": "Llama-3.2-1B-Instruct-Hybrid",
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["provider_type"] == "lemonade"
+    assert body["has_api_key"] is False
+    assert secrets_store == {}
+
+
+def test_create_bedrock_credential_chain(client, secrets_store):
+    """Credential-chain posture: no api_key, config.region required."""
+    r = client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_id": "bedrock-chain",
+            "provider_type": "bedrock",
+            "name": "Bedrock (IAM role)",
+            "default_model": "us.anthropic.claude-sonnet-4-5",
+            "config": {
+                "region": "us-east-1",
+                "inference_profile_arn": (
+                    "arn:aws:bedrock:us-east-1:123:inference-profile/x"
+                ),
+            },
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["has_api_key"] is False
+    assert body["config"]["region"] == "us-east-1"
+    assert secrets_store == {}
+
+
+def test_create_bedrock_without_region_or_key_rejected(client, secrets_store):
+    """Neither posture present: no api_key and no config.region — 422."""
+    r = client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_type": "bedrock",
+            "name": "Broken bedrock",
+            "default_model": "us.anthropic.claude-sonnet-4-5",
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert secrets_store == {}
+
+
+def test_create_bedrock_access_key_json_blob_accepted(client, secrets_store):
+    """Access-key posture: api_key is a JSON blob with both AWS fields."""
+    import json
+
+    blob = json.dumps(
+        {"aws_access_key_id": "AKIAEXAMPLE", "aws_secret_access_key": "secret-xyz"}
+    )
+    r = client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_id": "bedrock-keyed",
+            "provider_type": "bedrock",
+            "name": "Bedrock (access key)",
+            "default_model": "us.anthropic.claude-sonnet-4-5",
+            "api_key": blob,
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["has_api_key"] is True
+    assert secrets_store["llm_provider_bedrock-keyed_api_key"] == blob
+
+
+def test_create_bedrock_access_key_malformed_blob_rejected(client, secrets_store):
+    """api_key present but not a valid AWS JSON blob — 422, nothing persisted."""
+    r = client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_type": "bedrock",
+            "name": "Broken bedrock key",
+            "default_model": "us.anthropic.claude-sonnet-4-5",
+            "api_key": "not-json",
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert secrets_store == {}
+
+
+def test_update_bedrock_clearing_key_without_region_rejected(client, secrets_store):
+    """Clearing the only credential on a keyed Bedrock row without a
+    config.region fallback would leave neither posture valid — reject."""
+    import json
+
+    blob = json.dumps(
+        {"aws_access_key_id": "AKIAEXAMPLE", "aws_secret_access_key": "secret-xyz"}
+    )
+    client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_id": "bedrock-keyed",
+            "provider_type": "bedrock",
+            "name": "Bedrock (access key)",
+            "default_model": "us.anthropic.claude-sonnet-4-5",
+            "api_key": blob,
+        },
+    )
+    r = client.put("/api/llm/providers/bedrock-keyed", json={"api_key": ""})
+    assert r.status_code == 422, r.text
+    # Rejected before mutation — the secret must still be intact.
+    assert secrets_store["llm_provider_bedrock-keyed_api_key"] == blob
+
+
+def test_create_bedrock_with_base_url_rejected(client, secrets_store):
+    """Bifrost's Bedrock request builders hardcode the regional
+    bedrock-runtime endpoint and ignore base_url — reject it up front rather
+    than accept a value that silently no-ops downstream."""
+    r = client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_type": "bedrock",
+            "name": "Bedrock with base_url",
+            "default_model": "us.anthropic.claude-sonnet-4-5",
+            "base_url": "https://bedrock-runtime.us-east-1.amazonaws.com",
+            "config": {"region": "us-east-1"},
+        },
+    )
+    assert r.status_code == 422, r.text
+    assert secrets_store == {}
+
+
+def test_update_bedrock_setting_base_url_rejected(client, secrets_store):
+    client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_id": "bedrock-chain",
+            "provider_type": "bedrock",
+            "name": "Bedrock (IAM role)",
+            "default_model": "us.anthropic.claude-sonnet-4-5",
+            "config": {"region": "us-east-1"},
+        },
+    )
+    r = client.put(
+        "/api/llm/providers/bedrock-chain",
+        json={"base_url": "https://bedrock-runtime.us-east-1.amazonaws.com"},
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_create_cloudflare_requires_valid_upstream(client, secrets_store):
+    r = client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_id": "cf-gateway",
+            "provider_type": "cloudflare",
+            "name": "Cloudflare AI Gateway",
+            "default_model": "@cf/meta/llama-3.1-8b-instruct",
+            "config": {"upstream": "openai", "account_id": "acct-1"},
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["config"]["upstream"] == "openai"
+
+
+def test_create_cloudflare_invalid_upstream_rejected(client, secrets_store):
+    r = client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_type": "cloudflare",
+            "name": "Broken gateway",
+            "default_model": "@cf/meta/llama-3.1-8b-instruct",
+            "config": {"upstream": "gemini"},
+        },
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_create_cloudflare_missing_upstream_rejected(client, secrets_store):
+    r = client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_type": "cloudflare",
+            "name": "Broken gateway",
+            "default_model": "@cf/meta/llama-3.1-8b-instruct",
+        },
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_update_cloudflare_config_to_invalid_upstream_rejected(client, secrets_store):
+    client.post(
+        "/api/llm/providers/",
+        json={
+            "provider_id": "cf-gateway",
+            "provider_type": "cloudflare",
+            "name": "Cloudflare AI Gateway",
+            "default_model": "@cf/meta/llama-3.1-8b-instruct",
+            "config": {"upstream": "anthropic"},
+        },
+    )
+    r = client.put(
+        "/api/llm/providers/cf-gateway",
+        json={"config": {"upstream": "bogus"}},
+    )
+    assert r.status_code == 422, r.text
+
+
 def test_set_default_enforces_single_default(client, secrets_store, session):
     client.post(
         "/api/llm/providers/",
