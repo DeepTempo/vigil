@@ -15,15 +15,17 @@ rather than fixed here, so any regression stays bisectable:
 
 import asyncio
 import logging
-from core.time import utcnow
 from typing import Any, Dict, Optional, Tuple
 
-from core.findings.enrichment.errors import (FindingNotFound,
-                                             NoProviderConfigured,
-                                             ProviderUnavailable,
-                                             UnidentifiableFinding)
+from core.findings.enrichment.errors import (
+    FindingNotFound,
+    NoProviderConfigured,
+    ProviderUnavailable,
+    UnidentifiableFinding,
+)
 from core.findings.enrichment.parse import parse_enrichment
 from core.findings.enrichment.prompt import build_prompt, summarize_finding
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -127,8 +129,11 @@ async def _dispatch(
         "max_tokens": LOCAL_MAX_TOKENS,
     }
     from core.llm.providers.recovery import (
-        is_gateway_connection_error, local_bifrost_recovery_enabled,
-        local_bifrost_recovery_retry_limit, recover_local_bifrost)
+        is_gateway_connection_error,
+        local_bifrost_recovery_enabled,
+        local_bifrost_recovery_retry_limit,
+        recover_local_bifrost,
+    )
     from core.llm.router.router import LLMRouter
 
     retry_limit = local_bifrost_recovery_retry_limit()

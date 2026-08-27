@@ -6,10 +6,16 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from core.config import get_settings
+from core.llm.router.format import (
+    anthropic_messages_to_openai,
+    anthropic_tools_to_openai,
+)
+from core.llm.security import (
+    PromptInjectionBlocked,
+    scan_for_injection,
+    wrap_tool_result,
+)
 from core.secrets import get_secret
-
-from core.llm.router.format import anthropic_messages_to_openai, anthropic_tools_to_openai
-from core.llm.security import PromptInjectionBlocked, scan_for_injection, wrap_tool_result
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +284,6 @@ class LLMRouter:
     ) -> Dict[str, Any]:
         from openai import AsyncOpenAI  # lazy — avoids hard dep for tests
 
-
         # Callers (the daemon tool loop, workflows) build conversations in
         # Anthropic shape — assistant tool_use blocks, user tool_result blocks,
         # and tools with `input_schema`. Translate both to OpenAI shape so the
@@ -360,7 +365,6 @@ class LLMRouter:
         """Yield raw OpenAI stream chunks (tool-call deltas, finish_reason,
         usage) for non-Anthropic Bifrost providers."""
         from openai import AsyncOpenAI
-
 
         messages, system_prompt = _pre_dispatch_sanitize(messages, system_prompt)
         model = model or provider.default_model

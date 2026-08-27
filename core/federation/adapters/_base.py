@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from core.time import utcnow
 from typing import Any, Dict, Optional
+
+from core.time import utcnow
 
 
 def parse_cursor_since(cursor: Dict[str, Any]) -> Optional[datetime]:

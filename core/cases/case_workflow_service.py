@@ -6,13 +6,14 @@ and task automation.
 """
 
 import logging
-from core.time import utcnow
 from typing import Dict, List, Optional
+
 from sqlalchemy.orm import Session
 
-from core.storage.models import Case, CaseTemplate, CaseTask
-from core.storage.unit_of_work import unit_of_work
 from core.exceptions import NotFoundError, default_on_error
+from core.storage.models import Case, CaseTask, CaseTemplate
+from core.storage.unit_of_work import unit_of_work
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 

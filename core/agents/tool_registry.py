@@ -206,7 +206,12 @@ def _indicator_lookup(args: Args) -> Any:
     indicator_type = args.get("indicator_type", "ip")
     hits = lookup_indicators(indicator_type, [str(v) for v in values])
     return [
-        {"indicator_type": indicator_type, "indicator_value": value, "known": value in hits, **(hits.get(value) or {})}
+        {
+            "indicator_type": indicator_type,
+            "indicator_value": value,
+            "known": value in hits,
+            **(hits.get(value) or {}),
+        }
         for value in values
     ]
 

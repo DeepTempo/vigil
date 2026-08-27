@@ -6,9 +6,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from weakref import WeakKeyDictionary
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+from weakref import WeakKeyDictionary
 
 from bullmq import Queue
 

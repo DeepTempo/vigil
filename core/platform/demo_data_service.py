@@ -337,4 +337,3 @@ class DemoDataService:
         DemoDataService._initialized = False
         self._generate_demo_data()
         DemoDataService._initialized = True
-

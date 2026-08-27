@@ -8,7 +8,6 @@ WORKFLOW.md definitions that WorkflowsService already loads from disk.
 import logging
 import re
 import uuid
-from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -16,6 +15,7 @@ from sqlalchemy import select
 from core.storage.connection import get_db_manager
 from core.storage.models import CustomWorkflow
 from core.storage.schemas import CustomWorkflowSchema
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 

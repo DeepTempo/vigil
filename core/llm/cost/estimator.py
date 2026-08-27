@@ -34,9 +34,8 @@ import logging
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
 
-from core.secrets import get_secret
-
 from core.llm.providers.registry import get_registry
+from core.secrets import get_secret
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +162,7 @@ async def estimate_anthropic(
 
     if api_key:
         try:
-            from core.llm.providers.clients import \
-                create_async_anthropic_client
+            from core.llm.providers.clients import create_async_anthropic_client
 
             client = create_async_anthropic_client(api_key, timeout=30.0)
             kwargs: Dict[str, Any] = {"model": model_id, "messages": messages}

@@ -21,11 +21,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from core.time import utcnow
 from typing import Any, Dict, Optional
 
-from core.ingestion.kafka_config import KafkaConfig
 from core.ingestion.dedup import RedisDedupSet
+from core.ingestion.kafka_config import KafkaConfig
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
