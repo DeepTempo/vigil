@@ -34,7 +34,7 @@ ROUTER_META = RouterMeta(
     auth=Auth.REQUIRED,
 )
 
-VALID_PROVIDER_TYPES = {"anthropic", "openai", "ollama"}
+VALID_PROVIDER_TYPES = {"anthropic", "openai", "ollama", "vertex"}
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
 
 # Anthropic's live /v1/models endpoint is consulted via
