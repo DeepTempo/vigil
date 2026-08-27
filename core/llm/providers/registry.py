@@ -253,10 +253,30 @@ _OPENAI_TIERS: Tuple[_TierPattern, ...] = (
     (r"o1", 15.0, 60.0),
 )
 
+# Cloudflare AI Gateway fronts upstream OpenAI/Anthropic-compatible
+# endpoints as well as Cloudflare's own Workers AI catalog (the
+# "@cf/<org>/<model>" ids used in its dispatch examples); either way the
+# gateway passes upstream pricing straight through rather than billing its
+# own rate, so a model-id-prefix heuristic (same shape as the Anthropic /
+# OpenAI tables above) is the right layer for it too.
+#
+# NOTE: these are estimates pending verification against Cloudflare's
+# published Workers AI pricing — same caveat as every other tier table in
+# this module.
+_CLOUDFLARE_TIERS: Tuple[_TierPattern, ...] = (
+    (r"llama-3\.1-70b", 0.59, 0.79),
+    (r"llama-3\.1-8b", 0.05, 0.09),
+    (r"llama-3", 0.05, 0.09),
+    (r"mistral", 0.11, 0.19),
+    (r"gemma", 0.05, 0.09),
+)
+
 _TIER_HEURISTIC: Dict[str, Tuple[_TierPattern, ...]] = {
     "anthropic": _ANTHROPIC_TIERS,
     "openai": _OPENAI_TIERS,
     "ollama": (),  # always $0 — handled as a separate branch
+    "lemonade": (),  # always $0 — handled as a separate branch, self_hosted
+    "cloudflare": _CLOUDFLARE_TIERS,
 }
 
 # Who this catalog can put a number on. A gateway is not one of them: it bills
@@ -435,6 +455,13 @@ def _catalog_entry(provider_type: str, model_id: str) -> Dict[str, Any]:
         entry["input_per_m"] = 0.0
         entry["output_per_m"] = 0.0
         entry["pricing_source"] = "zero"
+    elif provider_type == "lemonade":
+        # Fourth self-hosted type (#T5) — same $0 posture as Ollama, but
+        # tagged distinctly so cost dashboards can tell "self-hosted, known
+        # zero-cost" apart from Ollama specifically.
+        entry["input_per_m"] = 0.0
+        entry["output_per_m"] = 0.0
+        entry["pricing_source"] = "self_hosted"
     else:
         tier = _match_tier(provider_type, model_id)
         if tier is not None:
@@ -471,7 +498,8 @@ class ModelInfo:
     supports_thinking: bool
     supports_vision: bool
     # One of: "exact" (from _CATALOG), "heuristic" (tier regex),
-    # "zero" (ollama self-hosted), "unknown" (no data — treated as $0).
+    # "zero" (ollama self-hosted), "self_hosted" (lemonade self-hosted),
+    # "unknown" (no data — treated as $0).
     # Logged at discovery time; frontend can use it to badge estimates.
     pricing_source: str = "exact"
     # True when the model was pinned to a component via ai_model_configs
