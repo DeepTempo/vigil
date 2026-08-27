@@ -29,9 +29,21 @@ def run_id_for(session_id: str) -> str:
 
 # A tool with no description is dropped rather than declared: the agent layer
 # refuses one, because a model cannot choose between two blank tools.
-def _declare(wanted: Optional[List[str]]) -> List[Dict[str, Any]]:
-    catalogue = {tool["name"]: tool for tool in ALL_TOOLS if tool.get("name")}
-    names = list(catalogue) if wanted is None else [n for n in wanted if n in catalogue]
+def _declare(
+    wanted: Optional[List[str]],
+    mcp_tools: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    # Two surfaces. Static built-ins are curated: a per-agent recommended-tools
+    # list (``wanted``) narrows them. Connected MCP integrations (server-prefixed,
+    # e.g. virustotal_get_ip_report) are ALWAYS offered when present — a user who
+    # connected an integration expects the assistant to use it regardless of any
+    # agent's tool list, and hunts curate separately (playbook_resolver). So a
+    # ``wanted`` list filters only the built-ins; live integrations are appended.
+    static = {t["name"]: t for t in ALL_TOOLS if t.get("name")}
+    mcp = {t["name"]: t for t in (mcp_tools or []) if t.get("name")}
+    static_names = list(static) if wanted is None else [n for n in wanted if n in static]
+    names = static_names + [n for n in mcp if n not in static_names]
+    catalogue = {**static, **mcp}
     declared = []
     for name in names:
         entry = catalogue[name]
@@ -49,12 +61,16 @@ def _declare(wanted: Optional[List[str]]) -> List[Dict[str, Any]]:
     return declared
 
 
-def chat_config(model: str, tools: Optional[List[str]] = None) -> str:
+def chat_config(
+    model: str,
+    tools: Optional[List[str]] = None,
+    mcp_tools: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     document = {
         "model": model,
         "budgets": DEFAULT_BUDGETS,
         "runtime": DEFAULT_RUNTIME,
-        "tools": _declare(tools),
+        "tools": _declare(tools, mcp_tools),
         # A chat tool asks the person directly rather than parking on a
         # checkpoint: they are already in the conversation.
         "approvals": [],
