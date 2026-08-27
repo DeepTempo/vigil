@@ -199,8 +199,10 @@ config.json
 # Bifrost's runtime state, written when the gateway runs outside Docker.
 # config.db is its config store and holds provider API keys -- in plaintext
 # unless the deployment turned on Bifrost's key encryption; logs.db carries
-# request and response bodies. Neither is ever committed.
-bifrost/
+# request and response bodies. Neither is ever committed. config.db's
+# directory is covered by the anchored /bifrost/ entry below -- unanchored
+# would also swallow core/llm/bifrost/ and infra/docker/bifrost/, both
+# tracked source.
 /logs.db
 
 # Node.js / React
