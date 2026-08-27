@@ -544,6 +544,87 @@ services:
     profiles:
       - elastic
 
+  # ─── MISP threat-intel (opt-in: --profile misp) ──────────────────────────
+  # Official MISP stack (core + modules + its own db/redis). Unlike Splunk/
+  # Elastic there is no credential-less mode: after first boot, log into
+  # https://localhost:8443 (admin@admin.test / admin), generate an Auth Key
+  # (Administration → Auth Keys), put it in .env as MISP_API_KEY, then enable
+  # the `misp` MCP server. First boot takes several minutes to initialise.
+  misp-db:
+    image: mariadb:11.4
+    container_name: deeptempo-misp-db
+    environment:
+      - MYSQL_USER=misp
+      - MYSQL_PASSWORD=misp
+      - MYSQL_ROOT_PASSWORD=misp_root
+      - MYSQL_DATABASE=misp
+    command: --innodb-buffer-pool-size=256M
+    volumes:
+      - misp_db:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    profiles:
+      - misp
+
+  misp-redis:
+    image: valkey/valkey:7.2
+    container_name: deeptempo-misp-redis
+    # misp-core defaults to redis password "redispassword" (incl. the PHP
+    # session save_path); require it here so sessions authenticate.
+    command: ["valkey-server", "--requirepass", "redispassword"]
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    profiles:
+      - misp
+
+  misp-modules:
+    image: ghcr.io/misp/misp-docker/misp-modules:latest
+    container_name: deeptempo-misp-modules
+    environment:
+      - REDIS_BACKEND=misp-redis
+    depends_on:
+      - misp-redis
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    profiles:
+      - misp
+
+  misp-core:
+    image: ghcr.io/misp/misp-docker/misp-core:latest
+    container_name: deeptempo-misp-core
+    environment:
+      - BASE_URL=https://localhost:8443
+      - MYSQL_HOST=misp-db
+      - MYSQL_USER=misp
+      - MYSQL_PASSWORD=misp
+      - MYSQL_DATABASE=misp
+      # This image reads REDIS_HOST/PORT/PASSWORD (not REDIS_FQDN). Point at our
+      # own misp-redis — otherwise it defaults to host "redis", which collides
+      # with Vigil's redis on this network and breaks sessions. Keep the image's
+      # default password so the PHP session save_path matches misp-redis.
+      - REDIS_HOST=misp-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redispassword
+      - DISABLE_IPV6=true
+    ports:
+      - "8443:443"   # Web UI + REST (self-signed TLS)
+    volumes:
+      - misp_config:/var/www/MISP/app/Config
+      - misp_files:/var/www/MISP/app/files
+      - misp_logs:/var/www/MISP/app/tmp/logs
+    depends_on:
+      - misp-db
+      - misp-redis
+      - misp-modules
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    profiles:
+      - misp
+
 volumes:
   postgres_data:
     driver: local
@@ -564,6 +645,14 @@ volumes:
   kafka_data:
     driver: local
   elastic_data:
+    driver: local
+  misp_db:
+    driver: local
+  misp_config:
+    driver: local
+  misp_files:
+    driver: local
+  misp_logs:
     driver: local
 
 networks:
