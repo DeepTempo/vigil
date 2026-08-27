@@ -371,9 +371,6 @@ class Orchestrator:
                 context_md = context_md + "\n\n" + prior_context
         self.workdir.write_file(inv_id, "context.md", context_md)
 
-        for finding in findings:
-            self.shared_intel.register_entities(inv_id, finding)
-
         can_start_now = (
             not self.config.dry_run
             and shutdown_event
@@ -423,6 +420,8 @@ class Orchestrator:
         }
 
         self._save_investigation(inv_record)
+        # After the save: shared_iocs is keyed to the investigation row.
+        self.shared_intel.register_investigation(inv_id, findings)
         self.stats["investigations_created"] += 1
         if _inv_created is not None:
             _inv_created.add(1)
@@ -778,7 +777,7 @@ class Orchestrator:
             if _inv_completed is not None:
                 _inv_completed.add(1)
             self.stats["reviews_completed"] += 1
-            self.shared_intel.unregister_investigation(inv_id)
+            self.shared_intel.close_investigation(inv_id, state.get("case_id"))
             self._persist_investigation_to_palace(inv_id, state)
 
             self.workdir.append_log(

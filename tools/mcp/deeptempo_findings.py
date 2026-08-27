@@ -1372,6 +1372,7 @@ def close_case(
     try:
         from core.storage.connection import get_db_session
         from core.storage.models import Case, CaseClosureInfo
+        from core.storage.shared_ioc_repository import index_case_iocs_on_close
 
         session = get_db_session()
         try:
@@ -1393,6 +1394,10 @@ def close_case(
                 executive_summary=executive_summary,
             )
             session.add(closure)
+
+            # So later investigations can correlate on this case's indicators.
+            index_case_iocs_on_close(session, case_id)
+
             session.commit()
 
             # Add final activity

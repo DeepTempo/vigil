@@ -1,167 +1,144 @@
 """Shared intelligence layer for cross-investigation correlation.
 
-Maintains a centralized IOC index so the orchestrator can detect
-overlapping investigations and link related cases.
+``shared_iocs`` is the index — nothing is held in process — so what two
+investigations had in common last week is still known after a daemon restart.
+
+Two questions are asked of it and they are not the same one. *Dedup* asks
+whether a finding duplicates work already in flight, and is bounded to open
+investigations: a finished investigation is not something a finding can be added
+to, and letting history answer it would mean an indicator seen once is never
+investigated again. *Correlation* asks what else has ever touched these
+indicators, and reads the whole table.
 """
 
 import logging
-from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set
+from contextlib import AbstractContextManager
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
-from core.config import get_settings
+from core.storage.connection import get_db_manager
+from core.storage.shared_ioc_repository import SharedIOCRepository, make_key
 
 logger = logging.getLogger(__name__)
 
+# entity_context spellings, in the order a value is looked for. The list and
+# scalar forms of the same entity both appear, depending on the source, and the
+# alternatives within a tuple are aliases: the first one present wins.
+_LIST_FIELDS = (
+    ("ip", ("src_ips",)),
+    ("ip", ("dest_ips", "dst_ips")),
+    ("hostname", ("hostnames",)),
+    ("user", ("usernames", "users")),
+    ("hash", ("file_hashes",)),
+    ("domain", ("domains",)),
+)
+_SCALAR_FIELDS = (
+    ("ip", "src_ip"),
+    ("ip", "dst_ip"),
+    ("hostname", "hostname"),
+    ("user", "user"),
+)
 
-def _get_mempalace_searcher():
-    if get_settings().mempalace_daemon_enabled is not True:
-        return None
-    try:
-        from mempalace.searcher import search_memories
 
-        from core.platform.mempalace_paths import get_palace_path
+def _keys_from_finding(finding: Dict[str, Any]) -> Set[str]:
+    """Every indicator key a finding's entity context names."""
+    ctx = finding.get("entity_context") or {}
+    keys: Set[str] = set()
 
-        data_dir = get_palace_path()
-        return (search_memories, data_dir)
-    except Exception as e:
-        logger.debug(f"MemPalace searcher unavailable in daemon: {e}")
-        return None
+    for ioc_type, names in _LIST_FIELDS:
+        values = next((ctx[n] for n in names if ctx.get(n)), None) or []
+        for value in values:
+            key = make_key(ioc_type, value)
+            if key:
+                keys.add(key)
+
+    for ioc_type, name in _SCALAR_FIELDS:
+        key = make_key(ioc_type, ctx.get(name))
+        if key:
+            keys.add(key)
+
+    return keys
 
 
 class SharedIntelligence:
-    """In-memory cross-investigation IOC and entity tracker.
+    """Cross-investigation IOC tracker over ``shared_iocs``."""
 
-    Backed by MemPalace for cross-run persistence (when MEMPALACE_DAEMON_ENABLED=true),
-    with an in-memory cache for fast lookups during the orchestrator loop.
-    """
+    def __init__(
+        self,
+        session_scope: Optional[Callable[[], AbstractContextManager]] = None,
+    ):
+        self._session_scope = session_scope or (
+            lambda: get_db_manager().session_scope()
+        )
 
-    def __init__(self):
-        self._ioc_index: Dict[str, Set[str]] = defaultdict(set)
-        self._entity_index: Dict[str, Set[str]] = defaultdict(set)
-        self._investigation_iocs: Dict[str, Set[str]] = defaultdict(set)
-        self._mp = _get_mempalace_searcher()  # (search_fn, palace_path) or None
+    def register_investigation(
+        self, investigation_id: str, findings: Iterable[Dict[str, Any]]
+    ):
+        """Index the entities a new investigation's findings name.
 
-    def register_entities(self, investigation_id: str, finding: Dict[str, Any]):
-        """Extract and register entities from a finding for dedup checks."""
-        ctx = finding.get("entity_context") or {}
-
-        for ip in ctx.get("src_ips") or []:
-            self._register(investigation_id, "ip", ip)
-        if ctx.get("src_ip"):
-            self._register(investigation_id, "ip", ctx["src_ip"])
-
-        for ip in ctx.get("dest_ips") or ctx.get("dst_ips") or []:
-            self._register(investigation_id, "ip", ip)
-        if ctx.get("dst_ip"):
-            self._register(investigation_id, "ip", ctx["dst_ip"])
-
-        for host in ctx.get("hostnames") or []:
-            self._register(investigation_id, "hostname", host)
-        if ctx.get("hostname"):
-            self._register(investigation_id, "hostname", ctx["hostname"])
-
-        for user in ctx.get("usernames") or ctx.get("users") or []:
-            self._register(investigation_id, "user", user)
-        if ctx.get("user"):
-            self._register(investigation_id, "user", ctx["user"])
-
-        for h in ctx.get("file_hashes") or []:
-            self._register(investigation_id, "hash", h)
-
-        for d in ctx.get("domains") or []:
-            self._register(investigation_id, "domain", d)
+        The investigation row must already exist — ``shared_iocs`` is keyed to
+        it — so call this after the investigation is saved.
+        """
+        keys: Set[str] = set()
+        for finding in findings:
+            keys |= _keys_from_finding(finding)
+        if not keys:
+            return
+        self._query("register", lambda repo: repo.record(investigation_id, keys), None)
 
     def check_overlap(
         self, finding: Dict[str, Any], exclude_id: Optional[str] = None
     ) -> List[str]:
-        """Check if a finding's entities overlap with any active or recent investigation.
+        """Open investigations already covering one of this finding's entities."""
+        keys = _keys_from_finding(finding)
+        if not keys:
+            return []
 
-        Returns list of investigation_ids that share entities.
-        Checks in-memory index first (active run), then MemPalace for cross-run history.
-        """
-        ctx = finding.get("entity_context") or {}
-        overlapping = set()
-
-        all_values = set()
-        for ip in ctx.get("src_ips") or []:
-            all_values.add(f"ip:{ip}")
-        if ctx.get("src_ip"):
-            all_values.add(f"ip:{ctx['src_ip']}")
-        for ip in ctx.get("dest_ips") or ctx.get("dst_ips") or []:
-            all_values.add(f"ip:{ip}")
-        if ctx.get("dst_ip"):
-            all_values.add(f"ip:{ctx['dst_ip']}")
-        for host in ctx.get("hostnames") or []:
-            all_values.add(f"hostname:{host}")
-        if ctx.get("hostname"):
-            all_values.add(f"hostname:{ctx['hostname']}")
-        for user in ctx.get("usernames") or ctx.get("users") or []:
-            all_values.add(f"user:{user}")
-        if ctx.get("user"):
-            all_values.add(f"user:{ctx['user']}")
-        for h in ctx.get("file_hashes") or []:
-            all_values.add(f"hash:{h}")
-        for d in ctx.get("domains") or []:
-            all_values.add(f"domain:{d}")
-
-        # L1: in-memory check (active investigations in this run)
-        for key in all_values:
-            overlapping.update(self._ioc_index.get(key, set()))
-
-        # L2: MemPalace cross-run check via Searcher (closed investigations)
-        if self._mp and all_values:
-            try:
-                search_fn, palace_path = self._mp
-                query = " ".join(list(all_values)[:10])  # cap to avoid overlong queries
-                results = search_fn(query=query, palace_path=str(palace_path))
-                for result in results or []:
-                    # Results are text snippets; look for investigation IDs in the text
-                    text = str(result)
-                    import re
-
-                    for inv_id in re.findall(r"inv-[a-f0-9-]{8,}", text):
-                        overlapping.add(f"historical:{inv_id}")
-            except Exception as e:
-                logger.debug(f"MemPalace cross-run overlap check failed: {e}")
-
+        overlapping = self._query(
+            "overlap lookup", lambda repo: repo.open_investigations_for(keys), set()
+        )
         if exclude_id:
             overlapping.discard(exclude_id)
-
-        return list(overlapping)
+        return sorted(overlapping)
 
     def get_related_investigations(self, investigation_id: str) -> List[str]:
-        """Get investigations that share IOCs with the given one."""
-        my_keys = self._investigation_iocs.get(investigation_id, set())
-        related = set()
-        for key in my_keys:
-            for inv_id in self._ioc_index.get(key, set()):
-                if inv_id != investigation_id:
-                    related.add(inv_id)
-        return list(related)
+        """Investigations that share an indicator with the given one, ever."""
+
+        def _related(repo: SharedIOCRepository) -> Set[str]:
+            keys = repo.keys_for(investigation_id)
+            return repo.investigations_for(keys) if keys else set()
+
+        related = self._query("related lookup", _related, set())
+        related.discard(investigation_id)
+        return sorted(related)
 
     def get_shared_iocs(self, inv_id_a: str, inv_id_b: str) -> List[str]:
-        """Get IOC keys shared between two investigations."""
-        keys_a = self._investigation_iocs.get(inv_id_a, set())
-        keys_b = self._investigation_iocs.get(inv_id_b, set())
-        return list(keys_a & keys_b)
+        """Indicator keys shared between two investigations."""
+        return sorted(
+            self._query(
+                "shared lookup",
+                lambda repo: repo.shared_between(inv_id_a, inv_id_b),
+                set(),
+            )
+        )
 
-    def unregister_investigation(self, investigation_id: str):
-        """Remove all IOC registrations for a completed/archived investigation."""
-        keys = self._investigation_iocs.pop(investigation_id, set())
-        for key in keys:
-            self._ioc_index[key].discard(investigation_id)
-            if not self._ioc_index[key]:
-                del self._ioc_index[key]
+    def close_investigation(self, investigation_id: str, case_id: Optional[str]):
+        """Index the closing investigation's case IOCs against it.
 
-    def get_stats(self) -> Dict[str, int]:
-        return {
-            "total_iocs_tracked": len(self._ioc_index),
-            "total_investigations_tracked": len(self._investigation_iocs),
-        }
-
-    def _register(self, investigation_id: str, ioc_type: str, value: str):
-        if not value or not value.strip():
+        Its own findings' entities went in when it was registered; this picks up
+        what the case accumulated while it ran.
+        """
+        if not case_id:
             return
-        key = f"{ioc_type}:{value.strip().lower()}"
-        self._ioc_index[key].add(investigation_id)
-        self._investigation_iocs[investigation_id].add(key)
+        self._query(
+            "close write",
+            lambda repo: repo.record_case_for(case_id, investigation_id),
+            None,
+        )
+
+    def _query(self, operation: str, fn: Callable, default: Any) -> Any:
+        try:
+            with self._session_scope() as session:
+                return fn(SharedIOCRepository(session))
+        except Exception as e:
+            logger.error("shared_iocs %s failed: %s", operation, e, exc_info=True)
+            return default
