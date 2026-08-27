@@ -67,6 +67,7 @@ class SchedulerConfig:
     cleanup_enabled: bool = True
     cleanup_interval: int = 86400  # Daily
     cleanup_retention_days: int = 90
+    approval_expiry_days: int = 7
 
 
 @dataclass
@@ -172,6 +173,7 @@ class DaemonConfig:
         config.scheduler.threat_hunt_enabled = settings.daemon_threat_hunt_enabled
         config.scheduler.threat_hunt_interval = settings.daemon_threat_hunt_interval
         config.scheduler.cleanup_retention_days = settings.daemon_cleanup_retention_days
+        config.scheduler.approval_expiry_days = settings.daemon_approval_expiry_days
 
         config.metrics.enabled = settings.daemon_metrics_enabled
         config.metrics.port = settings.daemon_health_port
