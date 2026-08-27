@@ -3,6 +3,7 @@
 // `requiredReady` / `incompleteCount` feed a planned dashboard nudge (tests only).
 import { useCallback, useEffect, useState } from 'react'
 import { llmProviderApi, aiConfigApi, budgetsApi, configApi } from '../services/api'
+import { anyRoutableBifrostProvider } from '../services/bifrostApi'
 import {
   SETUP_STEPS,
   emptySetupState,
@@ -26,15 +27,18 @@ export interface SetupChecklist {
 // flaky endpoint can't crash the page. Advisory — not a security control.
 const fetchSetupState = async (): Promise<SetupState> => {
   const base = emptySetupState()
-  const [providers, integrations, aiConfig, budget, orchestrator] = await Promise.allSettled([
-    llmProviderApi.list(),
-    configApi.getIntegrations(),
-    aiConfigApi.getConfig(),
-    budgetsApi.get(),
-    configApi.getOrchestrator(),
-  ])
+  const [providers, bifrost, integrations, aiConfig, budget, orchestrator] =
+    await Promise.allSettled([
+      llmProviderApi.list(),
+      anyRoutableBifrostProvider(),
+      configApi.getIntegrations(),
+      aiConfigApi.getConfig(),
+      budgetsApi.get(),
+      configApi.getOrchestrator(),
+    ])
 
   if (providers.status === 'fulfilled') base.providers = providers.value.data || []
+  if (bifrost.status === 'fulfilled') base.bifrostRoutable = bifrost.value
   if (integrations.status === 'fulfilled')
     base.enabledIntegrations = integrations.value.data?.enabled_integrations ?? []
   if (aiConfig.status === 'fulfilled') base.assignments = aiConfig.value.data?.assignments ?? {}

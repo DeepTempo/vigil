@@ -6,7 +6,7 @@ import '../../styles.css'
 import { Icon } from '../../shared/icons'
 import { VigilMark } from '../../shared/VigilLogo'
 import { SettingsCard } from '../../shared/ui'
-import { LlmProviderWizard } from '../settings/LlmProviderDialog'
+import SetupProviderStep from './SetupProviderStep'
 import AutonomyDialog from './AutonomyDialog'
 import BudgetDialog from './BudgetDialog'
 import ModelAssignmentDialog from './ModelAssignmentDialog'
@@ -14,7 +14,6 @@ import DataSourceDialog from './DataSourceDialog'
 import useSetupChecklist, { type ChecklistStep } from '../../../hooks/useSetupChecklist'
 import type { SetupStepId } from '../../../setup/setupSteps'
 import { useAuth } from '../../../contexts/AuthContext'
-import { llmProviderApi } from '../../../services/api'
 
 // Per-browser "I'm done here" flag, set on "Go to dashboard". Readiness stays
 // live-derived; this only lets a finished user leave /setup without it nagging.
@@ -187,37 +186,13 @@ const SetupScreen = () => {
     refetch()
   }
 
-  // The wizard creates with is_default:false; promote one here or the required
-  // step never flips ready. Idempotent — only when nothing is default yet.
-  const handleProviderSaved = async () => {
-    setActiveStep(null)
-    try {
-      const { data } = await llmProviderApi.list()
-      const providers = data || []
-      if (providers.length && !providers.some((p) => p.is_default)) {
-        const target = providers.find((p) => p.is_active) ?? providers[0]
-        await llmProviderApi.setDefault(target.provider_id)
-      }
-    } catch {
-      // fail-open — refetch reflects the real backend state
-    }
-    refetch()
-  }
-
   const handleAction = (step: ChecklistStep) =>
     setActiveStep((cur) => (cur === step.id ? null : step.id))
 
   const renderStepPanel = (id: SetupStepId) => {
     switch (id) {
       case 'llm-provider':
-        return (
-          <LlmProviderWizard
-            existing={null}
-            onClose={closeStep}
-            onSaved={handleProviderSaved}
-            showCancel={false}
-          />
-        )
+        return <SetupProviderStep onSaved={handleSaved} />
       case 'data-source':
         return <DataSourceDialog onSaved={handleSaved} />
       case 'model-assignment':

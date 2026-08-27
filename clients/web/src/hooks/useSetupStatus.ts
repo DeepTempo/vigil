@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { llmProviderApi, LLMProvider } from '../services/api'
+import { anyRoutableBifrostProvider } from '../services/bifrostApi'
 
-// "Configured" = the user has an active provider marked as the default.
-// Requiring is_default (not just is_active) matches the runtime: active-but-no-
-// default is exactly where default-resolution fails and chat breaks. We don't
-// require an API key here — local providers (Ollama, or an OpenAI-compatible
-// server like vLLM/LM Studio) can be keyless; the wizard's Test step is what
-// proves a provider actually works.
+// "Configured" = EITHER a legacy active+default provider, OR a routable Bifrost
+// provider. Requiring is_default on the legacy side (not just is_active) matches
+// the runtime: active-but-no-default is exactly where default-resolution fails
+// and chat breaks. We don't require an API key there — local providers (Ollama,
+// or an OpenAI-compatible server like vLLM/LM Studio) can be keyless. The
+// Bifrost side instead requires a key the gateway verified. Kept in sync with
+// setupSteps' llm-provider predicate.
 const isProviderReady = (p: LLMProvider): boolean => p.is_active && p.is_default
 
 export interface SetupStatus {
@@ -21,15 +23,19 @@ const useSetupStatus = (): SetupStatus => {
 
   const refetch = useCallback(() => {
     setLoading(true)
-    llmProviderApi
-      .list()
-      .then((res) => setConfigured((res.data || []).some(isProviderReady)))
-      // Fail open: this gate is UX routing, not a security control (auth is
-      // enforced upstream). A transient backend error shouldn't trap an
-      // already-configured user behind the wizard. A genuinely fresh install
-      // returns an empty list (a success, not an error), so the gate still
-      // fires for new users.
-      .catch(() => setConfigured(true))
+    // Two independent stores back "a provider exists"; either satisfies the
+    // gate. Each fails open on its own error so a transient hiccup in one
+    // can't trap an already-configured user behind the wizard. A genuinely
+    // fresh install returns empty/false from both (successes, not errors), so
+    // the gate still fires for new users.
+    Promise.all([
+      llmProviderApi
+        .list()
+        .then((res) => (res.data || []).some(isProviderReady))
+        .catch(() => true),
+      anyRoutableBifrostProvider().catch(() => false),
+    ])
+      .then(([legacy, bifrost]) => setConfigured(legacy || bifrost))
       .finally(() => setLoading(false))
   }, [])
 

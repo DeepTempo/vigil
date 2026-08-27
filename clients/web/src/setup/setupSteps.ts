@@ -27,6 +27,10 @@ export const DATA_SOURCE_CATALOG_IDS = new Set<string>(
 
 export interface SetupState {
   providers: LLMProvider[]
+  // A routable Bifrost provider exists (a provider whose key Bifrost verified).
+  // The provider step is satisfied by EITHER a legacy default provider or this,
+  // so an install configured through the gateway alone still flips ready.
+  bifrostRoutable: boolean
   enabledIntegrations: string[]
   assignments: AIConfigResponse['assignments']
   budget: BudgetSettings | null
@@ -35,6 +39,7 @@ export interface SetupState {
 
 export const emptySetupState = (): SetupState => ({
   providers: [],
+  bifrostRoutable: false,
   enabledIntegrations: [],
   assignments: {},
   budget: null,
@@ -73,9 +78,10 @@ export const SETUP_STEPS: SetupStep[] = [
     doneLabel: 'Connected',
     tier: 'required',
     settingsSection: 'ai-config',
-    // Mirrors useSetupStatus.isProviderReady (kept in sync): active + default,
-    // no key required (local/keyless providers are valid).
-    selectReady: (s) => s.providers.some((p) => p.is_active && p.is_default),
+    // Mirrors useSetupStatus (kept in sync): a legacy active+default provider,
+    // OR a routable Bifrost provider. Legacy needs no key (local/keyless
+    // providers are valid); the Bifrost side requires a verified key.
+    selectReady: (s) => s.bifrostRoutable || s.providers.some((p) => p.is_active && p.is_default),
   },
   {
     id: 'data-source',
