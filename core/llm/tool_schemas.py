@@ -203,7 +203,7 @@ DEEPTEMPO_FINDING_TOOLS = [
     },
     {
         "name": "nearest_neighbors",
-        "description": "Find similar findings using embedding-based similarity search. Use this to identify related incidents or patterns.",
+        "description": "Find similar findings via the source system's own similarity search. Use this to identify related incidents or patterns.",
         "input_schema": {
             "type": "object",
             "properties": {

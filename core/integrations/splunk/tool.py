@@ -2,8 +2,18 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
+
+# Spawned as ``python3 core/integrations/splunk/tool.py`` with a narrowed env, so
+# the repo root is not on sys.path and PYTHONPATH is not forwarded. Add it here so
+# the ``core.*`` imports below resolve; otherwise they fail and every query
+# silently reports "Splunk not configured".
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 import mcp.server.stdio
 import mcp.types as types

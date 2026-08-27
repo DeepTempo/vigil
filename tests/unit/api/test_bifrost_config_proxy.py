@@ -91,3 +91,48 @@ def test_editing_a_key_we_hold_no_secret_for_is_a_400(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         proxy._resolve_key_value({"models": ["x"]}, "unknown-key")
     assert exc.value.status_code == 400
+
+
+@pytest.mark.unit
+def test_vertex_service_account_is_mirrored_to_value(monkeypatch):
+    # A fresh service-account JSON is used verbatim and copied onto value so a
+    # single secret ref backs both.
+    monkeypatch.setattr(proxy, "get_secret", lambda ref: None)
+    sa = '{"type": "service_account", "project_id": "p"}'
+    body = {"vertex_key_config": {"project_id": "p", "region": "us", "auth_credentials": sa}}
+    proxy._resolve_key_value(body, None)
+    assert body["value"] == sa
+    assert body["vertex_key_config"]["auth_credentials"] == sa
+
+
+@pytest.mark.unit
+def test_vertex_edit_without_credential_substitutes_the_stored_one(monkeypatch):
+    # Editing project/region without re-pasting the JSON pulls the stored copy
+    # into both auth_credentials and value.
+    monkeypatch.setattr(
+        proxy, "get_secret", lambda ref: "stored-sa" if ref == "llm_key_v1" else None
+    )
+    body = {"vertex_key_config": {"project_id": "p", "region": "eu"}}
+    proxy._resolve_key_value(body, "v1")
+    assert body["value"] == "stored-sa"
+    assert body["vertex_key_config"]["auth_credentials"] == "stored-sa"
+
+
+@pytest.mark.unit
+def test_vertex_api_key_takes_the_plain_value_path(monkeypatch):
+    # API-key vertex sends no vertex_key_config, so it is handled like any other
+    # bare credential.
+    monkeypatch.setattr(proxy, "get_secret", lambda ref: "stored")
+    body = {"value": "vertex-api-key"}
+    proxy._resolve_key_value(body, "v2")
+    assert body["value"] == "vertex-api-key"
+
+
+@pytest.mark.unit
+def test_ollama_url_key_needs_no_credential_substitution(monkeypatch):
+    # Ollama carries a URL the operator typed, not a secret we store — so a
+    # models-only edit must not 400 for a missing value.
+    monkeypatch.setattr(proxy, "get_secret", lambda ref: None)
+    body = {"ollama_key_config": {"url": "http://localhost:11434"}, "models": ["*"]}
+    proxy._resolve_key_value(body, "o1")
+    assert "value" not in body

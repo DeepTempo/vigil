@@ -23,26 +23,14 @@ import {
   Toggle,
 } from '../../shared/ui'
 import { useBifrostProviders, useProviderModels, bifrostError } from './useBifrost'
-import { bifrostApi, secretText, type BifrostKey, type BifrostKeyWrite } from '../../../services/bifrostApi'
+import {
+  bifrostApi,
+  secretText,
+  COMMON_PROVIDERS,
+  type BifrostKey,
+  type BifrostKeyWrite,
+} from '../../../services/bifrostApi'
 import type { SectionProps } from './types'
-
-/* Bifrost accepts any provider it knows; these are the ones a SOC deployment
-   reaches for. Free-text rather than a fixed enum so the list can't rot behind
-   Bifrost's catalogue — an unknown name comes back as its own error. */
-const COMMON_PROVIDERS = [
-  'anthropic',
-  'openai',
-  'ollama',
-  'vertex',
-  'bedrock',
-  'azure',
-  'gemini',
-  'mistral',
-  'cohere',
-  'openrouter',
-  'together_ai',
-  'xai',
-]
 
 function KeyStatusChip({ status }: { status?: string }) {
   if (status === 'success') return <span className="status closed">Healthy</span>
@@ -300,7 +288,7 @@ export default function AiProvidersPanel({ notify }: SectionProps) {
 }
 
 /* ---------------- Key editor ---------------- */
-function KeyDialog({
+export function KeyDialog({
   provider,
   existing,
   onClose,
@@ -311,8 +299,17 @@ function KeyDialog({
   onClose: () => void
   onSave: (data: BifrostKeyWrite) => Promise<void>
 }) {
+  // Vertex takes either a bare API key or a service-account JSON scoped by
+  // project/region — so it gets a mode switch and its own fields.
+  const isVertex = provider === 'vertex'
+  const [vertexAuth, setVertexAuth] = useState<'service_account' | 'api_key'>(
+    existing?.vertex_key_config?.project_id ? 'service_account' : 'api_key',
+  )
+
   const [name, setName] = useState(existing?.name || `${provider}-key`)
   const [secret, setSecret] = useState('')
+  const [projectId, setProjectId] = useState(existing?.vertex_key_config?.project_id ?? '')
+  const [region, setRegion] = useState(existing?.vertex_key_config?.region ?? '')
   const [weight, setWeight] = useState(existing?.weight ?? 1)
   const [enabled, setEnabled] = useState(existing?.enabled ?? true)
   const [allowAll, setAllowAll] = useState(existing ? existing.models?.includes('*') !== false : true)
@@ -324,21 +321,39 @@ function KeyDialog({
     setSaving(true)
     setErr(null)
     try {
-      await onSave({
+      const base: BifrostKeyWrite = {
         name: name.trim(),
         weight: Number(weight) || 1,
         enabled,
         models: allowAll ? ['*'] : chosen,
+      }
+      if (isVertex && vertexAuth === 'service_account') {
+        // The service-account JSON is omitted when left blank; the backend
+        // substitutes the stored copy into both auth_credentials and value.
+        base.vertex_key_config = {
+          project_id: projectId.trim() || undefined,
+          region: region.trim() || undefined,
+          ...(secret.trim() ? { auth_credentials: secret.trim() } : {}),
+        }
+      } else if (secret.trim()) {
+        // API-key vertex takes the plain-value path like any other provider.
         // Omitted when left blank: the backend substitutes the stored
         // credential, since Bifrost has no models-only update.
-        ...(secret.trim() ? { value: secret.trim() } : {}),
-      })
+        base.value = secret.trim()
+      }
+      await onSave(base)
     } catch (e) {
       setErr(bifrostError(e, 'Save failed.'))
     } finally {
       setSaving(false)
     }
   }
+
+  // A create needs a credential; a service-account vertex create also needs
+  // project + region.
+  const missingCredential = !existing && !secret.trim()
+  const missingVertexScope =
+    isVertex && vertexAuth === 'service_account' && !existing && (!projectId.trim() || !region.trim())
 
   return (
     <Popup open onClose={onClose} title={existing ? `Edit key · ${provider}` : `Add key · ${provider}`}>
@@ -347,21 +362,94 @@ function KeyDialog({
         <Field label="Key name" hint="Must be unique across the gateway.">
           <TextInput value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field
-          label="API key"
-          hint={
-            existing
-              ? 'Leave blank to keep the stored credential — a key configured directly in Bifrost has none held here yet, and saving will ask for it.'
-              : 'Stored encrypted in Vigil’s secret store and pushed to the gateway.'
-          }
-        >
-          <PasswordInput
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            placeholder={existing ? '•••••••• (unchanged)' : ''}
-            autoComplete="new-password"
-          />
-        </Field>
+        {isVertex ? (
+          <>
+            <Field label="Authentication" hint="Vertex accepts either a plain API key or a service-account key.">
+              <div className="inline-flex gap-1.5">
+                {(
+                  [
+                    ['api_key', 'API key'],
+                    ['service_account', 'Service account'],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`btn ${vertexAuth === mode ? 'primary' : 'ghost'}`}
+                    onClick={() => {
+                      setVertexAuth(mode)
+                      setSecret('')
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            {vertexAuth === 'service_account' ? (
+              <>
+                <div className="settings-grid-2" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
+                  <Field label="Project ID" hint="The GCP project that owns the Vertex AI endpoint.">
+                    <TextInput value={projectId} onChange={(e) => setProjectId(e.target.value)} placeholder="my-gcp-project" />
+                  </Field>
+                  <Field label="Region" hint="Vertex location, e.g. us-central1.">
+                    <TextInput value={region} onChange={(e) => setRegion(e.target.value)} placeholder="us-central1" />
+                  </Field>
+                </div>
+                <Field
+                  label="Service account JSON"
+                  hint={
+                    existing
+                      ? 'Leave blank to keep the stored service account — paste a new one only to rotate it.'
+                      : 'The full service-account key JSON. Stored encrypted in Vigil’s secret store and pushed to the gateway.'
+                  }
+                >
+                  <textarea
+                    className="field-input font-mono text-xs"
+                    rows={6}
+                    value={secret}
+                    onChange={(e) => setSecret(e.target.value)}
+                    placeholder={existing ? '•••••••• (unchanged)' : '{\n  "type": "service_account",\n  ...\n}'}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </Field>
+              </>
+            ) : (
+              <Field
+                label="API key"
+                hint={
+                  existing
+                    ? 'Leave blank to keep the stored credential.'
+                    : 'Stored encrypted in Vigil’s secret store and pushed to the gateway.'
+                }
+              >
+                <PasswordInput
+                  value={secret}
+                  onChange={(e) => setSecret(e.target.value)}
+                  placeholder={existing ? '•••••••• (unchanged)' : ''}
+                  autoComplete="new-password"
+                />
+              </Field>
+            )}
+          </>
+        ) : (
+          <Field
+            label="API key"
+            hint={
+              existing
+                ? 'Leave blank to keep the stored credential — a key configured directly in Bifrost has none held here yet, and saving will ask for it.'
+                : 'Stored encrypted in Vigil’s secret store and pushed to the gateway.'
+            }
+          >
+            <PasswordInput
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder={existing ? '•••••••• (unchanged)' : ''}
+              autoComplete="new-password"
+            />
+          </Field>
+        )}
         <div className="settings-grid-2" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
           <Field label="Weight" hint="Share of traffic when a provider has several keys.">
             <NumberInput value={weight} min={0} step={0.1} onChange={(e) => setWeight(Number(e.target.value))} />
@@ -382,7 +470,7 @@ function KeyDialog({
         <button className="btn ghost" onClick={onClose} disabled={saving}>Cancel</button>
         <button
           className="btn primary"
-          disabled={saving || !name.trim() || (!existing && !secret.trim())}
+          disabled={saving || !name.trim() || missingCredential || missingVertexScope}
           onClick={submit}
         >
           <Icon name="check2" /> {saving ? 'Saving…' : 'Save'}

@@ -48,7 +48,18 @@ export interface BifrostKey {
   description?: string
   use_for_batch_api?: boolean
   ollama_key_config?: { url: BifrostSecret | string }
-  vertex_key_config?: Record<string, unknown>
+  /** project_id/region read back plain; auth_credentials read back masked. */
+  vertex_key_config?: { project_id?: string; region?: string; auth_credentials?: BifrostSecret | string }
+}
+
+/** Vertex's credential is not an API key: it is a service-account JSON plus the
+    project/region that scope it. Bifrost holds the JSON under `auth_credentials`;
+    the passthrough mirrors it to the key's `value` so one secret ref backs both. */
+export interface VertexKeyConfig {
+  project_id?: string
+  region?: string
+  /** Service-account JSON. Omit on edit to keep the stored one. */
+  auth_credentials?: string
 }
 
 export interface BifrostKeyWrite {
@@ -59,6 +70,8 @@ export interface BifrostKeyWrite {
   /** Omit to keep the stored credential — the passthrough fills it in. */
   value?: string
   use_for_batch_api?: boolean
+  /** Vertex only — sent instead of a bare `value`. */
+  vertex_key_config?: VertexKeyConfig
 }
 
 export interface BifrostModel {
@@ -130,6 +143,24 @@ export interface BifrostVirtualKeyWrite {
   rate_limit?: BifrostRateLimit | null
 }
 
+/** Providers Bifrost knows that a SOC deployment reaches for. Free-text in the
+    UI (an unknown name comes back as Bifrost's own error), so this is only the
+    datalist of suggestions, not a fixed enum. */
+export const COMMON_PROVIDERS = [
+  'anthropic',
+  'openai',
+  'ollama',
+  'vertex',
+  'bedrock',
+  'azure',
+  'gemini',
+  'mistral',
+  'cohere',
+  'openrouter',
+  'together_ai',
+  'xai',
+]
+
 const bf = '/bifrost'
 
 export const bifrostApi = {
@@ -195,4 +226,47 @@ export function secretText(v: BifrostSecret | string | undefined): string {
 /** Bifrost prices per token; the console talks in dollars per million. */
 export function perMillion(perToken: number | undefined): number | null {
   return typeof perToken === 'number' ? perToken * 1_000_000 : null
+}
+
+/** True when the key's credential was set by a human rather than pointing at an
+    env var. A first-boot seed's keys reference `env.ANTHROPIC_API_KEY` etc.
+    (from_env: true); anything the console wrote carries a literal value. */
+function credFromEnv(k: BifrostKey): boolean {
+  const v = k.value
+  if (v && typeof v === 'object' && 'from_env' in v) return !!v.from_env
+  const sa = k.vertex_key_config?.auth_credentials
+  if (sa && typeof sa === 'object' && 'from_env' in sa) return !!sa.from_env
+  return false
+}
+
+/** True when a key can actually route. A "success" status means Bifrost
+    verified the credential upstream — the strongest signal. But some providers
+    (vertex, notably) have no list-models path, so Bifrost never advances them
+    past "unknown"; those still route, so "unknown" is accepted — but only for a
+    credential a human actually set, so a fresh install's env-placeholder seed
+    keys don't read as already-configured. */
+export function keyIsRoutable(k: BifrostKey): boolean {
+  if (!k.enabled) return false
+  if (k.status === 'success') return true
+  if (!k.status || k.status === 'unknown') return !credFromEnv(k)
+  return false
+}
+
+/** Does any Bifrost provider have a routable key? The setup gate's Bifrost-side
+    readiness check. Best-effort per provider — a listKeys failure counts as
+    "not routable" rather than throwing the whole check. */
+export async function anyRoutableBifrostProvider(): Promise<boolean> {
+  const { data } = await bifrostApi.listProviders()
+  const providers = data.providers || []
+  const flags = await Promise.all(
+    providers.map(async (p) => {
+      try {
+        const r = await bifrostApi.listKeys(p.name)
+        return (r.data.keys || []).some(keyIsRoutable)
+      } catch {
+        return false
+      }
+    }),
+  )
+  return flags.some(Boolean)
 }

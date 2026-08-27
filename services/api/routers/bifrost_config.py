@@ -97,7 +97,45 @@ def _resolve_key_value(body: Dict[str, Any], key_id: Optional[str]) -> None:
     A write that echoes the mask, or omits ``value`` entirely, is the console
     editing a key's weight or allow-list without retyping the secret. Bifrost
     has no models-only update, so the stored plaintext is substituted.
+
+    Two providers break the plain ``value`` shape:
+
+    * **Vertex** is always scoped by ``project_id``/``region`` under
+      ``vertex_key_config`` and authenticates one of two ways. A *service
+      account* carries its JSON in ``vertex_key_config.auth_credentials`` (the
+      presence of that field is what marks the mode); an *API key* carries a
+      bare ``value`` like any other provider. Either credential is mirrored to
+      ``value`` so a single ``llm_key_<id>`` ref backs the key, and an edit that
+      leaves the credential blank substitutes the stored copy back in.
+    * **Ollama** carries a URL the operator typed under ``ollama_key_config``,
+      not a secret we mask or store — so such a write needs no substitution.
     """
+    if isinstance(body.get("ollama_key_config"), dict):
+        return
+
+    vertex = body.get("vertex_key_config")
+    if isinstance(vertex, dict) and "auth_credentials" in vertex:
+        # Service-account mode: the JSON is the credential, mirrored to value.
+        sa = vertex.get("auth_credentials")
+        if not _is_masked(sa) and sa:
+            body["value"] = sa
+            return
+        stored = get_secret(_secret_ref(key_id)) if key_id else None
+        if not stored:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "No stored service-account credential for this Vertex key — "
+                    "paste the service-account JSON. Bifrost has no "
+                    "credential-only update, so every key write needs one."
+                ),
+            )
+        vertex["auth_credentials"] = stored
+        body["value"] = stored
+        return
+    # Vertex API-key mode (vertex_key_config with no auth_credentials) falls
+    # through to the plain-value path below, keeping its project/region intact.
+
     if not _is_masked(body.get("value")) and body.get("value"):
         return
     stored = get_secret(_secret_ref(key_id)) if key_id else None

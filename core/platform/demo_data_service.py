@@ -63,11 +63,6 @@ class DemoDataService:
             self._generate_demo_data()
             DemoDataService._initialized = True
     
-    def _generate_embedding(self, dim: int = 768) -> List[float]:
-        vec = [random.gauss(0, 1) for _ in range(dim)]
-        norm = sum(x**2 for x in vec) ** 0.5
-        return [x / norm for x in vec]
-    
     def _generate_ip(self) -> str:
         if random.random() < 0.6:
             return f"192.168.{random.randint(1, 254)}.{random.randint(1, 254)}"
@@ -130,7 +125,6 @@ class DemoDataService:
             ],
             "entity_context": self._generate_entity_context(),
             "cluster_id": random.choice(CLUSTERS) if random.random() < 0.7 else None,
-            "embedding": self._generate_embedding(),
             "description": desc,
         }
     
@@ -184,43 +178,6 @@ class DemoDataService:
             if f.get("finding_id") == finding_id:
                 return f
         return None
-    
-    def get_nearest_neighbors(self, finding_id: str, limit: int = 10) -> Dict:
-        """Find similar findings using embedding-based cosine similarity.
-        
-        Args:
-            finding_id: Reference finding ID to find neighbors for
-            limit: Maximum number of neighbors to return
-            
-        Returns:
-            Dict with seed_finding and neighbors list
-        """
-        seed = self.get_finding(finding_id)
-        if not seed or 'embedding' not in seed:
-            return {"error": f"Finding {finding_id} not found or has no embedding"}
-        
-        seed_emb = seed['embedding']
-        sims = []
-        for f in DemoDataService._findings:
-            if f.get('finding_id') != finding_id and 'embedding' in f:
-                # Cosine similarity
-                a = f['embedding']
-                dot = sum(x * y for x, y in zip(seed_emb, a))
-                norm_a = sum(x ** 2 for x in seed_emb) ** 0.5
-                norm_b = sum(x ** 2 for x in a) ** 0.5
-                denom = norm_a * norm_b
-                sim = dot / denom if denom > 0 else 0.0
-                sims.append({
-                    "finding_id": f['finding_id'],
-                    "similarity": round(sim, 4),
-                    "cluster_id": f.get('cluster_id'),
-                    "severity": f.get('severity'),
-                    "data_source": f.get('data_source'),
-                    "anomaly_score": float(f.get('anomaly_score', 0)),
-                })
-        
-        sims.sort(key=lambda x: x['similarity'], reverse=True)
-        return {"seed_finding": finding_id, "neighbors": sims[:limit]}
     
     def get_cases(self, limit: int = 10000) -> List[Dict]:
         return DemoDataService._cases[:limit]

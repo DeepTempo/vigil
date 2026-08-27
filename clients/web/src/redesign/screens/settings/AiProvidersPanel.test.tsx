@@ -26,6 +26,7 @@ vi.mock('../../../services/bifrostApi', () => ({
     removeKey: vi.fn(),
   },
   secretText: (v: unknown) => (typeof v === 'string' ? v : ((v as { value?: string })?.value ?? '')),
+  COMMON_PROVIDERS: ['anthropic', 'openai', 'ollama', 'vertex'],
 }))
 
 // Fenced to two of the four the provider actually has.
