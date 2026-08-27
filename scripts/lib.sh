@@ -299,6 +299,24 @@ install_python_deps() {
     verify_python_env
 }
 
+# setup_dev.sh only. start.sh and the desktop path share install_python_deps and
+# have no use for linters. Non-fatal: a missing linter should not block a dev env.
+install_dev_deps() {
+    ensure_uv || return 0
+    local venv="$REPO_ROOT/venv"
+    local log="$REPO_ROOT/logs/pip-install.log"
+    mkdir -p "$REPO_ROOT/logs"
+
+    echo "Installing lint toolchain from requirements-dev.txt..."
+    if ! "$UV" pip install --python "$venv/bin/python" \
+            -r "$REPO_ROOT/requirements-dev.txt" >>"$log" 2>&1; then
+        echo "Warning: lint toolchain install failed (see $log) - continuing." >&2
+        return 0
+    fi
+    "$venv/bin/pre-commit" install >/dev/null 2>&1 \
+        || echo "Warning: could not install the pre-commit hook - continuing." >&2
+}
+
 # Prove the venv can import what the services actually need. Cause-agnostic by
 # design: this catches a wrong-architecture interpreter, a half-finished
 # install, a failed native build, or a venv orphaned by an OS upgrade — all of

@@ -26,6 +26,7 @@ fi
 ensure_venv
 install_python_deps
 echo "Python dependencies installed."
+install_dev_deps
 
 # Frontend
 if command -v npm &>/dev/null && [ -d "$REPO_ROOT/clients/web" ]; then
