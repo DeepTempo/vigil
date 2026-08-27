@@ -15,7 +15,8 @@ done
 echo "Stopping Vigil SOC..."
 
 # Kill by PID files
-for pidfile in logs/backend.pid logs/daemon.pid logs/frontend.pid logs/llm_worker.pid; do
+for pidfile in logs/backend.pid logs/daemon.pid logs/frontend.pid logs/llm_worker.pid \
+               logs/agent-worker.pid logs/agent-serve.pid; do
     [ -f "$pidfile" ] && kill "$(cat "$pidfile")" 2>/dev/null && rm -f "$pidfile"
 done
 
@@ -29,9 +30,11 @@ pkill -f "services.daemon.main" 2>/dev/null || true
 pkill -f "vite.*opensoc" 2>/dev/null || true
 pkill -f "mcp_servers.*_server" 2>/dev/null || true
 
-# Kill by port
+# Kill by port (6989 agent serve, 6990 agent worker health)
 lsof -ti:6987 | xargs kill -9 2>/dev/null || true
 lsof -ti:6988 | xargs kill -9 2>/dev/null || true
+lsof -ti:6989 | xargs kill -9 2>/dev/null || true
+lsof -ti:6990 | xargs kill -9 2>/dev/null || true
 
 # Docker
 if [ "$DOCKER_STOP" -eq 1 ]; then
