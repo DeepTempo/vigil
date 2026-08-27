@@ -76,7 +76,11 @@ class CaseNotificationService:
                     message=message,
                     delivery_channel=delivery_channel,
                     priority=priority,
-                    metadata=metadata or {},
+                    # Must be notification_metadata: the column was renamed
+                    # to avoid SQLAlchemy's reserved name, and `metadata=`
+                    # lands on the declarative MetaData, not a column.
+                    # See #559.
+                    notification_metadata=metadata or {},
                     is_read=False,
                     is_sent=False
                 )
