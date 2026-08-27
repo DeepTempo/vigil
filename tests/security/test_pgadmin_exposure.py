@@ -18,28 +18,28 @@ committed to this repo.
 Two separate properties are asserted, because either one alone is insufficient:
 a login prompt on an internet-facing port is still a credential-stuffing target,
 and a loopback bind with no login still trusts every local process and every
-other container. The port check duplicates a little of
-`test_compose_port_binding.py`, which deliberately scopes itself to services
-that start without a profile; pgAdmin is behind the opt-in `dev` profile and so
-falls outside it. Those two files are worth consolidating once both changes
-have landed.
+other container. The port check is the one
+`test_compose_port_binding.py` applies to every profile-less service; pgAdmin is
+behind the opt-in `dev` profile and so falls outside that sweep, but it shares
+that module's helpers rather than carrying its own copies.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 import yaml
 
+# The port-binding gate owns these: same compose file, same definition of
+# loopback, same rule that a security gate resolves its own paths rather than
+# importing application code. Duplicating them let the two drift.
+from tests.security.test_compose_port_binding import (
+    COMPOSE_PATH,
+    LOOPBACK,
+    REPO,
+    _host_interface,
+)
+
 pytestmark = pytest.mark.unit
-
-# Resolved from this file rather than by importing application code, so an
-# unrelated dependency break cannot disarm the gate.
-REPO = Path(__file__).resolve().parents[2]
-COMPOSE_PATH = Path("infra/docker/docker-compose.yml")
-
-LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 
 # Values pgAdmin reads as "desktop mode", i.e. no login prompt. It parses the
 # variable as a string, so quoting variants all have to be caught.
@@ -66,13 +66,6 @@ def _environment() -> dict[str, str]:
             parsed[key] = value
         return parsed
     return {str(k): str(v) for k, v in env.items()}  # KEY: value form
-
-
-def _host_interface(mapping) -> str:
-    if isinstance(mapping, dict):
-        return str(mapping.get("host_ip") or "0.0.0.0").strip("[]")
-    parts = str(mapping).split("/")[0].rsplit(":", 2)
-    return parts[0].strip("[]") if len(parts) == 3 else "0.0.0.0"
 
 
 def test_pgadmin_publishes_on_loopback_only() -> None:

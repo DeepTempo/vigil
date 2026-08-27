@@ -327,7 +327,13 @@ services:
     image: maximhq/bifrost:latest
     container_name: deeptempo-bifrost
     ports:
-      - "8080:8080"
+      # Loopback-only, for the same reason as postgres and redis above, and
+      # with the least standing of the three: Bifrost serves an unauthenticated
+      # config API on its inference port, so anything that reaches this can read
+      # and rewrite provider credentials via PUT /api/providers/{name}/keys/
+      # {key_id}. Sibling containers dial bifrost:8080 over deeptempo-network;
+      # the UI at http://localhost:8080 is unaffected from the host.
+      - "127.0.0.1:8080:8080"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
