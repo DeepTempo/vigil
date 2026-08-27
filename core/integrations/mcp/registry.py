@@ -279,3 +279,19 @@ def refresh_from_client(registry: MCPRegistry) -> int:
     if eager_connect_enabled() and connected:
         registry.retain_only(active)
     return len(active)
+
+
+def live_mcp_tools(registry: MCPRegistry) -> List[Dict]:
+    """The connected MCP integrations' tools, Claude-API-shaped, for one turn.
+
+    Refreshes the registry from the running client, then returns its tools
+    (server-prefixed names). Returns ``[]`` — never raises — when the client or
+    registry is unavailable, so a caller can fall back to built-in tools. This
+    is the one call a request path needs to surface live integrations.
+    """
+    try:
+        refresh_from_client(registry)
+        return registry.get_all_tools() or []
+    except Exception as exc:  # noqa: BLE001 — callers degrade to built-in tools
+        logger.debug("Live MCP tool surface unavailable: %s", exc)
+        return []
