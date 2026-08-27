@@ -7,8 +7,6 @@ echo "Vigil SOC - Development Setup"
 echo ""
 
 # Prerequisites
-PYTHON=$(find_python)
-
 WARNINGS=0
 command -v docker &>/dev/null || { echo "Warning: Docker not installed."; WARNINGS=$((WARNINGS+1)); }
 if ! command -v node &>/dev/null; then
@@ -25,9 +23,10 @@ if [ ! -f "$REPO_ROOT/.env" ]; then
 fi
 
 # Python
-ensure_venv "$PYTHON"
+ensure_venv
 install_python_deps
 echo "Python dependencies installed."
+install_dev_deps
 
 # Frontend
 if command -v npm &>/dev/null && [ -d "$REPO_ROOT/clients/web" ]; then

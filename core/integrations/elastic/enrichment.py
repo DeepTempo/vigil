@@ -3,11 +3,11 @@
 import json
 import logging
 import re
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from core.integrations.elastic.client import ElasticService
 from core.storage.database_data_service import DatabaseDataService
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +33,7 @@ class ElasticEnrichmentService:
     ) -> Dict[str, List[str]]:
         """Extract IOCs from case and findings."""
         ip_pattern = r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"
-        hash_pattern = (
-            r"\b[a-fA-F0-9]{32}\b|\b[a-fA-F0-9]{40}\b|\b[a-fA-F0-9]{64}\b"
-        )
+        hash_pattern = r"\b[a-fA-F0-9]{32}\b|\b[a-fA-F0-9]{40}\b|\b[a-fA-F0-9]{64}\b"
 
         indicators: Dict[str, set] = {
             "ips": set(),
@@ -59,9 +57,7 @@ class ElasticEnrichmentService:
                 indicators["hostnames"].add(str(h))
 
         # Filter private IPs
-        indicators["ips"] = {
-            ip for ip in indicators["ips"] if not _is_private_ip(ip)
-        }
+        indicators["ips"] = {ip for ip in indicators["ips"] if not _is_private_ip(ip)}
 
         return {k: sorted(v) for k, v in indicators.items()}
 
@@ -77,7 +73,7 @@ class ElasticEnrichmentService:
     ) -> Dict[str, Any]:
         """Query Elasticsearch for each indicator type."""
         enrichment: Dict[str, Any] = {
-            "query_time": datetime.utcnow().isoformat(),
+            "query_time": utcnow().isoformat(),
             "lookback_hours": hours,
             "results": {},
             "summary": {},
@@ -145,6 +141,7 @@ class ElasticEnrichmentService:
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
 
 def _is_private_ip(ip: str) -> bool:
     try:

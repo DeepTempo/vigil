@@ -3,7 +3,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from core.integrations.mcp.registry import MCPRegistry
+from core.integrations.mcp.registry import MCPRegistry, safe_tool_names
 
 logger = logging.getLogger(__name__)
 
@@ -228,16 +228,9 @@ class AgentAIGenerator:
         return "\n".join(lines)
 
     def _get_mcp_tool_names(self) -> List[str]:
-        if self._mcp_tool_names_cache is not None:
-            return self._mcp_tool_names_cache
-        try:
-            registry = self._mcp_registry or MCPRegistry()
-            names = list(registry.get_tool_names() or [])
-        except Exception as e:
-            logger.debug(f"MCP registry unavailable: {e}")
-            names = []
-        self._mcp_tool_names_cache = names
-        return names
+        if self._mcp_tool_names_cache is None:
+            self._mcp_tool_names_cache = safe_tool_names(self._mcp_registry)
+        return self._mcp_tool_names_cache
 
     def _base_prompt_shape(self) -> str:
         return (

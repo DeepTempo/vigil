@@ -43,9 +43,9 @@ vigil/
 │   │   ├── poller.py         # Fetches alerts from SIEM/EDR
 │   │   ├── processor.py      # Processes findings through AI pipeline
 │   │   ├── responder.py      # Executes containment actions
-│   │   ├── scheduler.py      # Cron-style scheduled tasks
-│   │   └── llm_worker_manager.py  # Supervises the worker subprocess (dev/daemon mode)
-│   └── worker/           # ARQ llm-worker — drains the arq:llm queue (python -m services.worker)
+│   │   └── scheduler.py      # Cron-style scheduled tasks
+│   └── worker/           # ARQ llm-worker, drains the arq:llm queue, started directly by
+│                          # start.sh/compose/Helm (python -m services.worker), never supervised
 ├── clients/web/             # React + TypeScript + Vite SPA
 │   └── src/
 │       ├── redesign/     # The SOC console — screens/, shell/, shared/
@@ -70,9 +70,9 @@ vigil/
 
 > **Layering:** `core/` is a library and must never import `services/`, and the
 > shared-infrastructure tier (`core/storage`, `core/platform`) must never import a
-> capability domain. `.importlinter` enforces both on every PR — the `lint-imports`
-> step is the one gating check in an otherwise advisory lint job. Run it locally
-> with `lint-imports`.
+> capability domain. `.importlinter` enforces both on every PR — `lint-imports`
+> gates, alongside `flake8`, `black` and `isort`. Only `mypy` and the
+> comment-style check are advisory. Run it locally with `lint-imports`.
 >
 > The only sanctioned `sys.path` entry is the repo root, added by
 > `services/api/main.py` and `services/daemon/main.py` so `core.*` and `services.*`
@@ -127,9 +127,36 @@ first-run bootstrap are the point.
 ./setup_dev.sh   # Creates venv, installs all Python + npm deps
 ```
 
+### The Python toolchain
+
+Vigil **provisions** its interpreter rather than discovering one. `.python-version`
+pins the version (3.12) and `scripts/lib.sh` uses `uv` to download a standalone
+CPython matching it and the host's architecture — so conda, pyenv, or a system
+Python on `PATH` cannot influence what the venv is built from. There is no
+`find_python`; do not reintroduce `PATH` scanning.
+
+Two details are load-bearing and easy to undo by accident:
+
+- `--python-preference only-managed` is passed as a **flag** to `uv venv`.
+  Without it uv reuses any same-version interpreter on `PATH`; as an env var it
+  loses to a user who has `UV_PYTHON_PREFERENCE` set.
+- A `uv` found on `PATH` is used only when its own target triple matches
+  `uname -m`. An x86_64 uv provisions x86_64 interpreters even under
+  `only-managed`.
+
+The venv is disposable: one that doesn't match the pin is deleted and rebuilt
+(~2s warm) rather than repaired. `install_python_deps` is fatal on failure and
+ends by importing what the services need, so breakage reports at its cause.
+
+Dependencies install from **`requirements.lock`** (fully pinned, `--universal`
+so one file covers macOS/Linux and arm64/x86_64). `requirements.txt` remains the
+list of direct dependencies with acceptable ranges. After changing it, run
+`./scripts/update_lock.sh` and commit both. CI and both Docker images install
+from the lock too.
+
 ### Prerequisites
 
-- **Python 3.10+** (required by claude-agent-sdk)
+- **Python 3.12** — provisioned automatically by `uv` (see `.python-version`); no host Python needed
 - **Node.js 18+**
 - **Docker Desktop** (must be running — used for PostgreSQL and Redis)
 - **Git** with submodule support
@@ -222,19 +249,36 @@ npm run test:ci        # CI mode (JSON output)
 
 ### Linting
 
+`flake8`, `black` and `isort` **gate CI** over `services/` and `core/`. Pass no
+arguments: `setup.cfg` is the only config, and it is the same file pre-commit
+reads, so formatting locally cannot produce a tree CI rejects. `mypy` stays
+advisory.
+
+`./setup_dev.sh` installs the pinned toolchain and the pre-commit hook. To add it
+to an existing venv:
+
 ```bash
-# Python
-black .                # format (line length 88)
-flake8 .               # lint (max line length 88)
-isort .                # sort imports
-mypy . --ignore-missing-imports
+pip install -r requirements-dev.txt && pre-commit install
+```
+
+```bash
+# Python — the three that gate, scoped as CI scopes them
+black services/ core/
+isort services/ core/
+flake8 services/ core/
+mypy services/ core/ --ignore-missing-imports   # advisory
 
 # TypeScript
 cd clients/web && npm run lint
 
-# Pre-commit (runs black automatically)
+# All three at once, on what you changed
 pre-commit run --all-files
 ```
+
+`tests/`, `tools/` and `scripts/` are not gated and have not been cleaned;
+pre-commit is scoped to match, so a one-line change there does not arrive
+carrying hundreds. Bumping a pin means committing the reformatting it causes,
+in `requirements-dev.txt` and `.pre-commit-config.yaml` together.
 
 ---
 
@@ -294,6 +338,24 @@ Agents access external tools through the MCP protocol. Tool definitions live in 
   written there** — prefixes are decorative for the chart path
 - pgvector extension for embeddings
 - Use `core/storage/database_data_service.py` for data access — do not query the DB directly from API handlers
+- **`infra/database/init/` is not the whole schema.** `cases`, `findings`,
+  `case_evidence`, `case_tasks`, `case_watchers` and `investigations` have no
+  `CREATE TABLE` there — `create_all` at startup is the only thing that builds
+  them, so an `ALTER TABLE` in a numbered init file for one of them hard-fails
+  (the dbInit Job runs before the app ever starts). `users`/`roles` and
+  `skills`/`custom_agents`/`workflow_runs`/`custom_workflows` *are* covered.
+  Grepping for a table name is misleading — `cases` and `findings` appear in
+  9–10 init files, but every hit is a string literal, not DDL
+- **Adding a column to one of those ORM-only tables does not reach existing
+  databases.** `create_all` is `checkfirst=True` — it creates missing tables and
+  never alters existing ones. `check_schema_drift()` in
+  `core/storage/connection.py` reports the gap at ERROR and publishes the state
+  under `schema` in `/api/health`; `DB_STRICT_SCHEMA=true` makes it fatal.
+  Reporting is not fixing: see #562 before relying on
+  `scripts/migrate_schema.py`, which only covers columns registered there by
+  hand (and #568 — one of its seed migrations still cannot succeed). The check
+  compares column *names*, so a changed type or a new `NOT NULL` is drift it
+  cannot see
 
 **When adding or modifying an init SQL file under `infra/database/init/`:** the
 chart bundles a *copy* under `infra/helm/vigil/files/database-init/` (Helm can
@@ -339,8 +401,9 @@ Key config variables: `DAEMON_AUTO_TRIAGE`, `DAEMON_CONFIDENCE_THRESHOLD`, `ORCH
 
 ### Python
 
-- **Formatter**: Black, line length **88**
-- **Linter**: Flake8, max line length 88
+- **Formatter**: Black, line length **88** (its default; pinned in `requirements-dev.txt`)
+- **Linter**: Flake8 — gates CI. `E501` is off because black owns wrapping, so
+  the only long lines left are strings black cannot split
 - **Imports**: isort
 - **Type hints**: mypy (ignore-missing-imports mode)
 - **Async**: prefer `async def` for all service methods and route handlers
@@ -465,6 +528,10 @@ All CI checks must pass before merging.
 | `services/mcp_service.py` | MCP protocol coordination |
 | `infra/database/init/` | Schema SQL — see Database section for the add/modify checklist |
 | `mcp-config.json` | All MCP server definitions |
+| `.python-version` | The pinned interpreter — venv, both Docker images, and CI |
+| `requirements.lock` | Fully pinned dependency tree; what actually gets installed |
+| `requirements-dev.txt` | Pinned lint/type toolchain; the three that gate CI |
+| `setup.cfg` | The only flake8 + isort config — CI and pre-commit both read it |
 | `env.example` | Every supported environment variable |
 | `infra/docker/docker-compose.yml` | Full local stack definition |
 | `docs/AGENTS.md` | Agent reference |

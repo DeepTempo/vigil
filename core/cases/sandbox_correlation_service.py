@@ -20,13 +20,13 @@ Design notes
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
 from core.storage.models import CaseEvidence, CaseIOC
 from core.storage.unit_of_work import unit_of_work
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +67,10 @@ class SandboxCorrelationService:
                     file_hash_sha256=normalised.get("sha256"),
                     source=sandbox_name,
                     collected_by=collected_by,
-                    collected_at=datetime.utcnow(),
+                    collected_at=utcnow(),
                     chain_of_custody=[
                         {
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": utcnow().isoformat(),
                             "action": "collected",
                             "user": collected_by,
                             "notes": f"Retrieved from {sandbox_name} task {task_id}",
@@ -134,7 +134,7 @@ class SandboxCorrelationService:
             )
             .first()
         )
-        now = datetime.utcnow()
+        now = utcnow()
         enrichment_chunk = {
             "sandbox": source,
             "task_id": sandbox_task_id,

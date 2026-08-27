@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from core.time import utcnow
+
 
 def parse_cursor_since(cursor: Dict[str, Any]) -> Optional[datetime]:
     """Read the ``last_poll_at`` ISO timestamp from cursor, if present.
@@ -27,4 +29,4 @@ def parse_cursor_since(cursor: Dict[str, Any]) -> Optional[datetime]:
 
 def fresh_cursor() -> Dict[str, Any]:
     """Cursor value to persist after a successful fetch."""
-    return {"last_poll_at": datetime.utcnow().isoformat()}
+    return {"last_poll_at": utcnow().isoformat()}

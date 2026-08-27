@@ -18,7 +18,6 @@ but return ``None``/``False`` for not-found-or-not-owned.
 """
 
 import logging
-from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import func, select
@@ -26,6 +25,7 @@ from sqlalchemy import func, select
 from core.storage.connection import get_db_manager
 from core.storage.models import ChatMessage, Conversation
 from core.storage.schemas import ConversationSchema, ConversationSummarySchema
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ def append_message(
             session.add(msg)
 
             conv.message_count = int(conv.message_count or 0) + 1
-            conv.last_message_at = datetime.utcnow()
+            conv.last_message_at = utcnow()
             if model:
                 conv.model = model
             session.flush()
@@ -215,9 +215,7 @@ def get_conversation(conversation_id: str, user_id: Optional[str]) -> Optional[d
         return ConversationSchema.dump(conv)
 
 
-def rename(
-    conversation_id: str, user_id: Optional[str], title: str
-) -> Optional[dict]:
+def rename(conversation_id: str, user_id: Optional[str], title: str) -> Optional[dict]:
     """Set a conversation's title; return its summary dict or None."""
     db_manager = get_db_manager()
     with db_manager.session_scope() as session:
@@ -320,7 +318,7 @@ def bulk_import(user_id: Optional[str], conversations: List[dict]) -> dict:
                             cost_usd=float(m.get("cost_usd") or 0.0),
                         )
                     )
-                    last_at = datetime.utcnow()
+                    last_at = utcnow()
                 if last_at is not None:
                     conv.last_message_at = last_at
             imported += 1

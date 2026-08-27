@@ -23,20 +23,24 @@ from core.config import get_settings, validate_settings_or_exit
 
 validate_settings_or_exit()
 
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from core.platform.monitoring import (
+    PROMETHEUS_AVAILABLE,
+    get_metrics_response,
+    init_sentry,
+)
 from core.version import __version__
+from services.api.discovery import mount_routers
+from services.api.errors import register_exception_handlers
+from services.api.middleware.auth import get_current_active_user
 from services.api.middleware.csrf import CSRFMiddleware
 from services.api.middleware.rate_limit import limiter
 from services.api.middleware.security_headers import SecurityHeadersMiddleware
-
-from services.api.discovery import mount_routers
-from services.api.middleware.auth import get_current_active_user
-from core.platform.monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
 
 # Single source of truth for the "require an authenticated active user"
 # dependency. Applied to every non-public /api/* router below so that any
@@ -119,6 +123,10 @@ _CONTEXT_PATH = get_settings().vigil_context_path.rstrip("/")
 # limits (@limiter.limit) read state from app.state.limiter, so both must be set.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Domain errors and anything unhandled become JSON here rather than in each
+# route. Registered before the routers so every mounted route inherits it.
+register_exception_handlers(app)
 
 # Instrument FastAPI with OTEL tracing (health + metrics endpoints excluded)
 try:
@@ -490,8 +498,8 @@ async def _startup(app: FastAPI):
     # Initialize data storage backend
     logger.info("Initializing data storage...")
     try:
-        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
+        from core.storage.database_data_service import DatabaseDataService
 
         # Defense-in-depth: ensure the SQLAlchemy-managed schema exists before
         # any endpoint tries to query it. start.sh runs scripts/init_schema.py
@@ -656,15 +664,27 @@ async def metrics():
 @app.get(f"{_CONTEXT_PATH}/api/health")
 async def health_check():
     """Health check endpoint with storage backend info."""
+    # Read first, and in both branches: schema drift severe enough to raise
+    # UndefinedColumn is exactly what sends this handler down the except path,
+    # and that is the case the verdict exists to explain (#562). A plain dict
+    # read of the verdict recorded at startup — inspecting here would walk every
+    # mapped table on the event loop.
+    from core.storage.connection import get_schema_drift_report
+
+    drift = get_schema_drift_report()
+    # State only. This route is public; the missing table and column names are
+    # schema internals and stay on GET /api/storage/status, which is not.
+    schema_block = {"state": drift["state"]} if drift is not None else None
+
     try:
-        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode, state_dir_status
+        from core.storage.database_data_service import DatabaseDataService
 
         service = DatabaseDataService()
         backend_info = service.get_backend_info()
         state_dir = state_dir_status()
 
-        return {
+        payload = {
             "status": "healthy",
             "version": __version__,
             "demo_mode": is_demo_mode(),
@@ -680,14 +700,20 @@ async def health_check():
                 "demo_mode": backend_info.get("demo_mode", False),
             },
         }
+        if schema_block is not None:
+            payload["schema"] = schema_block
+        return payload
     except Exception as e:
         logger.error(f"Health check error: {e}")
-        return {
+        payload = {
             "status": "healthy",
             "version": __version__,
             "demo_mode": False,
             "storage": {"backend": "unknown", "error": str(e)},
         }
+        if schema_block is not None:
+            payload["schema"] = schema_block
+        return payload
 
 
 # Serve React static files in production
@@ -698,7 +724,9 @@ static_dir = frontend_build_dir / "static"
 # This prevents errors during development when frontend hasn't been built
 if frontend_build_dir.exists() and static_dir.exists():
     try:
-        app.mount(f"{_CONTEXT_PATH}/static", StaticFiles(directory=static_dir), name="static")
+        app.mount(
+            f"{_CONTEXT_PATH}/static", StaticFiles(directory=static_dir), name="static"
+        )
         logger.info(f"Serving static files from: {static_dir}")
     except Exception as e:
         logger.warning(f"Failed to mount static files: {e}")
@@ -716,7 +744,9 @@ else:
 assets_dir = frontend_build_dir / "assets"
 if frontend_build_dir.exists() and assets_dir.exists():
     try:
-        app.mount(f"{_CONTEXT_PATH}/assets", StaticFiles(directory=assets_dir), name="assets")
+        app.mount(
+            f"{_CONTEXT_PATH}/assets", StaticFiles(directory=assets_dir), name="assets"
+        )
         logger.info(f"Serving frontend assets from: {assets_dir}")
     except Exception as e:
         logger.warning(f"Failed to mount frontend assets: {e}")
@@ -741,7 +771,9 @@ if frontend_build_dir.exists() and (frontend_build_dir / "index.html").exists():
             # SSRF guard). A <meta>, not an inline <script>, because CSP is
             # script-src 'self'.
             try:
-                from core.integrations.extension.trust import connector_allowlist_origins
+                from core.integrations.extension.trust import (
+                    connector_allowlist_origins,
+                )
 
                 origins = connector_allowlist_origins()
                 if origins:
@@ -778,5 +810,9 @@ if __name__ == "__main__":
 
     logger.info("Starting Vigil SOC API server...")
     uvicorn.run(
-        "services.api.main:app", host="0.0.0.0", port=6987, reload=True, log_level="info"
+        "services.api.main:app",
+        host="0.0.0.0",
+        port=6987,
+        reload=True,
+        log_level="info",
     )

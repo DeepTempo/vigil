@@ -6,15 +6,15 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import Depends, APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from core.agents.internal_auth import authorise
 from core.deps import provide_mcp_registry, provide_workflows
 from core.integrations.mcp.registry import MCPRegistry
-from core.workflows.workflows_service import WorkflowsService
 from core.routing import Auth, RouterMeta
 from core.workflows.playbook_resolver import UnknownPlaybook, resolve, resolve_hunt
+from core.workflows.workflows_service import WorkflowsService
 
 router = APIRouter()
 
@@ -56,7 +56,9 @@ def get_playbook(
     # The definition says which loop drives it, and the two loops read different
     # sections: a compose run wants phases, a hunt wants beliefs to test.
     try:
-        playbook, config = _resolver_for(workflows, workflow_id)(workflow_id, workflows=workflows, registry=registry)
+        playbook, config = _resolver_for(workflows, workflow_id)(
+            workflow_id, workflows=workflows, registry=registry
+        )
     except UnknownPlaybook as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
 

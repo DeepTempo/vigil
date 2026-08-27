@@ -6,6 +6,15 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from core.config import get_settings
+from core.llm.router.format import (
+    anthropic_messages_to_openai,
+    anthropic_tools_to_openai,
+)
+from core.llm.security import (
+    PromptInjectionBlocked,
+    scan_for_injection,
+    wrap_tool_result,
+)
 from core.secrets import get_secret
 
 logger = logging.getLogger(__name__)
@@ -77,7 +86,6 @@ def _wrap_tool_results_in_messages(
     so messages that already passed through ``ClaudeService`` won't be
     double-wrapped here.
     """
-    from core.llm.security import wrap_tool_result
 
     out: List[Dict[str, Any]] = []
     for msg in messages:
@@ -128,7 +136,6 @@ def _wrap_tool_results_in_messages(
 
 def _scan_messages_for_injection(messages: List[Dict[str, Any]]) -> List[str]:
     """Run pattern scan over text content in *messages*; return matched names."""
-    from core.llm.security import scan_for_injection
 
     patterns: List[str] = []
     for msg in messages:
@@ -171,7 +178,6 @@ def _pre_dispatch_sanitize(
     Returns the (possibly rewritten) ``messages`` and the system prompt
     (returned as-is — we never silently mutate user system prompts).
     """
-    from core.llm.security import PromptInjectionBlocked, scan_for_injection
 
     wrapped = _wrap_tool_results_in_messages(messages)
 
@@ -278,9 +284,6 @@ class LLMRouter:
     ) -> Dict[str, Any]:
         from openai import AsyncOpenAI  # lazy — avoids hard dep for tests
 
-        from core.llm.router.format import (anthropic_messages_to_openai,
-                                            anthropic_tools_to_openai)
-
         # Callers (the daemon tool loop, workflows) build conversations in
         # Anthropic shape — assistant tool_use blocks, user tool_result blocks,
         # and tools with `input_schema`. Translate both to OpenAI shape so the
@@ -362,9 +365,6 @@ class LLMRouter:
         """Yield raw OpenAI stream chunks (tool-call deltas, finish_reason,
         usage) for non-Anthropic Bifrost providers."""
         from openai import AsyncOpenAI
-
-        from core.llm.router.format import (anthropic_messages_to_openai,
-                                            anthropic_tools_to_openai)
 
         messages, system_prompt = _pre_dispatch_sanitize(messages, system_prompt)
         model = model or provider.default_model

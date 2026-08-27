@@ -17,8 +17,11 @@ if [ -x "$REPO_ROOT/venv/bin/pytest" ]; then
     PYTEST="$REPO_ROOT/venv/bin/pytest"
 elif command -v pytest &>/dev/null; then
     PYTEST="pytest"
-elif PY="$(find_python 2>/dev/null)"; then
-    PYTEST="$PY -m pytest"
+elif command -v python3 &>/dev/null && python3 -c 'import pytest' 2>/dev/null; then
+    # Last resort only. The supported environment is the venv that
+    # ./setup_dev.sh provisions; this just avoids a hard stop for someone
+    # running the suite from an already-prepared interpreter.
+    PYTEST="python3 -m pytest"
 else
     PYTEST=""
 fi

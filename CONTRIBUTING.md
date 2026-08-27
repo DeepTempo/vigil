@@ -127,6 +127,17 @@ vigil/
 
 ### Style
 
+`flake8`, `black` and `isort` gate CI over `services/` and `core/`. Install the
+pinned toolchain and the hook that matches it once:
+
+```bash
+pip install -r requirements-dev.txt && pre-commit install
+```
+
+Pass the tools no arguments — `setup.cfg` is the only config, and pre-commit
+reads the same file, so formatting locally cannot produce a tree CI rejects.
+`./setup_dev.sh` does both steps for you.
+
 - Python: follow existing patterns in `core/`. Use type hints. `core/` must not
   import `services/`, and `core/storage` + `core/platform` must not import a
   capability domain — `.importlinter` gates both; run `lint-imports` locally.
@@ -210,6 +221,15 @@ author's responsibility** (e.g., `feat(mcp): add SentinelOne integration`).
 You can update the title at any point before merge by editing the PR. If
 you forget, a maintainer may adjust it before merging, but please don't
 rely on that.
+
+## Reporting a Security Vulnerability
+
+Do **not** open a public issue or pull request for a security vulnerability.
+Report it privately through [GitHub's private vulnerability
+reporting](https://github.com/Vigil-SOC/vigil/security/advisories/new) or by
+email to [security@deeptempo.ai](mailto:security@deeptempo.ai). See
+[SECURITY.md](SECURITY.md) for scope, response targets, our coordinated
+disclosure window, and safe harbor.
 
 ## Community
 

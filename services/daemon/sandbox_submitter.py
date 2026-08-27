@@ -22,12 +22,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, List, Optional
-from core.config import get_settings
-from core.secrets import get_secret
 
 import httpx
+
+from core.config import get_integration_config, get_settings
+from core.secrets import get_secret
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ class SandboxSubmitter:
 
         results = await asyncio.gather(*coros, return_exceptions=True)
 
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = utcnow().isoformat()
         out: Dict[str, Any] = {}
         for name, res in zip(names, results):
             if isinstance(res, Exception):
@@ -206,7 +207,6 @@ class SandboxSubmitter:
         }
 
     async def _submit_hybrid(self, hash_val: str) -> Dict[str, Any]:
-        from core.config import get_integration_config
 
         cfg = get_integration_config("hybrid_analysis") or {}
         api_key = cfg.get("api_key") or get_secret("HYBRID_ANALYSIS_API_KEY") or ""
@@ -232,7 +232,6 @@ class SandboxSubmitter:
         return {"status": "unknown"}
 
     async def _submit_anyrun(self, hash_val: str) -> Dict[str, Any]:
-        from core.config import get_integration_config
 
         cfg = get_integration_config("anyrun") or {}
         api_key = cfg.get("api_key") or get_secret("ANYRUN_API_KEY") or ""

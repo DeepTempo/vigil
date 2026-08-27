@@ -8,7 +8,6 @@ on:
   workflow_dispatch:  # Allows manual triggering from GitHub UI
 
 env:
-  PYTHON_VERSION: '3.10'
   NODE_VERSION: '18'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -33,32 +32,29 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
       
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 black isort mypy import-linter
+          pip install -r requirements-dev.txt
 
       - name: Run flake8
-        run: flake8 services/ core/ --max-line-length=120 --exclude=venv,__pycache__
-        continue-on-error: true
-      
+        run: flake8 services/ core/
+
       - name: Run black
-        run: black --check services/ core/ --exclude=venv
-        continue-on-error: true
-      
+        run: black --check services/ core/
+
       - name: Run isort
         run: isort --check-only services/ core/
-        continue-on-error: true
-      
+
       - name: Run mypy
         run: mypy services/ core/ --ignore-missing-imports
         continue-on-error: true
 
-      # The layering contracts in .importlinter (epic #481). Deliberately no
-      # continue-on-error: the rest of this job is advisory, this one gates.
+      # The layering contracts in .importlinter (epic #481). No
+      # continue-on-error: this gates, as flake8, black and isort now do.
       - name: Run import-linter
         run: lint-imports
 
@@ -72,6 +68,19 @@ jobs:
       - name: Run comment-style gate
         run: python scripts/check_comment_style.py
         continue-on-error: true
+
+      # The workflow files themselves. Gates, because a schema error takes the
+      # whole workflow down: GitHub rejects the file before scheduling anything,
+      # so the run reports zero jobs and nothing points at the cause. A local
+      # YAML parse does not catch this class — an `env:` with no keys is valid
+      # YAML (it reads as null) and invalid to Actions.
+      #
+      # What is in and out of the gate lives in .github/actionlint.yaml, rather
+      # than as -ignore flags here: quoting inside a docker:// action's `args`
+      # is unreliable, and a silently-mis-parsed regex would turn this step into
+      # a no-op that still reports green.
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.12
 
   lint-frontend:
     name: Lint Frontend
@@ -182,6 +191,90 @@ jobs:
   # ============================================================================
   # Unit Tests
   # ============================================================================
+  # ============================================================================
+  # Setup path — does ./start.sh produce the pinned interpreter on each OS?
+  # ============================================================================
+  # Every other job installs dependencies with setup-python + pip, so none of
+  # them exercise scripts/lib.sh: the code gets tested, the thing that installs
+  # it does not. This job runs the real setup phase and asserts what it built.
+  #
+  # Deliberately no `pip install` and no setup-python step. The runners ship
+  # their own Pythons, and proving those are ignored is the point.
+  test-setup-matrix:
+    name: Setup Path (${{ matrix.os }})
+    if: github.repository == 'Vigil-SOC/vigil'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One OS failing should not hide the result on the others.
+      fail-fast: false
+      matrix:
+        # Add a row to cover another platform — `arch` is the architecture the
+        # provisioned interpreter is expected to report, and is asserted below.
+        # Candidates when they're worth the minutes:
+        #   - { os: macos-13,         arch: x86_64  }   # Intel macOS
+        #   - { os: ubuntu-24.04-arm, arch: aarch64 }   # arm64 Linux
+        #   - { os: ubuntu-22.04,     arch: x86_64  }   # older glibc
+        include:
+          - { os: ubuntu-latest, arch: x86_64 }
+          - { os: macos-latest,  arch: arm64  }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Show the host Python that must NOT be used
+        run: |
+          echo "python3 on PATH: $(command -v python3 || echo none)"
+          python3 -c 'import platform,sys; print(sys.version.split()[0], platform.machine())' || true
+          echo "uv on PATH:      $(command -v uv || echo none)"
+
+      - name: Run the setup phase
+        run: |
+          set -euo pipefail
+          source scripts/lib.sh
+          ensure_venv
+          install_python_deps
+
+      - name: Assert the provisioned interpreter
+        run: |
+          set -euo pipefail
+          want_version=$(tr -d '[:space:]' < .python-version)
+          want_arch='${{ matrix.arch }}'
+          read -r got_version got_arch < <(
+            ./venv/bin/python -c 'import platform,sys; print(".".join(map(str,sys.version_info[:2])), platform.machine())'
+          )
+          echo "want ${want_version}/${want_arch} — got ${got_version}/${got_arch}"
+          [ "$got_version" = "$want_version" ] || { echo "::error::wrong Python version"; exit 1; }
+          [ "$got_arch" = "$want_arch" ]       || { echo "::error::wrong architecture"; exit 1; }
+
+      - name: Assert the interpreter came from uv, not the host
+        run: |
+          set -euo pipefail
+          # pyvenv.cfg records the interpreter the venv was built from. A path
+          # outside uv's managed directory means PATH discovery crept back in.
+          home=$(awk -F'= *' '/^home/ {print $2}' venv/pyvenv.cfg)
+          echo "venv built from: $home"
+          case "$home" in
+            *"/uv/python/"*) echo "uv-managed, as intended" ;;
+            *) echo "::error::venv was built from a non-managed interpreter: $home"; exit 1 ;;
+          esac
+
+      - name: Re-run setup (must be idempotent, must not rebuild)
+        run: |
+          set -euo pipefail
+          before=$(./venv/bin/python -c 'import sys; print(sys.prefix)')
+          stamp_before=$(ls -ld venv | awk '{print $6, $7, $8}')
+          source scripts/lib.sh
+          ensure_venv
+          install_python_deps
+          stamp_after=$(ls -ld venv | awk '{print $6, $7, $8}')
+          after=$(./venv/bin/python -c 'import sys; print(sys.prefix)')
+          [ "$before" = "$after" ] || { echo "::error::prefix changed on re-run"; exit 1; }
+          [ "$stamp_before" = "$stamp_after" ] || echo "::warning::venv was recreated on an unchanged re-run"
+
+      - name: Smoke-test the result
+        run: ./venv/bin/python -c 'import sqlalchemy, fastapi, uvicorn, arq, redis, anthropic; print("imports ok")'
+
   test-unit-backend:
     name: Unit Tests - Backend
     if: github.repository == 'Vigil-SOC/vigil'
@@ -194,13 +287,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
       
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.lock
       
       - name: Run unit tests
         run: |
@@ -364,7 +457,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
 
       - name: Set up Node.js
@@ -381,7 +474,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.lock
 
       - name: Enable Postgres extensions
         run: |
@@ -389,6 +482,12 @@ jobs:
             -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
       - name: Initialize schema
+        # Strict here, and only here: CI provisions from empty, so a schema that
+        # cannot serve the models at this point is a provisioning bug rather
+        # than a stale deployment (#562). Scoped to the step rather than the job
+        # so it does not change how every test in the job behaves.
+        env:
+          DB_STRICT_SCHEMA: "true"
         run: |
           python -c "from core.storage.connection import init_database; init_database()"
 
@@ -453,13 +552,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.lock
 
       - name: Enable Postgres extensions
         run: |
@@ -467,6 +566,12 @@ jobs:
             -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
       - name: Initialize schema
+        # Strict here, and only here: CI provisions from empty, so a schema that
+        # cannot serve the models at this point is a provisioning bug rather
+        # than a stale deployment (#562). Scoped to the step rather than the job
+        # so it does not change how every test in the job behaves.
+        env:
+          DB_STRICT_SCHEMA: "true"
         run: |
           python -c "from core.storage.connection import init_database; init_database()"
 
@@ -491,7 +596,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
       
       - name: Install Bandit
         run: pip install bandit[toml]

@@ -14,6 +14,8 @@ from unittest.mock import patch
 
 import pytest
 
+from core.time import utcnow
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -69,10 +71,8 @@ class _FakeSession:
 
     def refresh(self, row):
         # to_dict() reads updated_at — populate so response serialization works.
-        import datetime
-
         if hasattr(row, "updated_at") and row.updated_at is None:
-            row.updated_at = datetime.datetime.utcnow()
+            row.updated_at = utcnow()
 
 
 @pytest.fixture()
