@@ -188,7 +188,8 @@
 
     "gcp-secops": {
       "command": "uvx",
-      "args": ["--from", "google-secops-mcp", "secops_mcp"],
+      "_comment": "Pin mcp<2: this server uses the v1 mcp.server.fastmcp API, which mcp 2.x removed.",
+      "args": ["--with", "mcp<2", "--from", "google-secops-mcp", "secops_mcp"],
       "env": {
         "CHRONICLE_PROJECT_ID": "${CHRONICLE_PROJECT_ID}",
         "CHRONICLE_CUSTOMER_ID": "${CHRONICLE_CUSTOMER_ID}",
@@ -198,7 +199,8 @@
 
     "gcp-threat-intel": {
       "command": "uvx",
-      "args": ["gti_mcp"],
+      "_comment": "Pin mcp<2: this server uses the v1 mcp.server.fastmcp API, which mcp 2.x removed.",
+      "args": ["--with", "mcp<2", "gti_mcp"],
       "env": {
         "VT_APIKEY": "${VIRUSTOTAL_API_KEY}"
       }
@@ -206,7 +208,8 @@
 
     "gcp-scc": {
       "command": "uvx",
-      "args": ["scc_mcp"],
+      "_comment": "Pin mcp<2: this server uses the v1 mcp.server.fastmcp API, which mcp 2.x removed.",
+      "args": ["--with", "mcp<2", "scc_mcp"],
       "env": {}
     },
 
