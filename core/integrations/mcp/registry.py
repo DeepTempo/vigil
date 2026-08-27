@@ -53,6 +53,17 @@ class MCPRegistry:
             name for name, info in self._servers.items() if info.get("active", False)
         ]
 
+    def retain_only(self, active_names: List[str]) -> None:
+        """Mark exactly ``active_names`` active; deactivate every other server.
+
+        Lets a live refresh make the registry reflect current connection state:
+        a server that has since disconnected stops offering its tools, without
+        needing a restart.
+        """
+        wanted = set(active_names)
+        for name, info in self._servers.items():
+            info["active"] = name in wanted
+
     def get_all_tools(self) -> List[Dict]:
         """
         Get all tools from all active servers, formatted for Claude API.
@@ -228,3 +239,43 @@ def populate_from_cache(registry: MCPRegistry) -> int:
 
     logger.info("MCP registry populated from %d server(s)", registered)
     return registered
+
+
+def refresh_from_client(registry: MCPRegistry) -> int:
+    """Sync the registry to the client's LIVE connection state.
+
+    Unlike ``populate_from_cache`` (a boot warm-start that prefers the on-disk
+    tool cache), this reads the running client's ``tools_cache`` and current
+    connection status, so a server connected *after* startup — e.g. a user just
+    saved its credential and enabled it — becomes usable on the next turn
+    without a restart, and one that has disconnected drops out. Cheap and
+    idempotent; call it wherever a turn assembles its tool list.
+    """
+    from core.integrations.mcp.client import process_mcp_client
+
+    mcp_client = process_mcp_client()
+    if mcp_client is None:
+        return 0
+    tools_dict = getattr(mcp_client, "tools_cache", None) or {}
+    try:
+        connected = mcp_client.get_connection_status() or {}
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Could not read MCP connection status: %s", exc)
+        connected = {}
+
+    active: List[str] = []
+    for name, tools in tools_dict.items():
+        if connected and not connected.get(name, False):
+            continue
+        registry.register_server(
+            name, _server_config(mcp_client, name), [_normalised(t) for t in tools]
+        )
+        active.append(name)
+    # Only prune when this boot dials eagerly and we actually have live status:
+    # then tools_cache/connected is the source of truth, so a disconnected
+    # server should drop out. In lazy mode the boot-populated set is intended
+    # availability (servers reconnect on first call), so we add without pruning
+    # to avoid wiping tools that are still reachable.
+    if eager_connect_enabled() and connected:
+        registry.retain_only(active)
+    return len(active)

@@ -27,7 +27,6 @@ class WorkflowAIGenerator:
     ):
         self._workflows = workflows
         self._mcp_registry = mcp_registry
-        self._mcp_tool_names_cache: Optional[List[str]] = None
 
     async def generate(self, description: str) -> Dict[str, Any]:
         """
@@ -180,16 +179,17 @@ class WorkflowAIGenerator:
         return ", ".join(sorted(tool_names)[:80])
 
     def _get_mcp_tool_names(self) -> List[str]:
-        if self._mcp_tool_names_cache is not None:
-            return self._mcp_tool_names_cache
+        # Refresh from the running client each turn so a server connected since
+        # startup is usable without a restart. See registry.refresh_from_client.
         try:
+            from core.integrations.mcp.registry import refresh_from_client
+
             registry = self._mcp_registry or MCPRegistry()
-            names = list(registry.get_tool_names() or [])
+            refresh_from_client(registry)
+            return list(registry.get_tool_names() or [])
         except Exception as e:
             logger.debug(f"MCP registry unavailable: {e}")
-            names = []
-        self._mcp_tool_names_cache = names
-        return names
+            return []
 
     def _exemplars_context(self) -> str:
         try:
