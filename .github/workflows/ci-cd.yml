@@ -485,6 +485,12 @@ jobs:
             -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
       - name: Initialize schema
+        # Strict here, and only here: CI provisions from empty, so a schema that
+        # cannot serve the models at this point is a provisioning bug rather
+        # than a stale deployment (#562). Scoped to the step rather than the job
+        # so it does not change how every test in the job behaves.
+        env:
+          DB_STRICT_SCHEMA: "true"
         run: |
           python -c "from core.storage.connection import init_database; init_database()"
 
@@ -563,6 +569,12 @@ jobs:
             -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
       - name: Initialize schema
+        # Strict here, and only here: CI provisions from empty, so a schema that
+        # cannot serve the models at this point is a provisioning bug rather
+        # than a stale deployment (#562). Scoped to the step rather than the job
+        # so it does not change how every test in the job behaves.
+        env:
+          DB_STRICT_SCHEMA: "true"
         run: |
           python -c "from core.storage.connection import init_database; init_database()"
 

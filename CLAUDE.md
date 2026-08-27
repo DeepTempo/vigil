@@ -321,6 +321,24 @@ Agents access external tools through the MCP protocol. Tool definitions live in 
   written there** — prefixes are decorative for the chart path
 - pgvector extension for embeddings
 - Use `core/storage/database_data_service.py` for data access — do not query the DB directly from API handlers
+- **`infra/database/init/` is not the whole schema.** `cases`, `findings`,
+  `case_evidence`, `case_tasks`, `case_watchers` and `investigations` have no
+  `CREATE TABLE` there — `create_all` at startup is the only thing that builds
+  them, so an `ALTER TABLE` in a numbered init file for one of them hard-fails
+  (the dbInit Job runs before the app ever starts). `users`/`roles` and
+  `skills`/`custom_agents`/`workflow_runs`/`custom_workflows` *are* covered.
+  Grepping for a table name is misleading — `cases` and `findings` appear in
+  9–10 init files, but every hit is a string literal, not DDL
+- **Adding a column to one of those ORM-only tables does not reach existing
+  databases.** `create_all` is `checkfirst=True` — it creates missing tables and
+  never alters existing ones. `check_schema_drift()` in
+  `core/storage/connection.py` reports the gap at ERROR and publishes the state
+  under `schema` in `/api/health`; `DB_STRICT_SCHEMA=true` makes it fatal.
+  Reporting is not fixing: see #562 before relying on
+  `scripts/migrate_schema.py`, which only covers columns registered there by
+  hand (and #568 — one of its seed migrations still cannot succeed). The check
+  compares column *names*, so a changed type or a new `NOT NULL` is drift it
+  cannot see
 
 **When adding or modifying an init SQL file under `infra/database/init/`:** the
 chart bundles a *copy* under `infra/helm/vigil/files/database-init/` (Helm can
