@@ -26,6 +26,7 @@ done
 pkill -f "uvicorn services.api.main:app" 2>/dev/null || true
 pkill -f "services/daemon/main.py" 2>/dev/null || true
 pkill -f "services.daemon.main" 2>/dev/null || true
+pkill -f 'services\.worker' 2>/dev/null || true
 pkill -f "vite.*opensoc" 2>/dev/null || true
 pkill -f "mcp_servers.*_server" 2>/dev/null || true
 
