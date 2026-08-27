@@ -265,6 +265,13 @@ async def _connect_external_services(mcp_client, registry):
 
             connected_count = 0
             for server_name in servers:
+                # A disabled server is intentionally off, not a failure — don't
+                # dial it or log it as one (the old code tried every server and
+                # reported each disabled one as "Failed to connect", which read
+                # as dozens of errors on a normal boot).
+                if not mcp_service.is_server_enabled(server_name):
+                    logger.debug("MCP server %s disabled, skipping", server_name)
+                    continue
                 try:
                     success = await mcp_client.connect_to_server(
                         server_name, persistent=True
