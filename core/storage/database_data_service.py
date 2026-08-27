@@ -9,7 +9,11 @@ import uuid
 
 import numpy as np
 
-from core.storage.connection import get_db_manager, init_database
+from core.storage.connection import (
+    SchemaDriftError,
+    get_db_manager,
+    init_database,
+)
 from core.storage.service import DatabaseService
 from core.storage.schemas import CaseSchema, FindingSchema
 from core.exceptions import DatabaseError
@@ -72,6 +76,14 @@ class DatabaseDataService:
                 self._use_json_fallback = False
             else:
                 logger.info("PostgreSQL connection established")
+        except SchemaDriftError:
+            # DB_STRICT_SCHEMA is set, so the operator asked for this to be
+            # fatal. Falling back to JSON files here would turn an explicit
+            # refusal into a silent downgrade, which is the failure mode #562
+            # is about.
+            self._db_connected = False
+            self._db_service = None
+            raise
         except Exception as e:
             self._db_connected = False
             self._db_service = None

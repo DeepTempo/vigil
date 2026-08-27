@@ -119,6 +119,10 @@ class Settings(BaseSettings):
     db_pool_timeout: int = 30
     db_pool_recycle: int = 3600
     db_config_check_interval: float = 5.0
+    # Refuse to start when the schema cannot serve the models. Off by
+    # default: a missing nullable column should not take a running SOC
+    # offline. See #562.
+    db_strict_schema: bool = False
 
     # Redis / queue. None means "no Redis configured" — the rate limiter falls back
     # to in-memory on None, so a default here would silently change its behavior.
