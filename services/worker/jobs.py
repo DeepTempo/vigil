@@ -9,8 +9,8 @@ from core.config import get_settings
 from core.llm.gateway.gateway import (
     QUEUE_NAME,
     RedisSessionStore,
-    redis_settings as gateway_redis_settings,
 )
+from core.llm.gateway.gateway import redis_settings as gateway_redis_settings
 
 logger = logging.getLogger(__name__)
 

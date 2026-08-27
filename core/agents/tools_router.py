@@ -7,14 +7,14 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import Depends, APIRouter, Header
+from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, Field
 
 from core.agents.internal_auth import authorise
 from core.agents.mcp_tools import MCPFailure, execute_mcp_tool
+from core.agents.tool_registry import execute_backend_tool
 from core.deps import provide_mcp_registry
 from core.integrations.mcp.registry import MCPRegistry
-from core.agents.tool_registry import execute_backend_tool
 from core.routing import Auth, RouterMeta
 
 router = APIRouter()

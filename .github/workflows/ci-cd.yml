@@ -38,26 +38,23 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 black isort mypy import-linter
+          pip install -r requirements-dev.txt
 
       - name: Run flake8
-        run: flake8 services/ core/ --max-line-length=120 --exclude=venv,__pycache__
-        continue-on-error: true
-      
+        run: flake8 services/ core/
+
       - name: Run black
-        run: black --check services/ core/ --exclude=venv
-        continue-on-error: true
-      
+        run: black --check services/ core/
+
       - name: Run isort
         run: isort --check-only services/ core/
-        continue-on-error: true
-      
+
       - name: Run mypy
         run: mypy services/ core/ --ignore-missing-imports
         continue-on-error: true
 
-      # The layering contracts in .importlinter (epic #481). Deliberately no
-      # continue-on-error: the rest of this job is advisory, this one gates.
+      # The layering contracts in .importlinter (epic #481). No
+      # continue-on-error: this gates, as flake8, black and isort now do.
       - name: Run import-linter
         run: lint-imports
 

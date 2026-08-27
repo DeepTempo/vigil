@@ -1,26 +1,31 @@
 """Configuration API endpoints."""
 
-from typing import Any, Dict, Optional, List
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from pathlib import Path
 import json
 import logging
 import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from core.config import get_settings, state_dir_status, vigil_path
 from core.deps import (
     provide_demo_data,
     provide_integration_bridge,
     provide_mcp_client,
 )
 from core.integrations.integration_bridge_service import IntegrationBridgeService
+from core.integrations.integration_secrets import (
+    redact_secrets,
+    secret_fields_for,
+    split_secrets,
+)
+from core.llm.defaults import DEFAULT_MODEL
 from core.routing import Auth, RouterMeta
 from core.secrets import get_secret, set_secret
-from core.storage.config_service import get_config_service
-from core.llm.defaults import DEFAULT_MODEL
-from core.integrations.integration_secrets import redact_secrets, secret_fields_for, split_secrets
-from core.config import get_settings, state_dir_status, vigil_path
 from core.secrets_manager import get_secrets_manager
+from core.storage.config_service import get_config_service
 
 router = APIRouter()
 
@@ -246,7 +251,7 @@ async def set_claude_config(config: ClaudeConfig):
     Returns:
         Success status
     """
-        # Use standard environment variable name
+    # Use standard environment variable name
     success = set_secret("CLAUDE_API_KEY", config.api_key)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save API key")
@@ -257,7 +262,6 @@ async def set_claude_config(config: ClaudeConfig):
     # commit) must NOT block the secret write that already succeeded, so
     # this runs in its own transaction rather than the request's.
     try:
-        from core.storage.connection import get_db_session
         from core.storage.models import LLMProviderConfig
         from core.storage.unit_of_work import unit_of_work
 
@@ -485,9 +489,7 @@ async def set_platform_database_config(config: PlatformDatabaseProxyConfig):
         _PLATFORM_DB_PROXY_KEYS["proxy_port"],
         str(config.proxy_port) if config.proxy_port else "",
     )
-    set_secret(
-        _PLATFORM_DB_PROXY_KEYS["proxy_username"], config.proxy_username or ""
-    )
+    set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_username"], config.proxy_username or "")
     set_secret(
         _PLATFORM_DB_PROXY_KEYS["ssh_private_key_path"],
         config.ssh_private_key_path or "",
@@ -656,9 +658,7 @@ async def set_theme_config(config: ThemeConfig):
     )
 
     if not success:
-        raise HTTPException(
-            status_code=500, detail="Failed to save theme to database"
-        )
+        raise HTTPException(status_code=500, detail="Failed to save theme to database")
 
     _mirror_to_file("theme_config.json", config_data)
 
@@ -672,7 +672,9 @@ def _secrets_set_map(integrations: dict) -> dict:
     for iid in integrations:
         fields = secret_fields_for(iid)
         if fields:
-            result[iid] = {field: bool(get_secret(env)) for field, env in fields.items()}
+            result[iid] = {
+                field: bool(get_secret(env)) for field, env in fields.items()
+            }
     return result
 
 
@@ -976,9 +978,7 @@ async def set_general_config(config: GeneralConfig):
 
         sm_module._secrets_manager = None  # Reset global instance
         get_secrets_manager(enable_keyring=config.enable_keyring)
-        logger.info(
-            f"Secrets manager updated: enable_keyring={config.enable_keyring}"
-        )
+        logger.info(f"Secrets manager updated: enable_keyring={config.enable_keyring}")
     except Exception as e:
         logger.warning(f"Could not update secrets manager: {e}")
 
@@ -1285,9 +1285,7 @@ async def set_darktrace_config(config: DarktraceConfig):
         change_reason="Updated via Settings UI",
     )
     if not ok:
-        raise HTTPException(
-            status_code=500, detail="Failed to save Darktrace settings"
-        )
+        raise HTTPException(status_code=500, detail="Failed to save Darktrace settings")
     if config.webhook_secret is not None and config.webhook_secret != "":
         if not set_secret("DARKTRACE_WEBHOOK_SECRET", config.webhook_secret):
             raise HTTPException(

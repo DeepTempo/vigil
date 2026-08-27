@@ -115,7 +115,9 @@ async def execute_mcp_tool(
 
     client = get_mcp_client()
     if client is None:
-        raise MCPFailure(UNAVAILABLE, f"{server} is configured but no client is running")
+        raise MCPFailure(
+            UNAVAILABLE, f"{server} is configured but no client is running"
+        )
 
     result = await client.call_tool(server, tool, args, timeout=timeout_s)
     if not isinstance(result, dict):

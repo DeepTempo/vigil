@@ -23,21 +23,24 @@ from core.config import get_settings, validate_settings_or_exit
 
 validate_settings_or_exit()
 
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from core.platform.monitoring import (
+    PROMETHEUS_AVAILABLE,
+    get_metrics_response,
+    init_sentry,
+)
 from core.version import __version__
-from services.api.middleware.csrf import CSRFMiddleware
-from services.api.middleware.rate_limit import limiter
-from services.api.middleware.security_headers import SecurityHeadersMiddleware
-
 from services.api.discovery import mount_routers
 from services.api.errors import register_exception_handlers
 from services.api.middleware.auth import get_current_active_user
-from core.platform.monitoring import init_sentry, PROMETHEUS_AVAILABLE, get_metrics_response
+from services.api.middleware.csrf import CSRFMiddleware
+from services.api.middleware.rate_limit import limiter
+from services.api.middleware.security_headers import SecurityHeadersMiddleware
 
 # Single source of truth for the "require an authenticated active user"
 # dependency. Applied to every non-public /api/* router below so that any
@@ -495,8 +498,8 @@ async def _startup(app: FastAPI):
     # Initialize data storage backend
     logger.info("Initializing data storage...")
     try:
-        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
+        from core.storage.database_data_service import DatabaseDataService
 
         # Defense-in-depth: ensure the SQLAlchemy-managed schema exists before
         # any endpoint tries to query it. start.sh runs scripts/init_schema.py
@@ -674,8 +677,8 @@ async def health_check():
     schema_block = {"state": drift["state"]} if drift is not None else None
 
     try:
-        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode, state_dir_status
+        from core.storage.database_data_service import DatabaseDataService
 
         service = DatabaseDataService()
         backend_info = service.get_backend_info()
@@ -721,7 +724,9 @@ static_dir = frontend_build_dir / "static"
 # This prevents errors during development when frontend hasn't been built
 if frontend_build_dir.exists() and static_dir.exists():
     try:
-        app.mount(f"{_CONTEXT_PATH}/static", StaticFiles(directory=static_dir), name="static")
+        app.mount(
+            f"{_CONTEXT_PATH}/static", StaticFiles(directory=static_dir), name="static"
+        )
         logger.info(f"Serving static files from: {static_dir}")
     except Exception as e:
         logger.warning(f"Failed to mount static files: {e}")
@@ -739,7 +744,9 @@ else:
 assets_dir = frontend_build_dir / "assets"
 if frontend_build_dir.exists() and assets_dir.exists():
     try:
-        app.mount(f"{_CONTEXT_PATH}/assets", StaticFiles(directory=assets_dir), name="assets")
+        app.mount(
+            f"{_CONTEXT_PATH}/assets", StaticFiles(directory=assets_dir), name="assets"
+        )
         logger.info(f"Serving frontend assets from: {assets_dir}")
     except Exception as e:
         logger.warning(f"Failed to mount frontend assets: {e}")
@@ -764,7 +771,9 @@ if frontend_build_dir.exists() and (frontend_build_dir / "index.html").exists():
             # SSRF guard). A <meta>, not an inline <script>, because CSP is
             # script-src 'self'.
             try:
-                from core.integrations.extension.trust import connector_allowlist_origins
+                from core.integrations.extension.trust import (
+                    connector_allowlist_origins,
+                )
 
                 origins = connector_allowlist_origins()
                 if origins:
@@ -801,5 +810,9 @@ if __name__ == "__main__":
 
     logger.info("Starting Vigil SOC API server...")
     uvicorn.run(
-        "services.api.main:app", host="0.0.0.0", port=6987, reload=True, log_level="info"
+        "services.api.main:app",
+        host="0.0.0.0",
+        port=6987,
+        reload=True,
+        log_level="info",
     )

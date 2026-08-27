@@ -3,9 +3,9 @@
 import asyncio
 import logging
 import time
-from core.time import utcnow
-from typing import Optional, Dict, List, Any
+from typing import Any, Dict, List, Optional
 
+from core.time import utcnow
 from services.daemon.config import ProcessingConfig
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,8 @@ class FindingProcessor:
         except Exception:  # noqa: BLE001 — daemon must never crash on a hook
             logger.warning(
                 "Prompt-injection scanning unavailable; findings reach the triage "
-                "prompt unscanned", exc_info=True,
+                "prompt unscanned",
+                exc_info=True,
             )
             return
 
@@ -134,7 +135,7 @@ class FindingProcessor:
 
     def _init_enrichment_services(self):
         """Initialize threat intelligence enrichment services."""
-        from core.config import is_integration_enabled, get_integration_config
+        from core.config import get_integration_config, is_integration_enabled
 
         # VirusTotal
         if is_integration_enabled("virustotal"):
@@ -293,7 +294,9 @@ class FindingProcessor:
             logger.error(f"Error processing finding {finding_id}: {e}")
             self.stats["errors"] += 1
 
-    async def _spawn_enrich(self, finding: Dict[str, Any], source: Optional[str] = None):
+    async def _spawn_enrich(
+        self, finding: Dict[str, Any], source: Optional[str] = None
+    ):
         """Acquire an in-flight slot (blocks when the cap is reached → backpressure),
         then run enrichment in the background. Bounds pending enrich tasks so a burst
         or backfill can't pile up unbounded coroutines. Single choke point shared by
@@ -452,7 +455,8 @@ class FindingProcessor:
         if not self._data_service.update_finding(finding_id, **updates):
             logger.error(
                 "Failed to persist triage result for %s; the enrichment backfill "
-                "will re-queue it", finding_id,
+                "will re-queue it",
+                finding_id,
             )
             self.stats["errors"] += 1
 
@@ -682,10 +686,14 @@ REASONING: [Brief explanation]
         hits: Dict[str, Any] = {}
         try:
             if ips:
-                hits.update(self._wrap_hits("ip", lookup_indicators("ip", list(set(ips)))))
+                hits.update(
+                    self._wrap_hits("ip", lookup_indicators("ip", list(set(ips))))
+                )
             if domains:
                 hits.update(
-                    self._wrap_hits("domain", lookup_indicators("domain", list(set(domains))))
+                    self._wrap_hits(
+                        "domain", lookup_indicators("domain", list(set(domains)))
+                    )
                 )
             if hashes:
                 for hash_type in ("hash_sha256", "hash_sha1", "hash_md5"):
@@ -699,9 +707,7 @@ REASONING: [Brief explanation]
 
     @staticmethod
     def _wrap_hits(indicator_type: str, rows: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            f"{indicator_type}:{value}": data for value, data in rows.items()
-        }
+        return {f"{indicator_type}:{value}": data for value, data in rows.items()}
 
     async def _enrich_ip(self, ip: str) -> Optional[Dict[str, Any]]:
         """Enrich IP address with threat intel."""

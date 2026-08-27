@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from core.time import utcnow
 from typing import Any, Callable, Dict, Optional
 
 from core.config import is_integration_enabled
 from core.federation.adapters._base import fresh_cursor, parse_cursor_since
 from core.federation.contract import FetchResult
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 

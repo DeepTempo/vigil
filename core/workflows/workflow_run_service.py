@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
-from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -12,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from core.storage.connection import get_db_manager
 from core.storage.models import WorkflowRun, WorkflowRunPhase
 from core.storage.schemas import WorkflowRunPhaseSchema, WorkflowRunSchema
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 

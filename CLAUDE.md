@@ -70,9 +70,9 @@ vigil/
 
 > **Layering:** `core/` is a library and must never import `services/`, and the
 > shared-infrastructure tier (`core/storage`, `core/platform`) must never import a
-> capability domain. `.importlinter` enforces both on every PR — the `lint-imports`
-> step is the one gating check in an otherwise advisory lint job. Run it locally
-> with `lint-imports`.
+> capability domain. `.importlinter` enforces both on every PR — `lint-imports`
+> gates, alongside `flake8`, `black` and `isort`. Only `mypy` and the
+> comment-style check are advisory. Run it locally with `lint-imports`.
 >
 > The only sanctioned `sys.path` entry is the repo root, added by
 > `services/api/main.py` and `services/daemon/main.py` so `core.*` and `services.*`
@@ -249,19 +249,36 @@ npm run test:ci        # CI mode (JSON output)
 
 ### Linting
 
+`flake8`, `black` and `isort` **gate CI** over `services/` and `core/`. Pass no
+arguments: `setup.cfg` is the only config, and it is the same file pre-commit
+reads, so formatting locally cannot produce a tree CI rejects. `mypy` stays
+advisory.
+
+`./setup_dev.sh` installs the pinned toolchain and the pre-commit hook. To add it
+to an existing venv:
+
 ```bash
-# Python
-black .                # format (line length 88)
-flake8 .               # lint (max line length 88)
-isort .                # sort imports
-mypy . --ignore-missing-imports
+pip install -r requirements-dev.txt && pre-commit install
+```
+
+```bash
+# Python — the three that gate, scoped as CI scopes them
+black services/ core/
+isort services/ core/
+flake8 services/ core/
+mypy services/ core/ --ignore-missing-imports   # advisory
 
 # TypeScript
 cd clients/web && npm run lint
 
-# Pre-commit (runs black automatically)
+# All three at once, on what you changed
 pre-commit run --all-files
 ```
+
+`tests/`, `tools/` and `scripts/` are not gated and have not been cleaned;
+pre-commit is scoped to match, so a one-line change there does not arrive
+carrying hundreds. Bumping a pin means committing the reformatting it causes,
+in `requirements-dev.txt` and `.pre-commit-config.yaml` together.
 
 ---
 
@@ -384,8 +401,9 @@ Key config variables: `DAEMON_AUTO_TRIAGE`, `DAEMON_CONFIDENCE_THRESHOLD`, `ORCH
 
 ### Python
 
-- **Formatter**: Black, line length **88**
-- **Linter**: Flake8, max line length 88
+- **Formatter**: Black, line length **88** (its default; pinned in `requirements-dev.txt`)
+- **Linter**: Flake8 — gates CI. `E501` is off because black owns wrapping, so
+  the only long lines left are strings black cannot split
 - **Imports**: isort
 - **Type hints**: mypy (ignore-missing-imports mode)
 - **Async**: prefer `async def` for all service methods and route handlers
@@ -512,6 +530,8 @@ All CI checks must pass before merging.
 | `mcp-config.json` | All MCP server definitions |
 | `.python-version` | The pinned interpreter — venv, both Docker images, and CI |
 | `requirements.lock` | Fully pinned dependency tree; what actually gets installed |
+| `requirements-dev.txt` | Pinned lint/type toolchain; the three that gate CI |
+| `setup.cfg` | The only flake8 + isort config — CI and pre-commit both read it |
 | `env.example` | Every supported environment variable |
 | `infra/docker/docker-compose.yml` | Full local stack definition |
 | `docs/AGENTS.md` | Agent reference |

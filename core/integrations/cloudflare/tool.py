@@ -12,10 +12,10 @@ import logging
 from typing import Any, Dict, Optional
 
 import httpx
-from mcp.server.models import InitializationOptions
+import mcp.server.stdio
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
-import mcp.server.stdio
+from mcp.server.models import InitializationOptions
 
 from core.config import is_integration_enabled
 from core.integrations._base.config import resolve

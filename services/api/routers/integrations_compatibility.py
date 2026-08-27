@@ -9,20 +9,21 @@ All mutating endpoints require an authenticated admin
 (``integrations.write`` permission).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 import logging
 
-from services.api.middleware.auth import (
-    get_current_active_user,
-    require_integrations_admin,
-)
-from core.storage.models import User
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
 from core.deps import provide_integration_compat
 from core.integrations.integration_compatibility_service import (
     IntegrationCompatibilityService,
 )
 from core.routing import Auth, RouterMeta
+from core.storage.models import User
+from services.api.middleware.auth import (
+    get_current_active_user,
+    require_integrations_admin,
+)
 
 router = APIRouter()
 

@@ -49,8 +49,10 @@ try:
     # core.llm.providers.clients so every Anthropic call flows through Bifrost (GH #84).
     from anthropic import Anthropic, AsyncAnthropic  # noqa: F401
 
-    from core.llm.providers.clients import (create_anthropic_client,
-                                            create_async_anthropic_client)
+    from core.llm.providers.clients import (
+        create_anthropic_client,
+        create_async_anthropic_client,
+    )
 
     ANTHROPIC_AVAILABLE = True
 except ImportError:
@@ -70,10 +72,10 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 from core.chat.context_manager import ContextManager  # noqa: E402
+
 # Sub-module imports (lazy to avoid circular deps at module load)
 from core.chat.session_manager import SessionManager  # noqa: E402
-from core.detections.detection_rules_service import \
-    DetectionRulesService  # noqa: E402
+from core.detections.detection_rules_service import DetectionRulesService  # noqa: E402
 from core.integrations.mcp.client import process_mcp_client  # noqa: E402
 from core.integrations.mcp.registry import MCPRegistry  # noqa: E402
 
@@ -102,7 +104,9 @@ class ClaudeService:
                 Anthropic provider row (GH #88). When set, _load_api_key reads
                 this secret first before the legacy CLAUDE_API_KEY fallback chain.
         """
-        self._mcp_client = mcp_client if mcp_client is not None else process_mcp_client()
+        self._mcp_client = (
+            mcp_client if mcp_client is not None else process_mcp_client()
+        )
         self._mcp_registry = mcp_registry or MCPRegistry()
         self._detection_rules = detection_rules or DetectionRulesService()
 
@@ -167,7 +171,7 @@ When a user mentions an ID or entity (finding, case, IP, hash, domain), ALWAYS u
 Common patterns you should recognize and how to handle them:
 
 - Finding IDs: "f-YYYYMMDD-XXXXXXXX" → Use deeptempo-findings_get_finding tool
-- Case IDs: "case-YYYYMMDD-XXXXXXXX" → Use deeptempo-findings_get_case tool  
+- Case IDs: "case-YYYYMMDD-XXXXXXXX" → Use deeptempo-findings_get_case tool
 - IP addresses: X.X.X.X → Consider using IP geolocation or threat intel tools
 - Domain names: example.com → Consider using URL analysis or threat intel tools
 - File hashes: MD5/SHA1/SHA256 → Consider using malware analysis tools
@@ -316,8 +320,7 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             # isn't importable.
             if not self.api_key:
                 try:
-                    from core.llm.router.router import \
-                        discover_anthropic_api_key
+                    from core.llm.router.router import discover_anthropic_api_key
 
                     self.api_key = discover_anthropic_api_key()
                 except Exception as exc:  # noqa: BLE001

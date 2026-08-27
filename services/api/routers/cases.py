@@ -1,16 +1,23 @@
 """Cases API endpoints."""
 
-from typing import List, Optional, Dict, Any
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
-from datetime import datetime
-from core.time import utcnow
-from pathlib import Path
 
-from services.api.middleware.auth import get_current_user
 from core.auth.auth_service import AuthService
+from core.cases import case_records_service
+from core.cases.case_collaboration_service import CaseCollaborationService
+from core.cases.case_evidence_service import CaseEvidenceService
+from core.cases.case_ioc_service import CaseIOCService
+from core.cases.case_notification_service import WATCHER_NOTIFICATION_TYPES
+from core.cases.case_sla_service import CaseSLAService
+from core.reporting.report_service import REPORTLAB_AVAILABLE, ReportService
+from core.routing import Auth, RouterMeta, UnitOfWorkSession
+from core.storage.database_data_service import DatabaseDataService
 from core.storage.models import User
-
 from core.storage.schemas import (
     CaseClosureInfoSchema,
     CaseCommentSchema,
@@ -22,16 +29,8 @@ from core.storage.schemas import (
     CaseTaskSchema,
     CaseWatcherSchema,
 )
-from core.cases.case_notification_service import WATCHER_NOTIFICATION_TYPES
-from core.storage.database_data_service import DatabaseDataService
-from core.reporting.report_service import ReportService, REPORTLAB_AVAILABLE
-from core.routing import Auth, RouterMeta, UnitOfWorkSession
-
-from core.cases import case_records_service
-from core.cases.case_collaboration_service import CaseCollaborationService
-from core.cases.case_evidence_service import CaseEvidenceService
-from core.cases.case_ioc_service import CaseIOCService
-from core.cases.case_sla_service import CaseSLAService
+from core.time import utcnow
+from services.api.middleware.auth import get_current_user
 
 router = APIRouter()
 

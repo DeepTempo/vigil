@@ -16,7 +16,6 @@ other existing callers) keep working.
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from core.time import utcnow
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -27,6 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from core.storage.config_service import get_config_service
 from core.storage.connection import get_db_manager
 from core.storage.models import ApprovalAction as ApprovalActionRow
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 

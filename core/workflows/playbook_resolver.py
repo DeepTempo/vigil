@@ -205,7 +205,6 @@ def resolve(
     registry: Optional["MCPRegistry"] = None,
 ) -> Tuple[str, str]:
     """Return the playbook and config layers for ``workflow_id``, as YAML text."""
-    from core.integrations.mcp.registry import MCPRegistry
     from core.workflows.workflows_service import WorkflowsService
 
     definition = (workflows or WorkflowsService()).get_workflow(workflow_id)
@@ -216,7 +215,9 @@ def resolve(
     # Refused rather than run: a playbook with no steps completes instantly having
     # done nothing, which reads exactly like a run that worked.
     if not phases:
-        raise UnknownPlaybook(f"{workflow_id} declares no phases; there is nothing to run")
+        raise UnknownPlaybook(
+            f"{workflow_id} declares no phases; there is nothing to run"
+        )
 
     tools = _tools_of(phases, registry)
     _drop_missing(phases, [tool["id"] for tool in tools])
@@ -249,7 +250,12 @@ def resolve(
 
 # What the threathunt arch asks for, by capability. Duplicated across the language
 # boundary for the same reason RUN_KINDS is, and held to it by a ratchet.
-HUNT_CAPABILITIES = ("findings_search", "similar_findings", "telemetry_search", "indicator_lookup")
+HUNT_CAPABILITIES = (
+    "findings_search",
+    "similar_findings",
+    "telemetry_search",
+    "indicator_lookup",
+)
 
 # A hunt is bounded by iterations rather than phases, and each one costs a lead
 # turn, its workers and the critic. Wider than a compose run of the same size.
@@ -275,7 +281,6 @@ def resolve_hunt(
     workflows: Optional["WorkflowsService"] = None,
     registry: Optional["MCPRegistry"] = None,
 ) -> Tuple[str, str]:
-    from core.integrations.mcp.registry import MCPRegistry
     from core.workflows.workflows_service import WorkflowsService
 
     definition = (workflows or WorkflowsService()).get_workflow(workflow_id)
@@ -286,7 +291,9 @@ def resolve_hunt(
     # Refused rather than run: a hunt with nothing to test would open a ledger,
     # spend a lead turn and conclude having tested nothing.
     if not hypotheses:
-        raise UnknownPlaybook(f"{workflow_id} declares no hypotheses; there is nothing to test")
+        raise UnknownPlaybook(
+            f"{workflow_id} declares no hypotheses; there is nothing to test"
+        )
 
     playbook = {
         "name": definition.name,
@@ -306,7 +313,8 @@ def resolve_hunt(
         "model": model or DEFAULT_MODEL,
         "budgets": dict(HUNT_BUDGETS),
         "runtime": DEFAULT_RUNTIME,
-        "tools": _bound_capabilities(list(HUNT_CAPABILITIES), _tool_catalogue(registry)) + [_expand_tool()],
+        "tools": _bound_capabilities(list(HUNT_CAPABILITIES), _tool_catalogue(registry))
+        + [_expand_tool()],
         # The hunt gates on its own checkpoint classes, which are a property of
         # what it is about to conclude rather than of a tool it happens to call.
         "approvals": [],
@@ -327,7 +335,9 @@ def _expand_tool() -> Dict[str, Any]:
         "parameters": {
             "type": "object",
             "required": ["evidence_ids"],
-            "properties": {"evidence_ids": {"type": "array", "items": {"type": "string"}}},
+            "properties": {
+                "evidence_ids": {"type": "array", "items": {"type": "string"}}
+            },
         },
     }
 

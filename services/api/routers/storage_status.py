@@ -9,11 +9,10 @@ import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from services.api.middleware.auth import get_current_active_user, require_settings_admin
-from core.storage.models import User
 from core.routing import Auth, RouterMeta
-
 from core.storage.connection import get_db_manager
+from core.storage.models import User
+from services.api.middleware.auth import get_current_active_user, require_settings_admin
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +37,8 @@ async def get_storage_status():
         Dictionary with storage backend information
     """
     try:
-        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
+        from core.storage.database_data_service import DatabaseDataService
 
         test_service = DatabaseDataService()
         backend_info = test_service.get_backend_info()
@@ -116,8 +115,8 @@ async def check_storage_health():
         Health status of the storage backend
     """
     try:
-        from core.storage.database_data_service import DatabaseDataService
         from core.config import is_demo_mode
+        from core.storage.database_data_service import DatabaseDataService
 
         service = DatabaseDataService()
         is_healthy = True
@@ -141,9 +140,11 @@ async def check_storage_health():
                 "demo_mode": demo_mode,
                 "findings_count": len(findings),
                 "cases_count": len(cases),
-                "message": "Demo mode active with sample data"
-                if demo_mode
-                else "Storage backend is functioning normally",
+                "message": (
+                    "Demo mode active with sample data"
+                    if demo_mode
+                    else "Storage backend is functioning normally"
+                ),
             }
 
         except Exception as e:
@@ -180,7 +181,6 @@ def reconnect_database(current_user: User = Depends(get_current_active_user)):
     event loop.
     """
     require_settings_admin(current_user)
-
 
     with _RETARGET_LOCK:
         db_manager = get_db_manager()
@@ -260,7 +260,9 @@ def _audit_retarget(previous, current, user: User) -> None:
         from core.storage.config_service import get_config_service
 
         def _target(t):
-            return {"host": t.host, "port": t.port, "database": t.database} if t else None
+            return (
+                {"host": t.host, "port": t.port, "database": t.database} if t else None
+            )
 
         # config_type is NOT NULL and old_value/new_value are JSONB, so they
         # take dicts, not text; the service commits via its session_scope.
@@ -295,7 +297,6 @@ def init_schema(current_user: User = Depends(get_current_active_user)):
     through an unrelated production database.
     """
     require_settings_admin(current_user)
-
 
     db_manager = get_db_manager()
     before = db_manager.schema_report()

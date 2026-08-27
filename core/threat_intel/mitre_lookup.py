@@ -11,8 +11,9 @@ Findings in this codebase carry MITRE data in two shapes:
 """
 
 from datetime import datetime, timedelta
-from core.time import utcnow
 from typing import Iterable, Optional
+
+from core.time import utcnow
 
 
 def get_time_range(time_range: str) -> tuple[datetime, datetime]:
@@ -36,6 +37,7 @@ def get_time_range(time_range: str) -> tuple[datetime, datetime]:
         start_time = end_time - timedelta(days=7)  # Default to 7 days
 
     return start_time, end_time
+
 
 # {technique_id: (name, tactic)} — extend as ATT&CK coverage grows.
 TECHNIQUE_NAME_FALLBACKS: dict[str, tuple[str, str]] = {

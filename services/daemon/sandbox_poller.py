@@ -16,14 +16,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from core.time import utcnow
 from typing import Any, Dict, Optional
 
 import httpx
 
 from core.config import get_integration_config, get_settings
-
 from core.secrets import get_secret
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 

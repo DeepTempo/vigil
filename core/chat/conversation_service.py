@@ -18,7 +18,6 @@ but return ``None``/``False`` for not-found-or-not-owned.
 """
 
 import logging
-from core.time import utcnow
 from typing import List, Optional
 
 from sqlalchemy import func, select
@@ -26,6 +25,7 @@ from sqlalchemy import func, select
 from core.storage.connection import get_db_manager
 from core.storage.models import ChatMessage, Conversation
 from core.storage.schemas import ConversationSchema, ConversationSummarySchema
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -215,9 +215,7 @@ def get_conversation(conversation_id: str, user_id: Optional[str]) -> Optional[d
         return ConversationSchema.dump(conv)
 
 
-def rename(
-    conversation_id: str, user_id: Optional[str], title: str
-) -> Optional[dict]:
+def rename(conversation_id: str, user_id: Optional[str], title: str) -> Optional[dict]:
     """Set a conversation's title; return its summary dict or None."""
     db_manager = get_db_manager()
     with db_manager.session_scope() as session:

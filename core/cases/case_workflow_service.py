@@ -6,13 +6,14 @@ and task automation.
 """
 
 import logging
-from core.time import utcnow
 from typing import Dict, List, Optional
+
 from sqlalchemy.orm import Session
 
-from core.storage.models import Case, CaseTemplate, CaseTask
-from core.storage.unit_of_work import unit_of_work
 from core.exceptions import NotFoundError, default_on_error
+from core.storage.models import Case, CaseTask, CaseTemplate
+from core.storage.unit_of_work import unit_of_work
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ class CaseWorkflowService:
                 query = query.filter(CaseTemplate.template_type == template_type)
 
             if active_only:
-                query = query.filter(CaseTemplate.is_active == True)
+                query = query.filter(CaseTemplate.is_active.is_(True))
 
             return query.order_by(CaseTemplate.usage_count.desc()).all()
 

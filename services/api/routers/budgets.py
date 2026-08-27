@@ -22,9 +22,9 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from core.routing import Auth, RouterMeta
 
 from core.llm.cost.budget import get_active_vk, get_settings, set_settings
+from core.routing import Auth, RouterMeta
 
 router = APIRouter()
 

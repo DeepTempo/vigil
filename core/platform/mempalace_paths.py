@@ -24,6 +24,7 @@ import logging
 from pathlib import Path
 
 from core.config import get_settings, vigil_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +35,9 @@ def get_palace_path(*, ensure_exists: bool = True) -> Path:
         try:
             palace.mkdir(parents=True, exist_ok=True)
         except OSError as e:
-            logger.warning("Could not create palace dir %s: %s", palace, e)  # survivable
+            logger.warning(
+                "Could not create palace dir %s: %s", palace, e
+            )  # survivable
     return palace
 
 

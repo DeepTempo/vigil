@@ -15,11 +15,11 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta
-from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from core.agents.builtins import ORCHESTRATION_DECISION_ID, ORCHESTRATOR_ACTOR
 from core.config import get_settings
+from core.time import utcnow
 from services.daemon.config import OrchestratorConfig
 
 try:
@@ -59,17 +59,20 @@ except Exception:
     _inv_created = _inv_completed = _inv_failed = _dedup_prevented = _stuck_agents = None  # type: ignore[assignment]
 from core.agents.projections import read_projection, run_id_for
 from core.agents.queue import build_start_job, enqueue_run
-from core.response.checkpoints import raise_for_checkpoint
-from services.daemon.plan_generator import (count_steps,
-                                            generate_case_review_context,
-                                            generate_case_review_plan,
-                                            generate_initial_context,
-                                            generate_initial_state,
-                                            generate_plan, select_workflow)
-from services.daemon.shared_intel import SharedIntelligence
-from services.daemon.workdir import WorkdirManager
 from core.integrations.mcp.client import process_mcp_client
 from core.response.approval_service import ApprovalService
+from core.response.checkpoints import raise_for_checkpoint
+from services.daemon.plan_generator import (
+    count_steps,
+    generate_case_review_context,
+    generate_case_review_plan,
+    generate_initial_context,
+    generate_initial_state,
+    generate_plan,
+    select_workflow,
+)
+from services.daemon.shared_intel import SharedIntelligence
+from services.daemon.workdir import WorkdirManager
 
 logger = logging.getLogger(__name__)
 
@@ -146,8 +149,7 @@ class Orchestrator:
     def _init_services(self):
         if self._data_service is None:
             try:
-                from core.storage.database_data_service import \
-                    DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
 
                 self._data_service = DatabaseDataService()
                 logger.info("Orchestrator: Database service initialized")
@@ -915,9 +917,7 @@ class Orchestrator:
             finding_ids = case_data.get("finding_ids", [])
             priority = case_data.get("priority", "medium")
 
-            inv_id = (
-                f"inv-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
-            )
+            inv_id = f"inv-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
             total_steps = count_steps("case-review")
 
             workdir = self.workdir.create(inv_id)
@@ -995,8 +995,10 @@ class Orchestrator:
         try:
             # Route through the single helper (#129) so the daemon,
             # MCP server, and ClaudeService all resolve the same path.
-            from core.platform.mempalace_paths import (get_closed_cases_dir,
-                                                       get_palace_path)
+            from core.platform.mempalace_paths import (
+                get_closed_cases_dir,
+                get_palace_path,
+            )
 
             data_dir = get_palace_path()
             get_closed_cases_dir()  # mkdir side-effect for investigation snapshots
