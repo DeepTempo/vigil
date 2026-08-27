@@ -395,7 +395,7 @@ Please review and approve/reject in the SOC dashboard.
                 return {
                     "status": "pending_approval",
                     "action_id": action.action_id,
-                    "message": f"Isolation action created, awaiting analyst approval",
+                    "message": "Isolation action created, awaiting analyst approval",
                     "confidence": confidence,
                     "requires_approval": True,
                     "escalation_triggered": True,

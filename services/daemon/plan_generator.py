@@ -266,7 +266,7 @@ def generate_plan(
         f"priority: {primary.get('severity', 'medium')}",
         f"created: {utcnow().isoformat()}Z",
         "status: planning",
-        f"current_step: 1",
+        "current_step: 1",
         "---",
         "",
         f"# Investigation Plan: {title}",
@@ -286,7 +286,7 @@ def generate_plan(
         lines.append("### Entity Context")
         lines.append(_build_entity_section(primary))
         lines.append("")
-        lines.append(f"### MITRE ATT&CK Predictions")
+        lines.append("### MITRE ATT&CK Predictions")
         lines.append(f"- {_format_mitre(primary)}")
         lines.append(f"- Anomaly Score: {primary.get('anomaly_score', 'N/A')}")
     else:

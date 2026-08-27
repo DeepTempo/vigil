@@ -171,7 +171,7 @@ When a user mentions an ID or entity (finding, case, IP, hash, domain), ALWAYS u
 Common patterns you should recognize and how to handle them:
 
 - Finding IDs: "f-YYYYMMDD-XXXXXXXX" → Use deeptempo-findings_get_finding tool
-- Case IDs: "case-YYYYMMDD-XXXXXXXX" → Use deeptempo-findings_get_case tool  
+- Case IDs: "case-YYYYMMDD-XXXXXXXX" → Use deeptempo-findings_get_case tool
 - IP addresses: X.X.X.X → Consider using IP geolocation or threat intel tools
 - Domain names: example.com → Consider using URL analysis or threat intel tools
 - File hashes: MD5/SHA1/SHA256 → Consider using malware analysis tools

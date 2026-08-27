@@ -597,7 +597,7 @@ async def summarize_conversation(request: SummarizeRequest):
             full_text[:max_chars] + "\n\n[... earlier conversation truncated ...]"
         )
 
-    summary_prompt = f"""Summarize the following conversation between a user and an AI assistant (Vigil SOC platform). 
+    summary_prompt = f"""Summarize the following conversation between a user and an AI assistant (Vigil SOC platform).
 Preserve ALL important context including:
 - Key findings, case IDs, IOCs, and entity references discussed
 - Decisions made and actions taken

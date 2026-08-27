@@ -76,7 +76,7 @@ async def handle_call_tool(name: str, arguments: dict | None):
             if not h:
                 return result({"error": "hash required"})
             resp = httpx.get(
-                f"https://api.any.run/v1/tasks",
+                "https://api.any.run/v1/tasks",
                 headers=headers,
                 params={"hash": h},
                 timeout=30,

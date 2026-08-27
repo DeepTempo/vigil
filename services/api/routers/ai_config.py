@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 
 from core.llm.providers.registry import (
     COMPONENTS,

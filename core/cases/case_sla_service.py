@@ -166,8 +166,8 @@ class CaseSLAService:
                     .filter(
                         and_(
                             SLAPolicy.priority_level == case.priority,
-                            SLAPolicy.is_default == True,
-                            SLAPolicy.is_active == True,
+                            SLAPolicy.is_default.is_(True),
+                            SLAPolicy.is_active.is_(True),
                         )
                     )
                     .first()
@@ -472,8 +472,8 @@ class CaseSLAService:
                 session.query(CaseSLA)
                 .filter(
                     and_(
-                        CaseSLA.resolution_completed_at == None,
-                        CaseSLA.is_paused == False,
+                        CaseSLA.resolution_completed_at.is_(None),
+                        CaseSLA.is_paused.is_(False),
                     )
                 )
                 .all()

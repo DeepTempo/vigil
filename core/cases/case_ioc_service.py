@@ -164,7 +164,7 @@ class CaseIOCService:
                 query = query.filter(CaseIOC.ioc_type == ioc_type)
 
             if active_only:
-                query = query.filter(CaseIOC.is_active == True)
+                query = query.filter(CaseIOC.is_active.is_(True))
 
             return query.order_by(CaseIOC.threat_level.desc()).all()
 

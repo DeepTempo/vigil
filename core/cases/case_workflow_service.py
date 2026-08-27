@@ -128,7 +128,7 @@ class CaseWorkflowService:
                 query = query.filter(CaseTemplate.template_type == template_type)
 
             if active_only:
-                query = query.filter(CaseTemplate.is_active == True)
+                query = query.filter(CaseTemplate.is_active.is_(True))
 
             return query.order_by(CaseTemplate.usage_count.desc()).all()
 

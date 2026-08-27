@@ -919,7 +919,7 @@ class IngestionService:
             import math
 
             max_l = max(mitre_logits)
-            exps = [math.exp(l - max_l) for l in mitre_logits]
+            exps = [math.exp(logit - max_l) for logit in mitre_logits]
             total = sum(exps)
             for idx, prob in enumerate(exps):
                 p = prob / total

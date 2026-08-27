@@ -23,8 +23,9 @@ if TYPE_CHECKING:
 from core.config import get_settings
 from core.secrets import get_secret
 
-# Import all models to register them with Base.metadata before create_all()
-from core.storage.models import (
+# Import all models to register them with Base.metadata before create_all().
+# Unused by name, which is the point -- the import is the registration.
+from core.storage.models import (  # noqa: F401
     AIDecisionLog,
     AttackLayer,
     Base,

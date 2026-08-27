@@ -262,7 +262,6 @@ async def set_claude_config(config: ClaudeConfig):
     # commit) must NOT block the secret write that already succeeded, so
     # this runs in its own transaction rather than the request's.
     try:
-        from core.storage.connection import get_db_session
         from core.storage.models import LLMProviderConfig
         from core.storage.unit_of_work import unit_of_work
 

@@ -70,13 +70,13 @@ async def list_sla_policies(
     query = session.query(SLAPolicy)
 
     if active_only:
-        query = query.filter(SLAPolicy.is_active == True)
+        query = query.filter(SLAPolicy.is_active.is_(True))
 
     if priority_level:
         query = query.filter(SLAPolicy.priority_level == priority_level)
 
     if default_only:
-        query = query.filter(SLAPolicy.is_default == True)
+        query = query.filter(SLAPolicy.is_default.is_(True))
 
     policies = query.all()
 
@@ -151,7 +151,7 @@ async def create_sla_policy(data: SLAPolicyCreate, session: UnitOfWorkSession):
     if data.is_default:
         session.query(SLAPolicy).filter(
             SLAPolicy.priority_level == data.priority_level,
-            SLAPolicy.is_default == True,
+            SLAPolicy.is_default.is_(True),
         ).update({"is_default": False})
 
     # Create policy
@@ -244,7 +244,7 @@ async def update_sla_policy(
             session.query(SLAPolicy).filter(
                 SLAPolicy.priority_level == policy.priority_level,
                 SLAPolicy.policy_id != policy_id,
-                SLAPolicy.is_default == True,
+                SLAPolicy.is_default.is_(True),
             ).update({"is_default": False})
 
         policy.is_default = data.is_default
@@ -314,7 +314,7 @@ async def set_default_policy(policy_id: str, session: UnitOfWorkSession):
     session.query(SLAPolicy).filter(
         SLAPolicy.priority_level == policy.priority_level,
         SLAPolicy.policy_id != policy_id,
-        SLAPolicy.is_default == True,
+        SLAPolicy.is_default.is_(True),
     ).update({"is_default": False})
 
     # Set this as default
@@ -362,7 +362,7 @@ async def get_policy_usage(policy_id: str, session: UnitOfWorkSession):
     # Breached cases
     breached_cases = (
         session.query(CaseSLA)
-        .filter(CaseSLA.sla_policy_id == policy_id, CaseSLA.breached == True)
+        .filter(CaseSLA.sla_policy_id == policy_id, CaseSLA.breached.is_(True))
         .count()
     )
 
@@ -413,7 +413,7 @@ async def get_policy_cases(
         query = query.filter(Case.status == status)
 
     if breached_only:
-        query = query.filter(CaseSLA.breached == True)
+        query = query.filter(CaseSLA.breached.is_(True))
 
     cases = query.all()
 

@@ -65,7 +65,7 @@ def _is_otel_enabled() -> bool:
 # Opt-in flag helpers live in core.telemetry_config so the sanitizer can
 # read them without importing this module (breaks the import cycle).
 # Re-exported here for backwards compatibility with existing callers/tests.
-from core.telemetry_config import (  # noqa: E402
+from core.telemetry_config import (  # noqa: E402,F401
     _should_record_ioc_values,
     _should_record_llm_content,
 )

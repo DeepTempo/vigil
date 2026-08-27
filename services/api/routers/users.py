@@ -5,7 +5,7 @@ Handles user CRUD operations, role assignment, and user administration.
 """
 
 import logging
-from typing import Annotated, List, Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr

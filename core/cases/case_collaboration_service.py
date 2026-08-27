@@ -177,7 +177,7 @@ class CaseCollaborationService:
             query = session.query(CaseComment).filter(CaseComment.case_id == case_id)
 
             if not include_deleted:
-                query = query.filter(CaseComment.is_deleted == False)
+                query = query.filter(CaseComment.is_deleted.is_(False))
 
             return query.order_by(CaseComment.created_at.asc()).all()
 

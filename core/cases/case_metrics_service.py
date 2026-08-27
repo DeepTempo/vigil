@@ -118,11 +118,11 @@ class CaseMetricsService:
 
                     # Overall SLA met if both are met (or not applicable)
                     response_ok = (
-                        case_sla.response_sla_met == True
+                        case_sla.response_sla_met
                         or case_sla.response_completed_at is None
                     )
                     resolution_ok = (
-                        case_sla.resolution_sla_met == True
+                        case_sla.resolution_sla_met
                         or case_sla.resolution_completed_at is None
                     )
                     metrics.sla_met = response_ok and resolution_ok
@@ -199,7 +199,7 @@ class CaseMetricsService:
             total_with_sla = session.query(CaseSLA).count()
             sla_met_count = (
                 session.query(CaseSLA)
-                .filter(CaseSLA.resolution_sla_met == True)
+                .filter(CaseSLA.resolution_sla_met.is_(True))
                 .count()
             )
 
@@ -308,9 +308,7 @@ class CaseMetricsService:
                 if case_sla:
                     analyst_slas.append(case_sla)
 
-            sla_met_count = len(
-                [s for s in analyst_slas if s.resolution_sla_met == True]
-            )
+            sla_met_count = len([s for s in analyst_slas if s.resolution_sla_met])
             sla_compliance = (
                 (sla_met_count / len(analyst_slas) * 100)
                 if len(analyst_slas) > 0

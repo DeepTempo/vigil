@@ -186,7 +186,7 @@ class MCPServer:
                             [
                                 "tasklist",
                                 "/FI",
-                                f"IMAGENAME eq python.exe",
+                                "IMAGENAME eq python.exe",
                                 "/FO",
                                 "CSV",
                             ],

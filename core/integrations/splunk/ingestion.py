@@ -98,11 +98,11 @@ class SplunkIngestion(SIEMIngestionService):
 
             # Search for notable events (Splunk ES)
             query = """
-            search `notable` 
+            search `notable`
             | head {limit}
-            | table _time, rule_name, rule_title, rule_description, severity, urgency, 
-                    src, dest, user, src_user, dest_user, signature, signature_id, 
-                    category, subcategory, mitre_tactic, mitre_technique, 
+            | table _time, rule_name, rule_title, rule_description, severity, urgency,
+                    src, dest, user, src_user, dest_user, signature, signature_id,
+                    category, subcategory, mitre_tactic, mitre_technique,
                     event_id, _raw
             """.format(limit=limit)
 
@@ -116,9 +116,9 @@ class SplunkIngestion(SIEMIngestionService):
             if not results:
                 # Fallback: search for any security events
                 query = """
-                search index=* sourcetype=* (severity=high OR severity=critical OR priority=high) 
+                search index=* sourcetype=* (severity=high OR severity=critical OR priority=high)
                 | head {limit}
-                | table _time, host, source, sourcetype, severity, message, src_ip, dest_ip, 
+                | table _time, host, source, sourcetype, severity, message, src_ip, dest_ip,
                         user, action, signature, _raw
                 """.format(limit=limit)
 

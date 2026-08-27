@@ -70,8 +70,8 @@ class CaseAutomationService:
                 active_slas = (
                     session.query(CaseSLA)
                     .filter(
-                        CaseSLA.resolution_completed_at == None,
-                        CaseSLA.is_paused == False,
+                        CaseSLA.resolution_completed_at.is_(None),
+                        CaseSLA.is_paused.is_(False),
                     )
                     .all()
                 )
