@@ -8,6 +8,16 @@ import asyncio
 import json
 import logging
 import os
+import sys
+from pathlib import Path
+
+# Spawned as ``python3 core/integrations/elastic/tool.py`` with a narrowed env, so
+# the repo root is not on sys.path and PYTHONPATH is not forwarded. Add it here so
+# the ``core.*`` imports below resolve; otherwise they fail and every query
+# silently reports "not configured".
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 from mcp.server.models import InitializationOptions
 import mcp.types as types

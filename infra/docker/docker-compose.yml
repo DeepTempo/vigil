@@ -500,6 +500,50 @@ services:
     profiles:
       - kafka
 
+  # ─── Elastic Security (opt-in: --profile elastic) ────────────────────────
+  # Single-node Elasticsearch + Kibana for SIEM testing, mirroring the Splunk
+  # profile. Security is disabled for local use, so the integration connects
+  # over plain HTTP with no credentials. Seed data via Kibana's built-in sample
+  # datasets (:5601 → Add data) or bulk-index to a logs-* index.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: deeptempo-elasticsearch
+    hostname: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"   # REST API
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - elastic
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: deeptempo-kibana
+    hostname: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"   # Web UI
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    profiles:
+      - elastic
+
 volumes:
   postgres_data:
     driver: local
@@ -518,6 +562,8 @@ volumes:
   grafana_data:
     driver: local
   kafka_data:
+    driver: local
+  elastic_data:
     driver: local
 
 networks:
