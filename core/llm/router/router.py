@@ -455,6 +455,17 @@ def provider_spec_from_row(row) -> ProviderSpec:
 
 
 def get_provider_spec(provider_id: Optional[str]) -> Optional[ProviderSpec]:
+    """Resolve a ``ProviderSpec`` by id, or the default provider when none is given.
+
+    No ``provider_id`` used to fall back to the ``is_default`` Anthropic row
+    specifically — a defect once non-Anthropic defaults (Ollama, OpenAI, and
+    now Bedrock/lemonade/Cloudflare) became possible. Delegate to
+    ``get_default_provider_spec`` so the no-id case resolves the default row
+    across ALL provider types, exactly once, in one place.
+    """
+    if not provider_id:
+        return get_default_provider_spec()
+
     try:
         from core.storage.connection import get_db_session
         from core.storage.models import LLMProviderConfig
@@ -464,17 +475,7 @@ def get_provider_spec(provider_id: Optional[str]) -> Optional[ProviderSpec]:
 
     session = get_db_session()
     try:
-        if provider_id:
-            row = session.get(LLMProviderConfig, provider_id)
-        else:
-            row = (
-                session.query(LLMProviderConfig)
-                .filter(
-                    LLMProviderConfig.provider_type == "anthropic",
-                    LLMProviderConfig.is_default.is_(True),
-                )
-                .first()
-            )
+        row = session.get(LLMProviderConfig, provider_id)
         if row is None:
             return None
         return provider_spec_from_row(row)
