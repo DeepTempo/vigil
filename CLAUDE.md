@@ -232,6 +232,14 @@ pytest tests/ -m "not external_service"   # what CI's main unit job runs
 pytest tests/unit/test_backend_tools.py -v
 ```
 
+A **unit** test marked `database` or `external_service` does not touch the
+database `DATABASE_URL` names: `tests/unit/conftest.py` provisions a throwaway
+`vigil_test_<pid>` from the ORM models, retargets the `DatabaseManager` at it,
+and drops it afterwards (#747). So the local role needs `CREATEDB`, and a test
+cannot leave rows in the database your own console reads. `tests/integration/`
+is deliberately outside this — it runs against a schema CI provisions from
+`infra/database/init/`, including tables no ORM model covers.
+
 Available markers: `unit`, `integration`, `slow`, `auth`, `siem`, `claude`,
 `database`, `api`, `daemon`, `performance`, `external_service`.
 `--strict-markers` is on, so an unregistered marker is an error — add new ones to
