@@ -516,7 +516,7 @@ services:
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
     ports:
-      - "9200:9200"   # REST API
+      - "127.0.0.1:9200:9200"   # REST API
     volumes:
       - elastic_data:/usr/share/elasticsearch/data
     restart: unless-stopped
@@ -537,7 +537,7 @@ services:
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     ports:
-      - "5601:5601"   # Web UI
+      - "127.0.0.1:5601:5601"   # Web UI
     depends_on:
       - elasticsearch
     restart: unless-stopped
@@ -612,7 +612,7 @@ services:
       - REDIS_PASSWORD=redispassword
       - DISABLE_IPV6=true
     ports:
-      - "8443:443"   # Web UI + REST (self-signed TLS)
+      - "127.0.0.1:8443:443"   # Web UI + REST (self-signed TLS)
     volumes:
       - misp_config:/var/www/MISP/app/Config
       - misp_files:/var/www/MISP/app/files

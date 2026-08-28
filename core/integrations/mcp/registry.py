@@ -82,10 +82,17 @@ class MCPRegistry:
                     continue
                 seen.add(tool_name)
 
+                # Prefix the description with the server so the model sees a
+                # tool's provenance — but leave it empty when the tool has none,
+                # so a downstream "drop tools with no description" guard still
+                # fires (a fabricated "[server] " would read as truthy).
+                raw_desc = (tool.get("description") or "").strip()
+                description = f"[{server_name}] {raw_desc}" if raw_desc else ""
+
                 all_tools.append(
                     {
                         "name": tool_name,
-                        "description": f"[{server_name}] {tool.get('description', '')}",
+                        "description": description,
                         "input_schema": tool.get(
                             "input_schema",
                             tool.get(

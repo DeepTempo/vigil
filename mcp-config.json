@@ -312,10 +312,8 @@
       "args": ["core/integrations/misp/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
-        "_setup_note": "MISP via REST API. Set MISP_URL and MISP_API_KEY (generate an Auth Key in the MISP UI) in .env; MISP_VERIFY_SSL=false for a local self-signed cert. The server stays dormant until MISP_API_KEY is set.",
-        "MISP_URL": "${MISP_URL}",
-        "MISP_API_KEY": "${MISP_API_KEY}",
-        "MISP_VERIFY_SSL": "${MISP_VERIFY_SSL}"
+        "_setup_note": "MISP via REST API. Set MISP_URL and MISP_API_KEY (generate an Auth Key in the MISP UI) in .env; MISP_VERIFY_SSL=false for a local self-signed cert (defaults to verify). The tool loads all three from .env directly; only MISP_API_KEY gates dormancy, so the server stays dormant until it is set.",
+        "MISP_API_KEY": "${MISP_API_KEY}"
       }
     },
 
