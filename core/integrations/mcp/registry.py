@@ -213,3 +213,18 @@ def populate_from_cache(registry: MCPRegistry) -> int:
 
     logger.info("MCP registry populated from %d connected server(s)", registered)
     return registered
+
+
+def safe_tool_names(registry: Optional[MCPRegistry]) -> List[str]:
+    """Tool names from ``registry``, or [] when it cannot be reached.
+
+    Shared by the agent and workflow AI generators, whose prompt-building is
+    best-effort: an unavailable registry means "recommend no tools", never an
+    error. Takes the registry rather than reaching for a global, so callers
+    keep whatever instance they were injected with.
+    """
+    try:
+        return list((registry or MCPRegistry()).get_tool_names() or [])
+    except Exception as e:
+        logger.debug(f"MCP registry unavailable: {e}")
+        return []

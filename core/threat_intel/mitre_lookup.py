@@ -13,6 +13,8 @@ Findings in this codebase carry MITRE data in two shapes:
 from datetime import datetime, timedelta
 from typing import Iterable, Optional
 
+from core.time import utcnow
+
 
 def get_time_range(time_range: str) -> tuple[datetime, datetime]:
     """Get start and end datetime for the given time range.
@@ -21,7 +23,7 @@ def get_time_range(time_range: str) -> tuple[datetime, datetime]:
     and the API routers can both depend on it without either importing the
     other.
     """
-    end_time = datetime.utcnow()
+    end_time = utcnow()
 
     if time_range == "24h":
         start_time = end_time - timedelta(hours=24)
@@ -35,6 +37,7 @@ def get_time_range(time_range: str) -> tuple[datetime, datetime]:
         start_time = end_time - timedelta(days=7)  # Default to 7 days
 
     return start_time, end_time
+
 
 # {technique_id: (name, tactic)} — extend as ATT&CK coverage grows.
 TECHNIQUE_NAME_FALLBACKS: dict[str, tuple[str, str]] = {

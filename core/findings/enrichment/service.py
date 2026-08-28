@@ -15,15 +15,17 @@ rather than fixed here, so any regression stays bisectable:
 
 import asyncio
 import logging
-from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
-from core.findings.enrichment.errors import (FindingNotFound,
-                                             NoProviderConfigured,
-                                             ProviderUnavailable,
-                                             UnidentifiableFinding)
+from core.findings.enrichment.errors import (
+    FindingNotFound,
+    NoProviderConfigured,
+    ProviderUnavailable,
+    UnidentifiableFinding,
+)
 from core.findings.enrichment.parse import parse_enrichment
 from core.findings.enrichment.prompt import build_prompt, summarize_finding
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +109,7 @@ async def _dispatch(
 
     The two paths are asymmetric — see the module docstring. Preserved as-is.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     if provider.provider_type == "anthropic":
         # No retry here: the cloud path has never had one.
         return await loop.run_in_executor(
@@ -127,8 +129,11 @@ async def _dispatch(
         "max_tokens": LOCAL_MAX_TOKENS,
     }
     from core.llm.providers.recovery import (
-        is_gateway_connection_error, local_bifrost_recovery_enabled,
-        local_bifrost_recovery_retry_limit, recover_local_bifrost)
+        is_gateway_connection_error,
+        local_bifrost_recovery_enabled,
+        local_bifrost_recovery_retry_limit,
+        recover_local_bifrost,
+    )
     from core.llm.router.router import LLMRouter
 
     retry_limit = local_bifrost_recovery_retry_limit()
@@ -264,7 +269,7 @@ async def enrich(
     # Analysts can compare the rendered fields against the local model's
     # exact output without having to regenerate the enrichment.
     enrichment["raw_response"] = response
-    enrichment["generated_at"] = datetime.utcnow().isoformat() + "Z"
+    enrichment["generated_at"] = utcnow().isoformat() + "Z"
     enrichment["model"] = model_id
     enrichment["provider_id"] = provider.provider_id
     enrichment["provider_type"] = provider.provider_type

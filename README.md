@@ -1,8 +1,10 @@
 # Vigil
 
-Vigil is the open-source AI SOC where your playbooks are plain-text files, your agent logic is readable Python, and your integrations use an open standard ([MCP](https://modelcontextprotocol.io/)). Every proprietary AI SOC on the market is a black box you rent. Vigil is a capability you own.
+Vigil is the leading open source AI SOC: an agentic SOC with 13 specialized AI agents, 30+ MCP integrations, and 7,200+ community detection rules, released under Apache 2.0. Your playbooks are plain-text files, your agent logic is readable Python, and your integrations use an open standard ([MCP](https://modelcontextprotocol.io/)). Every proprietary AI SOC on the market is a black box you rent. Vigil is a capability you own.
 
-The inspiration for the project is in part StackStorm and the experience of some of the founders of this project had in building the Linux Foundation project [StackStorm](https://github.com/StackStorm/st2) and in supporting Netflix and others who used StackStorm to achieve, carefully, very high levels of automation.  You'll sometimes hear us talking about the journey towards full autonomy and lessons learned.  One lesson - the system can only demote itself and only humans can promote additional autonomy.  You'll find this playing out on the way Vigil is designed; for example Vigil will check thresholds for projected costs and confidence levels in completion before executing an automation.  If it looks dodgy or two expensive, it'll double check with the humans before moving ahead.  
+Vigil pairs with [LogLM](https://www.deeptempo.ai/platform), a cybersecurity foundation model for [behavioral anomaly detection](https://www.deeptempo.ai/learning-center/behavioral-anomaly-detection), to form the [Intelligent Defense Platform](https://www.deeptempo.ai) from [DeepTempo](https://www.deeptempo.ai). Measured in the open by [SOCBench](https://socbench.org). Docs and community: [vigilsoc.org](https://vigilsoc.org).
+
+The inspiration for the project is in part StackStorm and the experience of some of the founders of this project had in building the Linux Foundation project [StackStorm](https://github.com/StackStorm/st2) and in supporting Netflix and others who used StackStorm to achieve, carefully, very high levels of automation.  You'll sometimes hear us talking about the journey towards full autonomy and lessons learned.  One lesson - the system can only demote itself and only humans can promote additional autonomy.  You'll find this playing out on the way Vigil is designed; for example Vigil will check thresholds for projected costs and confidence levels in completion before executing an automation.  If it looks dodgy or too expensive, it'll double check with the humans before moving ahead.  
 
 The project is built on three pillars: **Agents** — 13 specialized AI agents you can read, fork, and rewire; **Workflows** — multi-agent playbooks defined as Markdown files you edit directly; and **Integrations** — 30+ tool connections via MCP that you configure, not a vendor. The most important pillar is **YOU** — this is your project. Contribute via feedback, code, a repo star, memes on Discord, or otherwise.
 
@@ -29,7 +31,7 @@ Every agent has access to 19 backend tools via Agent SDK and 100+ additional too
 
 ## Workflows — One-Click Multi-Agent Workflows
 
-Workflows are the operational core of Vigil. Each worfklow chains multiple specialized AI agents into an end-to-end playbook that executes with a single command. No manual hand-offs, no copy-pasting between tools — the agents coordinate automatically.  
+Workflows are the operational core of Vigil. Each workflow chains multiple specialized AI agents into an end-to-end playbook that executes with a single command. No manual hand-offs, no copy-pasting between tools — the agents coordinate automatically.  
 
 | Workflow | Agents | What It Does |
 |----------|--------|-------------|
@@ -154,7 +156,9 @@ Auth bypass is enabled by default (`DEV_MODE=true`) for quick development. Full 
 
 ### Prerequisites
 
-- **Python 3.10+**
+- **No Python needed** — `./start.sh` provisions the pinned interpreter
+  (`.python-version`, currently 3.12) with [uv](https://docs.astral.sh/uv/),
+  independent of any system, conda, or pyenv Python you already have
 - **Node.js 18+** (for frontend)
 - **Docker Desktop** (must be running — used for PostgreSQL)
 - **Git** (with submodule support)
@@ -187,10 +191,13 @@ cp env.example .env
 # LLM provider keys (Anthropic / OpenAI / Ollama) are configured in the
 # web UI at Settings → AI / LLM Providers — not in .env.
 
-# Backend setup
-python3 -m venv venv
+# Backend setup. uv fetches the interpreter named in .python-version, so this
+# does not use (or disturb) any Python already on your PATH. Installing uv:
+# https://docs.astral.sh/uv/getting-started/installation/
+uv python install
+uv venv --python "$(cat .python-version)" --python-preference only-managed venv
 source venv/bin/activate
-pip install -r requirements.txt
+uv pip install -r requirements.lock
 
 # Frontend setup
 cd clients/web
@@ -425,6 +432,7 @@ Claude: ✓ Found 3 similar findings via embedding search
 | [docs/SPLUNK_TESTING_GUIDE.md](docs/SPLUNK_TESTING_GUIDE.md) | Splunk test data and integration testing |
 | [contrib/auto-contributor/](contrib/auto-contributor/SKILL.md) | Competitive research and contribution planning tool |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute, auto-contributor workflow, DCO |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting, supported versions, disclosure policy |
 
 ## Testing with Splunk & Claude
 
@@ -504,3 +512,5 @@ Apache 2.0 — See [LICENSE](LICENSE)
 - [DeepTempo](https://deeptempo.ai) — Vigil sponsor; LogLM connects via MCP as an AI-native detection layer
 - [Model Context Protocol](https://modelcontextprotocol.io/) — MCP specification
 - [ATT&CK Navigator](https://mitre-attack.github.io/attack-navigator/) — MITRE visualization
+- [SOCBench](https://socbench.org) — Open benchmark for AI in cybersecurity operations
+

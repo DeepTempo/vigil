@@ -39,8 +39,13 @@ logger = logging.getLogger(__name__)
 
 class StartRunRequest(BaseModel):
     run_kind: str = Field(default="hunt", description=f"One of {', '.join(RUN_KINDS)}.")
-    arch: str = Field(default="", description="Arch file path; empty routes through the run-kind registry.")
-    playbook: str = Field(..., description="Path to the playbook: the scenario as data.")
+    arch: str = Field(
+        default="",
+        description="Arch file path; empty routes through the run-kind registry.",
+    )
+    playbook: str = Field(
+        ..., description="Path to the playbook: the scenario as data."
+    )
     config: str = Field(..., description="Path to the deployment config.")
     prompt: str = Field(default="", description="What the run is being asked to do.")
     overrides: Optional[Dict[str, Any]] = None
@@ -55,7 +60,9 @@ class StartRunResponse(BaseModel):
 class RunStatusResponse(BaseModel):
     run_id: str
     status: str = Field(..., description="running or terminal.")
-    events: int = Field(..., description="Events on the ledger, so progress is visible.")
+    events: int = Field(
+        ..., description="Events on the ledger, so progress is visible."
+    )
     outcome: Optional[str] = None
     reason: Optional[str] = None
 
@@ -64,7 +71,9 @@ class RunStatusResponse(BaseModel):
 @router.post("", response_model=StartRunResponse, status_code=202)
 async def start_run(request: StartRunRequest) -> StartRunResponse:
     if request.run_kind not in RUN_KINDS:
-        raise HTTPException(status_code=400, detail=f"unknown run_kind: {request.run_kind}")
+        raise HTTPException(
+            status_code=400, detail=f"unknown run_kind: {request.run_kind}"
+        )
 
     run_id = new_run_id()
     payload: Dict[str, Any] = {
@@ -127,7 +136,9 @@ def get_run(run_id: str, session: UnitOfWorkSession) -> RunStatusResponse:
         raise HTTPException(status_code=404, detail=f"no such run: {run_id}") from None
 
     counted = session.execute(
-        text("SELECT count(*) AS events FROM agent_events WHERE run_id = CAST(:run_id AS uuid)"),
+        text(
+            "SELECT count(*) AS events FROM agent_events WHERE run_id = CAST(:run_id AS uuid)"
+        ),
         {"run_id": run_id},
     ).one_or_none()
     events = int(counted.events) if counted is not None else 0
@@ -157,8 +168,12 @@ def get_run(run_id: str, session: UnitOfWorkSession) -> RunStatusResponse:
 class DirectiveRequest(BaseModel):
     kind: str = Field(..., description=f"One of {', '.join(DIRECTIVE_KINDS)}.")
     text: str = Field(default="", description="What the operator is telling the run.")
-    actor: Optional[str] = Field(default=None, description="Who is steering. Defaults to the session user.")
-    fields: Optional[Dict[str, Any]] = Field(default=None, description=f"Any of {', '.join(DIRECTIVE_FIELDS)}.")
+    actor: Optional[str] = Field(
+        default=None, description="Who is steering. Defaults to the session user."
+    )
+    fields: Optional[Dict[str, Any]] = Field(
+        default=None, description=f"Any of {', '.join(DIRECTIVE_FIELDS)}."
+    )
 
 
 class DirectiveResponse(BaseModel):

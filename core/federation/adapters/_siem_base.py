@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, Optional
 from core.config import is_integration_enabled
 from core.federation.adapters._base import fresh_cursor, parse_cursor_since
 from core.federation.contract import FetchResult
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ class SIEMIngestionAdapter:
         start_time = parse_cursor_since(cursor) or since
         if start_time is None:
             # First run: small window so we don't backfill on enable.
-            start_time = datetime.utcnow() - timedelta(minutes=1)
+            start_time = utcnow() - timedelta(minutes=1)
 
         try:
             alerts = await svc.fetch_alerts(start_time=start_time, limit=max_items)

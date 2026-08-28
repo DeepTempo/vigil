@@ -10,17 +10,20 @@ import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
+
 import bcrypt
 import jwt
 import pyotp
 from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
 
-from core.storage.models import User, Role
 from core.config import get_settings
+from core.exceptions import default_on_error
 from core.secrets import get_secret
+from core.storage.models import Role, User
 from core.storage.unit_of_work import unit_of_work
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +110,7 @@ class AuthService:
         return hashed.decode("utf-8")
 
     @staticmethod
+    @default_on_error(False)
     def verify_password(password: str, password_hash: str) -> bool:
         """
         Verify a password against its hash.
@@ -118,13 +122,7 @@ class AuthService:
         Returns:
             True if password matches
         """
-        try:
-            return bcrypt.checkpw(
-                password.encode("utf-8"), password_hash.encode("utf-8")
-            )
-        except Exception as e:
-            logger.error(f"Password verification error: {e}")
-            return False
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
     @staticmethod
     def _session_fingerprint(user_agent: Optional[str]) -> str:
@@ -151,7 +149,7 @@ class AuthService:
             else timedelta(days=JWT_REFRESH_EXPIRATION_DAYS)
         )
 
-        now = datetime.utcnow()
+        now = utcnow()
         payload = {
             "user_id": user.user_id,
             "username": user.username,
@@ -238,7 +236,7 @@ class AuthService:
                 # Reject while locked. Lockout is authoritative even over a
                 # correct password — otherwise an attacker who eventually
                 # guesses right would bypass the wait.
-                now = datetime.utcnow()
+                now = utcnow()
                 if user.locked_until and user.locked_until > now:
                     logger.warning(
                         "Login rejected, account locked: %s until %s",
@@ -291,28 +289,25 @@ class AuthService:
                 )
 
     @staticmethod
+    @default_on_error(None)
     def setup_mfa(user_id: str, session: Optional[Session] = None) -> Optional[str]:
-        try:
-            with unit_of_work(session) as session:
-                user = session.query(User).filter(User.user_id == user_id).first()
-                if not user:
-                    return None
+        with unit_of_work(session) as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if not user:
+                return None
 
-                secret = pyotp.random_base32()
-                user.mfa_secret = AuthService._encrypt_mfa_secret(secret)
-                user.mfa_enabled = False
-                # Clear any stale codes from a prior setup attempt; fresh codes
-                # are issued at enable time.
-                user.mfa_recovery_codes = []
+            secret = pyotp.random_base32()
+            user.mfa_secret = AuthService._encrypt_mfa_secret(secret)
+            user.mfa_enabled = False
+            # Clear any stale codes from a prior setup attempt; fresh codes
+            # are issued at enable time.
+            user.mfa_recovery_codes = []
 
-                logger.info(f"MFA setup initiated for user: {user.username}")
-                return secret
-
-        except Exception as e:
-            logger.error(f"MFA setup error: {e}")
-            return None
+            logger.info(f"MFA setup initiated for user: {user.username}")
+            return secret
 
     @staticmethod
+    @default_on_error(None)
     def enable_mfa(
         user_id: str, code: str, session: Optional[Session] = None
     ) -> Optional[List[str]]:
@@ -326,30 +321,26 @@ class AuthService:
             - [] if the code is valid but MFA was already enabled (no reissue)
             - None if there is no pending secret or the code is invalid
         """
-        try:
-            with unit_of_work(session) as session:
-                user = session.query(User).filter(User.user_id == user_id).first()
-                if not user or not user.mfa_secret:
-                    return None
+        with unit_of_work(session) as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if not user or not user.mfa_secret:
+                return None
 
-                if not AuthService._verify_totp(user.mfa_secret, code):
-                    return None
+            if not AuthService._verify_totp(user.mfa_secret, code):
+                return None
 
-                if user.mfa_enabled:
-                    # Already enabled — codes were issued at enable time, don't
-                    # silently reissue. Use the regenerate endpoint to rotate.
-                    return []
+            if user.mfa_enabled:
+                # Already enabled — codes were issued at enable time, don't
+                # silently reissue. Use the regenerate endpoint to rotate.
+                return []
 
-                user.mfa_enabled = True
-                codes, user.mfa_recovery_codes = AuthService._generate_recovery_codes()
-                logger.info(f"MFA enabled for user: {user.username}")
-                return codes
-
-        except Exception as e:
-            logger.error(f"MFA enable error: {e}")
-            return None
+            user.mfa_enabled = True
+            codes, user.mfa_recovery_codes = AuthService._generate_recovery_codes()
+            logger.info(f"MFA enabled for user: {user.username}")
+            return codes
 
     @staticmethod
+    @default_on_error(None)
     def get_mfa_recovery_codes(
         user_id: str, session: Optional[Session] = None
     ) -> Optional[List[str]]:
@@ -358,20 +349,16 @@ class AuthService:
         Returns plaintext codes. Caller must display them once; they cannot
         be retrieved again.
         """
-        try:
-            with unit_of_work(session) as session:
-                user = session.query(User).filter(User.user_id == user_id).first()
-                if not user or not user.mfa_secret:
-                    return None
+        with unit_of_work(session) as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if not user or not user.mfa_secret:
+                return None
 
-                codes, user.mfa_recovery_codes = AuthService._generate_recovery_codes()
-                return codes
-
-        except Exception as e:
-            logger.error(f"Recovery code generation error: {e}")
-            return None
+            codes, user.mfa_recovery_codes = AuthService._generate_recovery_codes()
+            return codes
 
     @staticmethod
+    @default_on_error(False)
     def verify_mfa_code(
         user_id: str, code: str, session: Optional[Session] = None
     ) -> bool:
@@ -380,37 +367,32 @@ class AuthService:
         Enabling MFA is handled by enable_mfa(); this method assumes MFA is
         already enabled and only validates the supplied code.
         """
-        try:
-            with unit_of_work(session) as session:
-                user = session.query(User).filter(User.user_id == user_id).first()
-                if not user or not user.mfa_secret:
-                    return False
-
-                # Try TOTP first
-                if AuthService._verify_totp(user.mfa_secret, code):
-                    return True
-
-                # Try recovery codes (one-time use)
-                recovery_codes = list(user.mfa_recovery_codes or [])
-                code_bytes = code.strip().upper().encode()
-                for i, hashed in enumerate(recovery_codes):
-                    try:
-                        if bcrypt.checkpw(code_bytes, hashed.encode()):
-                            recovery_codes.pop(i)
-                            user.mfa_recovery_codes = recovery_codes
-                            logger.info(
-                                "Recovery code used for user: %s (%d remaining)",
-                                user.username,
-                                len(recovery_codes),
-                            )
-                            return True
-                    except Exception:
-                        continue
-
+        with unit_of_work(session) as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if not user or not user.mfa_secret:
                 return False
 
-        except Exception as e:
-            logger.error(f"MFA verification error: {e}")
+            # Try TOTP first
+            if AuthService._verify_totp(user.mfa_secret, code):
+                return True
+
+            # Try recovery codes (one-time use)
+            recovery_codes = list(user.mfa_recovery_codes or [])
+            code_bytes = code.strip().upper().encode()
+            for i, hashed in enumerate(recovery_codes):
+                try:
+                    if bcrypt.checkpw(code_bytes, hashed.encode()):
+                        recovery_codes.pop(i)
+                        user.mfa_recovery_codes = recovery_codes
+                        logger.info(
+                            "Recovery code used for user: %s (%d remaining)",
+                            user.username,
+                            len(recovery_codes),
+                        )
+                        return True
+                except Exception:
+                    continue
+
             return False
 
     @staticmethod
@@ -548,6 +530,7 @@ class AuthService:
             return role.permissions
 
     @staticmethod
+    @default_on_error(None)
     def create_user(
         username: str,
         email: str,
@@ -570,44 +553,39 @@ class AuthService:
         Returns:
             Created User object or None
         """
-        try:
-            with unit_of_work(session) as session:
-                import uuid
+        with unit_of_work(session) as session:
+            import uuid
 
-                # Check if username or email already exists
-                existing = (
-                    session.query(User)
-                    .filter((User.username == username) | (User.email == email))
-                    .first()
-                )
+            # Check if username or email already exists
+            existing = (
+                session.query(User)
+                .filter((User.username == username) | (User.email == email))
+                .first()
+            )
 
-                if existing:
-                    logger.warning(f"User already exists: {username} or {email}")
-                    return None
+            if existing:
+                logger.warning(f"User already exists: {username} or {email}")
+                return None
 
-                # Create user
-                user = User(
-                    user_id=f"user-{uuid.uuid4().hex[:12]}",
-                    username=username,
-                    email=email,
-                    password_hash=AuthService.hash_password(password),
-                    full_name=full_name,
-                    role_id=role_id,
-                    is_active=True,
-                    is_verified=False,
-                    mfa_enabled=False,
-                    login_count=0,
-                )
+            # Create user
+            user = User(
+                user_id=f"user-{uuid.uuid4().hex[:12]}",
+                username=username,
+                email=email,
+                password_hash=AuthService.hash_password(password),
+                full_name=full_name,
+                role_id=role_id,
+                is_active=True,
+                is_verified=False,
+                mfa_enabled=False,
+                login_count=0,
+            )
 
-                session.add(user)
-                # Flush so the read-back sees server defaults; the unit of work
-                # commits.
-                session.flush()
-                session.refresh(user)
+            session.add(user)
+            # Flush so the read-back sees server defaults; the unit of work
+            # commits.
+            session.flush()
+            session.refresh(user)
 
-                logger.info(f"User created: {username}")
-                return user
-
-        except Exception as e:
-            logger.error(f"User creation error: {e}")
-            return None
+            logger.info(f"User created: {username}")
+            return user

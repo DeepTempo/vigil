@@ -1,6 +1,20 @@
+# Versions and `files` must match requirements-dev.txt and CI, or this formats
+# into a state CI rejects.
 repos:
   - repo: https://github.com/psf/black
-    rev: 23.1.0  # Use the latest stable version
+    rev: 26.5.1
     hooks:
       - id: black
-        args: [--line-length=88]
+        files: ^(services|core)/
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 8.0.1
+    hooks:
+      - id: isort
+        files: ^(services|core)/
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        files: ^(services|core)/

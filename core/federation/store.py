@@ -10,6 +10,9 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from core.exceptions import default_on_error
+from core.time import utcnow
+
 logger = logging.getLogger(__name__)
 
 GLOBAL_KEY = "federation.settings"
@@ -60,83 +63,71 @@ def is_globally_enabled() -> bool:
 # ---------------------------------------------------------------------------
 
 
+@default_on_error(list, level="debug")
 def list_sources() -> List[Dict[str, Any]]:
     """All federation_sources rows as dicts."""
-    try:
-        from core.storage.connection import get_db_manager
-        from core.storage.models import FederationSource
-        from core.storage.schemas import FederationSourceSchema
+    from core.storage.connection import get_db_manager
+    from core.storage.models import FederationSource
+    from core.storage.schemas import FederationSourceSchema
 
-        with get_db_manager().session_scope() as session:
-            rows = session.query(FederationSource).all()
-            return FederationSourceSchema.dump_many(rows)
-    except Exception as e:
-        logger.debug("list federation_sources failed: %s", e)
-        return []
+    with get_db_manager().session_scope() as session:
+        rows = session.query(FederationSource).all()
+        return FederationSourceSchema.dump_many(rows)
 
 
+@default_on_error(None, level="debug")
 def get_source(source_id: str) -> Optional[Dict[str, Any]]:
-    try:
-        from core.storage.connection import get_db_manager
-        from core.storage.models import FederationSource
-        from core.storage.schemas import FederationSourceSchema
+    from core.storage.connection import get_db_manager
+    from core.storage.models import FederationSource
+    from core.storage.schemas import FederationSourceSchema
 
-        with get_db_manager().session_scope() as session:
-            row = session.get(FederationSource, source_id)
-            return FederationSourceSchema.dump(row) if row else None
-    except Exception as e:
-        logger.debug("get federation_source(%s) failed: %s", source_id, e)
-        return None
+    with get_db_manager().session_scope() as session:
+        row = session.get(FederationSource, source_id)
+        return FederationSourceSchema.dump(row) if row else None
 
 
+@default_on_error(None, level="warning")
 def upsert_source(source_id: str, defaults: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Ensure a row exists; if missing, insert with ``defaults``.
 
     Returns the resulting row as dict. Used by the auto-seed step on daemon
     boot — see :func:`core.federation.seed.seed_federation_sources`.
     """
-    try:
-        from core.storage.connection import get_db_manager
-        from core.storage.models import FederationSource
-        from core.storage.schemas import FederationSourceSchema
+    from core.storage.connection import get_db_manager
+    from core.storage.models import FederationSource
+    from core.storage.schemas import FederationSourceSchema
 
-        with get_db_manager().session_scope() as session:
-            row = session.get(FederationSource, source_id)
-            if row is None:
-                row = FederationSource(source_id=source_id, **defaults)
-                session.add(row)
-                session.flush()
-            return FederationSourceSchema.dump(row)
-    except Exception as e:
-        logger.warning("upsert federation_source(%s) failed: %s", source_id, e)
-        return None
+    with get_db_manager().session_scope() as session:
+        row = session.get(FederationSource, source_id)
+        if row is None:
+            row = FederationSource(source_id=source_id, **defaults)
+            session.add(row)
+            session.flush()
+        return FederationSourceSchema.dump(row)
 
 
+@default_on_error(None, level="warning")
 def update_source(source_id: str, fields: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Patch arbitrary columns on a source row. Caller validates fields."""
-    try:
-        from core.storage.connection import get_db_manager
-        from core.storage.models import FederationSource
-        from core.storage.schemas import FederationSourceSchema
+    from core.storage.connection import get_db_manager
+    from core.storage.models import FederationSource
+    from core.storage.schemas import FederationSourceSchema
 
-        with get_db_manager().session_scope() as session:
-            row = session.get(FederationSource, source_id)
-            if row is None:
-                return None
-            for k, v in fields.items():
-                if hasattr(row, k):
-                    setattr(row, k, v)
-            session.flush()
-            return FederationSourceSchema.dump(row)
-    except Exception as e:
-        logger.warning("update federation_source(%s) failed: %s", source_id, e)
-        return None
+    with get_db_manager().session_scope() as session:
+        row = session.get(FederationSource, source_id)
+        if row is None:
+            return None
+        for k, v in fields.items():
+            if hasattr(row, k):
+                setattr(row, k, v)
+        session.flush()
+        return FederationSourceSchema.dump(row)
 
 
 def record_success(
     source_id: str, *, cursor: Dict[str, Any], when: Optional[datetime] = None
 ) -> None:
-    when = when or datetime.utcnow()
+    when = when or utcnow()
     update_source(
         source_id,
         {
@@ -159,7 +150,7 @@ def record_failure(source_id: str, error: str) -> None:
             row = session.get(FederationSource, source_id)
             if row is None:
                 return
-            row.last_poll_at = datetime.utcnow()
+            row.last_poll_at = utcnow()
             row.last_error = (error or "")[:2000]
             row.consecutive_errors = (row.consecutive_errors or 0) + 1
     except Exception as e:

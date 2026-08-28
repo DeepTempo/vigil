@@ -1,25 +1,31 @@
 """Configuration API endpoints."""
 
-from typing import Any, Dict, Optional, List
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from pathlib import Path
 import json
 import logging
 import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from core.config import get_settings, state_dir_status, vigil_path
 from core.deps import (
     provide_demo_data,
     provide_integration_bridge,
     provide_mcp_client,
 )
 from core.integrations.integration_bridge_service import IntegrationBridgeService
+from core.integrations.integration_secrets import (
+    redact_secrets,
+    secret_fields_for,
+    split_secrets,
+)
+from core.llm.defaults import DEFAULT_MODEL
 from core.routing import Auth, RouterMeta
 from core.secrets import get_secret, set_secret
+from core.secrets_manager import get_secrets_manager
 from core.storage.config_service import get_config_service
-from core.llm.defaults import DEFAULT_MODEL
-from core.integrations.integration_secrets import redact_secrets, secret_fields_for, split_secrets
-from core.config import get_settings, state_dir_status, vigil_path
 
 router = APIRouter()
 
@@ -162,31 +168,27 @@ async def set_demo_mode(config: DemoModeConfig):
     Returns:
         Success status
     """
-    try:
-        source_file = vigil_path("general_config.json")
-        config_file = vigil_path("general_config.json", write=True)
+    source_file = vigil_path("general_config.json")
+    config_file = vigil_path("general_config.json", write=True)
 
-        # Load existing config
-        existing = {}
-        if source_file.exists():
-            with open(source_file, "r") as f:
-                existing = json.load(f)
+    # Load existing config
+    existing = {}
+    if source_file.exists():
+        with open(source_file, "r") as f:
+            existing = json.load(f)
 
-        # Update demo_mode setting
-        existing["demo_mode"] = config.enabled
+    # Update demo_mode setting
+    existing["demo_mode"] = config.enabled
 
-        with open(config_file, "w") as f:
-            json.dump(existing, f, indent=2)
+    with open(config_file, "w") as f:
+        json.dump(existing, f, indent=2)
 
-        return {
-            "success": True,
-            "enabled": config.enabled,
-            "message": f"Demo mode {'enabled' if config.enabled else 'disabled'}. Restart the server for changes to take effect.",
-            "note": "Set DEMO_MODE=true environment variable for immediate effect without restart",
-        }
-    except Exception as e:
-        logger.error(f"Error setting demo mode: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "success": True,
+        "enabled": config.enabled,
+        "message": f"Demo mode {'enabled' if config.enabled else 'disabled'}. Restart the server for changes to take effect.",
+        "note": "Set DEMO_MODE=true environment variable for immediate effect without restart",
+    }
 
 
 @router.post("/demo-mode/reset")
@@ -197,23 +199,17 @@ async def reset_demo_data(demo_service=Depends(provide_demo_data)):
     Returns:
         Success status
     """
-    try:
-        if demo_service is None:
-            raise HTTPException(status_code=400, detail="Demo mode is not enabled")
+    if demo_service is None:
+        raise HTTPException(status_code=400, detail="Demo mode is not enabled")
 
-        demo_service.reset()
+    demo_service.reset()
 
-        return {
-            "success": True,
-            "message": "Demo data regenerated",
-            "findings_count": len(demo_service.get_findings()),
-            "cases_count": len(demo_service.get_cases()),
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error resetting demo data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "success": True,
+        "message": "Demo data regenerated",
+        "findings_count": len(demo_service.get_findings()),
+        "cases_count": len(demo_service.get_cases()),
+    }
 
 
 @router.get("/claude")
@@ -255,51 +251,44 @@ async def set_claude_config(config: ClaudeConfig):
     Returns:
         Success status
     """
+    # Use standard environment variable name
+    success = set_secret("CLAUDE_API_KEY", config.api_key)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save API key")
+
+    # GH #88: keep the new llm_provider_configs table in sync so the
+    # Settings "AI Config" tab and the legacy endpoint agree on the
+    # Anthropic default. Best-effort — a DB failure here (including the
+    # commit) must NOT block the secret write that already succeeded, so
+    # this runs in its own transaction rather than the request's.
     try:
-        # Use standard environment variable name
-        success = set_secret("CLAUDE_API_KEY", config.api_key)
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to save API key")
+        from core.storage.models import LLMProviderConfig
+        from core.storage.unit_of_work import unit_of_work
 
-        # GH #88: keep the new llm_provider_configs table in sync so the
-        # Settings "AI Config" tab and the legacy endpoint agree on the
-        # Anthropic default. Best-effort — a DB failure here (including the
-        # commit) must NOT block the secret write that already succeeded, so
-        # this runs in its own transaction rather than the request's.
-        try:
-            from core.storage.connection import get_db_session
-            from core.storage.models import LLMProviderConfig
-            from core.storage.unit_of_work import unit_of_work
+        with unit_of_work() as session:
+            row = session.get(LLMProviderConfig, "anthropic-default")
+            if row is None:
+                row = LLMProviderConfig(
+                    provider_id="anthropic-default",
+                    provider_type="anthropic",
+                    name="Anthropic (default)",
+                    api_key_ref="CLAUDE_API_KEY",
+                    default_model=DEFAULT_MODEL,
+                    is_active=True,
+                    is_default=True,
+                    config={},
+                )
+                session.add(row)
+            else:
+                row.api_key_ref = "CLAUDE_API_KEY"
+                row.is_active = True
+    except Exception as sync_err:  # noqa: BLE001
+        logger.warning(
+            "Legacy /config/claude could not sync llm_provider_configs: %s",
+            sync_err,
+        )
 
-            with unit_of_work() as session:
-                row = session.get(LLMProviderConfig, "anthropic-default")
-                if row is None:
-                    row = LLMProviderConfig(
-                        provider_id="anthropic-default",
-                        provider_type="anthropic",
-                        name="Anthropic (default)",
-                        api_key_ref="CLAUDE_API_KEY",
-                        default_model=DEFAULT_MODEL,
-                        is_active=True,
-                        is_default=True,
-                        config={},
-                    )
-                    session.add(row)
-                else:
-                    row.api_key_ref = "CLAUDE_API_KEY"
-                    row.is_active = True
-        except Exception as sync_err:  # noqa: BLE001
-            logger.warning(
-                "Legacy /config/claude could not sync llm_provider_configs: %s",
-                sync_err,
-            )
-
-        return {"success": True, "message": "API key saved securely"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error setting Claude config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "message": "API key saved securely"}
 
 
 @router.get("/s3")
@@ -361,69 +350,63 @@ async def set_s3_config(config: S3Config):
     Returns:
         Success status
     """
-    try:
-        bucket_name = config.bucket_name
-        parquet_prefix = config.parquet_prefix
+    bucket_name = config.bucket_name
+    parquet_prefix = config.parquet_prefix
 
-        # Parse s3:// URIs: extract bucket name and use the path as prefix
-        if bucket_name.startswith("s3://"):
-            stripped = bucket_name[5:]
-            parts = stripped.split("/", 1)
-            bucket_name = parts[0]
-            if len(parts) > 1 and parts[1]:
-                path = parts[1].rstrip("/")
-                # If the path ends with a file extension, trim to the parent directory
-                last_segment = path.rsplit("/", 1)[-1] if "/" in path else path
-                if "." in last_segment:
-                    path = path.rsplit("/", 1)[0] if "/" in path else ""
-                parquet_prefix = (path + "/") if path else ""
+    # Parse s3:// URIs: extract bucket name and use the path as prefix
+    if bucket_name.startswith("s3://"):
+        stripped = bucket_name[5:]
+        parts = stripped.split("/", 1)
+        bucket_name = parts[0]
+        if len(parts) > 1 and parts[1]:
+            path = parts[1].rstrip("/")
+            # If the path ends with a file extension, trim to the parent directory
+            last_segment = path.rsplit("/", 1)[-1] if "/" in path else path
+            if "." in last_segment:
+                path = path.rsplit("/", 1)[0] if "/" in path else ""
+            parquet_prefix = (path + "/") if path else ""
 
-        config_data = {
-            "bucket_name": bucket_name,
-            "region": config.region,
-            "findings_path": config.findings_path,
-            "cases_path": config.cases_path,
-            "parquet_prefix": parquet_prefix,
-            "auth_method": config.auth_method,
-            "aws_profile": config.aws_profile,
-        }
+    config_data = {
+        "bucket_name": bucket_name,
+        "region": config.region,
+        "findings_path": config.findings_path,
+        "cases_path": config.cases_path,
+        "parquet_prefix": parquet_prefix,
+        "auth_method": config.auth_method,
+        "aws_profile": config.aws_profile,
+    }
 
-        # Save to database
-        config_service = get_config_service(user_id="web_ui")
-        success = config_service.set_integration_config(
-            integration_id="s3",
-            config=config_data,
-            enabled=True,
-            integration_name="AWS S3",
-            integration_type="storage",
-            description="AWS S3 storage configuration",
-            change_reason="Updated via Settings UI",
+    # Save to database
+    config_service = get_config_service(user_id="web_ui")
+    success = config_service.set_integration_config(
+        integration_id="s3",
+        config=config_data,
+        enabled=True,
+        integration_name="AWS S3",
+        integration_type="storage",
+        description="AWS S3 storage configuration",
+        change_reason="Updated via Settings UI",
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=500, detail="Failed to save S3 config to database"
         )
 
-        if not success:
-            raise HTTPException(
-                status_code=500, detail="Failed to save S3 config to database"
-            )
+    _mirror_to_file("s3_config.json", config_data)
 
-        _mirror_to_file("s3_config.json", config_data)
+    # Only overwrite credentials if new values were provided
+    if config.access_key_id:
+        set_secret("AWS_ACCESS_KEY_ID", config.access_key_id)
+    if config.secret_access_key:
+        set_secret("AWS_SECRET_ACCESS_KEY", config.secret_access_key)
+    if config.session_token:
+        set_secret("AWS_SESSION_TOKEN", config.session_token)
+    elif config.access_key_id:
+        # Clear session token when new non-STS credentials are provided
+        set_secret("AWS_SESSION_TOKEN", "")
 
-        # Only overwrite credentials if new values were provided
-        if config.access_key_id:
-            set_secret("AWS_ACCESS_KEY_ID", config.access_key_id)
-        if config.secret_access_key:
-            set_secret("AWS_SECRET_ACCESS_KEY", config.secret_access_key)
-        if config.session_token:
-            set_secret("AWS_SESSION_TOKEN", config.session_token)
-        elif config.access_key_id:
-            # Clear session token when new non-STS credentials are provided
-            set_secret("AWS_SESSION_TOKEN", "")
-
-        return {"success": True, "message": "S3 configuration saved"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error setting S3 config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "message": "S3 configuration saved"}
 
 
 # Maps the form field names exposed in the UI to the secrets-store keys
@@ -452,36 +435,32 @@ async def get_platform_database_config():
     stored, so the UI can show "set"/"not set" without exposing the
     plaintext.
     """
-    try:
-        result: Dict[str, Any] = {}
-        for field, key in _PLATFORM_DB_PROXY_KEYS.items():
-            value = get_secret(key)
-            if field in _PLATFORM_DB_SECRET_FIELDS:
-                result[f"has_{field}"] = bool(value)
-                continue
-            if field == "proxy_port":
-                try:
-                    result[field] = int(value) if value else 0
-                except (TypeError, ValueError):
-                    result[field] = 0
-                continue
-            if field == "verify_proxy_tls":
-                if value is None or value == "":
-                    result[field] = True
-                else:
-                    result[field] = str(value).lower() not in (
-                        "false",
-                        "0",
-                        "no",
-                        "off",
-                    )
-                continue
-            result[field] = value or ""
-        result.setdefault("proxy_type", "none")
-        return result
-    except Exception as e:
-        logger.error(f"Error getting platform DB proxy config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    result: Dict[str, Any] = {}
+    for field, key in _PLATFORM_DB_PROXY_KEYS.items():
+        value = get_secret(key)
+        if field in _PLATFORM_DB_SECRET_FIELDS:
+            result[f"has_{field}"] = bool(value)
+            continue
+        if field == "proxy_port":
+            try:
+                result[field] = int(value) if value else 0
+            except (TypeError, ValueError):
+                result[field] = 0
+            continue
+        if field == "verify_proxy_tls":
+            if value is None or value == "":
+                result[field] = True
+            else:
+                result[field] = str(value).lower() not in (
+                    "false",
+                    "0",
+                    "no",
+                    "off",
+                )
+            continue
+        result[field] = value or ""
+    result.setdefault("proxy_type", "none")
+    return result
 
 
 @router.post("/platform-database")
@@ -492,60 +471,52 @@ async def set_platform_database_config(config: PlatformDatabaseProxyConfig):
 
     Empty-string secrets mean "leave existing value untouched".
     """
-    try:
-        proxy_type = (config.proxy_type or "none").strip().lower()
-        if proxy_type not in ("none", "pgbouncer", "ssh_tunnel"):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "proxy_type must be one of: none, pgbouncer, ssh_tunnel "
-                    "(http/socks5 are not supported for the platform DB)"
-                ),
-            )
-
-        # Non-secret fields — always overwrite so disabling a setting
-        # actually clears the stored value.
-        set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_type"], proxy_type)
-        set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_host"], config.proxy_host or "")
-        set_secret(
-            _PLATFORM_DB_PROXY_KEYS["proxy_port"],
-            str(config.proxy_port) if config.proxy_port else "",
-        )
-        set_secret(
-            _PLATFORM_DB_PROXY_KEYS["proxy_username"], config.proxy_username or ""
-        )
-        set_secret(
-            _PLATFORM_DB_PROXY_KEYS["ssh_private_key_path"],
-            config.ssh_private_key_path or "",
-        )
-        set_secret(
-            _PLATFORM_DB_PROXY_KEYS["verify_proxy_tls"],
-            "true" if config.verify_proxy_tls else "false",
-        )
-
-        # Secret fields — only overwrite when caller supplied a non-empty
-        # value, matching the integrations-config convention.
-        if config.proxy_password:
-            set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_password"], config.proxy_password)
-        if config.ssh_key_passphrase:
-            set_secret(
-                _PLATFORM_DB_PROXY_KEYS["ssh_key_passphrase"],
-                config.ssh_key_passphrase,
-            )
-
-        return {
-            "success": True,
-            "message": (
-                "Platform DB proxy configuration saved. "
-                "Restart the backend for changes to take effect."
+    proxy_type = (config.proxy_type or "none").strip().lower()
+    if proxy_type not in ("none", "pgbouncer", "ssh_tunnel"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "proxy_type must be one of: none, pgbouncer, ssh_tunnel "
+                "(http/socks5 are not supported for the platform DB)"
             ),
-            "restart_required": True,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error setting platform DB proxy config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        )
+
+    # Non-secret fields — always overwrite so disabling a setting
+    # actually clears the stored value.
+    set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_type"], proxy_type)
+    set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_host"], config.proxy_host or "")
+    set_secret(
+        _PLATFORM_DB_PROXY_KEYS["proxy_port"],
+        str(config.proxy_port) if config.proxy_port else "",
+    )
+    set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_username"], config.proxy_username or "")
+    set_secret(
+        _PLATFORM_DB_PROXY_KEYS["ssh_private_key_path"],
+        config.ssh_private_key_path or "",
+    )
+    set_secret(
+        _PLATFORM_DB_PROXY_KEYS["verify_proxy_tls"],
+        "true" if config.verify_proxy_tls else "false",
+    )
+
+    # Secret fields — only overwrite when caller supplied a non-empty
+    # value, matching the integrations-config convention.
+    if config.proxy_password:
+        set_secret(_PLATFORM_DB_PROXY_KEYS["proxy_password"], config.proxy_password)
+    if config.ssh_key_passphrase:
+        set_secret(
+            _PLATFORM_DB_PROXY_KEYS["ssh_key_passphrase"],
+            config.ssh_key_passphrase,
+        )
+
+    return {
+        "success": True,
+        "message": (
+            "Platform DB proxy configuration saved. "
+            "Restart the backend for changes to take effect."
+        ),
+        "restart_required": True,
+    }
 
 
 @router.post("/s3/test")
@@ -556,89 +527,82 @@ def test_s3_connection():
     Returns:
         Connection test result
     """
-    try:
-        from core.storage.s3_service import S3Service
+    from core.storage.s3_service import S3Service
 
-        # Load S3 config
-        config_service = get_config_service()
-        s3_integration = config_service.get_integration_config("s3")
+    # Load S3 config
+    config_service = get_config_service()
+    s3_integration = config_service.get_integration_config("s3")
 
-        if not s3_integration:
-            # Fallback to file-based config
-            config_file = vigil_path("s3_config.json")
-            if config_file.exists():
-                with open(config_file, "r") as f:
-                    s3_integration = json.load(f)
-            else:
-                raise HTTPException(status_code=400, detail="S3 not configured")
-
-        # Unwrap nested config if present
-        cfg = s3_integration
-        if isinstance(s3_integration.get("config"), dict):
-            cfg = s3_integration["config"]
-
-        auth_method = cfg.get("auth_method", "credentials")
-        aws_profile = cfg.get("aws_profile", "")
-
-        if auth_method == "profile" and aws_profile:
-            s3_service = S3Service(
-                bucket_name=cfg.get("bucket_name"),
-                region_name=cfg.get("region", "us-east-1"),
-                aws_profile=aws_profile,
-            )
+    if not s3_integration:
+        # Fallback to file-based config
+        config_file = vigil_path("s3_config.json")
+        if config_file.exists():
+            with open(config_file, "r") as f:
+                s3_integration = json.load(f)
         else:
-            access_key_id = get_secret("AWS_ACCESS_KEY_ID")
-            secret_access_key = get_secret("AWS_SECRET_ACCESS_KEY")
+            raise HTTPException(status_code=400, detail="S3 not configured")
 
-            if not access_key_id or not secret_access_key:
-                raise HTTPException(
-                    status_code=400,
-                    detail="S3 credentials not found. Please configure S3 in Settings.",
-                )
+    # Unwrap nested config if present
+    cfg = s3_integration
+    if isinstance(s3_integration.get("config"), dict):
+        cfg = s3_integration["config"]
 
-            s3_service = S3Service(
-                bucket_name=cfg.get("bucket_name"),
-                region_name=cfg.get("region", "us-east-1"),
-                aws_access_key_id=access_key_id,
-                aws_secret_access_key=secret_access_key,
+    auth_method = cfg.get("auth_method", "credentials")
+    aws_profile = cfg.get("aws_profile", "")
+
+    if auth_method == "profile" and aws_profile:
+        s3_service = S3Service(
+            bucket_name=cfg.get("bucket_name"),
+            region_name=cfg.get("region", "us-east-1"),
+            aws_profile=aws_profile,
+        )
+    else:
+        access_key_id = get_secret("AWS_ACCESS_KEY_ID")
+        secret_access_key = get_secret("AWS_SECRET_ACCESS_KEY")
+
+        if not access_key_id or not secret_access_key:
+            raise HTTPException(
+                status_code=400,
+                detail="S3 credentials not found. Please configure S3 in Settings.",
             )
 
-        # Test connection
-        success, message = s3_service.test_connection()
+        s3_service = S3Service(
+            bucket_name=cfg.get("bucket_name"),
+            region_name=cfg.get("region", "us-east-1"),
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+        )
 
-        if success:
-            # Try to list files as an additional test
-            findings_path = cfg.get("findings_path", "findings.json")
-            cases_path = cfg.get("cases_path", "cases.json")
+    # Test connection
+    success, message = s3_service.test_connection()
 
-            files = s3_service.list_files()
-            has_findings = findings_path in files
-            has_cases = cases_path in files
+    if success:
+        # Try to list files as an additional test
+        findings_path = cfg.get("findings_path", "findings.json")
+        cases_path = cfg.get("cases_path", "cases.json")
 
-            return {
-                "success": True,
-                "message": message,
-                "bucket": cfg.get("bucket_name"),
-                "region": cfg.get("region", "us-east-1"),
-                "files_found": len(files),
-                "findings_file_exists": has_findings,
-                "cases_file_exists": has_cases,
-                "expected_findings_path": findings_path,
-                "expected_cases_path": cases_path,
-            }
-        else:
-            return {
-                "success": False,
-                "message": message,
-                "bucket": cfg.get("bucket_name"),
-                "region": cfg.get("region", "us-east-1"),
-            }
+        files = s3_service.list_files()
+        has_findings = findings_path in files
+        has_cases = cases_path in files
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error testing S3 connection: {e}")
-        raise HTTPException(status_code=500, detail=f"S3 test failed: {str(e)}")
+        return {
+            "success": True,
+            "message": message,
+            "bucket": cfg.get("bucket_name"),
+            "region": cfg.get("region", "us-east-1"),
+            "files_found": len(files),
+            "findings_file_exists": has_findings,
+            "cases_file_exists": has_cases,
+            "expected_findings_path": findings_path,
+            "expected_cases_path": cases_path,
+        }
+    else:
+        return {
+            "success": False,
+            "message": message,
+            "bucket": cfg.get("bucket_name"),
+            "region": cfg.get("region", "us-east-1"),
+        }
 
 
 @router.get("/theme")
@@ -681,32 +645,24 @@ async def set_theme_config(config: ThemeConfig):
     Returns:
         Success status
     """
-    try:
-        config_data = {"theme": config.theme}
+    config_data = {"theme": config.theme}
 
-        # Save to database
-        config_service = get_config_service(user_id="web_ui")
-        success = config_service.set_system_config(
-            key="theme.current",
-            value=config_data,
-            description="Current UI theme",
-            config_type="theme",
-            change_reason="Updated via Settings UI",
-        )
+    # Save to database
+    config_service = get_config_service(user_id="web_ui")
+    success = config_service.set_system_config(
+        key="theme.current",
+        value=config_data,
+        description="Current UI theme",
+        config_type="theme",
+        change_reason="Updated via Settings UI",
+    )
 
-        if not success:
-            raise HTTPException(
-                status_code=500, detail="Failed to save theme to database"
-            )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save theme to database")
 
-        _mirror_to_file("theme_config.json", config_data)
+    _mirror_to_file("theme_config.json", config_data)
 
-        return {"success": True, "message": "Theme saved"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error setting theme config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "message": "Theme saved"}
 
 
 def _secrets_set_map(integrations: dict) -> dict:
@@ -716,7 +672,9 @@ def _secrets_set_map(integrations: dict) -> dict:
     for iid in integrations:
         fields = secret_fields_for(iid)
         if fields:
-            result[iid] = {field: bool(get_secret(env)) for field, env in fields.items()}
+            result[iid] = {
+                field: bool(get_secret(env)) for field, env in fields.items()
+            }
     return result
 
 
@@ -801,58 +759,54 @@ async def set_integrations_config(
     Returns:
         Success status
     """
-    try:
-        config_service = get_config_service(user_id="web_ui")
+    config_service = get_config_service(user_id="web_ui")
 
-        # Build a sanitized integrations dict (no secrets) for DB/JSON
-        # persistence. Apply secret writes to the encrypted store.
-        sanitized_integrations: dict = {}
-        for integration_id, raw_config in config.integrations.items():
-            secrets, non_secrets = split_secrets(integration_id, raw_config)
+    # Build a sanitized integrations dict (no secrets) for DB/JSON
+    # persistence. Apply secret writes to the encrypted store.
+    sanitized_integrations: dict = {}
+    for integration_id, raw_config in config.integrations.items():
+        secrets, non_secrets = split_secrets(integration_id, raw_config)
 
-            # Empty string ⇒ user didn't re-type the secret on edit; leave
-            # the existing encrypted value untouched. Non-empty ⇒ overwrite.
-            for env_key, value in secrets.items():
-                if value == "":
-                    continue
-                if not set_secret(env_key, value):
-                    logger.error(
-                        f"Failed to write secret '{env_key}' for "
-                        f"integration '{integration_id}'"
-                    )
+        # Empty string ⇒ user didn't re-type the secret on edit; leave
+        # the existing encrypted value untouched. Non-empty ⇒ overwrite.
+        for env_key, value in secrets.items():
+            if value == "":
+                continue
+            if not set_secret(env_key, value):
+                logger.error(
+                    f"Failed to write secret '{env_key}' for "
+                    f"integration '{integration_id}'"
+                )
 
-            sanitized_integrations[integration_id] = non_secrets
+        sanitized_integrations[integration_id] = non_secrets
 
-            enabled = integration_id in config.enabled_integrations
-            success = config_service.set_integration_config(
-                integration_id=integration_id,
-                config=non_secrets,
-                enabled=enabled,
-                change_reason="Updated via Settings UI",
-            )
-            if not success:
-                logger.error(f"Failed to save integration '{integration_id}'")
-
-        _mirror_to_file(
-            "integrations_config.json",
-            {
-                "enabled_integrations": config.enabled_integrations,
-                "integrations": sanitized_integrations,
-            },
+        enabled = integration_id in config.enabled_integrations
+        success = config_service.set_integration_config(
+            integration_id=integration_id,
+            config=non_secrets,
+            enabled=enabled,
+            change_reason="Updated via Settings UI",
         )
+        if not success:
+            logger.error(f"Failed to save integration '{integration_id}'")
 
-        # Derive <ID>_MCP_URL env vars (e.g. LOGLM_MCP_URL) from any
-        # connectorUrl just saved, so static mcp-config.json remote-MCP
-        # entries resolve without a separately-set env var. Best-effort.
-        try:
-            bridge.derive_remote_mcp_env()
-        except Exception as e:
-            logger.warning(f"Could not derive remote MCP env vars: {e}")
+    _mirror_to_file(
+        "integrations_config.json",
+        {
+            "enabled_integrations": config.enabled_integrations,
+            "integrations": sanitized_integrations,
+        },
+    )
 
-        return {"success": True, "message": "Integrations configuration saved"}
+    # Derive <ID>_MCP_URL env vars (e.g. LOGLM_MCP_URL) from any
+    # connectorUrl just saved, so static mcp-config.json remote-MCP
+    # entries resolve without a separately-set env var. Best-effort.
+    try:
+        bridge.derive_remote_mcp_env()
     except Exception as e:
-        logger.error(f"Error setting integrations config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"Could not derive remote MCP env vars: {e}")
+
+    return {"success": True, "message": "Integrations configuration saved"}
 
 
 @router.get("/state-directory")
@@ -875,13 +829,9 @@ async def get_integrations_status(
     Returns:
         Status information for all integrations
     """
-    try:
-        statuses = bridge.get_all_integration_statuses()
+    statuses = bridge.get_all_integration_statuses()
 
-        return {"success": True, "statuses": statuses}
-    except Exception as e:
-        logger.error(f"Error getting integration statuses: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "statuses": statuses}
 
 
 @router.post("/integrations/{integration_id}/test")
@@ -898,53 +848,46 @@ async def test_integration(
     Returns:
         Test result with success/failure and message
     """
-    try:
-        status = bridge.get_integration_status(integration_id)
+    status = bridge.get_integration_status(integration_id)
 
-        if not status["configured"]:
-            raise HTTPException(status_code=400, detail="Integration not configured")
+    if not status["configured"]:
+        raise HTTPException(status_code=400, detail="Integration not configured")
 
-        if not status["server_available"]:
-            return {
-                "success": False,
-                "message": f"Integration server not yet implemented. The '{integration_id}' integration is planned but the backend MCP server needs to be created.",
-                "status": status,
-                "implementation_status": "pending",
-            }
-
-        if not status["enabled"]:
-            return {
-                "success": False,
-                "message": "Integration is configured but not enabled. Please enable it in the integrations list.",
-                "status": status,
-            }
-
-        # TODO: Implement actual connection test using MCP client
-        # For now, we just verify the configuration is complete
-        integration_config = bridge.get_integration_config(integration_id)
-
-        # Check if required fields are present (basic validation)
-        if not integration_config:
-            raise HTTPException(
-                status_code=400, detail="Integration configuration is empty"
-            )
-
-        # Prepare environment variables to verify they're being set correctly
-        env_vars = bridge._config_to_env_vars(integration_id, integration_config)
-
+    if not status["server_available"]:
         return {
-            "success": True,
-            "message": f"Integration '{integration_id}' is configured and ready. Configuration will be passed to the MCP server as environment variables.",
+            "success": False,
+            "message": f"Integration server not yet implemented. The '{integration_id}' integration is planned but the backend MCP server needs to be created.",
             "status": status,
-            "env_var_count": len(env_vars),
-            "server_name": status.get("server_name", "unknown"),
+            "implementation_status": "pending",
         }
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error testing integration '{integration_id}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    if not status["enabled"]:
+        return {
+            "success": False,
+            "message": "Integration is configured but not enabled. Please enable it in the integrations list.",
+            "status": status,
+        }
+
+    # TODO: Implement actual connection test using MCP client
+    # For now, we just verify the configuration is complete
+    integration_config = bridge.get_integration_config(integration_id)
+
+    # Check if required fields are present (basic validation)
+    if not integration_config:
+        raise HTTPException(
+            status_code=400, detail="Integration configuration is empty"
+        )
+
+    # Prepare environment variables to verify they're being set correctly
+    env_vars = bridge._config_to_env_vars(integration_id, integration_config)
+
+    return {
+        "success": True,
+        "message": f"Integration '{integration_id}' is configured and ready. Configuration will be passed to the MCP server as environment variables.",
+        "status": status,
+        "env_var_count": len(env_vars),
+        "server_name": status.get("server_name", "unknown"),
+    }
 
 
 @router.get("/general")
@@ -1004,52 +947,42 @@ async def set_general_config(config: GeneralConfig):
     Returns:
         Success status
     """
-    try:
-        config_data = {
-            "auto_start_sync": config.auto_start_sync,
-            "show_notifications": config.show_notifications,
-            "theme": config.theme,
-            "enable_keyring": config.enable_keyring,
-        }
+    config_data = {
+        "auto_start_sync": config.auto_start_sync,
+        "show_notifications": config.show_notifications,
+        "theme": config.theme,
+        "enable_keyring": config.enable_keyring,
+    }
 
-        # Save to database
-        config_service = get_config_service(user_id="web_ui")
-        success = config_service.set_system_config(
-            key="general.settings",
-            value=config_data,
-            description="General application settings",
-            config_type="general",
-            change_reason="Updated via Settings UI",
+    # Save to database
+    config_service = get_config_service(user_id="web_ui")
+    success = config_service.set_system_config(
+        key="general.settings",
+        value=config_data,
+        description="General application settings",
+        config_type="general",
+        change_reason="Updated via Settings UI",
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=500, detail="Failed to save configuration to database"
         )
 
-        if not success:
-            raise HTTPException(
-                status_code=500, detail="Failed to save configuration to database"
-            )
+    _mirror_to_file("general_config.json", config_data)
 
-        _mirror_to_file("general_config.json", config_data)
+    # Update the global secrets manager if keyring setting changed
+    try:
+        # Force reinitialize with new setting
+        from core import secrets_manager as sm_module
 
-        # Update the global secrets manager if keyring setting changed
-        try:
-            from core.secrets_manager import get_secrets_manager
-
-            # Force reinitialize with new setting
-            from core import secrets_manager as sm_module
-
-            sm_module._secrets_manager = None  # Reset global instance
-            get_secrets_manager(enable_keyring=config.enable_keyring)
-            logger.info(
-                f"Secrets manager updated: enable_keyring={config.enable_keyring}"
-            )
-        except Exception as e:
-            logger.warning(f"Could not update secrets manager: {e}")
-
-        return {"success": True, "message": "General settings saved"}
-    except HTTPException:
-        raise
+        sm_module._secrets_manager = None  # Reset global instance
+        get_secrets_manager(enable_keyring=config.enable_keyring)
+        logger.info(f"Secrets manager updated: enable_keyring={config.enable_keyring}")
     except Exception as e:
-        logger.error(f"Error setting general config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"Could not update secrets manager: {e}")
+
+    return {"success": True, "message": "General settings saved"}
 
 
 @router.get("/github")
@@ -1084,15 +1017,11 @@ async def set_github_config(config: GitHubConfig):
     Returns:
         Success status
     """
-    try:
-        success = set_secret("GITHUB_TOKEN", config.token)
-        if success:
-            return {"success": True, "message": "GitHub token saved securely"}
-        else:
-            raise HTTPException(status_code=500, detail="Failed to save GitHub token")
-    except Exception as e:
-        logger.error(f"Error setting GitHub config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    success = set_secret("GITHUB_TOKEN", config.token)
+    if success:
+        return {"success": True, "message": "GitHub token saved securely"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save GitHub token")
 
 
 @router.get("/postgresql")
@@ -1137,20 +1066,16 @@ async def set_postgresql_config(config: PostgreSQLConfig):
     Returns:
         Success status
     """
-    try:
-        success = set_secret("POSTGRESQL_CONNECTION_STRING", config.connection_string)
-        if success:
-            return {
-                "success": True,
-                "message": "PostgreSQL connection string saved securely",
-            }
-        else:
-            raise HTTPException(
-                status_code=500, detail="Failed to save PostgreSQL connection string"
-            )
-    except Exception as e:
-        logger.error(f"Error setting PostgreSQL config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    success = set_secret("POSTGRESQL_CONNECTION_STRING", config.connection_string)
+    if success:
+        return {
+            "success": True,
+            "message": "PostgreSQL connection string saved securely",
+        }
+    else:
+        raise HTTPException(
+            status_code=500, detail="Failed to save PostgreSQL connection string"
+        )
 
 
 class AIOperationsSettingsConfig(BaseModel):
@@ -1192,36 +1117,30 @@ async def get_ai_operations_config():
 @router.post("/ai-operations")
 async def set_ai_operations_config(config: AIOperationsSettingsConfig):
     """Persist the AI-operations toggles and invalidate the in-process cache."""
-    try:
-        config_data = config.model_dump()
-        config_service = get_config_service(user_id="web_ui")
-        success = config_service.set_system_config(
-            key="ai_operations.settings",
-            value=config_data,
-            description="Runtime AI cost/perf toggles (GH #84 PR-F)",
-            config_type="ai_operations",
-            change_reason="Updated via Settings UI",
+    config_data = config.model_dump()
+    config_service = get_config_service(user_id="web_ui")
+    success = config_service.set_system_config(
+        key="ai_operations.settings",
+        value=config_data,
+        description="Runtime AI cost/perf toggles (GH #84 PR-F)",
+        config_type="ai_operations",
+        change_reason="Updated via Settings UI",
+    )
+    if not success:
+        raise HTTPException(
+            status_code=500, detail="Failed to save AI operations config"
         )
-        if not success:
-            raise HTTPException(
-                status_code=500, detail="Failed to save AI operations config"
-            )
-        # Drop the in-process cache so the next read reflects the new values.
-        # Note: this only clears THIS process's cache. The daemon / llm-worker
-        # processes will pick up the new values on their next cache-TTL miss
-        # (default 60s) — acceptable since these are rarely-flipped toggles.
-        try:
-            from core.platform.runtime_config import clear_cache
+    # Drop the in-process cache so the next read reflects the new values.
+    # Note: this only clears THIS process's cache. The daemon / llm-worker
+    # processes will pick up the new values on their next cache-TTL miss
+    # (default 60s) — acceptable since these are rarely-flipped toggles.
+    try:
+        from core.platform.runtime_config import clear_cache
 
-            clear_cache()
-        except Exception as exc:  # noqa: BLE001
-            logger.debug(f"runtime_config cache clear skipped: {exc}")
-        return {"success": True, "message": "AI operations config updated"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error setting AI operations config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        clear_cache()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"runtime_config cache clear skipped: {exc}")
+    return {"success": True, "message": "AI operations config updated"}
 
 
 class OrchestratorSettingsConfig(BaseModel):
@@ -1275,45 +1194,39 @@ async def set_orchestrator_config(config: OrchestratorSettingsConfig):
     runtime enabled flag used by GET /api/orchestrator/status (which
     NavigationRail uses to show/hide the Auto Ops tab).
     """
-    try:
-        config_data = config.model_dump()
+    config_data = config.model_dump()
 
-        config_service = get_config_service(user_id="web_ui")
-        success = config_service.set_system_config(
-            key="orchestrator.settings",
-            value=config_data,
-            description="Autonomous orchestrator settings",
-            config_type="orchestrator",
-            change_reason="Updated via Settings UI",
+    config_service = get_config_service(user_id="web_ui")
+    success = config_service.set_system_config(
+        key="orchestrator.settings",
+        value=config_data,
+        description="Autonomous orchestrator settings",
+        config_type="orchestrator",
+        change_reason="Updated via Settings UI",
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=500, detail="Failed to save orchestrator config to database"
         )
 
-        if not success:
-            raise HTTPException(
-                status_code=500, detail="Failed to save orchestrator config to database"
-            )
+    # Poke the in-process orchestrator (if the API happens to share one)
+    # so a running daemon reacts immediately. No-op in backend-only
+    # deployments — the daemon polls orchestrator.settings every few
+    # seconds.
+    try:
+        from services.api.routers.orchestrator import _get_orchestrator
 
-        # Poke the in-process orchestrator (if the API happens to share one)
-        # so a running daemon reacts immediately. No-op in backend-only
-        # deployments — the daemon polls orchestrator.settings every few
-        # seconds.
-        try:
-            from services.api.routers.orchestrator import _get_orchestrator
-
-            orch = _get_orchestrator()
-            if orch is not None:
-                if config_data.get("enabled"):
-                    orch.enable()
-                else:
-                    orch.disable()
-        except Exception as e:
-            logger.debug("In-process orchestrator runtime apply skipped: %s", e)
-
-        return {"success": True, "message": "Orchestrator settings saved"}
-    except HTTPException:
-        raise
+        orch = _get_orchestrator()
+        if orch is not None:
+            if config_data.get("enabled"):
+                orch.enable()
+            else:
+                orch.disable()
     except Exception as e:
-        logger.error(f"Error setting orchestrator config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.debug("In-process orchestrator runtime apply skipped: %s", e)
+
+    return {"success": True, "message": "Orchestrator settings saved"}
 
 
 # ---- Darktrace webhook receiver config ----
@@ -1358,35 +1271,27 @@ async def get_darktrace_config():
 async def set_darktrace_config(config: DarktraceConfig):
     """Persist Darktrace config. The webhook_secret is stored separately via the
     secrets manager; if omitted, the existing secret is preserved."""
-    try:
-        config_service = get_config_service(user_id="web_ui")
-        settings = {
-            "enabled": config.enabled,
-            "url": config.url,
-            "max_body_kb": config.max_body_kb,
-        }
-        ok = config_service.set_system_config(
-            key=DARKTRACE_SETTINGS_KEY,
-            value=settings,
-            description="Darktrace webhook receiver settings",
-            config_type="darktrace",
-            change_reason="Updated via Settings UI",
-        )
-        if not ok:
+    config_service = get_config_service(user_id="web_ui")
+    settings = {
+        "enabled": config.enabled,
+        "url": config.url,
+        "max_body_kb": config.max_body_kb,
+    }
+    ok = config_service.set_system_config(
+        key=DARKTRACE_SETTINGS_KEY,
+        value=settings,
+        description="Darktrace webhook receiver settings",
+        config_type="darktrace",
+        change_reason="Updated via Settings UI",
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to save Darktrace settings")
+    if config.webhook_secret is not None and config.webhook_secret != "":
+        if not set_secret("DARKTRACE_WEBHOOK_SECRET", config.webhook_secret):
             raise HTTPException(
-                status_code=500, detail="Failed to save Darktrace settings"
+                status_code=500, detail="Failed to save Darktrace webhook secret"
             )
-        if config.webhook_secret is not None and config.webhook_secret != "":
-            if not set_secret("DARKTRACE_WEBHOOK_SECRET", config.webhook_secret):
-                raise HTTPException(
-                    status_code=500, detail="Failed to save Darktrace webhook secret"
-                )
-        return {"success": True, "message": "Darktrace config saved"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error setting Darktrace config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"success": True, "message": "Darktrace config saved"}
 
 
 # ---------------------------------------------------------------------------
@@ -1577,8 +1482,6 @@ async def secrets_status() -> Dict[str, Any]:
     write backend, what was expected per ``SECRETS_BACKEND`` env, whether
     cryptography imported, and where each backend lives on disk.
     """
-    from core.secrets_manager import get_secrets_manager
-
     mgr = get_secrets_manager()
     return mgr.get_backend_status()
 
@@ -1599,8 +1502,6 @@ async def secrets_reinit(
     just edited ``.env`` to switch from dotenv to encrypted but haven't
     bounced the process.
     """
-    from core.secrets_manager import get_secrets_manager
-
     write_backend = request.write_backend if request else None
     mgr = get_secrets_manager(write_backend=write_backend, force_reload=True)
     return {
@@ -1623,7 +1524,6 @@ async def secrets_migrate_to_encrypted(
     subset, or ``{"remove_from_dotenv": false}`` for a dry-copy that
     leaves the source file alone.
     """
-    from core.secrets_manager import get_secrets_manager
 
     mgr = get_secrets_manager()
     keys = request.keys if request else None

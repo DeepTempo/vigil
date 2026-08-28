@@ -421,8 +421,7 @@ class WorkflowsService:
 
         if finding_id:
             try:
-                from core.storage.database_data_service import \
-                    DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
 
                 data_service = DatabaseDataService()
                 finding = data_service.get_finding(finding_id)
@@ -452,8 +451,7 @@ class WorkflowsService:
 
         if case_id:
             try:
-                from core.storage.database_data_service import \
-                    DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
 
                 data_service = DatabaseDataService()
                 case = data_service.get_case(case_id)

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header
@@ -15,6 +14,7 @@ from core.deps import provide_approvals, provide_workflow_runs
 from core.response.approval_service import ApprovalService
 from core.response.checkpoints import raise_for_checkpoint, withdraw_for_run
 from core.routing import Auth, RouterMeta
+from core.time import utcnow
 from core.workflows.workflow_run_service import WorkflowRunService
 
 router = APIRouter()
@@ -103,7 +103,7 @@ def record_phase(
 ) -> None:
     authorise(authorization, "run progress")
 
-    now = datetime.utcnow()
+    now = utcnow()
     run_service.upsert_phase(
         run_id,
         update.phase_id,
@@ -224,7 +224,7 @@ def list_decisions(
                     actor=action.approved_by or "analyst",
                     answer=answer,
                     text=action.rejection_reason or "",
-                    resolved_at=action.approved_at or datetime.utcnow().isoformat(),
+                    resolved_at=action.approved_at or utcnow().isoformat(),
                 )
             )
     return Decisions(decisions=decided)

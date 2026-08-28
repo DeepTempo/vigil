@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from core.agents.builtins import ORCHESTRATION_DECISION_ID, ORCHESTRATOR_ACTOR
 from core.config import get_settings
+from core.time import utcnow
 from services.daemon.config import OrchestratorConfig
 
 try:
@@ -58,17 +59,20 @@ except Exception:
     _inv_created = _inv_completed = _inv_failed = _dedup_prevented = _stuck_agents = None  # type: ignore[assignment]
 from core.agents.projections import read_projection, run_id_for
 from core.agents.queue import build_start_job, enqueue_run
-from core.response.checkpoints import raise_for_checkpoint
-from services.daemon.plan_generator import (count_steps,
-                                            generate_case_review_context,
-                                            generate_case_review_plan,
-                                            generate_initial_context,
-                                            generate_initial_state,
-                                            generate_plan, select_workflow)
-from services.daemon.shared_intel import SharedIntelligence
-from services.daemon.workdir import WorkdirManager
 from core.integrations.mcp.client import process_mcp_client
 from core.response.approval_service import ApprovalService
+from core.response.checkpoints import raise_for_checkpoint
+from services.daemon.plan_generator import (
+    count_steps,
+    generate_case_review_context,
+    generate_case_review_plan,
+    generate_initial_context,
+    generate_initial_state,
+    generate_plan,
+    select_workflow,
+)
+from services.daemon.shared_intel import SharedIntelligence
+from services.daemon.workdir import WorkdirManager
 
 logger = logging.getLogger(__name__)
 
@@ -145,8 +149,7 @@ class Orchestrator:
     def _init_services(self):
         if self._data_service is None:
             try:
-                from core.storage.database_data_service import \
-                    DatabaseDataService
+                from core.storage.database_data_service import DatabaseDataService
 
                 self._data_service = DatabaseDataService()
                 logger.info("Orchestrator: Database service initialized")
@@ -347,7 +350,7 @@ class Orchestrator:
         shutdown_event: Optional[asyncio.Event] = None,
     ):
         """Core investigation creation logic."""
-        inv_id = f"inv-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+        inv_id = f"inv-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
         total_steps = count_steps(workflow_id)
 
         workdir = self.workdir.create(inv_id)
@@ -516,7 +519,7 @@ class Orchestrator:
                         )
 
                 executing = self._get_investigations_by_status("executing")
-                now = datetime.utcnow()
+                now = utcnow()
 
                 for inv in executing:
                     inv_dict = _inv_as_dict(inv)
@@ -698,7 +701,7 @@ class Orchestrator:
                     logger.warning("progress for %s: row not found", inv_id)
                     return
                 inv.iteration_count = projection.get("iterations", 0)
-                inv.last_activity_at = datetime.utcnow()
+                inv.last_activity_at = utcnow()
                 # Null is "the gateway priced nothing", which is not zero spent.
                 cost = projection.get("cost_usd")
                 if cost is not None:
@@ -719,7 +722,7 @@ class Orchestrator:
 
     def _track_hourly_cost(self):
         """Track rolling hourly cost for budget enforcement."""
-        now = datetime.utcnow()
+        now = utcnow()
         cutoff = now - timedelta(hours=1)
         self._hourly_costs = [c for c in self._hourly_costs if c["ts"] > cutoff]
         hourly_total = sum(c["cost"] for c in self._hourly_costs)
@@ -914,9 +917,7 @@ class Orchestrator:
             finding_ids = case_data.get("finding_ids", [])
             priority = case_data.get("priority", "medium")
 
-            inv_id = (
-                f"inv-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
-            )
+            inv_id = f"inv-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
             total_steps = count_steps("case-review")
 
             workdir = self.workdir.create(inv_id)
@@ -994,8 +995,10 @@ class Orchestrator:
         try:
             # Route through the single helper (#129) so the daemon,
             # MCP server, and ClaudeService all resolve the same path.
-            from core.platform.mempalace_paths import (get_closed_cases_dir,
-                                                       get_palace_path)
+            from core.platform.mempalace_paths import (
+                get_closed_cases_dir,
+                get_palace_path,
+            )
 
             data_dir = get_palace_path()
             get_closed_cases_dir()  # mkdir side-effect for investigation snapshots
@@ -1023,7 +1026,7 @@ class Orchestrator:
                         "proposed_actions": state.get("proposed_actions", []),
                         "completed_steps": state.get("completed_steps", []),
                         "case_id": state.get("case_id"),
-                        "completed_at": datetime.utcnow().isoformat(),
+                        "completed_at": utcnow().isoformat(),
                     },
                     indent=2,
                 )
@@ -1394,7 +1397,7 @@ class Orchestrator:
                     if notes:
                         inv.master_review_notes = notes
                     if status == "completed":
-                        inv.completed_at = datetime.utcnow()
+                        inv.completed_at = utcnow()
         except Exception as e:
             logger.error(f"Failed to update investigation status: {e}")
 
