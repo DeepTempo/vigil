@@ -1,14 +1,8 @@
-"""Shared intelligence layer for cross-investigation correlation.
+"""Cross-investigation IOC correlation over ``shared_iocs``.
 
-``shared_iocs`` is the index — nothing is held in process — so what two
-investigations had in common last week is still known after a daemon restart.
-
-Two questions are asked of it and they are not the same one. *Dedup* asks
-whether a finding duplicates work already in flight, and is bounded to open
-investigations: a finished investigation is not something a finding can be added
-to, and letting history answer it would mean an indicator seen once is never
-investigated again. *Correlation* asks what else has ever touched these
-indicators, and reads the whole table.
+Nothing is held in process, so overlap survives a daemon restart. Dedup
+(``check_overlap``) is bounded to live investigations; correlation reads the
+whole table.
 """
 
 import logging
@@ -19,9 +13,8 @@ from core.storage.shared_ioc_repository import SharedIOCRepository, make_key
 
 logger = logging.getLogger(__name__)
 
-# entity_context spellings, in the order a value is looked for. The list and
-# scalar forms of the same entity both appear, depending on the source, and the
-# alternatives within a tuple are aliases: the first one present wins.
+# entity_context spellings, in lookup order. Alternatives within a tuple are
+# aliases: the first one present wins.
 _LIST_FIELDS = (
     ("ip", ("src_ips",)),
     ("ip", ("dest_ips", "dst_ips")),
@@ -39,7 +32,6 @@ _SCALAR_FIELDS = (
 
 
 def _keys_from_finding(finding: Dict[str, Any]) -> Set[str]:
-    """Every indicator key a finding's entity context names."""
     ctx = finding.get("entity_context") or {}
     keys: Set[str] = set()
 
@@ -66,8 +58,7 @@ class SharedIntelligence:
     ):
         """Index the entities a new investigation's findings name.
 
-        The investigation row must already exist — ``shared_iocs`` is keyed to
-        it — so call this after the investigation is saved.
+        Call after the investigation is saved — ``shared_iocs`` is keyed to it.
         """
         keys: Set[str] = set()
         for finding in findings:
@@ -81,7 +72,7 @@ class SharedIntelligence:
     def check_overlap(
         self, finding: Dict[str, Any], exclude_id: Optional[str] = None
     ) -> List[str]:
-        """Open investigations already covering one of this finding's entities."""
+        """Live investigations already covering one of this finding's entities."""
         keys = _keys_from_finding(finding)
         if not keys:
             return []
@@ -105,7 +96,6 @@ class SharedIntelligence:
         return sorted(related)
 
     def get_shared_iocs(self, inv_id_a: str, inv_id_b: str) -> List[str]:
-        """Indicator keys shared between two investigations."""
         return sorted(
             self._with_repo(
                 "shared lookup",
@@ -115,11 +105,7 @@ class SharedIntelligence:
         )
 
     def close_investigation(self, investigation_id: str, case_id: Optional[str]):
-        """Index the closing investigation's case IOCs against it.
-
-        Its own findings' entities went in when it was registered; this picks up
-        what the case accumulated while it ran.
-        """
+        """Pick up what the case accumulated while the investigation ran."""
         if not case_id:
             return
         self._with_repo(
@@ -129,11 +115,8 @@ class SharedIntelligence:
         )
 
     def _with_repo(self, operation: str, fn: Callable, default: Any) -> Any:
-        """Run one repository call in its own transaction.
-
-        Reads degrade to ``default`` and writes are dropped rather than taking
-        the daemon loop down with them; either way the failure is logged loud.
-        """
+        # Reads degrade to default and writes drop rather than taking the
+        # daemon loop down; either way the failure is logged loud.
         try:
             with get_db_manager().session_scope() as session:
                 return fn(SharedIOCRepository(session))

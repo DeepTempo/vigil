@@ -420,7 +420,6 @@ class Orchestrator:
         }
 
         self._save_investigation(inv_record)
-        # After the save: shared_iocs is keyed to the investigation row.
         self.shared_intel.register_investigation(inv_id, findings)
         self.stats["investigations_created"] += 1
         if _inv_created is not None:

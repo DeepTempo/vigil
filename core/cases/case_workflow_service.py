@@ -415,7 +415,6 @@ class CaseWorkflowService:
         session.add(closure)
         CaseSLAService().mark_resolution_complete(case_id, session)
         session.flush()
-        # So later investigations can correlate on this case's indicators.
         index_case_iocs_on_close(session, case_id)
         return closure
 

@@ -1395,7 +1395,6 @@ def close_case(
             )
             session.add(closure)
 
-            # So later investigations can correlate on this case's indicators.
             index_case_iocs_on_close(session, case_id)
 
             session.commit()
