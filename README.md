@@ -131,7 +131,7 @@ Vigil uses the [Model Context Protocol](https://modelcontextprotocol.io/) to con
 
 **Coming soon:** AWS Security Hub, Azure Sentinel, GCP Security, Okta, Microsoft Defender, SentinelOne, Carbon Black, PagerDuty.
 
-MCP servers live in each vendor's slice as `core/integrations/<vendor>/tool.py` and are configured via the Settings UI or `mcp_config.json`. Add a new integration by adding a slice with an MCP server in it — see [core/integrations/README.md](core/integrations/README.md) — or use the built-in Custom Integration Builder to generate one from API docs.  If you build an integration that you find useful, chances are someone else will as well.  Please contribute!
+MCP servers live in each vendor's slice as `core/integrations/<vendor>/tool.py` and are configured via the Settings UI or `mcp_config.json`. Add a new integration by adding a slice with an MCP server in it — see [vendor slices](https://vigilsoc.org/docs/vendor-slices/) — or use the built-in Custom Integration Builder to generate one from API docs.  If you build an integration that you find useful, chances are someone else will as well.  Please contribute!
 
 ---
 
@@ -162,7 +162,7 @@ Auth bypass is enabled by default (`DEV_MODE=true`) for quick development. Full 
 - **Node.js 18+** (for frontend)
 - **Docker Desktop** (must be running — used for PostgreSQL)
 - **Git** (with submodule support)
-- An LLM provider key. Vigil supports Anthropic Claude (default), OpenAI, and Ollama (local) — configure providers in Settings → AI Config. See [`infra/docker/bifrost/README.md`](infra/docker/bifrost/README.md) for the multi-provider gateway. *(optional for initial testing)*
+- An LLM provider key. Vigil supports Anthropic Claude (default), OpenAI, and Ollama (local) — configure providers in Settings → AI Config. See the [Bifrost gateway](https://vigilsoc.org/docs/bifrost/) notes for the multi-provider setup. *(optional for initial testing)*
 
 ### Default Login Credentials
 
@@ -219,8 +219,9 @@ helm install vigil ./infra/helm/vigil \
   --set secrets.jwtSecretKey="$(python -c 'import secrets; print(secrets.token_urlsafe(64))')"
 ```
 
-See [docs/HELM.md](docs/HELM.md) for the full values reference, external
-Postgres/Redis setup, ingress configuration, and troubleshooting.
+See the [Helm values guide](https://vigilsoc.org/docs/helm/) for the full
+values reference, external Postgres/Redis setup, ingress configuration, and
+troubleshooting.
 
 ### Run
 
@@ -357,9 +358,9 @@ cd clients/desktop && npm run dist
 
 ## Additional Features 
 
-- **Auto-Contributor** — Automated competitive research against proprietary AI security platforms. Analyzes a vendor's capabilities, maps gaps versus Vigil and the open-source ecosystem, and generates ready-to-file GitHub issues with acceptance criteria. The goal: make Vigil a superset of every proprietary AI SOC, one contribution at a time. See [`contrib/auto-contributor/`](contrib/README.md)
-- **Chat-Driven Case Management** — Build cases through natural language. Say "add this to case XYZ" and the system handles findings, activities, timelines, and MITRE tagging. [Learn more](docs/CHAT_CASE_MANAGEMENT.md)
-- **Detection Engineering** — 7,200+ detection rules (Sigma, Splunk, Elastic, KQL) with coverage analysis, gap identification, and AI-assisted template generation. [Learn more](docs/DETECTION_ENGINEERING.md)
+- **Auto-Contributor** — Automated competitive research against proprietary AI security platforms. Analyzes a vendor's capabilities, maps gaps versus Vigil and the open-source ecosystem, and generates ready-to-file GitHub issues with acceptance criteria. The goal: make Vigil a superset of every proprietary AI SOC, one contribution at a time. See [`contrib/auto-contributor/SKILL.md`](contrib/auto-contributor/SKILL.md)
+- **Chat-Driven Case Management** — Build cases through natural language. Say "add this to case XYZ" and the system handles findings, activities, timelines, and MITRE tagging. [Learn more](https://vigilsoc.org/docs/chat-case-management/)
+- **Detection Engineering** — 7,200+ detection rules (Sigma, Splunk, Elastic, KQL) with coverage analysis, gap identification, and AI-assisted template generation. [Learn more](https://vigilsoc.org/docs/detection-engineering/)
 - **Case Management** — Full lifecycle tracking with PDF reports
 - **Approval Workflow** — Human-in-the-loop with confidence-based automation (auto-approve above 0.90, require review below 0.85)
 - **AI Enrichment** — Automatic threat analysis cached per finding
@@ -378,7 +379,6 @@ vigil/
 ├── contrib/           # Community tools: auto-contributor, benchmarking
 ├── tools/mcp/         # MCP servers for Vigil's own services
 ├── infra/             # Docker Compose, Helm chart, DB init SQL
-├── docs/              # Documentation
 └── data/schemas/      # JSON validation schemas
 ```
 
@@ -418,20 +418,18 @@ Claude: ✓ Found 3 similar findings via embedding search
 
 ## Documentation
 
+Guides live on the site at **[vigilsoc.org/docs](https://vigilsoc.org/docs/)**.
+
 | Doc | Contents |
 |-----|----------|
-| [docs/AGENTS.md](docs/AGENTS.md) | 13 SOC AI agents reference |
-| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) | MCP integrations — Splunk, CrowdStrike, VirusTotal, 28+ tools |
-| [docs/DETECTION_ENGINEERING.md](docs/DETECTION_ENGINEERING.md) | Detection engineering with 7,200+ rules |
-| [docs/CHAT_CASE_MANAGEMENT.md](docs/CHAT_CASE_MANAGEMENT.md) | Chat-driven case building guide |
-| [docs/CHAT_CASE_QUICK_REFERENCE.md](docs/CHAT_CASE_QUICK_REFERENCE.md) | Quick reference for chat commands |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Environment variables, secrets, deployment |
-| [docs/FEATURES.md](docs/FEATURES.md) | Cases, approvals, enrichment |
-| [docs/API.md](docs/API.md) | MCP tool contracts, data models |
-| [docs/README.md](docs/README.md) | Architecture overview |
-| [docs/SPLUNK_TESTING_GUIDE.md](docs/SPLUNK_TESTING_GUIDE.md) | Splunk test data and integration testing |
-| [contrib/auto-contributor/](contrib/auto-contributor/SKILL.md) | Competitive research and contribution planning tool |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute, auto-contributor workflow, DCO |
+| [Agents](https://vigilsoc.org/docs/agents/) | 13 SOC AI agents reference |
+| [Integrations](https://vigilsoc.org/docs/integrations/) | MCP integrations — Splunk, CrowdStrike, VirusTotal, 28+ tools |
+| [Detection engineering](https://vigilsoc.org/docs/detection-engineering/) | Detection engineering with 7,200+ rules |
+| [Chat-driven case management](https://vigilsoc.org/docs/chat-case-management/) | Chat-driven case building guide |
+| [Configuration](https://vigilsoc.org/docs/configuration/) | Environment variables, secrets, deployment |
+| [Helm](https://vigilsoc.org/docs/helm/) | Chart values, secrets, and install |
+| [Contributing](https://vigilsoc.org/docs/contributing/) | How to contribute, auto-contributor workflow, DCO |
+| [`contrib/auto-contributor/SKILL.md`](contrib/auto-contributor/SKILL.md) | Competitive research skill (runtime) |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting, supported versions, disclosure policy |
 
 ## Testing with Splunk & Claude
@@ -458,7 +456,7 @@ python3 scripts/test_splunk_claude_integration.py \
 
 **Test data:** 280 events (brute force, malware, C2 traffic, exfiltration, privilege escalation, lateral movement, recon) with full MITRE ATT&CK mappings and realistic IOCs.
 
-See the [Splunk Testing Guide](docs/SPLUNK_TESTING_GUIDE.md) for complete instructions.
+See the [Splunk testing guide](https://vigilsoc.org/docs/splunk-testing/) for complete instructions.
 
 </details>
 
@@ -480,8 +478,7 @@ python scripts/export_postgres_to_splunk.py \
     --save-to-file postgres_export.json
 ```
 
-**Quick Start:** See [POSTGRES_TO_SPLUNK_QUICKSTART.md](POSTGRES_TO_SPLUNK_QUICKSTART.md)
-**Full Guide:** See [docs/POSTGRES_TO_SPLUNK_EXPORT.md](docs/POSTGRES_TO_SPLUNK_EXPORT.md)
+**Full Guide:** See the [Postgres to Splunk export](https://vigilsoc.org/docs/postgres-to-splunk/) notes.
 
 </details>
 
@@ -489,7 +486,7 @@ python scripts/export_postgres_to_splunk.py \
 
 Contributions are welcome! Whether you're fixing bugs, adding new MCP integrations, improving agent prompts, or building new workflows or agents — we'd love your help and leadership.
 
-**Find meaningful work automatically:** Vigil includes an [auto-contributor](contrib/README.md) tool that researches proprietary AI security platforms, identifies capability gaps, and generates ready-to-file GitHub issues. Pick a vendor, run the tool, and you'll have a scoped contribution spec in minutes.
+**Find meaningful work automatically:** Vigil includes an [auto-contributor](contrib/auto-contributor/SKILL.md) tool that researches proprietary AI security platforms, identifies capability gaps, and generates ready-to-file GitHub issues. Pick a vendor, run the tool, and you'll have a scoped contribution spec in minutes.
 
 **Join the community:** Connect with the Vigil community on [Discord](https://discord.gg/Kw68sPJU) to discuss ideas, get help, and collaborate with other contributors.
 
@@ -498,7 +495,7 @@ To contribute:
 2. Make your changes and test them
 3. Submit a pull request with a clear description
 
-See the [Quick Start](#quick-start) to get your local environment running, and [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+See the [Quick Start](#quick-start) to get your local environment running, and the [contributing guide](https://vigilsoc.org/docs/contributing/) for the full process.
 
 ---
 

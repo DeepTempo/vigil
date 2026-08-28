@@ -13,7 +13,6 @@ WIRING = (
     "infra/docker/docker-compose.yml",
     "infra/helm/vigil/templates/llm-worker-deployment.yaml",
     "infra/helm/vigil/values.yaml",
-    "infra/helm/vigil/README.md",
     "start.sh",
 )
 

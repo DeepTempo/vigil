@@ -297,11 +297,15 @@ class TestBoardBriefTemplate:
     """Verify the board brief template exists and has required sections."""
 
     TEMPLATE_PATH = (
-        Path(__file__).parent.parent.parent.parent / "docs" / "templates" / "board-brief.md"
+        Path(__file__).parent.parent.parent.parent
+        / "core"
+        / "agents"
+        / "templates"
+        / "board-brief.md"
     )
 
     def test_template_file_exists(self):
-        """Board brief template must exist at docs/templates/board-brief.md."""
+        """Board brief template must exist at core/agents/templates/board-brief.md."""
         assert self.TEMPLATE_PATH.exists(), (
             f"Template not found at {self.TEMPLATE_PATH}"
         )
