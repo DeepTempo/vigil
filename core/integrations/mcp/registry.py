@@ -198,6 +198,20 @@ def _normalised(tool: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# Whether this deployment dials every configured MCP server at startup. Off by
+# default under DEV_MODE; an explicit ``mcp_auto_connect_on_startup`` wins either
+# way. ``refresh_from_client`` uses it to decide whether live connection state is
+# authoritative enough to prune servers. services/api/main.py makes the same call
+# for its own startup path; core/ cannot import services/, so the rule lives here.
+def eager_connect_enabled() -> bool:
+    from core.config import get_settings
+
+    settings = get_settings()
+    if settings.mcp_auto_connect_on_startup is not None:
+        return bool(settings.mcp_auto_connect_on_startup)
+    return not settings.dev_mode
+
+
 # The disk cache is a warm-start artifact: a server can appear there and have
 # failed to connect this boot. Registering it anyway lets a model claim a
 # capability it cannot exercise (#129), so live connection state gates it.
