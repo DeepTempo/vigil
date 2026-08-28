@@ -93,8 +93,9 @@ spec:
                 # than hard-fail at the file check. The marker says "the
                 # cluster already accepted these as applied," which is
                 # exactly the contract upgrade-time idempotency relies on.
-                # See infra/database/init/README.md for the reserved-filenames
-                # warning that prevents these names being reused.
+                # See https://vigilsoc.org/docs/database-init/ for the
+                # reserved-filenames warning that prevents these names
+                # being reused.
                 local marker
                 marker=$(psql -tA -c "SELECT 1 FROM _vigil_schema_versions WHERE filename='$f' LIMIT 1" || true)
                 if [ "$marker" = "1" ]; then

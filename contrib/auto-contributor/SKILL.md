@@ -65,12 +65,12 @@ web_fetch: [company platform/product URL]
    - **Foundation model level:** Would DeepTempo's LogLM address this through compound detection on raw log data? LogLM detects novel patterns, zero-day behaviors, and subtle anomalies that no rule exists for — this is the "detection gap" between AI-powered attack generation and human-authored signature creation. Check the LogLM entry in the registry for architecture details.
 
 **Vigil capability check — where to look:**
-- Agents: `docs/AGENTS.md` — 12 specialized agents and their capabilities
-- Skills: `skills/` directory — 4 multi-agent workflows
-- MCP integrations: `docs/INTEGRATIONS.md` — 30+ tool integrations
-- Detection rules: `docs/DETECTION_ENGINEERING.md` — 7,200+ rules
-- Case management: `docs/CHAT_CASE_MANAGEMENT.md`
-- Architecture: `docs/README.md`
+- Agents: https://vigilsoc.org/docs/agents/ — 13 specialized agents and their capabilities
+- Skills: `contrib/auto-contributor/` and imported `SKILL.md` zips — plus the five `WORKFLOW.md` playbooks
+- MCP integrations: https://vigilsoc.org/docs/integrations/ — 30+ tool integrations
+- Detection rules: https://vigilsoc.org/docs/detection-engineering/ — 7,200+ rules
+- Case management: https://vigilsoc.org/docs/chat-case-management/
+- Architecture: https://vigilsoc.org/docs/architecture/
 
 **ARTEMIS capability check:**
 - Supervisor architecture (long-horizon autonomous operation)

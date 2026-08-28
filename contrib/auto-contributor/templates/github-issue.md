@@ -38,7 +38,7 @@
 
 - [ ] [Specific, testable criterion — e.g., "Given an ARTEMIS session output with 3 kill chains, the agent produces a remediation ranking that correctly identifies the fix eliminating the most chains"]
 - [ ] [Another criterion]
-- [ ] [Documentation updated in docs/]
+- [ ] [Documentation updated at vigilsoc.org/docs if the change is user-facing]
 - [ ] [Tests added in tests/]
 - [ ] [Works with existing Skills (specify which)]
 
