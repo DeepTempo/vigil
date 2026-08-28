@@ -271,7 +271,17 @@ async def update_case(case_id: str, case_data: CaseUpdate):
     if case_data.priority is not None:
         updates["priority"] = case_data.priority
     if case_data.notes is not None:
-        updates["notes"] = case_data.notes
+        case = data_service.get_case(case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        notes = case.get("notes") or []
+        notes.append(
+            {
+                "timestamp": utcnow().isoformat() + "Z",
+                "content": case_data.notes,
+            }
+        )
+        updates["notes"] = notes
 
     success = data_service.update_case(case_id, **updates)
 
