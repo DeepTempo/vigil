@@ -141,8 +141,10 @@ export default function CustomIntegrationBuilder({ onClose, onSave }: Props) {
   }
 
   const next = () => {
-    if (step === 0) (needsClarification ? generate(userAnswer) : generate())
-    else if (step === 1) validate()
+    if (step === 0) {
+      if (needsClarification) generate(userAnswer)
+      else generate()
+    } else if (step === 1) validate()
     else finalSave()
   }
 
