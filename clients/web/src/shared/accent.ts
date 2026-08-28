@@ -1,7 +1,18 @@
-/* Accent palette + hex helpers (ported from main.js tweaks logic).
-   Shared rather than shell/: routing/Loader and the login screen paint from
-   these outside the console, and nothing here knows about the shell. */
+/* Accent palette, hex helpers, and the persisted-accent reader (ported from
+   main.js tweaks logic). Shared rather than shell/: routing/Loader and the
+   login screen paint from these outside the console, and nothing here knows
+   about the shell. The stored accent is read here rather than in each painter
+   so there is one key, one shape and one default. */
 import type { CSSProperties } from 'react'
+
+export interface AccentState {
+  /** preset key, or null when a custom hex is in use */
+  key: string | null
+  /** base accent (--accent) */
+  a: string
+  /** lightened highlight tone (--accent-2) */
+  b: string
+}
 
 export const ACCENTS: Record<string, [string, string]> = {
   violet: ['#7d74f3', '#9a92f7'],
@@ -44,4 +55,25 @@ export function accentVars(a: string, b: string): CSSProperties {
     '--accent-dim': a + '24',
     '--accent-line': a + '55',
   } as CSSProperties
+}
+
+export const ACCENT_KEY = 'soc.accent'
+export const DEFAULT_ACCENT: AccentState = { key: 'violet', a: '#7d74f3', b: '#9a92f7' }
+
+/** read the accent the user last picked (Settings -> Appearance). Called by
+ *  SocThemeProvider for its initial state and directly by routing/Loader,
+ *  which paints before any provider mounts. */
+export function loadAccent(): AccentState {
+  try {
+    const raw = localStorage.getItem(ACCENT_KEY)
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<AccentState>
+      if (p && typeof p.a === 'string' && typeof p.b === 'string') {
+        return { key: typeof p.key === 'string' ? p.key : null, a: p.a, b: p.b }
+      }
+    }
+  } catch {
+    /* malformed / unavailable localStorage — fall back to the default */
+  }
+  return DEFAULT_ACCENT
 }

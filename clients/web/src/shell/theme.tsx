@@ -12,9 +12,10 @@
      needs the scheme with no SocThemeProvider above it at all. The
      preference has to sit above all three, and it has to outlive the
      browser.
-   - accent + bg are console-only and live here plus localStorage; the
-     only reader outside a SocThemeProvider is routing/Loader, which
-     re-reads the accent key directly because it renders first.
+   - accent + bg are console-only and persist to localStorage. bg is read
+     and written only here; accent's key, shape, default and reader live in
+     shared/accent.ts, because routing/Loader paints from the stored accent
+     before any provider mounts and must not re-derive them.
    ============================================================ */
 import {
   createContext,
@@ -26,17 +27,17 @@ import {
   type ReactNode,
 } from 'react'
 import { useColorScheme } from '../contexts/ColorSchemeContext'
-import { ACCENTS, lighten, normHex } from '../shared/accent'
+import {
+  ACCENTS,
+  ACCENT_KEY,
+  lighten,
+  loadAccent,
+  normHex,
+  type AccentState,
+} from '../shared/accent'
 import { BG_PRESETS, defaultBaseForScheme, isDarkBase, normHex as normBgHex } from './bg'
 
-export interface AccentState {
-  /** preset key, or null when a custom hex is in use */
-  key: string | null
-  /** base accent (--accent) */
-  a: string
-  /** lightened highlight tone (--accent-2) */
-  b: string
-}
+export type { AccentState }
 
 export interface BgState {
   /** preset key, or null when a custom hex is in use */
@@ -60,26 +61,8 @@ interface SocThemeValue {
   setBgHex: (hex: string) => boolean
 }
 
-const DEFAULT_ACCENT: AccentState = { key: 'violet', a: '#7d74f3', b: '#9a92f7' }
-const ACCENT_KEY = 'soc.accent'
-
 const DEFAULT_BG: BgState = { key: 'slate', base: BG_PRESETS.slate }
 const BG_KEY = 'soc.bg'
-
-function loadAccent(): AccentState {
-  try {
-    const raw = localStorage.getItem(ACCENT_KEY)
-    if (raw) {
-      const p = JSON.parse(raw) as Partial<AccentState>
-      if (p && typeof p.a === 'string' && typeof p.b === 'string') {
-        return { key: typeof p.key === 'string' ? p.key : null, a: p.a, b: p.b }
-      }
-    }
-  } catch {
-    /* malformed / unavailable localStorage — fall back to the default */
-  }
-  return DEFAULT_ACCENT
-}
 
 function loadBg(): BgState {
   try {
