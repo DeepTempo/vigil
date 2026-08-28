@@ -216,8 +216,7 @@ export function getAgentDisplayName(agentId?: string): string {
   return prettyHandle(agentId)
 }
 
-/** the human verdict, NOT the backend's actual_outcome — separate axes
- *  (DECISIONS_WIRING.md §3) */
+/** the human verdict, NOT the backend's actual_outcome — separate axes */
 function decisionOutcome(human?: string): Outcome {
   if (human === 'agree') return 'agree'
   if (human === 'disagree') return 'disagree'

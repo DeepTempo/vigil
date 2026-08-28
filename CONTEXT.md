@@ -26,7 +26,7 @@ _Avoid_: incident, ticket
 
 **Source Evidence**:
 Normalized, bounded evidence attached to a Finding (contract in
-`docs/SOURCE_EVIDENCE.md`). A finding-level concept, not case-scoped.
+[source evidence](https://vigilsoc.org/docs/source-evidence/)). A finding-level concept, not case-scoped.
 
 **Detection** (`detections`):
 Detection-*rule* sources and their management — not finding analysis. "The rules
