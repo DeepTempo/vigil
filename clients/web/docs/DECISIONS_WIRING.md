@@ -140,9 +140,10 @@ KPI strip (`DecKpis`, `:36-67`): swap `decStats()` → `useDecisionStats` →
 The old page uses MUI `Dialog`. The redesign has its own modal primitive
 **`Popup`** (`ui.tsx:20-76`, scoped `.modal-overlay/.modal`, Esc + focus-return +
 outside-click) and form primitives **`Field` / `TextInput` / `Toggle` / `Select`**
-(`ui.tsx:273-379`). Use those — **do not** import MUI into `redesign/`
+(`ui.tsx:273-379`). Use those — **do not** import MUI into the console
 (`CONSOLE_GAPS.md` keeps the bundle MUI-free; embedding app components risks the
-context-isolation crashes noted in memory).
+context-isolation crashes noted in memory). Moot since #502: MUI is gone from the
+repo entirely.
 
 ### Modal A — Reject Action dialog (HARD requirement)
 Old: `AIDecisions.tsx:699-732`. Triggered by Reject in the Approvals table.

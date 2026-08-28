@@ -50,10 +50,11 @@ code on that date — or **[carried forward]** — inherited from the 2026-06-22
       `screens/settings/CostAnalyticsCard.tsx` already has the range selector, pricing
       provenance, the usage table and loading/error/empty states. Actually missing:
       cost-by-agent / tokens-by-model charts; `POST /analytics/recalculate-cost`
-      (`services/api.ts:978`) and `GET /analytics/budget` (`:948`, `:951`) are defined
-      with **no caller**; and the placement question — a cost view an operator checks
-      routinely may not belong inside Settings. Decide placement before adding more to
-      the card.
+      (`services/api.ts:978`) is defined with **no caller**; and the placement question
+      — a cost view an operator checks routinely may not belong inside Settings. Decide
+      placement before adding more to the card. The budget endpoints next to it are
+      *not* part of the gap — `budgetsApi` is wired from `useSettings.ts:738,754`, both
+      setup dialogs, and `useSetupChecklist.ts:33`.
 - [ ] Per-case **relationships / evidence / audit-log**, structured close, escalate,
       bulkUpdate. **[carried forward]**
 - [ ] Finding **VStrike `NetworkContextPanel`** — needs a VStrike provider that nothing

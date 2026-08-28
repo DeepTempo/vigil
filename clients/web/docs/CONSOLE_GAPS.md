@@ -22,8 +22,9 @@ account for** so we can tackle it in future passes.
 > **Styling: Tailwind.** The console uses Tailwind v3 with **preflight disabled**,
 > because the scoped root reset in `styles.css` (`@layer base`) does that job and
 > the two would fight. Content globbing was scoped to `src/redesign` when written
-> and is now `./src/**`; there is no second UI left to leak into. The reusable design-system primitives (data table, per-row badges,
-> chart internals, the dock / tweaks / rail / timeline / master-detail) live in
+> and is now `./src/**`; there is no second UI left to leak into. The reusable
+> design-system primitives (data table, per-row badges, chart internals, the
+> dock / tweaks / rail / timeline / master-detail) live in
 > `styles.css` under `@layer components` (the idiomatic Tailwind home for
 > repeated patterns); screen layout/composition uses utility classes. Everything
 > is scoped under `.soc-console`.
@@ -32,7 +33,7 @@ account for** so we can tackle it in future passes.
 > places and the split matters:
 > - **Base palette / radii / surfaces** → `styles.css` `:root` (e.g. `--bg`,
 >   `--accent`, `--r`). This is the source of truth for the dark theme.
-> - **Accent presets + default + runtime override** → `shell/accent.ts`
+> - **Accent presets + default + runtime override** → `shared/accent.ts`
 >   (`accentVars()`).
 > - **Utility exposure only** → `tailwind.config.cjs` re-maps the CSS vars onto
 >   Tailwind utilities; it does **not** define values. (The accent stays
@@ -651,11 +652,14 @@ clients/web/src/
     toast.tsx          global snackbar (useToast, scoped under .soc-console; §10)
     useDesktopNotifications.ts  OS notifications for new findings, gated by settings (§10)
     ErrorBoundary.tsx  wraps the active screen, resets on screen change
-    accent.ts / bg.ts  accent + background presets, hex/lighten helpers, accentVars()
+    bg.ts              background presets + isDarkBase/bgVars
 
   shared/              cross-screen primitives
     ui.tsx             shared UI primitives (select, Rating, Slider, etc.)
     formKit.tsx        form controls for the Settings screens
+    accent.ts          accent presets + hex/lighten helpers + accentVars(); here
+                       rather than shell/ because routing/Loader and the login
+                       screen paint from it outside the console
     VigilLogo.tsx      inline-SVG brand lockup + mark (recolor via currentColor)
     icons.tsx          Icon component + ICON path map
     charts.tsx         Donut / Spark / Trend / Hbars / Heatmap (inline-SVG, accent-aware)

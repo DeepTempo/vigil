@@ -377,7 +377,6 @@ _Avoid_: page, tab, view
   Resolved: they are distinct, and the UI one is a **Finding view-model**. Reading
   a screen as evidence of what a Finding *is* gets the domain wrong; `mappers.ts`
   is the only honest account of which fields survive the trip.
-
 - **"a future run can be added" is narrower than it reads.** A new fixture is only
   a valid Fold Equivalence input if its Ledger is in the pre-harness file format,
   and nothing produces that format any more. The population of possible fixtures

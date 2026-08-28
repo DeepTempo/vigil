@@ -5,9 +5,9 @@ Background: ``main`` merged #348 ("route local Ollama providers through
 Bifrost") while this branch carried an overlapping non-Anthropic routing
 change. The reconciliation kept #348's ``provider_id::model_id`` parsing and
 no-tools guardrail prompt, and added a fallback to the *configured default*
-provider so the Chat dock — which sends a **bare** model id — still
-routes to a non-Anthropic provider instead of 503-ing on Ollama-only
-deployments. These tests pin that behaviour.
+provider so the Chat dock — which sends a **bare** model id — still routes to
+a non-Anthropic provider instead of 503-ing on Ollama-only deployments. These
+tests pin that behaviour.
 
 The module is loaded via ``importlib`` so the pure helper functions can be
 exercised without importing the whole ``services.api.routers`` package (which pulls in
