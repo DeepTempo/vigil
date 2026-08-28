@@ -396,6 +396,7 @@ class CaseWorkflowService:
         """
         from core.cases.case_sla_service import CaseSLAService
         from core.storage.models import CaseClosureInfo
+        from core.storage.shared_ioc_repository import index_case_iocs_on_close
 
         case = session.query(Case).filter(Case.case_id == case_id).first()
         if not case:
@@ -414,6 +415,7 @@ class CaseWorkflowService:
         session.add(closure)
         CaseSLAService().mark_resolution_complete(case_id, session)
         session.flush()
+        index_case_iocs_on_close(session, case_id)
         return closure
 
     def merge_cases(
