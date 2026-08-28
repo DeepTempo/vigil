@@ -626,7 +626,7 @@ page replaced the floating Tweaks panel).
 
 ## File map
 
-Updated 2026-08-21 for the flattened tree.
+Updated 2026-08-28 for the flattened tree.
 
 ```
 clients/web/tailwind.config.cjs  Tailwind config (./src/**, preflight off; re-exposes CSS vars as utilities)
@@ -646,6 +646,7 @@ clients/web/src/
     SocConsole.tsx     rail, topbar, view router, chat dock, FAB, error boundary
     SocConsole.test.tsx smoke test: mount, nav, dashboard tabs, master-detail, chat, decisions, skills
     Chat.tsx           Vigil chat dock (real SSE via streamFetch; see §5)
+    Chat.test.tsx      dock resize + keyboard/close affordances
     useConversations.ts durable chat history (Chat.tsx's private hook)
     UserMenu.tsx       rail account menu (name/email/role, Settings, Logout) — useAuth
     theme.tsx          SocThemeProvider / useSocTheme (scheme + accent + bg → data-theme/CSS vars)
@@ -657,9 +658,10 @@ clients/web/src/
   shared/              cross-screen primitives
     ui.tsx             shared UI primitives (select, Rating, Slider, etc.)
     formKit.tsx        form controls for the Settings screens
-    accent.ts          accent presets + hex/lighten helpers + accentVars(); here
-                       rather than shell/ because routing/Loader and the login
-                       screen paint from it outside the console
+    accent.ts          accent presets, hex/lighten helpers, accentVars(), and the
+                       localStorage key/default/reader (loadAccent); here rather
+                       than shell/ because routing/Loader and the login screen
+                       paint from it outside the console
     VigilLogo.tsx      inline-SVG brand lockup + mark (recolor via currentColor)
     icons.tsx          Icon component + ICON path map
     charts.tsx         Donut / Spark / Trend / Hbars / Heatmap (inline-SVG, accent-aware)
@@ -682,6 +684,14 @@ clients/web/src/
     AuthContext.tsx        session + hasPermission
     ColorSchemeContext.tsx light/dark, backend-persisted, app-wide
 
+  config/              integration + AI-component catalogs (integrations.ts,
+                       integrationSchema.ts, aiComponents.ts, sourceBadges.ts) and
+                       the runtime <meta>-injected constants (basePath.ts,
+                       extensionAllowlist.ts)
+
+  assets/              brand SVGs (vigil-logo, vigil-mark)
+  test/setup.ts        vitest setup — named by vitest.config.ts, not imported
+
   screens/<name>/      each view + its private hooks/components
     dashboard/         DashboardScreen, AttackTechniqueFindings, FindingPopup,
                        SourceEvidenceSection, attackData, findingsColumns,
@@ -698,4 +708,8 @@ clients/web/src/
     settings/          SettingsScreen, useSettings + section components (General/System/
                        Federation/Users/Appearance/SlaPolicies/AutoInvestigate/AiConfig/
                        Integrations/Developer + dialogs); useSlaPolicies for the SLA section
+
+  services/            axios clients every screen and hook fetches through
+    api.ts             the shared client + per-domain API objects + streamFetch
+    skillsApi.ts / notifications.ts
 ```

@@ -12,6 +12,12 @@ code on that date — or **[carried forward]** — inherited from the 2026-06-22
 > **Paths.** There is no `src/redesign/` any more. The console shell is `src/shell/`,
 > its views are `src/screens/`, and the route guards plus the transition loader are
 > `src/routing/`. Older notes in the gaps doc still use the pre-flatten paths.
+>
+> **No dead files.** Every `.ts`/`.tsx` under `src/` is reachable from `main.tsx`,
+> the flatten included — re-checked 2026-08-28. The two that look orphaned to a
+> plain import grep are not: `test/setup.ts` is named by `vitest.config.ts`, and
+> `screens/setup/SetupScreen.tsx` is a `lazy(() => import(...))` in `App.tsx`.
+> Nothing to delete.
 
 ---
 
@@ -26,7 +32,7 @@ code on that date — or **[carried forward]** — inherited from the 2026-06-22
       SQL. A caller checking the status code concludes a case-event webhook exists.
       Smallest honest fix, worth doing independently of any UI: return `501` from those
       six routes, or unmount the router. Inbound receivers are unaffected and correctly
-      separated (see `webhooks_router.py:14-17`).
+      separated (see `webhooks_router.py:13-16`).
 - [ ] **VStrike / CloudCurrent 3D control plane** — kill-chain replay, storyline
       playback, camera control (`vstrikeApi`). **[carried forward]**
 - [ ] **Timesketch sketch-management page** — case export is wired; sketch
@@ -38,7 +44,7 @@ code on that date — or **[carried forward]** — inherited from the 2026-06-22
 ## 🟡 Per-screen depth (§8)
 
 - [ ] **Entity Graph is a permanent empty state** — **[verified 2026-08-21]**.
-      `screens/dashboard/DashboardScreen.tsx:386` renders `EntityStub`, whose copy
+      `screens/dashboard/DashboardScreen.tsx:387` renders `EntityStub`, whose copy
       ("appears here once findings include entity fields") implies a data-availability
       problem when there is no rendering code at all — a user with complete entity data
       sees the same screen as one with none. `@xyflow/react` is already bundled for
@@ -50,7 +56,7 @@ code on that date — or **[carried forward]** — inherited from the 2026-06-22
       `screens/settings/CostAnalyticsCard.tsx` already has the range selector, pricing
       provenance, the usage table and loading/error/empty states. Actually missing:
       cost-by-agent / tokens-by-model charts; `POST /analytics/recalculate-cost`
-      (`services/api.ts:978`) is defined with **no caller**; and the placement question
+      (`services/api.ts:971`) is defined with **no caller**; and the placement question
       — a cost view an operator checks routinely may not belong inside Settings. Decide
       placement before adding more to the card. The budget endpoints next to it are
       *not* part of the gap — `budgetsApi` is wired from `useSettings.ts:738,754`, both
@@ -72,14 +78,14 @@ code on that date — or **[carried forward]** — inherited from the 2026-06-22
 
 ## 🟡 Cross-cutting
 
-- [ ] **Cross-device accent** — **[verified 2026-08-21]**. Accent and background persist
-      to `localStorage` only (`shell/theme.tsx:60,63`), while light/dark — chosen on the
-      *same* Appearance panel — persists to the backend via `configApi.setTheme`. Two
-      adjacent controls behave differently and nothing says so. The precedent to copy is
-      `/config/theme` plus the Mirror pattern (`CONTEXT.md:165`). Decide first whether
-      appearance is **per-user** or **per-install**: `/config/theme` is install-wide
-      config today, so on a shared deployment analysts may already be overwriting each
-      other's light/dark choice.
+- [ ] **Cross-device accent** — **[verified 2026-08-28]**. Accent and background persist
+      to `localStorage` only (`shared/accent.ts:60` and `shell/theme.tsx:65`), while
+      light/dark — chosen on the *same* Appearance panel — persists to the backend via
+      `configApi.setTheme`. Two adjacent controls behave differently and nothing says
+      so. The precedent to copy is `/config/theme` plus the Mirror pattern
+      (`CONTEXT.md:165`). Decide first whether appearance is **per-user** or
+      **per-install**: `/config/theme` is install-wide config today, so on a shared
+      deployment analysts may already be overwriting each other's light/dark choice.
 - [ ] **Responsive / mobile-tablet** pass — layout targets desktop (§11).
       **[carried forward]**
 - [ ] **Test coverage** — approvals approve/reject path and the detailed-feedback

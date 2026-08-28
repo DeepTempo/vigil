@@ -1,9 +1,9 @@
 /* ============================================================
-   Settings · Appearance — light/dark mode + accent color.
-   Replaces the old floating top-bar "tweaks" panel. Mode is the
-   app-wide, backend-persisted preference (shared with the legacy
-   UI); accent is console-only, persisted to localStorage. Both
-   are read/written through the SOC theme context.
+   Settings · Appearance — light/dark scheme, accent and background.
+   Replaces the old floating top-bar "tweaks" panel. Scheme is the
+   app-wide preference and persists to the backend; accent and
+   background persist to this browser only. All three are
+   read/written through the SOC theme context.
    ============================================================ */
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'

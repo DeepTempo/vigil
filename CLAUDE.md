@@ -51,11 +51,14 @@ vigil/
 │       ├── routing/      # What App.tsx composes: route guards + the transition Loader
 │       ├── shell/        # The console frame — SocConsole, chat dock, theming
 │       ├── screens/      # One dir per view; the 8 keyed ones + login, setup, 404
-│       ├── shared/       # UI primitives (ui.tsx, formKit.tsx, icons.tsx)
+│       ├── shared/       # UI primitives (ui.tsx, formKit.tsx, icons.tsx, accent.ts)
 │       ├── data/         # View-model types, API mappers, static lookups
 │       ├── extensions/   # Page-extension host + connector contracts
 │       ├── services/     # Axios API client services
-│       └── contexts/     # React Context (auth, color scheme)
+│       ├── contexts/     # React Context (auth, color scheme)
+│       ├── config/       # Integration/component catalogs + runtime-injected constants
+│       ├── assets/       # Brand SVGs
+│       └── test/         # vitest setup (named by vitest.config.ts)
 ├── tools/mcp/            # The MCP servers that talk to Vigil's own services
 ├── core/                 # Shared library: capability domains + a storage/platform tier; API routers colocate at core/<domain>/*_router.py
 │   ├── llm/              # The LLM layer: router/, harness/, providers/, cost/ — see core/llm/README.md
