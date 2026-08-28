@@ -354,6 +354,16 @@ class IngestionService:
             self.stats["cases_errors"] += 1
             return False
 
+        notes = case_data.get("notes", [])
+        if isinstance(notes, str):
+            notes = [
+                {
+                    "timestamp": utcnow().isoformat() + "Z",
+                    "content": notes,
+                }
+            ]
+            case_data = {**case_data, "notes": notes}
+
         try:
             if self.use_database and self.db_service:
                 # Check if case already exists
@@ -362,15 +372,6 @@ class IngestionService:
                     logger.debug(f"Case {case_id} already exists, skipping")
                     self.stats["cases_skipped"] += 1
                     return True
-
-                notes = case_data.get("notes", [])
-                if isinstance(notes, str):
-                    notes = [
-                        {
-                            "timestamp": utcnow().isoformat() + "Z",
-                            "content": notes,
-                        }
-                    ]
 
                 # Create case in database
                 case = self.db_service.create_case(
