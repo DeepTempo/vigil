@@ -5,7 +5,8 @@
    analytics + feedback, and a separate pending-approvals queue.
    See DECISIONS_WIRING.md.
    ============================================================ */
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { Icon } from '../../shared/icons'
 import { Hbars, type HbarItem } from '../../shared/charts'
@@ -27,6 +28,7 @@ import { aiDecisionsApi, approvalsApi } from '../../../services/api'
 import { EmptyState, Popup, Field, TextInput, Select, Rating, Slider, Dropdown, activateOnKey } from '../../shared/ui'
 
 type DecTab = 'pending' | 'all' | 'analytics' | 'approvals'
+const DEC_TABS: string[] = ['pending', 'all', 'analytics', 'approvals']
 type Assessment = 'agree' | 'partial' | 'disagree'
 
 const STATUS_OPTS = [
@@ -613,7 +615,13 @@ function DecisionsDetail({
 /* ---------------- screen shell ---------------- */
 export default function DecisionsScreen({ setViewFull }: ScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState<DecTab>('pending')
+  // The open tab lives in ?tab= so the rail can send the approvals badge
+  // straight to the queue it counted instead of the feedback tab (#746), and so
+  // a tab is deep-linkable at all. Missing / unknown falls back to feedback.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const tab: DecTab = tabParam && DEC_TABS.includes(tabParam) ? (tabParam as DecTab) : 'pending'
+  const setTab = useCallback((next: DecTab) => setSearchParams({ tab: next }), [setSearchParams])
   const [query, setQuery] = useState('')
   const [agentF, setAgentF] = useState('all')
   const [statusF, setStatusF] = useState<DecisionStatus>('all')

@@ -312,7 +312,9 @@ function SocConsoleInner() {
               <button
                 key={label}
                 className={`nav-btn${active ? ' active' : ''}`}
-                onClick={key ? () => go(key) : undefined}
+                // a badged item is a pointer at the approvals queue, so send the
+                // click there rather than to the screen's default tab (#746)
+                onClick={key ? () => go(key, waiting ? { search: '?tab=approvals' } : undefined) : undefined}
                 aria-label={waiting ? `${label} (${waiting} waiting)` : label}
               >
                 <Icon name={icon} />
