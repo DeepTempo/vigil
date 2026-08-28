@@ -13,7 +13,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { bootstrapApi } from '../../services/api'
 import { Icon } from '../../shared/icons'
 import { VigilLogo } from '../../shared/VigilLogo'
-import { accentVars } from '../../shell/accent'
+import { accentVars } from '../../shared/accent'
 import { SocThemeProvider, useSocTheme } from '../../shell/theme'
 
 export default function LoginScreen() {

@@ -3,7 +3,7 @@
    a single base color the user picks. Dark vs. light is decided by the base's
    relative luminance; every other token is the base mixed toward white/black. */
 import type { CSSProperties } from 'react'
-import { normHex } from './accent'
+import { normHex } from '../shared/accent'
 
 /** base hex for each named preset */
 export const BG_PRESETS: Record<string, string> = {

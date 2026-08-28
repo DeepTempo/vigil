@@ -16,38 +16,41 @@ const SetupScreen = lazy(() => import('./screens/setup/SetupScreen'))
 function App() {
   return (
     <AuthProvider>
-      <div className="flex h-screen">
-        <Suspense fallback={<Loader />}>
-          <Routes>
-            {/* Public — the login screen is the single sign-in surface. */}
-            <Route path="/login" element={<SocLogin />} />
+      {/* No layout wrapper: every routed surface — console, login, setup and
+          the Loader — mounts its own `.soc-console` root, which is
+          `position: fixed; inset: 0`. A sized wrapper here holds nothing but
+          out-of-flow children, so its height is dead space the document has
+          to scroll past. */}
+      <Suspense fallback={<Loader />}>
+        <Routes>
+          {/* Public — the login screen is the single sign-in surface. */}
+          <Route path="/login" element={<SocLogin />} />
 
-            {/* OUTSIDE SetupGate so it stays reachable while unconfigured (no redirect loop). */}
-            <Route
-              path="/setup"
-              element={<ProtectedRoute><SetupScreen /></ProtectedRoute>}
-            />
+          {/* OUTSIDE SetupGate so it stays reachable while unconfigured (no redirect loop). */}
+          <Route
+            path="/setup"
+            element={<ProtectedRoute><SetupScreen /></ProtectedRoute>}
+          />
 
-            {/* Primary app — the SOC console, gated behind auth + first-run setup.
-                Each screen owns a URL (/<screen>); cases deep-link to a specific
-                case via the ?case=<caseId> query param. */}
-            <Route
-              element={
-                <ProtectedRoute>
-                  <SetupGate>
-                    <Outlet />
-                  </SetupGate>
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path=":screen" element={<SocConsole />} />
-              {/* deeper junk paths (/a/b/…) fall through to the in-shell 404 */}
-              <Route path="*" element={<SocConsole />} />
-            </Route>
-          </Routes>
-        </Suspense>
-      </div>
+          {/* Primary app — the SOC console, gated behind auth + first-run setup.
+              Each screen owns a URL (/<screen>); cases deep-link to a specific
+              case via the ?case=<caseId> query param. */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <SetupGate>
+                  <Outlet />
+                </SetupGate>
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path=":screen" element={<SocConsole />} />
+            {/* deeper junk paths (/a/b/…) fall through to the in-shell 404 */}
+            <Route path="*" element={<SocConsole />} />
+          </Route>
+        </Routes>
+      </Suspense>
     </AuthProvider>
   )
 }

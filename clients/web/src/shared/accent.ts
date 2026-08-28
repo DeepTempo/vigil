@@ -1,4 +1,6 @@
-/* Accent palette + hex helpers (ported from main.js tweaks logic). */
+/* Accent palette + hex helpers (ported from main.js tweaks logic).
+   Shared rather than shell/: routing/Loader and the login screen paint from
+   these outside the console, and nothing here knows about the shell. */
 import type { CSSProperties } from 'react'
 
 export const ACCENTS: Record<string, [string, string]> = {

@@ -8,7 +8,7 @@
 import '../styles.css'
 import { useColorScheme } from '../contexts/ColorSchemeContext'
 import { VigilMark } from '../shared/VigilLogo'
-import { accentVars } from '../shell/accent'
+import { accentVars } from '../shared/accent'
 
 const DEFAULT_ACCENT: [string, string] = ['#7d74f3', '#9a92f7']
 

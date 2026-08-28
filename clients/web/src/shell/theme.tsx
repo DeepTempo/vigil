@@ -4,13 +4,17 @@
    the deeply-nested settings section can drive the top-level
    .soc-console styling without prop-drilling).
 
-   Layered over ColorSchemeContext on purpose; do not collapse them:
+   Layered over ColorSchemeContext on purpose; do not merge them:
    - scheme (light/dark) delegates to ColorSchemeContext, which is
-     app-wide and backend-persisted. Login and Setup render outside
-     THIS provider but still need the scheme, and the preference has
-     to outlive the browser.
-   - accent + bg are console-only, persisted to localStorage. Nothing
-     outside .soc-console reads them.
+     mounted once at the root (main.tsx) and backend-persisted. THIS
+     provider is mounted twice, in independent trees — SocConsole and
+     LoginScreen each wrap themselves in one — and routing/Loader
+     needs the scheme with no SocThemeProvider above it at all. The
+     preference has to sit above all three, and it has to outlive the
+     browser.
+   - accent + bg are console-only and live here plus localStorage; the
+     only reader outside a SocThemeProvider is routing/Loader, which
+     re-reads the accent key directly because it renders first.
    ============================================================ */
 import {
   createContext,
@@ -22,7 +26,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useColorScheme } from '../contexts/ColorSchemeContext'
-import { ACCENTS, lighten, normHex } from './accent'
+import { ACCENTS, lighten, normHex } from '../shared/accent'
 import { BG_PRESETS, defaultBaseForScheme, isDarkBase, normHex as normBgHex } from './bg'
 
 export interface AccentState {

@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { SettingsCard } from '../../shared/ui'
-import { ACCENT_SWATCHES } from '../../shell/accent'
+import { ACCENT_SWATCHES } from '../../shared/accent'
 import { BG_SWATCHES } from '../../shell/bg'
 import { useSocTheme } from '../../shell/theme'
 import type { SectionProps } from './types'
