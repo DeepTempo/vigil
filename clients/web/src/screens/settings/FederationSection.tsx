@@ -1,8 +1,3 @@
-/* ============================================================
-   Settings · Federation — pull findings from external SIEM/EDR
-   sources on a cadence and feed the auto-investigator. Mirrors
-   FederationTab.tsx. Auto-refreshes every 10s via useFederation.
-   ============================================================ */
 import { Icon } from '../../shared/icons'
 import { EmptyState, Select, SettingsCard, TextInput, Toggle } from '../../shared/ui'
 import { useFederation } from './useSettings'

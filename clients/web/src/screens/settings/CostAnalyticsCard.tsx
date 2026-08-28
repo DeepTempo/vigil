@@ -1,8 +1,3 @@
-/* ============================================================
-   Settings · General · Cost Analytics — compact, on-theme port of
-   pages/CostAnalytics.tsx. KPI row + per-model spend breakdown over a
-   selectable time range, fetched from /analytics/cost.
-   ============================================================ */
 import { useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { EmptyState, SettingsCard } from '../../shared/ui'

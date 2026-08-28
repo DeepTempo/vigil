@@ -1,10 +1,3 @@
-/* ============================================================
-   Data + actions hook for the Auto Ops (Autonomous Operations)
-   screen — mirrors the legacy Orchestrator page: orchestrator
-   status + the investigation queue, polled every 10s, plus the
-   control actions (enable/disable, max-agents, scan, kill-all,
-   wake/kill/review per investigation). All via orchestratorApi.
-   ============================================================ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { orchestratorApi, configApi } from '../../services/api'
 import type { Phase } from '../cases/useCases'
@@ -49,7 +42,6 @@ export interface Investigation {
   current_activity: string | null
 }
 
-/** order the queue by "needs attention first", then newest — matches legacy */
 const STATUS_PRIORITY: Record<string, number> = {
   executing: 0,
   assigned: 1,
@@ -82,7 +74,6 @@ export function useAutoOps() {
   const [phase, setPhase] = useState<Phase>('loading')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  /** which control action is in flight (disables the relevant button) */
   const [busy, setBusy] = useState<string | null>(null)
   const hasData = useRef(false)
 
@@ -200,7 +191,6 @@ export function useAutoOps() {
     reload: () => load(false),
     clearError: () => setError(null),
     clearNotice: () => setNotice(null),
-    // actions
     toggleEnabled,
     killAll,
     setMaxAgents,

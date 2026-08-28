@@ -1,7 +1,3 @@
-/* ============================================================
-   Dashboard — tabbed console (Findings · ATT&CK · Timeline · Entity)
-   Ported from dashboard.js / attack.js / timeline.js.
-   ============================================================ */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { Pie, Hbars } from '../../shared/charts'
@@ -52,10 +48,8 @@ export default function DashboardScreen({ openChat, goSettings }: ConsoleScreenP
   )
 }
 
-/* ---------------- Findings ---------------- */
 const NDASH = '—'
 
-/** build the "Investigate with Vigil" auto-message for a finding */
 function findingPrompt(f: Finding): string {
   const parts = [`${f.sev} severity`, `MITRE ${f.tech}${f.tactic !== NDASH ? ` (${f.tactic})` : ''}`, `source ${f.src}`]
   if (f.host !== NDASH) parts.push(`host ${f.host}`)
@@ -77,19 +71,17 @@ function FindingsTab({ openChat, goSettings }: Pick<ConsoleScreenProps, 'openCha
   // meaningfully different: the user unhid everything.
   const [hiddenCols, setHiddenCols] = useState<Set<string> | null>(null)
 
-  // Base columns are fixed; the rest are derived from whatever entity keys the
-  // loaded rows actually carry, so a new source needs no code change here.
+  // derived from whatever entity keys the rows carry, so a new source needs no
+  // code change here
   const allColumns = useMemo(() => {
     const base = baseFindingColumns(
       (f) => setDetailId(f.id),
       (f) => openChat(findingPrompt(f)),
     )
     const extra = extraFindingColumns(rows)
-    // actions stay last
     return [...base.slice(0, -1), ...extra, base[base.length - 1]]
   }, [rows, openChat])
 
-  // Columns marked visible:false start hidden but stay toggleable.
   const defaultHidden = useMemo(
     () => new Set(allColumns.filter((c) => c.visible === false).map((c) => c.key)),
     [allColumns],
@@ -102,7 +94,6 @@ function FindingsTab({ openChat, goSettings }: Pick<ConsoleScreenProps, 'openCha
 
   const { sort, toggle: toggleSort } = useTableSort(allColumns, { key: 'time', dir: 'desc' })
 
-  // source options derive from the data
   const srcOptions = useMemo(() => {
     const set = Array.from(new Set(rows.map((f) => f.src).filter((s) => s && s !== '—'))).sort()
     return [{ value: 'any', label: 'Any' }, ...set.map((s) => ({ value: s, label: s }))]
@@ -122,8 +113,7 @@ function FindingsTab({ openChat, goSettings }: Pick<ConsoleScreenProps, 'openCha
 
   const sorted = useMemo(() => sortRows(filtered, allColumns, sort), [filtered, allColumns, sort])
 
-  // reset to the first page whenever the filtered set changes shape
-  // (re-sorting keeps the same rows, so it doesn't reset the page)
+  // re-sorting keeps the same rows, so it doesn't reset the page
   useEffect(() => { setPage(1) }, [query, sev, src, pageSize])
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
@@ -261,7 +251,6 @@ function FindingsTab({ openChat, goSettings }: Pick<ConsoleScreenProps, 'openCha
   )
 }
 
-/* ---------------- ATT&CK ---------------- */
 function sevB(n: number, cls: string) {
   return n ? <span className={`scount ${cls}`}>{n}</span> : <span className="scount zero">·</span>
 }
@@ -383,7 +372,6 @@ function AttackTab() {
   )
 }
 
-/* ---------------- Entity Graph (stub) ---------------- */
 function EntityStub() {
   return (
     <div className="entity-empty">
@@ -396,7 +384,6 @@ function EntityStub() {
   )
 }
 
-/* ---------------- Timeline (interactive Gantt) ---------------- */
 const DAY = 86400000
 
 interface TLBar {
@@ -526,7 +513,6 @@ function TimelineTab() {
     }
   }, [])
 
-  // measure container width
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -536,13 +522,11 @@ function TimelineTab() {
     return () => ro.disconnect()
   }, [])
 
-  // reposition whenever the layout changes; snap to start when not engaged
   useEffect(() => {
     if (!engagedRef.current) playTRef.current = layout.min
     positionPlayhead()
   }, [layout, positionPlayhead])
 
-  // cleanup any running animation on unmount
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }, [])
 
   const pause = useCallback(() => {

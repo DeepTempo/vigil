@@ -1,7 +1,3 @@
-/* ============================================================
-   Settings · System — platform metadata DB proxy (PgBouncer / SSH
-   tunnel). Restart-required. Mirrors PlatformDatabaseTab.tsx.
-   ============================================================ */
 import { useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { Field, PasswordInput, Select, SettingsCard, TextInput, ToggleRow } from '../../shared/ui'

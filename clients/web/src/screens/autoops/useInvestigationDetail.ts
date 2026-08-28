@@ -1,10 +1,5 @@
-/* ============================================================
-   Detail hook for a single autonomous investigation — loads the
-   investigation record, its reasoning trace (GH #79) and its
-   chain-of-custody timeline (GH #192). The trace and custody are
-   best-effort: a failure there leaves that section empty rather
-   than failing the whole detail view.
-   ============================================================ */
+/* The trace and custody loads are best-effort: a failure leaves that section
+   empty rather than failing the whole detail view. */
 import { useCallback, useEffect, useState } from 'react'
 import { orchestratorApi, reasoningApi } from '../../services/api'
 import type { Phase } from '../cases/useCases'
@@ -80,14 +75,12 @@ export function useInvestigationDetail(id: string | null) {
         setPhase('error')
         return
       }
-      // reasoning trace — best effort
       try {
         const trace = await reasoningApi.listInvestigationInteractions(id, { limit: 500 })
         if (!cancelled) setReasoning((trace?.interactions as Record<string, unknown>[]) || [])
       } catch {
         if (!cancelled) setReasoning([])
       }
-      // chain of custody — best effort
       try {
         const c = await orchestratorApi.getChainOfCustody(id)
         if (!cancelled) setCoc(c.data)

@@ -1,8 +1,3 @@
-/* ============================================================
-   404 — shown inside the SOC console shell when a /<screen>
-   path doesn't match a known screen. The nav rail stays available so
-   the user can jump elsewhere; this also offers a direct route home.
-   ============================================================ */
 import { Icon } from '../../shared/icons'
 
 export default function NotFoundScreen({ path, onHome }: { path?: string; onHome: () => void }) {

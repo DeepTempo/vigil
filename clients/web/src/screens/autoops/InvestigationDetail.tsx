@@ -1,10 +1,3 @@
-/* ============================================================
-   Full-bleed detail for one autonomous investigation. Tabs:
-   Overview (facts, summary, review notes, proposed actions, human
-   review, recent activity) · Files · Reasoning trace (GH #79) ·
-   Chain of custody (GH #192). Ported from the legacy Orchestrator
-   detail dialog, restyled to the console tokens.
-   ============================================================ */
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '../../shared/icons'
@@ -128,7 +121,6 @@ export default function InvestigationDetail({ id, onBack, openChat, busy, wake, 
   )
 }
 
-/* ---------------- Overview ---------------- */
 function OverviewTab({
   detail, busy, onReview,
 }: {
@@ -217,7 +209,6 @@ function OverviewTab({
   )
 }
 
-/* ---------------- Files ---------------- */
 function FilesTab({ id, files }: { id: string; files: string[] }) {
   const [active, setActive] = useState<string | null>(files[0] || null)
   const [contents, setContents] = useState<Record<string, string>>({})
@@ -257,7 +248,6 @@ function FilesTab({ id, files }: { id: string; files: string[] }) {
   )
 }
 
-/* ---------------- Reasoning trace ---------------- */
 interface Interaction {
   interaction_id?: string
   created_at?: string
@@ -343,7 +333,6 @@ function Section({ label, color, children }: { label: string; color?: string; ch
   )
 }
 
-/* ---------------- Chain of custody ---------------- */
 interface CocLog { timestamp?: string; event_type?: string; details?: Record<string, unknown>; tokens_used?: number }
 interface CocLlm { created_at?: string; model?: string; input_tokens?: number; output_tokens?: number; cost_usd?: number; duration_ms?: number; stop_reason?: string; has_thinking?: boolean; thinking_content?: string; tool_calls?: unknown[] }
 interface Coc {
@@ -433,9 +422,6 @@ function CustodyTab({ coc }: { coc: Coc | null }) {
   )
 }
 
-/* ---------------- File body (extension-aware) ----------------
-   .md → rendered Markdown · .json → pretty + syntax-highlighted ·
-   everything else → raw monospace text. */
 function FileBody({ name, content }: { name: string; content: string }) {
   const lower = name.toLowerCase()
   if (lower.endsWith('.md') || lower.endsWith('.markdown')) return <Markdown>{content}</Markdown>
@@ -447,9 +433,6 @@ function FileBody({ name, content }: { name: string; content: string }) {
   )
 }
 
-/* ---------------- JSON viewer (pretty + syntax-highlighted) ----------------
-   Accepts a value or a raw string. A string that isn't valid JSON falls back
-   to plain monospace text (so tool results that are prose still render). */
 const JSON_PRE_STYLE = { whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const, margin: 0 }
 
 function JsonView({ value }: { value: unknown }) {
@@ -495,7 +478,6 @@ function highlightJson(pretty: string): string {
   )
 }
 
-/* ---------------- Callout ---------------- */
 function Callout({ tone, title, markdown, children }: { tone: 'info' | 'warn' | 'error'; title: string; markdown?: boolean; children: ReactNode }) {
   const map = {
     info: { bg: 'var(--med-dim)', fg: 'var(--med)' },

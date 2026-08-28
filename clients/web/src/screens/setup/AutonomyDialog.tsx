@@ -1,5 +1,5 @@
-// Setup step panel — enables the autonomous orchestrator. The orchestrator POST
-// takes the full config, so we GET it, flip `enabled`, and round-trip to keep the caps.
+// The orchestrator POST takes the full config, so GET it, flip `enabled` and
+// round-trip, to keep the caps.
 import { useEffect, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { Banner, useSaveAction } from '../../shared/formKit'
@@ -10,8 +10,7 @@ type OrchestratorConfig = Parameters<typeof configApi.setOrchestrator>[0]
 interface Props {
   onClose: () => void
   onSaved: () => void
-  // Jump to the cost-guardrails step. Autonomy runs investigations around the
-  // clock, so we require an account-level spend cap before switching it on.
+  // autonomy runs around the clock, so a spend cap is required first
   onConfigureBudget: () => void
 }
 

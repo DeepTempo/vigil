@@ -1,10 +1,3 @@
-/* ============================================================
-   Vigil chat dock — Cursor-style, wired to the real Claude stream.
-   POSTs /api/claude/chat/stream and renders the SSE text events
-   live. Agent list comes from agentsApi. Styling uses the
-   Tailwind-authored chat-* component classes in styles.css plus
-   utilities for one-offs.
-   ============================================================ */
 import {
   useEffect,
   useMemo,
@@ -48,7 +41,6 @@ interface ChatMsg {
   ms?: number
 }
 
-/* ---------- reasoning trace (GH #79 — chain-of-thought visibility) ---------- */
 interface SessionSummary {
   total_interactions: number
   total_cost_usd: number
@@ -86,15 +78,13 @@ const newSessionId = () =>
     ? crypto.randomUUID()
     : `sess-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
 
-/* ---------- conversation history (localStorage-backed) ---------- */
 interface Conversation {
   id: string
   title: string
   ts: number
   messages: ChatMsg[]
-  /** investigation dedup key (the seed prompt) when this thread was opened from
-   *  an "Investigate with Vigil" affordance — lets re-opening the same finding/
-   *  case restore the thread instead of starting a duplicate one */
+  /** the seed prompt, when opened from an "Investigate with Vigil" affordance;
+   *  re-opening the same finding restores the thread instead of duplicating it */
   key?: string
 }
 const HISTORY_KEY = 'soc.chat.history'
@@ -111,7 +101,7 @@ function saveHistory(list: Conversation[]) {
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_MAX)))
   } catch {
-    /* localStorage unavailable / full — keep the in-memory list only */
+    /* empty */
   }
 }
 
@@ -137,10 +127,8 @@ function setKeymapEntry(key: string, sid: string) {
   }
 }
 
-/* one-time migration marker: localStorage history → server store */
 const IMPORT_MARKER_KEY = 'soc.chat.imported'
 
-/* a unified row for the history drawer (server summary, or offline cache) */
 interface HistRow {
   id: string
   title: string
@@ -153,7 +141,7 @@ function histTime(ts: number | null): string {
   const d = new Date(ts)
   return isNaN(d.getTime()) ? '' : format(d, 'MMM d, HH:mm')
 }
-/* server ConversationMessage[] → the dock's ChatMsg[] (user + assistant only) */
+/* user + assistant turns only */
 function toChatMsgs(msgs: ConversationDetail['messages']): ChatMsg[] {
   return msgs
     .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -164,7 +152,6 @@ function toChatMsgs(msgs: ConversationDetail['messages']): ChatMsg[] {
     )
 }
 
-/* ---------- chat settings (persisted, mirrors the classic drawer) ---------- */
 interface ChatSettings {
   model: string
   maxTokens: number
@@ -180,14 +167,12 @@ function loadSettings(): ChatSettings {
   }
 }
 
-
-/* format an interaction timestamp for the trace list (HH:mm:ss, guarded) */
 function traceTime(s?: string): string {
   if (!s) return '—'
   const d = new Date(s)
   return isNaN(d.getTime()) ? '—' : format(d, 'HH:mm:ss')
 }
-/* render tool input/results as readable JSON without throwing on cycles */
+/* without throwing on cycles */
 function safeJson(v: unknown): string {
   if (v == null) return ''
   if (typeof v === 'string') return v
@@ -224,9 +209,7 @@ export default function Chat({
 }: {
   open: boolean
   onClose: () => void
-  /** when set, auto-send this prompt (e.g. "Investigate finding …") */
   seed?: string | null
-  /** Effective dock width, shared with the main canvas by SocConsole. */
   width?: number
   minWidth?: number
   maxWidth?: number
@@ -239,8 +222,7 @@ export default function Chat({
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
   const [streamText, setStreamText] = useState('')
-  // true between a `tool_processing` event and the next `text` chunk — the
-  // backend is executing MCP tools, mirroring the classic drawer's indicator
+  // true between a `tool_processing` event and the next `text` chunk
   const [isProcessingTools, setIsProcessingTools] = useState(false)
   const [agents, setAgents] = useState<ChatAgent[]>([])
   const [agentId, setAgentId] = useState('')
@@ -249,8 +231,7 @@ export default function Chat({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [resizing, setResizing] = useState(false)
-  // Offline cache (localStorage) — server is the source of truth (useConversations
-  // below); this is the fallback shown when the server list can't be reached.
+  // the server is the source of truth; this shows when it can't be reached
   const [history, setHistory] = useState<Conversation[]>(() => loadHistory())
   const [showArchived, setShowArchived] = useState(false)
   const {
@@ -260,23 +241,18 @@ export default function Chat({
   } = useConversations(showArchived)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
-  // chat settings — mirror the classic drawer; persisted across sessions
   const [savedSettings] = useState(loadSettings)
   const [model, setModel] = useState(savedSettings.model)
   const [maxTokens, setMaxTokens] = useState(savedSettings.maxTokens)
   const [systemPrompt, setSystemPrompt] = useState(savedSettings.systemPrompt)
   const [models, setModels] = useState<{ id: string; name: string }[]>([])
-  // chat_default from AI Config + whether that fetch has settled — used by the
-  // stale-model self-heal below to prefer the configured default when the
-  // persisted selection is no longer offered.
+  // read by the stale-model self-heal below
   const [configuredDefault, setConfiguredDefault] = useState<string | null>(null)
   const [configSettled, setConfigSettled] = useState(false)
   const [mcpStatus, setMcpStatus] = useState<{ available: number; total: number } | null>(null)
-  // live pre-call estimate from the backend (exact count_tokens + USD band),
-  // mirroring the classic drawer; null until the first debounced estimate lands
+  // null until the first debounced estimate lands
   const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null)
   const [exactTokens, setExactTokens] = useState<number | null>(null)
-  // reasoning trace — the per-interaction chain-of-thought for this session
   const [traceOpen, setTraceOpen] = useState(false)
   const [traceLoading, setTraceLoading] = useState(false)
   const [traceItems, setTraceItems] = useState<TraceItem[]>([])
@@ -296,17 +272,13 @@ export default function Chat({
     startWidth: number
     lastWidth: number
   } | null>(null)
-  // the investigation key (seed prompt) of the current thread, if any
   const currentKeyRef = useRef<string | null>(null)
-  // Default the model to the configured `chat_default` assignment (Settings →
-  // AI Config) unless the user already has saved settings or picks a model
-  // this session — then their choice wins.
+  // a saved setting or an in-session pick beats the configured chat_default
   const settingsExistedRef = useRef<boolean>(
     typeof localStorage !== 'undefined' && localStorage.getItem(SETTINGS_KEY) != null,
   )
   const userPickedModelRef = useRef(false)
 
-  // focus the composer when the dock opens; return focus to the opener on close
   useEffect(() => {
     if (open) {
       openerRef.current = document.activeElement as HTMLElement | null
@@ -335,9 +307,8 @@ export default function Chat({
   // any of the dock's own dialogs (they own their Esc + focus handling)
   const anyPopupOpen = historyOpen || settingsOpen || agentsInfoOpen || traceOpen
 
-  // Esc closes the agent menu first, then the dock — but never while one of the
-  // dock's Popups is open (those handle their own Esc; closing the dock too
-  // would dismiss both at once)
+  // never while a Popup is open: it handles its own Esc, and closing the dock
+  // too would dismiss both at once
   useEffect(() => {
     if (!open) return
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -349,9 +320,7 @@ export default function Chat({
     return () => document.removeEventListener('keydown', onKey)
   }, [open, menuOpen, onClose, anyPopupOpen])
 
-  // focus trap — keep Tab within the dock while it's open (unless a Popup is
-  // up, which traps focus itself). Completes the dialog a11y: role=dialog +
-  // aria-modal + Esc + focus-return are already wired (CONSOLE_GAPS.md §10).
+  // unless a Popup is up, which traps focus itself
   const onPanelKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key !== 'Tab' || !open || anyPopupOpen) return
     const root = panelRef.current
@@ -374,7 +343,6 @@ export default function Chat({
     }
   }
 
-  // load the agent roster once
   useEffect(() => {
     agentsApi
       .listAgents()
@@ -388,9 +356,8 @@ export default function Chat({
       .catch(() => {})
   }, [])
 
-  // model list — refetched every time the dock opens so providers added or
-  // activated after the first open (e.g. Ollama) show up without a full page
-  // reload (#409). The classic ClaudeDrawer already refetches on each open.
+  // refetched on every open, so a provider activated later shows up without a
+  // full page reload (#409)
   useEffect(() => {
     if (!open) return
     claudeApi
@@ -399,8 +366,7 @@ export default function Chat({
       .catch(() => {})
   }, [open])
 
-  // MCP tool status + configured default — fetched once, the first time the
-  // dock opens.
+  // fetched once, the first time the dock opens
   const metaLoadedRef = useRef(false)
   useEffect(() => {
     if (!open || metaLoadedRef.current) return
@@ -426,13 +392,9 @@ export default function Chat({
       .catch(() => {})
   }, [open])
 
-  // Self-heal a stale/removed model selection. Once the live model list and
-  // the chat_default config have both settled, if the persisted model is no
-  // longer offered (e.g. an Ollama provider that was later removed, or a
-  // renamed model), fall back to chat_default when it's available, otherwise
-  // the first available model. Without this a stale localStorage model 500s
-  // every send ("no keys found that support model: …") until the user
-  // manually re-picks. The persist effect below then writes the corrected id.
+  // Self-heal a model that is no longer offered (a removed provider, a rename).
+  // Without this a stale localStorage model 500s every send until the user
+  // re-picks by hand.
   useEffect(() => {
     if (!models.length || !configSettled) return
     if (model && models.some((m) => m.id === model)) return
@@ -443,22 +405,19 @@ export default function Chat({
     if (fallback && fallback !== model) setModel(fallback)
   }, [models, configSettled, configuredDefault, model])
 
-  // persist settings on change ("automatically saved", like the classic drawer)
   useEffect(() => {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({ model, maxTokens, systemPrompt }))
     } catch {
-      /* ignore — settings stay in memory for the session */
+      /* empty */
     }
   }, [model, maxTokens, systemPrompt])
 
-  // autoscroll on new content
   useEffect(() => {
     const el = bodyRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, streamText, loading])
 
-  // autosize the composer
   useEffect(() => {
     const ta = taRef.current
     if (!ta) return
@@ -466,7 +425,6 @@ export default function Chat({
     ta.style.height = Math.min(ta.scrollHeight, 130) + 'px'
   }, [draft])
 
-  // close the agent menu on outside click
   useEffect(() => {
     if (!menuOpen) return
     const onDocClick = (e: MouseEvent) => {
@@ -478,11 +436,7 @@ export default function Chat({
 
   const agentName = agents.find((a) => a.id === agentId)?.name || 'Default agent'
 
-  // Pre-call cost + exact-token estimate (debounced 400ms, abortable), mirroring
-  // the classic drawer: the backend runs Anthropic count_tokens and prices the
-  // call so the user sees both before sending. Best-effort — keeps the previous
-  // estimate on failure and falls back to the char heuristic until the first
-  // estimate lands.
+  // debounced + abortable; keeps the previous estimate on failure
   useEffect(() => {
     if (!open) return
     const ctrl = new AbortController()
@@ -521,7 +475,7 @@ export default function Chat({
     }
   }, [open, messages, draft, systemPrompt, model, maxTokens])
 
-  // char heuristic (~chars/4), used only until the first server estimate lands
+  // used only until the first server estimate lands
   const heuristicTokens = useMemo(() => {
     const chars =
       messages.reduce((n, m) => n + m.text.length, 0) +
@@ -544,8 +498,7 @@ export default function Chat({
   const send = async (override?: string, opts?: { fresh?: boolean }) => {
     const text = (override ?? draft).trim()
     if (!text || loading) return
-    // `fresh` starts a clean thread (used when opening a new investigation) so
-    // the seed isn't appended onto an unrelated conversation
+    // `fresh` keeps a new investigation's seed off an unrelated conversation
     const base = opts?.fresh ? [] : messages.filter((m) => m.role !== 'error')
     const next: ChatMsg[] = [...base, { role: 'user', text }]
     setMessages(next)
@@ -601,8 +554,7 @@ export default function Chat({
             }
             if (ev.error) throw new Error(ev.error)
             if (ev.type === 'tool_processing') {
-              // backend is running MCP tools — show the live indicator and
-              // separate any tool output from the prose preceding it
+              // separate tool output from the prose preceding it
               setIsProcessingTools(true)
               if (curText && !curText.endsWith('\n\n')) curText += '\n\n'
             } else if (ev.type === 'context_windowed') {
@@ -621,10 +573,7 @@ export default function Chat({
       }
       const ms = Date.now() - start
       setMessages((m) => [...m, { role: 'vigil', text: curText || '_(no response)_', ms }])
-      // Fire a desktop notification on completion, matching the classic
-      // drawer (which notifies when an investigation-seeded thread finishes).
-      // Gated inside notificationService by the `show_notifications` setting +
-      // browser permission, so it's a no-op when the user hasn't opted in.
+      // gated inside notificationService by the setting + browser permission
       if (currentKeyRef.current && curText) {
         const summary = curText.replace(/[#*`_>[\]]/g, '').replace(/\s+/g, ' ').trim().slice(0, 140)
         notificationService.notifyInvestigationComplete({
@@ -663,7 +612,6 @@ export default function Chat({
 
   const stop = () => abortRef.current?.abort()
 
-  // snapshot the current conversation into history (most-recent first, de-duped)
   const archiveCurrent = () => {
     if (messages.length === 0) return
     const firstUser = messages.find((m) => m.role === 'user')
@@ -681,9 +629,7 @@ export default function Chat({
     })
   }
 
-  // clear chat — caches the current thread, then starts a fresh session. The
-  // server already persisted every turn (write-through), so this just resets
-  // local state and refreshes the history list.
+  // the server already persisted every turn, so this only resets local state
   const reset = () => {
     if (loading) return
     archiveCurrent()
@@ -696,9 +642,7 @@ export default function Chat({
     reloadHistory()
   }
 
-  // Reopen a conversation from the server (continues the same session_id so new
-  // turns append to it). Falls back to the offline cache if the server can't be
-  // reached. Returns whether anything was loaded.
+  // continues the same session_id, so new turns append to it
   const openConversation = async (id: string, key?: string | null): Promise<boolean> => {
     if (loading) return false
     archiveCurrent()
@@ -714,7 +658,6 @@ export default function Chat({
       setExactTokens(null)
       return true
     } catch {
-      // offline fallback: the localStorage cache
       const cached = loadHistory().find((c) => c.id === id)
       if (cached) {
         setMessages(cached.messages)
@@ -727,10 +670,8 @@ export default function Chat({
     }
   }
 
-  // open an investigation thread for a seed prompt: reuse the matching thread
-  // (current or archived) if one exists, else archive the current and start a
-  // fresh one. The seed prompt is deterministic per finding/case, so it doubles
-  // as the dedup key (investigation-keyed, like the classic drawer's tabs).
+  // the seed prompt is deterministic per finding/case, so it doubles as the
+  // dedup key for reusing an existing thread
   const openInvestigation = async (prompt: string) => {
     if (loading) return
     if (currentKeyRef.current === prompt && messages.length > 0) return // already here
@@ -749,7 +690,6 @@ export default function Chat({
     send(prompt, { fresh: true })
   }
 
-  // load the per-interaction reasoning trace for the current session
   const openReasoningTrace = () => {
     setTraceOpen(true)
     setTraceLoading(true)
@@ -789,7 +729,7 @@ export default function Chat({
       await conversationsApi.delete(id)
       reloadHistory()
     } catch {
-      /* best-effort — still drop it from the offline cache below */
+      /* still drop it from the offline cache below */
     }
     setHistory((h) => {
       const next = h.filter((c) => c.id !== id)
@@ -819,9 +759,7 @@ export default function Chat({
     }
   }
 
-  // One-time migration: import any localStorage chat history into the server
-  // store so existing local chats aren't orphaned. Best-effort; the marker is
-  // only set on success so a failed import retries on the next mount.
+  // the marker is only set on success, so a failed import retries next mount
   const migratedRef = useRef(false)
   useEffect(() => {
     if (migratedRef.current) return
@@ -853,19 +791,17 @@ export default function Chat({
           reloadHistory()
         })
         .catch(() => {
-          /* leave the marker unset so the import retries next mount */
+          /* retry next mount */
         })
     } catch {
-      /* localStorage unavailable — nothing to migrate */
+      /* empty */
     }
   }, [reloadHistory])
 
-  // auto-send a seeded prompt (e.g. "Investigate finding …") when the dock is
-  // opened from an "Investigate with Vigil" affordance
   const seedRef = useRef<string | null>(null)
   useEffect(() => {
-    // reset once the parent clears the seed, so the same finding can be
-    // investigated again later
+    // reset when the parent clears the seed, so the same finding can be
+    // investigated again
     if (!seed) {
       seedRef.current = null
       return

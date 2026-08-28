@@ -1,12 +1,3 @@
-/* ============================================================
-   Full-screen workflow builder for the console — a graph canvas
-   (phases as draggable/connectable nodes, double-click an edge to
-   set a branch condition), a metadata strip, and a phase-editor
-   dialog. Mirrors the old src/pages/WorkflowBuilder.tsx, restyled
-   to the console's dark theme (Tailwind + CSS vars).
-   Creates a custom workflow via workflowApi.createCustom; can edit
-   an existing custom workflow when given workflowId + initial.
-   ============================================================ */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   ReactFlow,
@@ -67,7 +58,6 @@ function errMsg(e: unknown): string {
   return r?.response?.data?.detail || r?.message || 'Something went wrong'
 }
 
-/* ---------------- shared dark-theme inputs ---------------- */
 const inputCls = 'w-full bg-bg border border-line rounded-[7px] px-2.5 py-2 text-[13px] text-tx outline-none focus:border-accent-line'
 
 function Labeled({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
@@ -80,7 +70,6 @@ function Labeled({ label, children, hint }: { label: string; children: ReactNode
   )
 }
 
-/* ---------------- graph ---------------- */
 function timeoutLabel(s?: number): string | null {
   if (!s || s <= 0) return null
   if (s < 60) return `${s}s`
@@ -150,10 +139,8 @@ function buildGraph(phases: WorkflowPhase[], agents: AgentOption[]): { nodes: No
   return { nodes, edges }
 }
 
-/* ---------------- main overlay ---------------- */
 export default function WorkflowBuilder({ initial, autoGenerate, onClose, onSaved }: {
   initial?: EditorState
-  /** open the "Generate from a description" dialog immediately on mount */
   autoGenerate?: boolean
   onClose: () => void
   onSaved: () => void
@@ -185,7 +172,7 @@ export default function WorkflowBuilder({ initial, autoGenerate, onClose, onSave
     }).catch(() => {})
   }, [])
 
-  // Keep nodes/edges in sync with phases; preserve dragged positions + custom edges.
+  // preserves dragged positions and custom edges
   useEffect(() => {
     setNodes((prev) => {
       const byId = new Map(prev.map((n) => [n.id, n]))
@@ -395,7 +382,6 @@ export default function WorkflowBuilder({ initial, autoGenerate, onClose, onSave
   )
 }
 
-/* ---------------- phase editor dialog ---------------- */
 function PhaseEditor({ idx, total, phase, agents, tools, onChange, onMove, onDelete, onCancel, onDone }: {
   idx: number
   total: number

@@ -1,29 +1,18 @@
-/* ============================================================
-   Static metadata for the Integrations MCP grid, ported from the
-   constants in pages/Settings.tsx (SERVER_DESCRIPTIONS, MCP_CATEGORIES,
-   WIP_SERVERS, HIDDEN_MCP_SERVERS). Kept here so the console doesn't
-   import from the legacy page.
-   ============================================================ */
-
 import { getAllIntegrations } from '../../config/integrations'
 import type { IntegrationMetadata } from '../../config/integrationSchema'
 
-/** Core deps hidden from the grid (always-on / merged duplicates). */
 export const HIDDEN_MCP_SERVERS = new Set(['mempalace', 'splunk-selfhosted'])
 
-/** MCP server name → integration metadata id (where they differ). */
 export const SERVER_TO_INTEGRATION = new Map(Object.entries({
   'aws-security': 'aws-security-hub',
   'gcp-scc': 'gcp-security',
 }))
 
-/** Resolve the credential-bearing integration metadata for an MCP server. */
 export function getIntegrationForServer(serverName: string): IntegrationMetadata | undefined {
   const id = SERVER_TO_INTEGRATION.get(serverName) ?? serverName
   return getAllIntegrations().find((i) => i.id === id)
 }
 
-/** Servers with no MCP replacement yet, or kept custom for now — badged "WIP". */
 export const WIP_SERVERS = new Set([
   'carbon-black', 'hybrid-analysis', 'anyrun',
   'alienvault-otx', 'palo-alto',
@@ -97,7 +86,6 @@ export const SERVER_DESCRIPTIONS = new Map(Object.entries({
   'ip-geolocation': 'Look up geographic location, ISP, and organization info for IP addresses during investigations.',
 }))
 
-/** "aws-security" → "AWS Security" */
 export function prettyServerName(name: string): string {
   return name
     .split('-')

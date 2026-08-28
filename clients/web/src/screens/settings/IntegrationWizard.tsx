@@ -1,10 +1,3 @@
-/* ============================================================
-   Per-integration credential wizard. Renders the
-   dynamic field set from IntegrationMetadata (text/password/url/
-   number/boolean/select) plus the optional collapsible proxy block,
-   and saves via configApi.setIntegrations (merge handled by the hook).
-   Mirrors components/settings/IntegrationWizard.tsx.
-   ============================================================ */
 import { useMemo, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { Field, NumberInput, PasswordInput, Popup, Select, TextInput, ToggleRow } from '../../shared/ui'

@@ -1,11 +1,6 @@
-/* ============================================================
-   MITRE ATT&CK technique metadata (name + tactic). Findings and
-   the ATT&CK rollup carry technique IDs but the backend leaves
-   `tactic`/`technique_name` unresolved ("Unknown" / == id), so we
-   resolve them here. Ported/extended from services/mitre_lookup.py
-   to cover the techniques in our dataset; lookups fall back to the
-   base technique (T1059.001 → T1059) then to the id / em-dash.
-   ============================================================ */
+/* The backend leaves `tactic`/`technique_name` unresolved ("Unknown" / == id),
+   so resolve them here. Lookups fall back to the base technique
+   (T1059.001 -> T1059), then to the id, then an em-dash. */
 const DASH = '—'
 
 interface Meta {
@@ -61,12 +56,10 @@ function lookup(id: string): Meta | undefined {
   return TECHNIQUE_META[id] || TECHNIQUE_META[id.split('.')[0]]
 }
 
-/** human technique name; falls back to the technique id itself */
 export function techniqueName(id: string): string {
   return lookup(id)?.name || id || DASH
 }
 
-/** MITRE tactic for a technique; em-dash when unknown */
 export function techniqueTactic(id: string): string {
   return lookup(id)?.tactic || DASH
 }

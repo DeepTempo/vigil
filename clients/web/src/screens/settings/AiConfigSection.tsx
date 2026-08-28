@@ -1,11 +1,3 @@
-/* ============================================================
-   Settings · AI Config — four sub-panels behind an internal tab bar:
-   Providers (CRUD + test + set-default), Model Assignment (per-
-   component provider/model + inherit), Operations (cost/perf knobs),
-   Budgets (Bifrost virtual-key config + live quota). Mirrors the
-   legacy AI Config tab (LLMProvidersTab / ModelAssignmentTab /
-   AIOperationsTab / BudgetsSection).
-   ============================================================ */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import {
@@ -59,7 +51,6 @@ export default function AiConfigSection({ notify }: SectionProps) {
   )
 }
 
-/* ---------------- Providers ---------------- */
 function ProvidersPanel({ notify }: SectionProps) {
   const { providers, phase, error, reload, test, remove, setDefault } = useLlmProviders()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -227,7 +218,6 @@ function ProvidersPanel({ notify }: SectionProps) {
   )
 }
 
-/* ---------------- Model assignment ---------------- */
 interface RowState { inherit: boolean; providerId: string; modelId: string }
 
 function ModelAssignmentPanel({ notify }: SectionProps) {
@@ -346,7 +336,6 @@ function ModelAssignmentPanel({ notify }: SectionProps) {
   )
 }
 
-/* ---------------- Operations ---------------- */
 function OperationsPanel({ notify }: SectionProps) {
   const { settings, setSettings, phase, save } = useAiOperations()
   const lastSaved = useRef<AIOperationsSettings>(AI_OPS_DEFAULTS)
@@ -430,7 +419,6 @@ function OperationsPanel({ notify }: SectionProps) {
   )
 }
 
-/* ---------------- Budgets ---------------- */
 function maskVk(vk: string): string {
   if (!vk || vk.length <= 8) return vk
   return `${vk.slice(0, 6)}…${vk.slice(-4)}`

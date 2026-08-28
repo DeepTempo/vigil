@@ -1,7 +1,3 @@
-/* ============================================================
-   Inline icon set (ported from the design's data.js ICON map)
-   <Icon name="..." size={n} /> mirrors the prototype's svg(name, w).
-   ============================================================ */
 import type { CSSProperties } from 'react'
 
 // Deliberately not annotated Record<string, string>: that widens IconName to

@@ -1,10 +1,3 @@
-/* ============================================================
-   Account menu for the nav rail — an avatar button that opens a
-   dropdown (name / email / role, Settings, Logout). Reads the
-   session from AuthContext (DEV_MODE seeds a full-admin dev user,
-   so this renders in dev too). Styled for the
-   .soc-console shell. See CONSOLE_GAPS.md §2.
-   ============================================================ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'

@@ -3,14 +3,12 @@ import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import ProtectedRoute from './routing/ProtectedRoute'
 import SetupGate from './routing/SetupGate'
-// Eager (never suspends) so it can serve as the Suspense fallback while the
-// lazy console/login/setup chunks load.
+// eager, so it can be the Suspense fallback for the lazy chunks below
 import Loader from './routing/Loader'
 
-// Lazy-loaded so a refresh on any route only pulls that screen's module graph.
+// lazy, so a refresh on any route only pulls that screen's module graph
 const SocConsole = lazy(() => import('./shell/SocConsole'))
 const SocLogin = lazy(() => import('./screens/login/LoginScreen'))
-// Standalone /setup screen (no console shell).
 const SetupScreen = lazy(() => import('./screens/setup/SetupScreen'))
 
 function App() {

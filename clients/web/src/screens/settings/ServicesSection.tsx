@@ -1,13 +1,7 @@
-/* ============================================================
-   Settings · Services — start local services on demand and pick
-   which ones ./start.sh brings up automatically.
-
-   Ollama is a host process, not a container: Docker on macOS has
-   no Metal GPU passthrough, so a containerized Ollama would be
-   CPU-only. It's therefore started but never stopped from here —
-   the running instance is often the user's own (brew services /
-   Ollama.app), and killing that would destroy unrelated state.
-   ============================================================ */
+/* Ollama is a host process, not a container: Docker on macOS has no Metal GPU
+   passthrough, so a containerized Ollama would be CPU-only. It is therefore
+   started but never stopped from here — the running instance is often the
+   user's own, and killing it would destroy unrelated state. */
 import { useCallback, useEffect, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { SettingsCard, ToggleRow } from '../../shared/ui'
@@ -63,7 +57,7 @@ export default function ServicesSection({ notify }: SectionProps) {
     try {
       const { data } = await localServicesApi[action](name)
       notify(data.already_running ? 'info' : 'ok', data.message || `${name} ${action}ed`)
-      // Ollama only becomes usable once Bifrost knows about it.
+      // Ollama is only usable once Bifrost knows about it
       if (data.bifrost_synced === false && data.bifrost_sync_error) {
         notify('info', `${name} is up, but the model catalog didn't sync: ${data.bifrost_sync_error}`)
       }
@@ -155,9 +149,8 @@ export default function ServicesSection({ notify }: SectionProps) {
           <ToggleRow
             key={s.name}
             label={s.name}
-            // Required services always start and can't be turned off — the app
-            // won't boot without them. Server enforces this too; the disabled
-            // toggle just makes it visible instead of silently bouncing back.
+            // the server enforces this too; the disabled toggle just makes it
+            // visible instead of silently bouncing back
             hint={s.required ? `${s.description} · required, always on` : s.description}
             checked={s.required || autostart.includes(s.name)}
             disabled={s.required}

@@ -1,10 +1,3 @@
-/* ============================================================
-   Data hooks for the Cases screen — fetch via the shared axios
-   client in services/api.ts (auth/CSRF/401-refresh included),
-   map onto the console view shapes, expose loading/error states.
-   useEffect + local state, matching the rest of the app (no
-   React-Query anywhere yet). See CONSOLE_GAPS.md §9.
-   ============================================================ */
 import { useCallback, useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { casesApi, findingsApi } from '../../services/api'
@@ -14,7 +7,6 @@ import type { Activity, ResolutionStep } from './CaseSections'
 
 export type Phase = 'loading' | 'ready' | 'error'
 
-/** list of all cases */
 export function useCases() {
   const [rows, setRows] = useState<CaseRow[]>([])
   const [phase, setPhase] = useState<Phase>('loading')
@@ -47,13 +39,11 @@ export function useCases() {
   return { rows, phase, error, reload }
 }
 
-/** a single case + its linked findings (capped) */
 export interface TimelineEntry {
   event: string
   time: string
 }
 
-/** severity breakdown across a case's findings (old design's key metrics) */
 export interface SevBreakdown {
   critical: number
   high: number

@@ -1,9 +1,4 @@
-/* ============================================================
-   Settings · Auto Investigate — runtime toggles for the autonomous
-   orchestrator. Changes save automatically (toggles/chips/presets
-   immediately; numeric/text fields on blur). Mirrors
-   AutoInvestigateTab.tsx. ~60s to take effect (runtime-config TTL).
-   ============================================================ */
+// Changes save automatically, and take ~60s to apply (runtime-config TTL).
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import {
@@ -97,7 +92,6 @@ export default function AutoInvestigateSection({ notify }: SectionProps) {
   const lastSaved = useRef<OrchestratorConfig>(ORCHESTRATOR_DEFAULTS)
   const [advanced, setAdvanced] = useState(false)
 
-  // sync the "last saved" baseline whenever a fresh config loads
   useEffect(() => {
     if (phase === 'ready') lastSaved.current = config
     // eslint-disable-next-line react-hooks/exhaustive-deps

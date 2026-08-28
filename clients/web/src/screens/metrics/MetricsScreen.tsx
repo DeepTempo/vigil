@@ -1,9 +1,3 @@
-/* ============================================================
-   Case Metrics — analytics console. Ported to mirror the legacy
-   CaseMetrics page (Cases by priority · Status distribution ·
-   MTTD vs MTTR by priority · Analyst performance), wired to the
-   real caseMetricsApi via useCaseMetrics.
-   ============================================================ */
 import { useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { EmptyState } from '../../shared/ui'
@@ -32,7 +26,6 @@ const STATUS_COLOR: Record<string, string> = {
   unknown: 'var(--tx-faint)',
 }
 
-/** legacy formatDuration: <1h → m, <24h → h, else d */
 function formatDuration(hours: number): string {
   if (!hours || hours <= 0) return '0m'
   if (hours < 1) return `${Math.round(hours * 60)}m`
@@ -105,7 +98,6 @@ function MetricsBody({ data }: { data: CaseMetricsData }) {
     label: s.status,
   }))
 
-  // MTTD vs MTTR across priority levels (both in hours)
   const rtLabels = PRIORITY_LABELS.map(([, label]) => label)
   const mttdSeries = PRIORITY_LABELS.map(([k]) => Number((mttdByPriority[k] ?? 0).toFixed(2)))
   const mttrSeries = PRIORITY_LABELS.map(([k]) => Number((mttrByPriority[k] ?? 0).toFixed(2)))

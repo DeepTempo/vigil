@@ -1,8 +1,3 @@
-/* ============================================================
-   Settings · Integrations · Detection Rules — manage the detection
-   rule sources (git repos / local dirs) fed to the Security-Detections
-   MCP server. Mirrors DetectionRulesTab.tsx.
-   ============================================================ */
 import { useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { EmptyState, Field, Popup, Select, TextInput } from '../../shared/ui'

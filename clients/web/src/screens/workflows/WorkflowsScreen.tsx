@@ -1,9 +1,3 @@
-/* ============================================================
-   Workflows screen — Workflows · Agents · Skills tabs
-   Wired to the real backend (workflowApi / agentsApi / skillsApi)
-   via useWorkflows / useAgents / useSkills, with loading / empty /
-   error states. See CONSOLE_GAPS.md §9.
-   ============================================================ */
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { EmptyState, Popup, TextInput, activateOnKey } from '../../shared/ui'
@@ -49,7 +43,6 @@ export default function WorkflowsScreen({ goSettings }: ConsoleScreenProps) {
   )
 }
 
-/* ---- shared empty/loading/error row ---- */
 function StateMsg({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ padding: '10px 22px 22px' }}>
@@ -58,7 +51,6 @@ function StateMsg({ children }: { children: React.ReactNode }) {
   )
 }
 
-/* ---- agent sequence ---- */
 function AgentSequence({ agents }: { agents: string[] }) {
   const agentMeta = useAgentMeta()
   return (
@@ -81,7 +73,6 @@ function AgentSequence({ agents }: { agents: string[] }) {
   )
 }
 
-/* ---------------- Workflows catalog ---------------- */
 type WfModal = { kind: 'run' | 'history' | 'edit' | 'delete' | 'details'; wf: Workflow }
 
 function WorkflowCatalog({ goSettings }: { goSettings: ConsoleScreenProps['goSettings'] }) {
@@ -176,9 +167,6 @@ function WorkflowCatalog({ goSettings }: { goSettings: ConsoleScreenProps['goSet
   )
 }
 
-/* ---------------- Workflow action modals ---------------- */
-
-/** dark-themed labeled text field for the modal forms */
 function Field({ label, value, onChange, placeholder, textarea, mono, hint, maxLength, list, rows = 3 }: {
   label: string
   value: string
@@ -211,8 +199,7 @@ function errMsg(e: unknown): string {
   return r?.response?.data?.detail || r?.message || 'Something went wrong'
 }
 
-/** Labeled text input with a styled, type-to-filter suggestion dropdown
-    (uses the console's .drop-menu, not the native datalist chrome). */
+/** uses the console's .drop-menu, not the native datalist chrome */
 function ComboField({ label, value, onChange, placeholder, options, hint }: {
   label: string
   value: string
@@ -268,8 +255,6 @@ interface WfDetail {
   body?: string
 }
 
-/** Full read-only details — agent sequence, tools used, and the rendered
-    workflow body (the proper description), fetched from GET /workflows/{id}. */
 function DetailsModal({ wf, onClose }: { wf: Workflow; onClose: () => void }) {
   const [detail, setDetail] = useState<WfDetail | null>(null)
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -337,9 +322,7 @@ function DetailsModal({ wf, onClose }: { wf: Workflow; onClose: () => void }) {
   )
 }
 
-/** Run a workflow — collects a target, then starts it on the agent layer. The
-    run is enqueued and answers with an id, so this hands off to History, which
-    already reports phases, beliefs and whatever the run is waiting on. */
+/** the run is enqueued and answers with an id, so this hands off to History */
 function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: () => void; onClose: () => void }) {
   const [findingId, setFindingId] = useState('')
   const [caseId, setCaseId] = useState('')
@@ -347,7 +330,6 @@ function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: () => v
   const [hypothesis, setHypothesis] = useState('')
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Suggestions for the ID fields, fetched from the live findings/cases lists.
   const [findingOpts, setFindingOpts] = useState<{ id: string; label: string }[]>([])
   const [caseOpts, setCaseOpts] = useState<{ id: string; label: string }[]>([])
 
@@ -429,7 +411,6 @@ function fmtStarted(iso?: string | null): string {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString()
 }
 
-/** Past executions of a workflow (workflow_runs, newest first). */
 function HistoryModal({ wf, onClose }: { wf: Workflow; onClose: () => void }) {
   const [runs, setRuns] = useState<WfRun[]>([])
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -505,12 +486,11 @@ interface WfRunDetail extends WfRun {
   hunt?: HuntView | null
 }
 
-// A run in flight moves on its own. Fetched once, the panel showed the iteration
-// the run happened to be on when it was opened and never moved again.
+// a run in flight moves on its own; fetched once, the panel froze on whatever
+// iteration the run was on when it opened
 const RUN_POLL_MS = 5_000
 const IN_FLIGHT = ['running', 'paused', 'pending']
 
-/** A run row that lazily fetches its full detail (getRun) when expanded. */
 function RunRow({ run }: { run: WfRun }) {
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<WfRunDetail | null>(null)
@@ -525,8 +505,7 @@ function RunRow({ run }: { run: WfRun }) {
     [run.run_id],
   )
 
-  // Stops on its own when the run reaches a terminal status: a finished run has
-  // nothing further to report, and the row would otherwise poll for the session.
+  // stops at a terminal status, or the row would poll for the whole session
   const live = open && IN_FLIGHT.includes(detail?.status ?? run.status)
   useEffect(() => {
     if (!live) return
@@ -613,9 +592,8 @@ function RunDetail({ d, onSteered }: { d: WfRunDetail; onSteered: () => void }) 
   )
 }
 
-/** Steer a run that is still going. Queued for the worker holding the ledger,
- *  which is what turns a directive into an event on it — so nothing here is
- *  instant, and the panel re-reads rather than claiming the run obeyed. */
+/** queued for the worker holding the ledger, so nothing here is instant — the
+ *  panel re-reads rather than claiming the run obeyed */
 function Steer({ runId, hunt, onSteered }: { runId: string; hunt: boolean; onSteered: () => void }) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -631,8 +609,7 @@ function Steer({ runId, hunt, onSteered }: { runId: string; hunt: boolean; onSte
       .finally(() => setBusy(null))
   }
 
-  // abort and note apply to any run; a hunt is the only kind with beliefs to
-  // extend or a verdict to be told to reach.
+  // a hunt is the only kind with beliefs to extend or a verdict to reach
   const kinds = hunt ? ['abort', 'conclude', 'extend'] : ['abort']
 
   return (
@@ -701,7 +678,6 @@ function runStatusColor(s: string): string {
   return 'var(--med)' // running
 }
 
-/** Edit a custom workflow's metadata (name / description / use case / triggers). */
 function EditModal({ wf, onClose, onSaved }: { wf: Workflow; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(wf.name)
   const [description, setDescription] = useState(wf.desc)
@@ -742,7 +718,6 @@ function EditModal({ wf, onClose, onSaved }: { wf: Workflow; onClose: () => void
   )
 }
 
-/** Delete a custom workflow (with confirmation). */
 function DeleteModal({ wf, onClose, onDeleted }: { wf: Workflow; onClose: () => void; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -770,7 +745,6 @@ function DeleteModal({ wf, onClose, onDeleted }: { wf: Workflow; onClose: () => 
   )
 }
 
-/* ---------------- Agents tab ---------------- */
 function AgentsTab() {
   const { rows, phase, error, reload } = useAgents()
   const [busy, setBusy] = useState<string | null>(null)
@@ -781,8 +755,6 @@ function AgentsTab() {
   const builtins = rows.filter((a) => !a.custom)
   const customs = rows.filter((a) => a.custom)
 
-  // Fork → create the editable copy, refresh, then open its editor (mirrors
-  // the old Agent Builder "fork → opening editor" flow).
   const fork = (handle: string) => {
     setBusy(handle)
     agentsApi
@@ -811,8 +783,7 @@ function AgentsTab() {
       {phase === 'ready' && rows.length === 0 && <StateMsg><EmptyState icon="brain" title="No agents yet" body="Create a custom SOC agent or refresh to load built-in templates." primary={{ label: 'New agent', onClick: () => setCreating(true), icon: 'plus' }} secondary={{ label: 'Refresh', onClick: reload, icon: 'refresh' }} /></StateMsg>}
 
       {phase === 'ready' && rows.length > 0 && (
-        // Two-up (Custom | Built-in) when forked copies exist; otherwise the
-        // built-in table goes full width.
+        // two-up only when forked copies exist
         <div
           className="grid gap-x-6 gap-y-2 px-[22px] pb-[22px] items-start"
           style={{ gridTemplateColumns: customs.length > 0 ? 'repeat(auto-fit, minmax(440px, 1fr))' : '1fr' }}
@@ -846,7 +817,6 @@ function AgentsTab() {
   )
 }
 
-/** A titled agents section (column header + table) used in the two-up grid. */
 function AgentSection({ title, agents, template, renderActions }: {
   title: string
   agents: AgentTemplate[]
@@ -861,7 +831,6 @@ function AgentSection({ title, agents, template, renderActions }: {
   )
 }
 
-/** Shared agents table; `template` toggles the read-only Template badge. */
 function AgentTable({ agents, template, renderActions }: {
   agents: AgentTemplate[]
   template?: boolean
@@ -936,7 +905,7 @@ const BLANK_AGENT_FORM: AgentForm = {
   max_tokens: '', enable_thinking: false,
 }
 
-/** Create or edit a custom agent — full field set + AI-assisted drafting,
+/** AI-assisted drafting;
     mirroring the old Agent Builder. `agentId === null` ⇒ create mode. */
 function AgentEditModal({ agentId, onClose, onSaved }: { agentId: string | null; onClose: () => void; onSaved: () => void }) {
   const isCreate = agentId === null
@@ -950,7 +919,6 @@ function AgentEditModal({ agentId, onClose, onSaved }: { agentId: string | null;
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // AI assist (agentsApi.generateCustom) — describe → draft → iterative refine.
   const [aiOpen, setAiOpen] = useState(isCreate)
   const [aiDesc, setAiDesc] = useState('')
   const [aiFeedback, setAiFeedback] = useState('')
@@ -1174,7 +1142,6 @@ function AgentEditModal({ agentId, onClose, onSaved }: { agentId: string | null;
   )
 }
 
-/** Delete a custom agent (the source template, if any, is unaffected). */
 function AgentDeleteModal({ agent, onClose, onDeleted }: { agent: AgentTemplate; onClose: () => void; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1202,7 +1169,6 @@ function AgentDeleteModal({ agent, onClose, onDeleted }: { agent: AgentTemplate;
   )
 }
 
-/* ---------------- Skills tab ---------------- */
 function SkillsTab() {
   const { rows, phase, error, reload, toggleActive } = useSkills()
   const [building, setBuilding] = useState(false)
@@ -1273,7 +1239,6 @@ function SkillsTab() {
   )
 }
 
-/** Delete a skill (with confirmation). */
 function SkillDeleteModal({ skill, onClose, onDeleted }: { skill: Skill; onClose: () => void; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1296,7 +1261,7 @@ function SkillDeleteModal({ skill, onClose, onDeleted }: { skill: Skill; onClose
   )
 }
 
-/** Build a skill with AI — describe it, answer any clarifying question, then
+/** describe it, answer any clarifying question, then
     review the generated draft and save it. Wraps skillsApi.generate + create. */
 function BuildSkillModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [description, setDescription] = useState('')

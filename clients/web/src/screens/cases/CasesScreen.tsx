@@ -1,9 +1,3 @@
-/* ============================================================
-   Cases — A (full-bleed table) → B (master-detail on click)
-   Wired to the real backend (casesApi/findingsApi) via useCases /
-   useCaseDetail; falls through to loading/empty/error states.
-   See CONSOLE_GAPS.md §9.
-   ============================================================ */
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
@@ -40,13 +34,11 @@ function caseActionError(error: unknown, fallback: string): string {
   return (error as { message?: string })?.message || fallback
 }
 
-/** build the "Open in Vigil" auto-message for a case */
 function casePrompt(c: CaseRow): string {
   const tactic = c.tactic !== '—' ? `, primary tactic ${c.tactic}` : ''
   return `Investigate case ${c.id}: "${c.title}" — ${c.prio} priority, status ${c.status}, ${c.findings} linked findings${tactic}. Summarize the case and recommend next steps.`
 }
 
-/* ---------------- table sorting ---------------- */
 type SortKey = 'id' | 'title' | 'status' | 'prio' | 'ownerName' | 'findings' | 'tactic' | 'age' | 'sla' | 'updated'
 const PRIO_RANK = { critical: 0, high: 1, medium: 2, low: 3 } satisfies Record<CaseRow['prio'], number>
 
@@ -82,13 +74,11 @@ function Th({ label, k, sort, onSort }: { label: string; k: SortKey; sort: SortS
   )
 }
 
-/* ---------------- case-detail tabs ---------------- */
 type CaseTab = 'Overview' | 'Investigation' | 'Resolution' | 'Collaboration' | 'Details'
 const CASE_TABS: CaseTab[] = ['Overview', 'Investigation', 'Resolution', 'Collaboration', 'Details']
 
 type DetailData = ReturnType<typeof useCaseDetail>
 
-/** KPI strip — total findings / critical / high / SLA */
 function Metrics({ findings, crit, high, sla }: { findings: number; crit: number; high: number; sla: string }) {
   return (
     <div className="bg-panel border border-line rounded-lg overflow-hidden">
@@ -208,8 +198,7 @@ function TimelineCard({ caseId }: { caseId: string }) {
 }
 
 export default function CasesScreen({ openChat, goSettings, setViewFull }: ConsoleScreenProps) {
-  // the open case lives in a ?case=<id> query param so it's shareable /
-  // deep-linkable; no ?case ⇒ show the full-width table.
+  // the open case is a ?case=<id> param, so a detail view is deep-linkable
   const [searchParams, setSearchParams] = useSearchParams()
   const selected = searchParams.get('case')
   const { rows, phase, error, reload } = useCases()
@@ -250,7 +239,6 @@ function StateRow({ children }: { children: ReactNode }) {
   )
 }
 
-/* ---------------- Full-width table ---------------- */
 function CasesTable({
   rows,
   phase,
@@ -271,8 +259,7 @@ function CasesTable({
   const [prioF, setPrioF] = useState('any')
   const [assigneeF, setAssigneeF] = useState('any')
   const [showAdvanced, setShowAdvanced] = useState(false)
-  // server-side full-text results (title/description/IOCs/id + filters);
-  // null = not searching, fall back to the client-filtered list
+  // null = not searching; fall back to the client-filtered list
   const [results, setResults] = useState<CaseRow[] | null>(null)
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'updated', dir: 'desc' })
   const [page, setPage] = useState(0)
@@ -502,9 +489,6 @@ function CasesTable({
   )
 }
 
-/* ---------------- Delete case confirmation ----------------
-   DELETE /cases/{id}; case-owned records follow the backend's delete policy,
-   while findings linked to the case remain available for review. */
 function DeleteCaseDialog({
   target,
   onClose,
@@ -567,10 +551,6 @@ function DeleteCaseDialog({
   )
 }
 
-/* ---------------- Advanced (server-side) search panel ----------------
-   Ports the old CaseSearch: full-text over title/description/IOCs/id plus
-   priority / status / assignee / tags / date-range filters, via
-   POST /case-search/. Results replace the table list until cleared. */
 function AdvancedSearchPanel({ onResults, rows }: { onResults: (r: CaseRow[] | null) => void; rows: CaseRow[] }) {
   const [query, setQuery] = useState('')
   const [priority, setPriority] = useState('')
@@ -716,9 +696,6 @@ function AdvancedSearchPanel({ onResults, rows }: { onResults: (r: CaseRow[] | n
   )
 }
 
-/* ---------------- New case dialog ----------------
-   POST /cases/ with title/priority/status/description (no findings yet);
-   refreshes the list on success. */
 function NewCaseDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const [title, setTitle] = useState('')
   const [priority, setPriority] = useState('medium')
@@ -800,8 +777,6 @@ function NewCaseDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
   )
 }
 
-/* ---------------- Edit case dialog ----------------
-   PATCH /cases/{id} with the editable fields. */
 function EditCaseDialog({ open, c, onClose, onSaved }: { open: boolean; c: CaseRow | null; onClose: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState('')
   const [priority, setPriority] = useState('medium')
@@ -883,9 +858,6 @@ function EditCaseDialog({ open, c, onClose, onSaved }: { open: boolean; c: CaseR
   )
 }
 
-/* ---------------- Merge case dialog ----------------
-   POST /cases/{target}/merge { source_case_id }. The current case is the
-   source; its findings/IOCs/evidence move to the chosen target and it closes. */
 function MergeCaseDialog({ open, c, rows, onClose, onMerged }: { open: boolean; c: CaseRow | null; rows: CaseRow[]; onClose: () => void; onMerged: () => void }) {
   const [target, setTarget] = useState('')
   const [busy, setBusy] = useState(false)
@@ -936,9 +908,6 @@ function MergeCaseDialog({ open, c, rows, onClose, onMerged }: { open: boolean; 
   )
 }
 
-/* ---------------- Export to Timesketch dialog ----------------
-   POST /timesketch/export. Requires the Timesketch integration to be
-   configured; surfaces the backend error otherwise. */
 function ExportTimesketchDialog({ open, c, onClose, onConfigure }: { open: boolean; c: CaseRow | null; onClose: () => void; onConfigure: () => void }) {
   const [timeline, setTimeline] = useState('')
   const [sketch, setSketch] = useState('')
@@ -1013,7 +982,6 @@ function ExportTimesketchDialog({ open, c, onClose, onConfigure }: { open: boole
   )
 }
 
-/* ---------------- Master-detail split ---------------- */
 function CasesDetail({
   id,
   rows,
@@ -1052,8 +1020,7 @@ function CasesDetail({
     )
   }, [rows, listQuery])
 
-  // the old CaseDetailDialog's five tabs, re-skinned as console cards.
-  // Header + tab bar stay pinned; only the active tab's body scrolls.
+  // header + tab bar stay pinned; only the active tab's body scrolls
   const groups = {
     Overview: (
       <>

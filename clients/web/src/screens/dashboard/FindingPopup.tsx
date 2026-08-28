@@ -1,14 +1,5 @@
-/* ============================================================
-   Finding detail popup — opened from a Findings row / the "View"
-   eye. Fetches the full finding (findingsApi.getById) and shows
-   the normalized fields, description, MITRE predictions and
-   extracted entities, plus on-demand AI enrichment
-   (findingsApi.getEnrichment) and status / delete actions.
-   Ports the production FindingDetailDialog's enrichment surface
-   (CONSOLE_GAPS.md §8); the embedded VStrike NetworkContextPanel
-   is intentionally not ported — it depends on the VStrike provider
-   that isn't mounted under the SOC console shell.
-   ============================================================ */
+/* The embedded VStrike NetworkContextPanel is deliberately not ported: it needs
+   the VStrike provider, which isn't mounted under the console shell. */
 import { useEffect, useState } from 'react'
 import { findingsApi } from '../../services/api'
 import { mapApiFinding, type ApiFinding } from '../../data/mappers'
@@ -173,7 +164,6 @@ export default function FindingPopup({
 }: {
   id: string | null
   onClose: () => void
-  /** called after a status change / delete so the list can refetch */
   onChanged?: () => void
   onConfigureAi?: () => void
 }) {
@@ -182,8 +172,7 @@ export default function FindingPopup({
   const [error, setError] = useState<string | null>(null)
   const [loadAttempt, setLoadAttempt] = useState(0)
 
-  // AI enrichment — on-demand (a getEnrichment call may invoke an LLM, so we
-  // don't fire it automatically on open). 'idle' until the user asks for it.
+  // on-demand: a getEnrichment call may invoke an LLM
   const [enrichment, setEnrichment] = useState<Enrichment | null>(null)
   const [enrichPhase, setEnrichPhase] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [enrichError, setEnrichError] = useState<'not_configured' | 'failed' | null>(null)

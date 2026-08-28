@@ -1,8 +1,3 @@
-/**
- * Smoke test for the SOC Console.
- * Verifies the shell mounts and every screen / dashboard tab / master-detail
- * flow renders without throwing (catches runtime errors tsc can't see).
- */
 import { afterEach, describe, it, expect, beforeAll, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
@@ -11,8 +6,6 @@ import SocConsole from './SocConsole'
 // these resolve to the mocked implementations (vi.mock below is hoisted)
 import { streamFetch, aiDecisionsApi, approvalsApi } from '../services/api'
 
-// SocConsole reads the session from AuthContext (user menu + permission-gated
-// nav). Stub it with a full-permission user so every rail item + screen renders.
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
     user: { full_name: 'Test User', email: 'test@vigil.local', role_id: 'role-admin', mfa_enabled: false },
@@ -21,11 +14,7 @@ vi.mock('../contexts/AuthContext', () => ({
   }),
 }))
 
-// SocConsole is URL-driven (each screen owns /<screen>, cases deep-link to
-// /cases?case=<caseId>), so mount it inside a router with that route.
-// SocConsole's theme provider bridges the app-wide ColorSchemeContext (scheme is
-// backend-persisted), so it must mount inside a real ColorSchemeProvider — same as
-// production (main.tsx wraps the whole app).
+// The theme provider bridges ColorSchemeContext, so it needs a real one above it.
 function renderConsole(path = '/dashboard') {
   return render(
     <ColorSchemeProvider>
@@ -38,9 +27,7 @@ function renderConsole(path = '/dashboard') {
   )
 }
 
-// The Cases screen is wired to the backend; mock the shared api client so the
-// fetch resolves deterministically in jsdom (no network). Chat's agent roster
-// comes from the same module. Literals are inlined — vi.mock is hoisted.
+// Literals are inlined below because vi.mock is hoisted.
 vi.mock('../services/api', () => ({
   casesApi: {
     getAll: () =>
@@ -83,18 +70,16 @@ vi.mock('../services/api', () => ({
         },
       }),
   },
-  // chat settings panel: model list + MCP tool status
   claudeApi: {
     getModels: () => Promise.resolve({ data: { models: [{ id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' }] } }),
   },
   mcpApi: {
     getStatuses: () => Promise.resolve({ data: { statuses: [{ status: 'ok' }, { status: 'ok' }] } }),
   },
-  // chat resolves its default model from the chat_default component assignment
   aiConfigApi: {
     getConfig: () => Promise.resolve({ data: { components: [], assignments: {} } }),
   },
-  // chat streaming helper — a vi.fn so the SSE test can supply a streaming body
+  // a vi.fn, so the SSE test can supply a streaming body
   streamFetch: vi.fn(() => Promise.resolve({ ok: true, status: 200, body: null })),
   workflowApi: {
     listAll: () =>
@@ -119,7 +104,6 @@ vi.mock('../services/api', () => ({
         data: { events: [{ id: 'finding-f-1', start: '2026-06-12T11:36:33Z', type: 'finding', severity: 'medium', metadata: { finding_id: 'f-1' } }] },
       }),
   },
-  // AI Decisions screen — Pending tab (getPendingFeedback) + stats KPIs.
   aiDecisionsApi: {
     getPendingFeedback: () =>
       Promise.resolve({
@@ -139,20 +123,15 @@ vi.mock('../services/api', () => ({
     approve: vi.fn(() => Promise.resolve({})),
     reject: vi.fn(() => Promise.resolve({})),
   },
-  // ColorSchemeContext loads/saves the light/dark preference on mount + on toggle;
-  // the shell also reads integrations (nav membership) + general settings
-  // (desktop-notification gating) on mount.
   configApi: {
     getTheme: () => Promise.resolve({ data: { theme: 'dark' } }),
     setTheme: () => Promise.resolve({ data: {} }),
     getIntegrations: () => Promise.resolve({ data: { enabled_integrations: [] } }),
     getGeneral: () => Promise.resolve({ data: { show_notifications: false } }),
   },
-  // nav membership poll (Auto Ops gating plumbing)
   orchestratorApi: {
     getStatus: () => Promise.resolve({ data: { enabled: false } }),
   },
-  // chat cost band (debounced pre-call estimate) + reasoning-trace clients
   analyticsApi: {
     estimateCost: () =>
       Promise.resolve({
@@ -182,7 +161,6 @@ vi.mock('../services/api', () => ({
   },
 }))
 
-// Skills tab fetches via the dedicated skills client (not the shared api).
 vi.mock('../services/skillsApi', () => ({
   skillsApi: {
     list: () =>
@@ -193,7 +171,7 @@ vi.mock('../services/skillsApi', () => ({
   },
 }))
 
-// jsdom lacks ResizeObserver, which the interactive Timeline uses.
+// jsdom lacks ResizeObserver, which the interactive Timeline uses
 beforeAll(() => {
   const g = globalThis as unknown as { ResizeObserver?: unknown }
   if (!g.ResizeObserver) {
@@ -224,10 +202,9 @@ describe('SocConsole', () => {
   it('renders the 404 screen for an unknown path and routes home', async () => {
     renderConsole('/does-not-exist')
     expect(title()).toBe('Page not found')
-    // An unknown path is first probed as a page extension, so the 404 body
-    // only lands once that resolution settles.
+    // an unknown path is probed as a page extension first, so the 404 body only
+    // lands once that resolution settles
     expect(await screen.findByText('404')).toBeInTheDocument()
-    // the in-shell "Back to dashboard" action returns to a real screen
     fireEvent.click(screen.getByRole('button', { name: /Back to dashboard/ }))
     expect(title()).toBe('Dashboard')
   })
@@ -250,13 +227,10 @@ describe('SocConsole', () => {
 
   it('switches every Dashboard tab including the interactive Timeline', async () => {
     renderConsole()
-    // ATT&CK (the dashboard tabs carry role=tab for screen readers)
     fireEvent.click(screen.getByRole('tab', { name: 'ATT&CK' }))
     expect(screen.getByText(/Techniques by occurrence/)).toBeInTheDocument()
-    // Timeline (exercises ResizeObserver + layout math); count resolves async
     fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
     expect(await screen.findByText(/events$/)).toBeInTheDocument()
-    // Entity Graph empty state
     fireEvent.click(screen.getByRole('tab', { name: 'Entity Graph' }))
     expect(screen.getByText('No entity graph yet')).toBeInTheDocument()
   })
@@ -264,23 +238,19 @@ describe('SocConsole', () => {
   it('opens the Cases master-detail and returns to the table', async () => {
     renderConsole()
     fireEvent.click(screen.getByRole('button', { name: 'Cases' }))
-    // wait for the wired fetch to populate the table, then click the first row
     fireEvent.click(await screen.findByText('Defense Evasion: Obfuscated Loader'))
-    // detail view shows the back button + the Overview tab's content
     const back = screen.getByRole('button', { name: /All cases/ })
     expect(back).toBeInTheDocument()
-    // detail opens on the Overview tab; "Case details" is its stable content
-    // ("Linked findings" lives on the Investigation tab in the tabbed layout)
+    // "Case details" is stable Overview content; "Linked findings" moved to the
+    // Investigation tab
     expect(screen.getByText('Case details')).toBeInTheDocument()
     fireEvent.click(back)
-    // back to the full table
     expect(screen.getByRole('button', { name: 'New Case' })).toBeInTheDocument()
   })
 
   it('opens the AI Decisions review queue', async () => {
     renderConsole()
     fireEvent.click(screen.getByRole('button', { name: 'AI Decisions' }))
-    // Pending tab loads from the mocked aiDecisionsApi; wait for the row
     fireEvent.click(await screen.findByText('Cluster merge'))
     expect(screen.getByText('AI recommendation')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /All decisions/ })).toBeInTheDocument()
@@ -292,21 +262,19 @@ describe('SocConsole', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Agents' }))
     expect(screen.getByText('SOC Agents')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: 'Skills' }))
-    // skills load asynchronously from the mocked skills client
     expect(await screen.findByText('UI Demo Skill')).toBeInTheDocument()
   })
 
   it('opens the chat dock without error', () => {
     renderConsole()
     fireEvent.click(screen.getByRole('button', { name: /Ask Vigil/ }))
-    // wired chat starts empty with its prompt
     expect(screen.getByText(/investigate a finding/)).toBeInTheDocument()
   })
 
   it('restores and persists the preferred chat width', () => {
     localStorage.setItem('soc.chat.width.v1', '500')
-    // A wide viewport keeps the 516 step inside the band; jsdom's 1024 default
-    // caps the dock at half the screen (512), which is the next test's subject.
+    // jsdom's 1024 default would cap the dock at half the screen (512), which is
+    // the next test's subject
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 })
     renderConsole()
     fireEvent.click(screen.getByRole('button', { name: /Ask Vigil/ }))
@@ -335,13 +303,10 @@ describe('SocConsole', () => {
 
   it('applies an accent + light mode from the Appearance settings page', () => {
     renderConsole('/settings')
-    // Settings opens on the Appearance section (first nav item)
     fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
-    // pick the cyan accent preset
     const cyan = screen.getByRole('button', { name: 'accent cyan' })
     fireEvent.click(cyan)
     expect(cyan).toHaveAttribute('aria-pressed', 'true')
-    // switch to light mode; the toggle reflects the new state
     const light = screen.getByRole('button', { name: 'Light' })
     fireEvent.click(light)
     expect(light).toHaveAttribute('aria-pressed', 'true')
@@ -351,17 +316,15 @@ describe('SocConsole', () => {
     renderConsole()
     fireEvent.click(screen.getByRole('button', { name: /Ask Vigil/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Chat settings' }))
-    // MCP status resolves from the mocked api (2 of 2 servers ok)
     expect(await screen.findByText('2/2')).toBeInTheDocument()
     expect(screen.getByText(/Context ~/)).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/Override default system prompt/)).toBeInTheDocument()
-    // Extended thinking went with the move to the harness: one provider schema
-    // through Bifrost has no thinking blocks, so the control would do nothing.
+    // extended thinking went with the harness move: one provider schema through
+    // Bifrost has no thinking blocks, so the control would do nothing
     expect(screen.queryByRole('switch', { name: 'Extended thinking' })).toBeNull()
   })
 
-  // A parked run waits on a person, and the rail is the only thing on screen from
-  // every other view. Without the count the question sat in a tab nobody opened.
+  // without the count, a parked run's question sat in a tab nobody opened
   it('counts the runs waiting on someone in the rail', async () => {
     vi.mocked(approvalsApi.listPending).mockResolvedValue({
       data: { actions: [{ action_id: 'a' }, { action_id: 'b' }] },
@@ -374,7 +337,6 @@ describe('SocConsole', () => {
   })
 
   it('streams an assistant response through the chat SSE pipe', async () => {
-    // a Response-like object whose body yields two SSE text deltas then ends
     const chunks = [
       'data: {"type":"text","content":"Hello"}\n',
       'data: {"type":"text","content":" world"}\n',
@@ -398,9 +360,8 @@ describe('SocConsole', () => {
     fireEvent.change(screen.getByPlaceholderText(/Ask Vigil/), { target: { value: 'hi' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
-    // the two text deltas are concatenated and rendered as the reply. waitFor
-    // re-queries each poll so it settles on the final message node rather than
-    // the transient streaming bubble (which detaches when the stream completes).
+    // waitFor re-queries each poll, so it settles on the final message node and
+    // not the streaming bubble, which detaches when the stream completes
     await waitFor(() => expect(screen.getByText('Hello world')).toBeInTheDocument())
     expect(vi.mocked(streamFetch)).toHaveBeenCalledWith(
       '/claude/chat/stream',
@@ -412,7 +373,6 @@ describe('SocConsole', () => {
     renderConsole()
     fireEvent.click(screen.getByRole('button', { name: 'AI Decisions' }))
     fireEvent.click(await screen.findByText('Cluster merge'))
-    // a reviewer name is required before the verdict buttons submit
     fireEvent.change(screen.getByPlaceholderText('Your name / analyst ID'), {
       target: { value: 'QA Analyst' },
     })
@@ -424,8 +384,7 @@ describe('SocConsole', () => {
   })
 
   it('exports the visible timeline events as CSV', async () => {
-    // jsdom has no object-URL plumbing — stub it so the export can run, and
-    // capture the Blob it's handed to assert the CSV mime type
+    // jsdom has no object-URL plumbing; the stub also captures the Blob
     let captured: Blob | undefined
     const createUrl = vi.fn((b: Blob) => {
       captured = b

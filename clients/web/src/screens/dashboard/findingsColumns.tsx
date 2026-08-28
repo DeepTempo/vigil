@@ -18,12 +18,10 @@ function timeKey(f: Finding): number {
   return Number(d) * 10000 + (t ? Number(t[1]) * 100 + Number(t[2]) : 0)
 }
 
-/** Turn an entity_context key into a column label: dest_ips -> "Dest Ips". */
 function labelFor(key: string): string {
   return key.replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-/** The columns every finding has, whatever produced it. */
 export function baseFindingColumns(
   onView: (f: Finding) => void,
   onInvestigate: (f: Finding) => void,

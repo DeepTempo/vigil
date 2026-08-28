@@ -1,7 +1,5 @@
-/* Status pill for orchestrator investigation states. The shared
-   .status pill only covers open/investigating/closed, so the
+/* The shared .status pill only covers open/investigating/closed, so the
    autonomous-investigation states get their colours from tokens here. */
-
 interface Meta {
   fg: string
   bg: string

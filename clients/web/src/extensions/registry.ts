@@ -1,5 +1,4 @@
-// Fetch + validate a connector's manifest into a RegisteredExtension. Pure
-// functions (no React) so they're unit-testable.
+// Pure functions (no React), so they're unit-testable.
 import {
   HOST_API_MAJOR,
   type ExtensionManifest,
@@ -7,8 +6,8 @@ import {
 } from './contracts'
 import { extensionOriginAllowlist } from '../config/extensionAllowlist'
 
-/** Match on major only, so a future breaking host can refuse an old bundle
- *  rather than mis-mount it (this "1.x" host accepts "1", "1.0", "1.2.0"). */
+/** major only, so a future breaking host refuses an old bundle rather than
+ *  mis-mounting it */
 export function isHostApiCompatible(declared: string): boolean {
   const major = parseInt(String(declared ?? '').split('.')[0], 10)
   return Number.isFinite(major) && major === HOST_API_MAJOR
@@ -49,7 +48,7 @@ function sameOrigin(a: string, b: string): boolean {
   }
 }
 
-/** Skip a malformed manifest rather than throwing deep inside the shell. */
+/** skipped rather than thrown, deep inside the shell */
 export function validateManifest(raw: unknown): ExtensionManifest | null {
   const m = raw as Partial<ExtensionManifest> | null
   if (!m || typeof m !== 'object') return null
@@ -71,8 +70,7 @@ export function validateManifest(raw: unknown): ExtensionManifest | null {
   return m as ExtensionManifest
 }
 
-/** Returns null (never throws) on any failure so one broken connector can't
- *  take down the nav. */
+/** never throws: one broken connector must not take down the nav */
 export async function fetchManifest(
   integrationId: string,
   connectorUrl: string,

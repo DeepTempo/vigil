@@ -1,8 +1,3 @@
-/* ============================================================
-   SOC Console — shell: nav rail, topbar, view router, Vigil chat
-   dock, floating "Ask Vigil" FAB, and the theme tweaks panel.
-   Ported from the design's index HTML + main.js.
-   ============================================================ */
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import '../styles.css'
@@ -44,31 +39,24 @@ const SCREENS: Record<ConsoleScreenKey, (props: ConsoleScreenProps) => JSX.Eleme
   settings: SettingsScreen,
 }
 
-/** Per-screen permission gate — the only permission check in the app
- *  (ProtectedRoute handles auth alone). Screens absent here are ungated. In
- *  DEV_MODE the auth context grants every permission, so all items show. */
+/** The only permission check in the app; ProtectedRoute handles auth alone.
+ *  Screens absent here are ungated, and DEV_MODE grants everything. */
 const SCREEN_PERMS: Partial<Record<ConsoleScreenKey, string>> = {
   cases: 'cases.read',
   decisions: 'ai_decisions.approve',
   settings: 'settings.read',
 }
 
-/* ---------- resizable chat dock (#401) ----------
- * The dock width is an operator preference persisted in localStorage and
- * clamped to a sensible band; on narrow viewports the dock goes full-width and
- * resizing is disabled. These module-level helpers back that behaviour. */
 const CHAT_MIN_WIDTH = 360
 const CHAT_MAX_WIDTH = 720
 const CHAT_DEFAULT_WIDTH = 420
 const CHAT_WIDTH_STORAGE_KEY = 'soc.chat.width.v1'
 
-/** Clamp a requested dock width to the [min, max] band (rounded to a whole px). */
 function clampChatPreference(width: number): number {
   return Math.min(CHAT_MAX_WIDTH, Math.max(CHAT_MIN_WIDTH, Math.round(width)))
 }
 
-/** Largest dock width allowed for a viewport — never more than half the screen
- *  (so the main canvas stays usable) and never beyond the hard max. */
+/** never past half the screen, so the main canvas stays usable */
 function chatMaxForViewport(viewportWidth: number): number {
   return Math.min(
     CHAT_MAX_WIDTH,
@@ -76,8 +64,6 @@ function chatMaxForViewport(viewportWidth: number): number {
   )
 }
 
-/** Restore the persisted dock-width preference, clamped; default when unset or
- *  when localStorage is unavailable. */
 function readChatWidth(): number {
   try {
     const raw = localStorage.getItem(CHAT_WIDTH_STORAGE_KEY)
@@ -86,15 +72,14 @@ function readChatWidth(): number {
       if (Number.isFinite(parsed)) return clampChatPreference(parsed)
     }
   } catch {
-    /* localStorage unavailable — fall through to the default */
+    /* empty */
   }
   return CHAT_DEFAULT_WIDTH
 }
 
 export default function SocConsole() {
-  // the theme provider is the single source of truth for mode + accent + bg,
-  // read here and written from the Appearance settings page; it must wrap the inner
-  // shell (which both styles .soc-console and renders the settings screen).
+  // the theme provider must wrap the inner shell: that shell both styles
+  // .soc-console and renders the Appearance page that writes to it
   return (
     <SocThemeProvider>
       <ExtensionProvider>
@@ -104,20 +89,16 @@ export default function SocConsole() {
   )
 }
 
-/** Like data.ts `NAV`, but the key is a plain string so extension screens
- *  (keys outside the built-in `ConsoleScreenKey` union) can join the rail. */
+/** key is a plain string, so extension screens can join the rail */
 type NavItem = [IconName, string, string | null, NavGate?]
 
 function SocConsoleInner() {
-  // the active screen comes from the URL (/<screen>); the cases screen
-  // additionally carries its open case in a ?case=<id> query param.
   const navigate = useNavigate()
   const { hasPermission } = useAuth()
   const { screen } = useParams<{ screen?: string }>()
   const { mountPoints, enabledIntegrations, loading: extLoading } = useExtensions()
 
-  // Merge built-in screens/nav/titles/perms with registered extensions;
-  // built-ins win so an extension can't shadow a core screen.
+  // built-ins win, so an extension can't shadow a core screen
   const { screens, navItems, titles, screenPerms } = useMemo(() => {
     const screens: Record<string, (p: ConsoleScreenProps) => JSX.Element> = { ...SCREENS }
     const titles: Record<string, [string, string]> = { ...TITLES }
@@ -138,19 +119,17 @@ function SocConsoleInner() {
         mount.gate?.integration ? { integration: mount.gate.integration } : undefined,
       ])
     }
-    // Slot extension tabs just above the pinned Settings entry (append if absent).
+    // extension tabs slot above the pinned Settings entry
     const settingsIdx = navItems.findIndex(([, , key]) => key === 'settings')
     navItems.splice(settingsIdx === -1 ? navItems.length : settingsIdx, 0, ...extNav)
     return { screens, navItems, titles, screenPerms }
   }, [mountPoints])
 
-  // Unknown segment → 404, but while manifests load a deep-linked extension tab
-  // shows a loading state instead of flashing 404. `current` falls back to
-  // dashboard only so the chrome has a valid key to render.
+  // while manifests load, a deep-linked extension tab shows loading rather than
+  // flashing 404
   const valid = screen !== undefined && screen in screens
   const current: string = valid ? (screen as string) : 'dashboard'
   const resolvingExtension = !valid && screen !== undefined && extLoading
-  // whether the user may view the current screen (DEV_MODE → always true)
   const currentPerm = valid ? screenPerms[current] : undefined
   const allowed = !currentPerm || hasPermission(currentPerm)
 
@@ -163,17 +142,14 @@ function SocConsoleInner() {
   const [chatResizing, setChatResizing] = useState(false)
   const [chatSeed, setChatSeed] = useState<string | null>(null)
   const [viewFull, setViewFull] = useState(false)
-  // enabled integrations come from ExtensionProvider (so a connector configured
-  // in Settings shows in the rail without a refresh); orchestrator polled 10s.
+  // from ExtensionProvider, so a connector configured in Settings reaches the
+  // rail without a refresh
   const [orchestratorEnabled, setOrchestratorEnabled] = useState(false)
 
-  // fire desktop notifications for newly-arrived findings (gated by the General
-  // `show_notifications` setting + browser permission)
   useDesktopNotifications()
-  // A parked run is waiting on a person, and the rail is the only thing on screen
-  // from every other view. Without it the question sat in a tab nobody opened.
+  // the rail is the only thing on screen from every other view; without this
+  // badge a parked run sat in a tab nobody opened
   const parked = usePendingApprovals().actions.length
-  // nav rail collapsed (icons only) vs. expanded (icons + labels); sticky
   const [railExpanded, setRailExpanded] = useState<boolean>(() => {
     try {
       return localStorage.getItem('soc.rail.expanded') === '1'
@@ -187,7 +163,7 @@ function SocConsoleInner() {
       try {
         localStorage.setItem('soc.rail.expanded', next ? '1' : '0')
       } catch {
-        /* localStorage unavailable — keep in-memory state only */
+        /* empty */
       }
       return next
     })
@@ -214,13 +190,11 @@ function SocConsoleInner() {
     try {
       localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, String(next))
     } catch {
-      /* localStorage unavailable — keep the in-memory preference */
+      /* empty */
     }
   }, [])
 
   const go = useCallback(
-    // next is a plain string (not just ConsoleScreenKey) so extension screens can
-    // navigate; options carry the query-string + replace behavior from main.
     (next: string, options?: ConsoleScreenGoOptions) => {
       const search = options?.search || ''
       if (valid && next === current && !search) return
@@ -235,21 +209,18 @@ function SocConsoleInner() {
     [navigate],
   )
 
-  // leaving a screen drops any full-bleed detail it had open; screens that
-  // deep-link a detail (cases) re-assert viewFull from their own URL state.
+  // screens that deep-link a detail re-assert viewFull from their own URL state
   useEffect(() => {
     setViewFull(false)
   }, [current])
 
-  // orchestrator status on a 10s poll (enabled integrations come from
-  // ExtensionProvider above, not fetched here)
   useEffect(() => {
     const pollStatus = () =>
       orchestratorApi
         .getStatus()
         .then((res) => setOrchestratorEnabled(Boolean((res.data as { enabled?: boolean })?.enabled)))
         .catch(() => {
-          /* keep the previous value on a transient failure */
+          /* keep the previous value */
         })
     pollStatus()
     const id = setInterval(pollStatus, 10_000)

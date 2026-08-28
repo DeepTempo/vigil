@@ -1,10 +1,5 @@
-/* ============================================================
-   ATT&CK data hook — the technique rollup driving the table, the
-   tactics distribution and the severity donut. Min-confidence and
-   time-range are passed to the backend (server-side filtering via
-   attackApi.getTechniqueRollup). Tactic/name are resolved client
-   side from ./mitre (the rollup leaves them "Unknown"/== id).
-   ============================================================ */
+/* Min-confidence and time-range filter server-side. Tactic and name resolve
+   client-side from ./mitre — the rollup leaves them "Unknown" / == id. */
 import { useCallback, useEffect, useState } from 'react'
 import { attackApi } from '../../services/api'
 import { techniqueName, techniqueTactic } from '../../data/mitre'

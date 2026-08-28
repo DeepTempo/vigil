@@ -1,8 +1,3 @@
-/* ============================================================
-   Settings · Developer (dev-only) — PostgreSQL connection + storage
-   status and local Splunk Enterprise control. Mirrors the "dev" tab
-   in Settings.tsx. Infrastructure/local-environment settings.
-   ============================================================ */
 import { useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { Field, PasswordInput, SettingsCard } from '../../shared/ui'

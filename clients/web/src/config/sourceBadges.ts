@@ -1,7 +1,4 @@
-// Generic `source → {label, color, icon}` map with a neutral fallback. Plain
-// data (no framework deps) so any surface can render a consistent chip.
-// `icon` is an IconName from shared/icons.
-
+// No framework deps, so any surface can render a consistent chip.
 export interface SourceBadge {
   label: string
   color: string
@@ -22,7 +19,6 @@ const SOURCE_BADGES: Record<string, SourceBadge> = {
   webhook: { label: 'Webhook', color: '#8a90a6', icon: 'link' },
 }
 
-// Falls back to the raw source string as the label so nothing is hidden.
 const DEFAULT_BADGE: Omit<SourceBadge, 'label'> = { color: '#8a90a6', icon: 'link' }
 
 export function sourceBadge(source?: string | null): SourceBadge {

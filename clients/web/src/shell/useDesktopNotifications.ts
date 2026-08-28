@@ -1,16 +1,3 @@
-/* ============================================================
-   Desktop-notification consumer for the console (CONSOLE_GAPS.md
-   §10). The shared notificationService already knows how to fire OS
-   notifications; this hook is the missing consumer:
-     1. reads the General `show_notifications` setting on mount and
-        gates the service accordingly (mirrors NotificationContext);
-     2. when enabled AND the browser has granted permission, polls
-        the findings feed and fires a desktop notification for each
-        newly-arrived finding (baselining the backlog on first tick).
-   Load-on-mount mirrors the production NotificationContext: toggling
-   the setting on mid-session takes effect for show()-gating
-   immediately, but the poll starts on the next load.
-   ============================================================ */
 import { useEffect } from 'react'
 import { configApi, findingsApi } from '../services/api'
 import { notificationService } from '../services/notifications'

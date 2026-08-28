@@ -1,8 +1,3 @@
-/* ============================================================
-   Data hooks for the Dashboard Findings tab — the findings list
-   plus the KPI summary cards (findings + cases stats). Same
-   useEffect + shared-axios pattern as useCases. See §9.
-   ============================================================ */
 import { useCallback, useEffect, useState } from 'react'
 import { casesApi, findingsApi } from '../../services/api'
 import { mapApiFinding, type ApiFinding } from '../../data/mappers'
@@ -11,7 +6,7 @@ import type { Phase } from '../cases/useCases'
 
 export type { Phase } from '../cases/useCases'
 
-/** list of all findings; polls in the background so new findings appear live */
+/** polls in the background, so new findings appear live */
 export function useFindings() {
   const [rows, setRows] = useState<Finding[]>([])
   const [phase, setPhase] = useState<Phase>('loading')
@@ -22,7 +17,7 @@ export function useFindings() {
   useEffect(() => {
     let cancelled = false
 
-    // silent = background poll: refresh rows without flashing the loading state
+    // silent = background poll, so the loading state doesn't flash
     const fetchFindings = (silent: boolean) => {
       if (!silent) {
         setPhase('loading')
@@ -73,9 +68,7 @@ interface CasesSummary {
   by_status?: Record<string, number>
 }
 
-/** the KPI cards: aggregate findings + cases counts. Uses the summary endpoints
- *  (true totals, not the capped findings-list fetch) and polls every 10s so the
- *  numbers stay live alongside useFindings. */
+/** the summary endpoints, so these are true totals and not the capped list */
 export function useDashboardKpis() {
   const [kpis, setKpis] = useState<DashKpis | null>(null)
   const [phase, setPhase] = useState<Phase>('loading')
@@ -85,7 +78,6 @@ export function useDashboardKpis() {
   useEffect(() => {
     let cancelled = false
 
-    // silent = background poll: refresh counts without flashing loading
     const fetchKpis = (silent: boolean) => {
       if (!silent) setPhase('loading')
       Promise.all([findingsApi.getSummary(), casesApi.getSummary()])

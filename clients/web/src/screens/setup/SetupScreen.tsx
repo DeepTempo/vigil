@@ -1,5 +1,3 @@
-// Standalone /setup screen. Step logic is design-agnostic (setupSteps +
-// useSetupChecklist); this file is the presentation + the inline step panels.
 import { Fragment, useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import '../../styles.css'
@@ -16,8 +14,7 @@ import type { SetupStepId } from './setupSteps'
 import { useAuth } from '../../contexts/AuthContext'
 import { llmProviderApi } from '../../services/api'
 
-// Per-browser "I'm done here" flag, set on "Go to dashboard". Readiness stays
-// live-derived; this only lets a finished user leave /setup without it nagging.
+// per-browser "I'm done here"; readiness itself stays live-derived
 const SETUP_DISMISSED_KEY = 'vigil.setupDismissed'
 const readSetupDismissed = (): boolean => {
   try {
@@ -30,19 +27,19 @@ const markSetupDismissed = (): void => {
   try {
     localStorage.setItem(SETUP_DISMISSED_KEY, '1')
   } catch {
-    /* storage unavailable */
+    /* empty */
   }
 }
 const clearSetupDismissed = (): void => {
   try {
     localStorage.removeItem(SETUP_DISMISSED_KEY)
   } catch {
-    /* storage unavailable */
+    /* empty */
   }
 }
 
-// `my-auto` (not items-center) centers vertically while staying overflow-safe:
-// when an expanded step overflows the viewport, items-center would clip the top.
+// `my-auto`, not items-center: items-center clips the top of an expanded step
+// that overflows the viewport
 const Shell = ({ children }: { children: React.ReactNode }) => (
   <div className="soc-console">
     <div className="absolute inset-0 overflow-auto">
@@ -123,7 +120,7 @@ const TIER_LEAD_IN: Record<string, string> = {
 }
 
 // grid 0fr→1fr animates to the content's natural height. Children mount only
-// while open (lingering through the close), so each panel fetches lazily on open.
+// while open, so each panel fetches lazily.
 const Collapse = ({ open, children }: { open: boolean; children: React.ReactNode }) => {
   const [mounted, setMounted] = useState(open)
   useEffect(() => {
@@ -158,11 +155,8 @@ const SetupScreen = () => {
 
   const llmReady = steps.find((s) => s.id === 'llm-provider')?.ready ?? false
 
-  // The dismissed flag means "user already left setup". If we're on /setup with
-  // the required provider NOT ready — a fresh install, or after a reset/loss that
-  // routed us here via SetupGate — that prior dismissal is stale. Clear it so
-  // completing the provider doesn't instantly bounce the user out before they can
-  // run the optional steps; they re-arm it by clicking "Go to dashboard".
+  // on /setup with the provider not ready, a prior dismissal is stale: clear it,
+  // or completing the provider bounces the user out before the optional steps
   useEffect(() => {
     if (!loading && !llmReady) clearSetupDismissed()
   }, [loading, llmReady])
@@ -174,8 +168,7 @@ const SetupScreen = () => {
     ? `${requiredCount} required · ${optionalSteps.length} optional`
     : `Ready · ${optionalDone} of ${optionalSteps.length} optional done`
 
-  // Finished (all ready) or dismissed → leave /setup. The llmReady guard avoids a
-  // loop: if the provider is later lost, SetupGate sends us back and we show the wizard.
+  // the llmReady guard avoids a loop with SetupGate sending us back
   const allReady = steps.length > 0 && steps.every((s) => s.ready)
   if (!loading && llmReady && (allReady || readSetupDismissed())) {
     return <Navigate to="/" replace />
@@ -187,8 +180,8 @@ const SetupScreen = () => {
     refetch()
   }
 
-  // The wizard creates with is_default:false; promote one here or the required
-  // step never flips ready. Idempotent — only when nothing is default yet.
+  // the wizard creates with is_default:false, so promote one or the required
+  // step never flips ready. Idempotent.
   const handleProviderSaved = async () => {
     setActiveStep(null)
     try {

@@ -1,29 +1,24 @@
 import axios from 'axios'
 import { basePath } from '../config/basePath'
 
-// Auth is cookie-based (HttpOnly access_token + refresh_token set by the
-// backend). withCredentials ensures axios sends those cookies on every
-// request, including via the Vite dev proxy.
+// Auth is cookie-based; withCredentials sends the HttpOnly cookies on every
+// request, including through the Vite dev proxy.
 const api = axios.create({
   baseURL: `${basePath}/api`,
   withCredentials: true,
-  // A dead local backend can leave Vite's proxy connection open indefinitely.
-  // Bound every request so the UI can show a recoverable error instead of a
-  // permanent loading state.
+  // a dead local backend leaves Vite's proxy connection open indefinitely
   timeout: 15_000,
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// LLM-backed calls (chat, agents, workflows, enrichment) can legitimately run
-// for minutes, so they override the short default. Streaming endpoints pass 0
-// to disable the timeout entirely for the life of the SSE connection.
+// LLM-backed calls can legitimately run for minutes. Streaming endpoints pass
+// 0 to disable the timeout for the life of the SSE connection.
 const LLM_TIMEOUT = 180_000
 
-// Read the csrf_token cookie set by the backend CSRF middleware. The
-// backend seeds this on any request that doesn't already have one, so
-// after the first /auth/me call it's always present.
+// The backend seeds csrf_token on any request lacking one, so after the first
+// /auth/me call it is always present.
 function readCookie(name: string): string | null {
   const match = document.cookie.match(
     new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()[\]\\/+^]/g, '\\$&') + '=([^;]*)')
@@ -33,9 +28,8 @@ function readCookie(name: string): string | null {
 
 const MUTATING_METHODS = new Set(['post', 'put', 'patch', 'delete'])
 
-// Attach X-CSRF-Token on mutating requests. Double-submit cookie pattern —
-// a cross-site attacker can't read the cookie (same-origin policy) so
-// they can't forge a matching header.
+// Double-submit cookie: a cross-site attacker can't read the cookie, so it
+// can't forge a matching header.
 api.interceptors.request.use(
   (config) => {
     if (config.method && MUTATING_METHODS.has(config.method.toLowerCase())) {
@@ -49,8 +43,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// Handle 401 by refreshing via the refresh_token cookie. The browser
-// carries the cookie automatically; we just POST to /auth/refresh.
+// the browser carries the refresh_token cookie automatically
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -69,10 +62,8 @@ api.interceptors.response.use(
 
       try {
         await api.post('/auth/refresh')
-        // New cookies are set by the server; retry the original request.
         return api(originalRequest)
       } catch (refreshError) {
-        // Refresh failed — let the app's AuthContext react to the 401.
         return Promise.reject(refreshError)
       }
     }
@@ -81,11 +72,9 @@ api.interceptors.response.use(
   }
 )
 
-// Streaming POST helper for SSE endpoints (the chat stream). Axios buffers
-// the whole response body, so streaming has to use fetch — but we still want
-// the same auth machinery the axios instance applies: cookie credentials, the
-// X-CSRF-Token double-submit header, and a one-shot 401 → /auth/refresh → retry.
-// `path` is relative to the API base (e.g. '/claude/chat/stream').
+// Axios buffers the whole response body, so SSE has to use fetch — with the
+// same cookie credentials, CSRF header and one-shot 401 retry applied by hand.
+// `path` is relative to the API base.
 export async function streamFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const url = `${basePath}/api${path}`
   const build = (): RequestInit => {
@@ -98,16 +87,14 @@ export async function streamFetch(path: string, init: RequestInit = {}): Promise
   if (res.status === 401) {
     try {
       await api.post('/auth/refresh')
-      // New cookies are set by the server; retry the original stream once.
       res = await fetch(url, build())
     } catch {
-      // Refresh failed — return the original 401 so the caller surfaces it.
+      /* empty */
     }
   }
   return res
 }
 
-// AI Decisions API
 export const aiDecisionsApi = {
   create: (data: {
     decision_id: string
@@ -153,8 +140,6 @@ export const aiDecisionsApi = {
     api.get('/ai/decisions/pending-feedback', { params: { limit } }),
 }
 
-// Approvals API (#128) — pending human-in-the-loop actions, including
-// workflow phase approvals that pause execution until a decision is made.
 export const approvalsApi = {
   list: (params?: {
     status?: string
@@ -173,7 +158,6 @@ export const approvalsApi = {
     api.post(`/approvals/${actionId}/reject`, { reason, rejected_by }),
 }
 
-// Findings API
 export const findingsApi = {
   getAll: (params?: {
     severity?: string
@@ -196,9 +180,7 @@ export const findingsApi = {
   delete: (id: string) => api.delete(`/findings/${id}`),
   
   getEnrichment: (id: string, force_regenerate: boolean = false) =>
-    // Enrichment may need to restart a local Bifrost gateway and then wait for
-    // a local model response. Keep the ordinary API timeout short, but do not
-    // abandon this recoverable request while that work is still in progress.
+    // may restart a local Bifrost gateway, then wait on a local model
     api.post(`/findings/${id}/enrich`, null, {
       params: { force_regenerate },
       timeout: LLM_TIMEOUT,
@@ -207,7 +189,6 @@ export const findingsApi = {
   deleteAll: () => api.delete('/findings/all'),
 }
 
-// Cases API
 export const casesApi = {
   getAll: (params?: {
     status?: string
@@ -261,23 +242,19 @@ export const casesApi = {
   
   getSummary: () => api.get('/cases/stats/summary'),
   
-  // Comments
   getComments: (id: string) => api.get(`/cases/${id}/comments`),
   addComment: (id: string, data: { content: string; author: string; parent_comment_id?: number | string }) =>
     api.post(`/cases/${id}/comments`, data),
   
-  // Watchers
   getWatchers: (id: string) => api.get(`/cases/${id}/watchers`),
   addWatcher: (id: string, userId: string) =>
     api.post(`/cases/${id}/watchers`, { user_id: userId }),
   removeWatcher: (id: string, userId: string) =>
     api.delete(`/cases/${id}/watchers/${userId}`),
   
-  // Tags
   updateTags: (id: string, tags: string[]) =>
     api.put(`/cases/${id}/tags`, { tags }),
   
-  // Evidence
   getEvidence: (id: string) => api.get(`/cases/${id}/evidence`),
   addEvidence: (id: string, data: {
     name: string
@@ -287,7 +264,6 @@ export const casesApi = {
     evidence_type: string
   }) => api.post(`/cases/${id}/evidence`, data),
   
-  // IOCs
   getIOCs: (id: string) => api.get(`/cases/${id}/iocs`),
   addIOC: (id: string, data: {
     ioc_type: string
@@ -297,7 +273,6 @@ export const casesApi = {
     tags?: string[]
   }) => api.post(`/cases/${id}/iocs`, data),
   
-  // Tasks
   getTasks: (id: string) => api.get(`/cases/${id}/tasks`),
   addTask: (id: string, data: {
     title: string
@@ -311,7 +286,6 @@ export const casesApi = {
     completed_at?: string
   }) => api.patch(`/cases/${id}/tasks/${taskId}`, data),
   
-  // SLA
   getSLA: (id: string) => api.get(`/cases/${id}/sla`),
   assignSLA: (id: string, data: {
     sla_policy_id?: string  // Optional - if not provided, uses default for priority
@@ -319,12 +293,10 @@ export const casesApi = {
   pauseSLA: (id: string) => api.post(`/cases/${id}/sla/pause`),
   resumeSLA: (id: string) => api.post(`/cases/${id}/sla/resume`),
   
-  // Case Linking
   linkCase: (id: string, relatedCaseId: string, relationshipType: string) =>
     api.post(`/cases/${id}/links`, { related_case_id: relatedCaseId, relationship_type: relationshipType }),
   getLinkedCases: (id: string) => api.get(`/cases/${id}/links`),
   
-  // Closure
   closeCase: (id: string, data: {
     resolution_summary: string
     root_cause?: string
@@ -332,21 +304,17 @@ export const casesApi = {
     recommendations?: string
   }) => api.post(`/cases/${id}/close`, data),
   
-  // Escalation
   escalate: (id: string, data: {
     escalation_reason: string
     escalated_to?: string
     priority_override?: string
   }) => api.post(`/cases/${id}/escalate`, data),
   
-  // Audit Log
   getAuditLog: (id: string) => api.get(`/cases/${id}/audit-log`),
   
-  // Merge
   merge: (targetCaseId: string, sourceCaseId: string) =>
     api.post(`/cases/${targetCaseId}/merge`, { source_case_id: sourceCaseId, merged_by: 'user' }),
 
-  // Bulk Operations
   bulkUpdate: (data: {
     case_ids: string[]
     updates: {
@@ -358,19 +326,15 @@ export const casesApi = {
   }) => api.post('/cases/bulk-update', data),
 }
 
-// SLA Policies API
 export const slaPoliciesApi = {
-  // List all policies
   getAll: (params?: {
     active_only?: boolean
     priority_level?: string
     default_only?: boolean
   }) => api.get('/sla-policies/', { params }),
   
-  // Get specific policy
   getById: (policyId: string) => api.get(`/sla-policies/${policyId}`),
   
-  // Create new policy
   create: (data: {
     policy_id: string
     name: string
@@ -385,7 +349,6 @@ export const slaPoliciesApi = {
     is_default?: boolean
   }) => api.post('/sla-policies/', data),
   
-  // Update policy
   update: (policyId: string, data: {
     name?: string
     description?: string
@@ -398,27 +361,21 @@ export const slaPoliciesApi = {
     is_default?: boolean
   }) => api.put(`/sla-policies/${policyId}`, data),
   
-  // Delete policy
   delete: (policyId: string, force?: boolean) =>
     api.delete(`/sla-policies/${policyId}`, { params: { force } }),
   
-  // Set as default for priority level
   setDefault: (policyId: string) =>
     api.post(`/sla-policies/${policyId}/set-default`),
   
-  // Get usage statistics
   getUsage: (policyId: string) =>
     api.get(`/sla-policies/${policyId}/usage`),
   
-  // Get cases using this policy
   getCases: (policyId: string, params?: {
     status?: string
     breached_only?: boolean
   }) => api.get(`/sla-policies/${policyId}/cases`, { params }),
 }
 
-
-// Case Metrics API
 export const caseMetricsApi = {
   getSummary: () => api.get('/cases/metrics/summary'),
   getMTTD: (params?: { start_date?: string; end_date?: string; priority?: string }) =>
@@ -430,7 +387,6 @@ export const caseMetricsApi = {
   getAnalystPerformance: () => api.get('/cases/metrics/analyst-performance'),
 }
 
-// Case Search API
 export const caseSearchApi = {
   search: (data: {
     query: string
@@ -442,8 +398,6 @@ export const caseSearchApi = {
   }) => api.post('/case-search/', data),
 }
 
-
-// MCP Servers API
 export const mcpApi = {
   listServers: () => api.get('/mcp/servers'),
 
@@ -451,11 +405,8 @@ export const mcpApi = {
 
   getServerStatus: (name: string) => api.get(`/mcp/servers/${name}/status`),
 
-  // NOTE: startServer / stopServer / startAll / stopAll were removed —
-  // every server in mcp-config.json is stdio-based, and the old endpoints
-  // explicitly refused stdio. Runtime start/stop now lives on the enable
-  // toggle (setServerEnabled below) which actually triggers a connect
-  // attempt and returns its result.
+  // start/stop were removed: every server in mcp-config.json is stdio-based and
+  // those endpoints refused stdio. setServerEnabled below triggers the connect.
 
   getLogs: (name: string, lines: number = 100) =>
     api.get(`/mcp/servers/${name}/logs`, { params: { lines } }),
@@ -468,8 +419,6 @@ export const mcpApi = {
     api.put(`/mcp/servers/${name}/enabled`, { enabled }),
 }
 
-
-// Claude API
 export const claudeApi = {
   uploadFile: (file: File) => {
     const formData = new FormData()
@@ -515,7 +464,6 @@ export const claudeApi = {
   }) => api.post('/claude/generate-chat-report', data, { timeout: LLM_TIMEOUT }),
 }
 
-// Agents API
 export const agentsApi = {
   listAgents: () => api.get('/agents/agents'),
   
@@ -530,7 +478,6 @@ export const agentsApi = {
     additional_context?: string
   }) => api.post('/agents/agents/investigate', data, { timeout: LLM_TIMEOUT }),
 
-  // Custom Agent Builder (issue #80)
   listCustom: () => api.get('/agents/custom'),
   getCustom: (agent_id: string) => api.get(`/agents/custom/${agent_id}`),
   createCustom: (data: CustomAgentPayload) => api.post('/agents/custom', data),
@@ -538,12 +485,10 @@ export const agentsApi = {
     api.patch(`/agents/custom/${agent_id}`, data),
   deleteCustom: (agent_id: string) => api.delete(`/agents/custom/${agent_id}`),
   getAvailableTools: () => api.get('/agents/custom/_meta/tools'),
-  // Fork any agent (built-in or custom) into a new editable custom copy.
-  // Built-ins are never mutated; they're static templates.
+  // built-ins are never mutated; a fork is a new editable copy
   forkAgent: (source_agent_id: string, new_name?: string) =>
     api.post(`/agents/${source_agent_id}/fork`, { new_name }),
 
-  // AI-assisted generation + iterative refinement (issue #80 Phase 2)
   generateCustom: (data: {
     description: string
     current_draft?: GeneratedAgentDraft | null
@@ -584,7 +529,6 @@ export interface CustomAgentPayload {
   model?: string | null
 }
 
-// Shape returned by /agents/agents (both built-ins and customs).
 export interface AgentSummary {
   id: string
   name: string
@@ -596,7 +540,6 @@ export interface AgentSummary {
   decision_id?: string
 }
 
-// Config API
 export const configApi = {
   getClaude: () => api.get('/config/claude'),
   setClaude: (api_key: string) => api.post('/config/claude', { api_key }),
@@ -639,9 +582,8 @@ export const configApi = {
   getPostgreSQL: () => api.get('/config/postgresql'),
   setPostgreSQL: (connection_string: string) => api.post('/config/postgresql', { connection_string }),
 
-  // Platform metadata DB proxy (PgBouncer / SSH tunnel) — settings live
-  // in the encrypted secrets store so they're readable before the engine
-  // boots. Restart-required.
+  // settings live in the encrypted secrets store, so they're readable before
+  // the engine boots. Restart-required.
   getPlatformDatabase: () => api.get<PlatformDatabaseProxyConfig>('/config/platform-database'),
   setPlatformDatabase: (data: {
     proxy_type: string
@@ -654,7 +596,6 @@ export const configApi = {
     verify_proxy_tls?: boolean
   }) => api.post('/config/platform-database', data),
 
-  // GH #84 PR-F — runtime AI cost/perf toggles
   getAIOperations: () => api.get('/config/ai-operations'),
   setAIOperations: (data: {
     prompt_cache_enabled: boolean
@@ -708,8 +649,8 @@ export interface PlatformDatabaseProxyConfig {
   has_ssh_key_passphrase: boolean
 }
 
-// GH #136 — Mempalace is hidden from the MCP servers list because it's an
-// always-on core dependency, so its health surfaces on the General tab.
+// Mempalace is hidden from the MCP list: it's an always-on core dependency, so
+// its health surfaces on the General tab (#136).
 export interface MempalaceHealth {
   connected: boolean
   error: string | null
@@ -723,8 +664,8 @@ export interface MempalaceHealth {
   memories_count_source: 'chromadb' | 'unavailable'
 }
 
-// Mint a short-lived session token; the backend calls the connector BFF
-// server-to-server so the mint secret never reaches the browser.
+// the backend calls the connector BFF server-to-server, so the mint secret
+// never reaches the browser
 export const extensionsApi = {
   getSessionToken: (integrationId: string) =>
     api.get<{ token: string | null; expires_in: number | null; user: string }>(
@@ -732,7 +673,6 @@ export const extensionsApi = {
     ),
 }
 
-// LLM Provider API (GH #88 — multi-provider LLM config)
 export interface LLMProvider {
   provider_id: string
   provider_type: 'anthropic' | 'openai' | 'ollama'
@@ -788,8 +728,7 @@ export const llmProviderApi = {
     api.post<{ success: boolean; provider_id: string; error: string | null }>(
       `/llm/providers/${providerId}/test`,
     ),
-  // Stateless connection test against unsaved credentials — no provider row
-  // required, so the Add Provider wizard can verify before anything persists.
+  // no provider row required, so the wizard can verify before anything persists
   testConnection: (data: {
     provider_type: string
     base_url?: string
@@ -807,7 +746,6 @@ export const llmProviderApi = {
     api.post<LLMProvider>(`/llm/providers/${providerId}/set-default`),
 }
 
-// AI Config API (GH #89 — per-component model assignments)
 export interface AIModelInfo {
   model_id: string
   provider_id: string
@@ -850,7 +788,6 @@ export const aiConfigApi = {
     }),
 }
 
-// Ingestion API
 export interface IngestionJob {
   job_id: string
   filename: string
@@ -872,7 +809,7 @@ export const ingestionApi = {
     api.get('/ingest/s3-files', { params: { prefix: prefix ?? '' } }),
   ingestS3File: (key: string) =>
     api.post('/ingest/s3-file', { key }),
-  // Returns once the body is spooled; the ingest runs as a background job.
+  // returns once the body is spooled; the ingest runs as a background job
   uploadFile: (file: File, dataType: string = 'finding') => {
     const formData = new FormData()
     formData.append('file', file)
@@ -886,7 +823,6 @@ export const ingestionApi = {
   getJob: (jobId: string) => api.get<IngestionJob>(`/ingest/jobs/${jobId}`),
 }
 
-// Analytics API (#184 Phase 2)
 export interface CostEstimate {
   provider_type: string
   model_id: string
@@ -905,7 +841,6 @@ export interface RecalculateCostResult {
   remaining: number
 }
 
-// Budgets (Bifrost virtual-key config + live quota — #186)
 export interface BudgetSettings {
   default_vk: string
   budget_limit_usd: number
@@ -952,9 +887,7 @@ export const budgetsApi = {
 }
 
 export const analyticsApi = {
-  // Pre-call USD/token estimate. The chat composer calls this (debounced)
-  // as the user types so they see what their message will cost before
-  // sending. token_count_method tells the UI how trustworthy the count is.
+  // token_count_method tells the UI how trustworthy the count is
   estimateCost: (payload: {
     provider_type: string
     model_id: string
@@ -964,10 +897,7 @@ export const analyticsApi = {
     max_tokens?: number
   }) => api.post<CostEstimate>('/analytics/estimate-cost', payload),
 
-  // Re-cost historical Bifrost log rows against current pricing (#185).
-  // Admin operation. Bifrost caps each call at 1000 rows; the UI loops
-  // on `remaining` until it hits 0. Returns null/error if Bifrost is
-  // unreachable or the logging plugin isn't running.
+  // Bifrost caps each call at 1000 rows; the caller loops on `remaining`.
   recalculateCost: (payload?: {
     providers?: string[]
     models?: string[]
@@ -978,7 +908,6 @@ export const analyticsApi = {
   }) => api.post<RecalculateCostResult>('/analytics/recalculate-cost', payload || {}),
 }
 
-// Storage API
 export const storageApi = {
   getStatus: () => api.get('/storage/status'),
   getHealth: () => api.get('/storage/health'),
@@ -986,7 +915,6 @@ export const storageApi = {
   switchBackend: (backend: string) => api.post('/storage/switch-backend', { backend }),
 }
 
-// Timesketch API
 export const timesketchApi = {
   getStatus: () => api.get('/timesketch/status'),
   
@@ -1014,7 +942,6 @@ export const timesketchApi = {
   }) => api.post('/timesketch/export', data),
 }
 
-// ATT&CK API
 export const attackApi = {
   getLayer: () => api.get('/attack/layer'),
   
@@ -1027,7 +954,6 @@ export const attackApi = {
   getTacticsSummary: () => api.get('/attack/tactics/summary'),
 }
 
-// Timeline API
 export const timelineApi = {
   getCaseTimeline: (case_id: string) => api.get(`/timeline/case/${case_id}`),
   
@@ -1044,27 +970,20 @@ export const timelineApi = {
   
   getClusterTimeline: (cluster_id: string) => api.get(`/timeline/cluster/${cluster_id}`),
   
-  // Event Visualization - comprehensive event details for incident analysis
   getEventVisualization: (event_id: string, params?: {
     time_window_minutes?: number
     include_ai_analysis?: boolean
   }) => api.get(`/timeline/event/${event_id}/visualization`, { params }),
   
-  // Get timeline events for a specific finding
   getFindingEvents: (finding_id: string) => 
     api.get(`/timeline/finding/${finding_id}/context`, { params: { time_window_minutes: 60 } }),
 }
 
-
-// Detection Rules API (manages detection rule sources for MCP)
 export const detectionRulesApi = {
-  // List all registered detection rule sources
   listSources: () => api.get('/detection-rules/sources'),
   
-  // Get a specific source by ID
   getSource: (sourceId: string) => api.get(`/detection-rules/sources/${sourceId}`),
   
-  // Add a new detection rule source
   addSource: (data: {
     name: string
     source_type: 'git' | 'local'
@@ -1075,51 +994,40 @@ export const detectionRulesApi = {
     story_subdirectory?: string
   }) => api.post('/detection-rules/sources', data),
   
-  // Remove a detection rule source
   removeSource: (sourceId: string, deleteFiles: boolean = false) =>
     api.delete(`/detection-rules/sources/${sourceId}`, { params: { delete_files: deleteFiles } }),
   
-  // Update a specific source (git pull or rescan)
   updateSource: (sourceId: string) =>
     api.post(`/detection-rules/sources/${sourceId}/update`),
   
-  // Update all sources
   updateAll: () => api.post('/detection-rules/update-all'),
   
-  // Get aggregate statistics
   getStats: () => api.get('/detection-rules/stats'),
   
-  // Get MCP environment variables
   getMcpEnv: () => api.get('/detection-rules/mcp-env'),
   
-  // Reload the entire service (re-read config + rescan)
   reload: () => api.post('/detection-rules/reload'),
 }
 
-// Local Services API (Docker containers + the host-native Ollama process)
 export const localServicesApi = {
-  // Splunk management
   getSplunkStatus: () => api.get('/services/splunk/status'),
   startSplunk: () => api.post('/services/splunk/start'),
   stopSplunk: () => api.post('/services/splunk/stop'),
   restartSplunk: () => api.post('/services/splunk/restart'),
 
-  // PostgreSQL management
   getPostgresStatus: () => api.get('/services/postgres/status'),
 
-  // Generic management — service names are allowlisted server-side
+  // service names are allowlisted server-side
   list: () => api.get('/services'),
   getStatus: (name: string) => api.get(`/services/${name}/status`),
   start: (name: string) => api.post(`/services/${name}/start`),
   stop: (name: string) => api.post(`/services/${name}/stop`),
   restart: (name: string) => api.post(`/services/${name}/restart`),
 
-  // Which services ./start.sh brings up automatically
   getAutostart: () => api.get('/services/autostart'),
   setAutostart: (services: string[]) => api.put('/services/autostart', { services }),
 }
 
-// Workflow Builder phase (used inline in the builder UI)
 export interface WorkflowPhase {
   phase_id?: string
   order?: number
@@ -1135,9 +1043,7 @@ export interface WorkflowPhase {
   parallel_group?: string | null
 }
 
-// Workflows API (file-based + database-backed custom workflows)
 export const workflowApi = {
-  // Unified list (merges file + custom)
   listAll: () => api.get('/workflows'),
   get: (id: string) => api.get(`/workflows/${id}`),
   execute: (id: string, params: {
@@ -1148,19 +1054,17 @@ export const workflowApi = {
   }) => api.post(`/workflows/${id}/execute`, params, { timeout: LLM_TIMEOUT }),
   reloadFiles: () => api.post('/workflows/reload'),
 
-  // Run history (#127) — execution is persisted to workflow_runs so the
-  // History tab can show "last 50 runs of this playbook" without
-  // retrieving every prompt transcript.
+  // persisted to workflow_runs, so History lists past runs without retrieving
+  // every prompt transcript
   listRuns: (id: string, params: { limit?: number; offset?: number; status?: string } = {}) =>
     api.get(`/workflows/${id}/runs`, { params }),
   getRun: (runId: string) => api.get(`/workflows/runs/${runId}`),
 
-  // Steer a run that is already going. Queued rather than journalled: the worker
-  // holding the ledger is what turns a directive into an event on it.
+  // queued, not journalled: the worker holding the ledger turns a directive
+  // into an event on it
   steer: (runId: string, kind: string, text = '') =>
     api.post(`/agent-runs/${runId}/directives`, { kind, text }),
 
-  // Custom (database-backed) CRUD
   listCustom: (activeOnly: boolean = true) =>
     api.get('/workflows/custom', { params: { active_only: activeOnly } }),
   getCustom: (id: string) => api.get(`/workflows/custom/${id}`),
@@ -1184,13 +1088,10 @@ export const workflowApi = {
   }>) => api.put(`/workflows/custom/${id}`, data),
   deleteCustom: (id: string) => api.delete(`/workflows/custom/${id}`),
 
-  // AI generation (returns draft — does not save)
   generate: (description: string) =>
     api.post('/workflows/generate', { description }, { timeout: LLM_TIMEOUT }),
 }
 
-
-// Orchestrator API (autonomous investigation management)
 export const orchestratorApi = {
   getStatus: () => api.get('/orchestrator/status'),
   enable: () => api.post('/orchestrator/enable'),
@@ -1230,7 +1131,6 @@ export const orchestratorApi = {
     }),
 }
 
-// Federation API (federated monitoring of external SIEM/EDR sources)
 export interface FederationSourceView {
   source_id: string
   enabled: boolean
@@ -1271,7 +1171,6 @@ export const federationApi = {
   getHealth: () => api.get('/federation/health'),
 }
 
-// Reasoning-trace API (GH #79 — LLM chain-of-thought visibility)
 export const reasoningApi = {
   getSessionSummary: (sessionId: string) =>
     api.get(`/reasoning/${encodeURIComponent(sessionId)}`).then(r => r.data),
@@ -1290,9 +1189,7 @@ export const reasoningApi = {
       .then(r => r.data),
 }
 
-// Persistent chat history (cross-device, per-analyst). Mirrors the backend
-// /api/conversations store. Returns raw axios responses (read `res.data`),
-// matching casesApi.
+// returns raw axios responses (read `res.data`), matching casesApi
 export interface ConversationSummary {
   id: string
   user_id: string | null
@@ -1342,7 +1239,7 @@ export interface ImportConversationInput {
 }
 
 export const conversationsApi = {
-  // Trailing slash matches the backend root route (avoids a 307 redirect).
+  // trailing slash avoids a 307 to the backend root route
   list: (params?: { archived?: boolean; limit?: number; offset?: number }) =>
     api.get('/conversations/', { params }),
 
@@ -1357,7 +1254,6 @@ export const conversationsApi = {
     api.post('/conversations/import', { conversations }),
 }
 
-// Kafka ingestion API
 export const kafkaApi = {
   getConfig: () => api.get('/kafka/config'),
   setConfig: (config: {
@@ -1386,9 +1282,8 @@ export interface BootstrapPayload {
   full_name?: string
 }
 
-// First-account creation, for an instance with an empty user table (no signup
-// otherwise, and creating a user needs an existing admin). Self-closes once any
-// user exists.
+// First-account creation: creating a user otherwise needs an existing admin.
+// Self-closes once any user exists.
 export const bootstrapApi = {
   status: () => api.get<BootstrapStatus>('/auth/bootstrap'),
   create: (payload: BootstrapPayload) => api.post('/auth/bootstrap', payload),

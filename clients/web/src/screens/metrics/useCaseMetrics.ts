@@ -1,9 +1,3 @@
-/* ============================================================
-   Data hook for the Case Metrics screen — mirrors the legacy
-   CaseMetrics page: summary KPIs, MTTD/MTTR (overall + by
-   priority), cases-by-priority, status distribution, and
-   analyst performance. All via caseMetricsApi.
-   ============================================================ */
 import { useCallback, useEffect, useState } from 'react'
 import { caseMetricsApi } from '../../services/api'
 import type { Phase } from '../cases/useCases'
@@ -56,7 +50,6 @@ interface MttrResp {
   mttr_by_priority?: Record<string, number>
 }
 
-/** all case-metrics data for a rolling window of `days` (affects MTTD/MTTR) */
 export function useCaseMetrics(days: number) {
   const [data, setData] = useState<CaseMetricsData | null>(null)
   const [phase, setPhase] = useState<Phase>('loading')

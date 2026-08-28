@@ -1,12 +1,3 @@
-/* ============================================================
-   Case detail sections — the old CaseDetailDialog's five tabs
-   (Overview / Investigation / Resolution / Collaboration /
-   Details) re-skinned into the console's dark/Tailwind tokens
-   and rendered as one scrolling page of cards. Each section
-   fetches its own slice via the shared casesApi/graphApi and
-   exposes the same write actions as the components it replaced.
-   See CONSOLE_GAPS.md §9.
-   ============================================================ */
 import {
   useCallback,
   useEffect,
@@ -20,12 +11,10 @@ import { Icon } from '../../shared/icons'
 import { EmptyState } from '../../shared/ui'
 import type { CaseRow } from '../../data/data'
 
-/** the old CaseComments default — the console has no auth context */
 const ME = 'SOC Analyst'
 
 type Phase = 'loading' | 'ready' | 'error'
 
-/* ---------------- shared helpers ---------------- */
 function fmtDT(s?: string): string {
   if (!s) return '—'
   const d = new Date(s)
@@ -42,7 +31,6 @@ function initials(name?: string): string {
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || name[0].toUpperCase()
 }
 
-/** generic GET-and-reload hook for a single case sub-resource */
 function useResource<T>(caseId: string, run: () => Promise<T>) {
   const [data, setData] = useState<T | null>(null)
   const [phase, setPhase] = useState<Phase>('loading')
@@ -77,7 +65,6 @@ function useResource<T>(caseId: string, run: () => Promise<T>) {
   return { data, phase, error, reload }
 }
 
-/* ---------------- presentational primitives ---------------- */
 export function SectionCard({
   title,
   count,
@@ -125,10 +112,6 @@ function AddBtn({ on, onClick }: { on: boolean; onClick: () => void }) {
 export const inputCls =
   'bg-bg-2 border border-line rounded-md px-2.5 py-[7px] text-[13px] text-tx outline-none focus:border-accent-line w-full'
 
-
-/* ===================================================================
-   INVESTIGATION — Evidence
-   =================================================================== */
 interface EvidenceItem {
   id: string
   evidence_type: string
@@ -200,9 +183,6 @@ export function EvidenceCard({ caseId }: { caseId: string }) {
   )
 }
 
-/* ===================================================================
-   RESOLUTION — Resolution steps (from case payload, read-only)
-   =================================================================== */
 export interface ResolutionStep {
   description?: string
   action_taken?: string
@@ -229,9 +209,6 @@ export function ResolutionStepsCard({ steps }: { steps: ResolutionStep[] }) {
   )
 }
 
-/* ===================================================================
-   RESOLUTION — Tasks
-   =================================================================== */
 interface Task {
   id: string
   title: string
@@ -335,9 +312,6 @@ export function TasksCard({ caseId }: { caseId: string }) {
   )
 }
 
-/* ===================================================================
-   RESOLUTION — SLA
-   =================================================================== */
 interface SLA {
   id: string
   policy_name: string
@@ -425,9 +399,6 @@ export function SLACard({ caseId }: { caseId: string }) {
   )
 }
 
-/* ===================================================================
-   COLLABORATION — Comments (threaded)
-   =================================================================== */
 interface Comment {
   id: string
   author: string
@@ -559,9 +530,6 @@ export function CommentsCard({ caseId }: { caseId: string }) {
   )
 }
 
-/* ===================================================================
-   COLLABORATION — Watchers
-   =================================================================== */
 interface Watcher {
   user_id: string
   created_at?: string
@@ -617,9 +585,6 @@ export function WatchersCard({ caseId }: { caseId: string }) {
   )
 }
 
-/* ===================================================================
-   DETAILS — IOCs
-   =================================================================== */
 interface IOC {
   id: string
   ioc_type: string
@@ -697,9 +662,6 @@ export function IOCsCard({ caseId }: { caseId: string }) {
   )
 }
 
-/* ===================================================================
-   DETAILS — Related cases
-   =================================================================== */
 interface LinkedCase {
   link_id: string
   related_case_id: string
@@ -776,9 +738,6 @@ export function RelatedCasesCard({ caseId, rows, onSelect }: { caseId: string; r
   )
 }
 
-/* ===================================================================
-   DETAILS — Audit log (read-only)
-   =================================================================== */
 interface AuditEntry {
   id: string
   user?: string
@@ -818,9 +777,6 @@ export function AuditLogCard({ caseId }: { caseId: string }) {
   )
 }
 
-/* ===================================================================
-   OVERVIEW — Recent activity (from case payload, read-only)
-   =================================================================== */
 export interface Activity {
   description?: string
   activity_type?: string

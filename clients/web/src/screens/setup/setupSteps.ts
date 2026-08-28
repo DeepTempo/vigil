@@ -1,11 +1,7 @@
-// The setup-checklist registry: step data + readiness predicates (no JSX).
 import { INTEGRATIONS } from '../../config/integrations'
 import type { LLMProvider, AIConfigResponse, BudgetSettings } from '../../services/api'
 
-// --- Data-source identification -------------------------------------------
-
-// Categories whose configured integrations mean Vigil is actually being fed
-// telemetry. Enrichment / output / identity / sandbox / forensics are excluded.
+// enrichment / output / identity / sandbox / forensics are not telemetry
 export const DATA_SOURCE_CATEGORIES = new Set<string>([
   'SIEM',
   'EDR/XDR',
@@ -14,16 +10,12 @@ export const DATA_SOURCE_CATEGORIES = new Set<string>([
   'Data Pipeline',
 ])
 
-// Catalog ids of every data-source integration. Readiness keys off the user's
-// enabled_integrations (catalog ids) — NOT live MCP connectivity: several
-// data-source servers are keyless stdio processes that boot (and so report
-// "connected") with no credentials, which would flip this step to done before
-// the user connected anything.
+// Readiness keys off enabled_integrations, NOT live MCP connectivity: several
+// data-source servers are keyless stdio processes that report "connected" with
+// no credentials, which would flip this step to done before the user did.
 export const DATA_SOURCE_CATALOG_IDS = new Set<string>(
   INTEGRATIONS.filter((i) => DATA_SOURCE_CATEGORIES.has(i.category)).map((i) => i.id),
 )
-
-// --- Normalized backend state the predicates read -------------------------
 
 export interface SetupState {
   providers: LLMProvider[]
@@ -41,8 +33,6 @@ export const emptySetupState = (): SetupState => ({
   orchestratorEnabled: false,
 })
 
-// --- The step registry ----------------------------------------------------
-
 export type SetupStepId =
   | 'llm-provider'
   | 'data-source'
@@ -50,7 +40,7 @@ export type SetupStepId =
   | 'cost-guardrails'
   | 'autonomy'
 
-// 'required' drives the hard gate; 'recommended' is nudged but skippable.
+// 'required' drives the hard gate; 'recommended' is skippable
 export type SetupTier = 'required' | 'recommended' | 'optional'
 
 export type SettingsSection = 'ai-config' | 'integrations' | 'autoinvestigate'
@@ -73,8 +63,7 @@ export const SETUP_STEPS: SetupStep[] = [
     doneLabel: 'Connected',
     tier: 'required',
     settingsSection: 'ai-config',
-    // Mirrors useSetupStatus.isProviderReady (kept in sync): active + default,
-    // no key required (local/keyless providers are valid).
+    // kept in sync with useSetupStatus.isProviderReady
     selectReady: (s) => s.providers.some((p) => p.is_active && p.is_default),
   },
   {

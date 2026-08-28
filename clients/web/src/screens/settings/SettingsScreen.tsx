@@ -1,10 +1,3 @@
-/* ============================================================
-   Settings — left category nav + content panel. Each section is
-   its own component wired to the real config APIs. Sections not
-   yet ported render a placeholder. Mirrors the legacy Settings.tsx
-   tab set (AI Config / Integrations / Users / Auto Investigate /
-   Federation / System / General / Developer).
-   ============================================================ */
 import { useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Icon, type IconName } from '../../shared/icons'
@@ -52,14 +45,12 @@ export default function SettingsScreen({ setViewFull }: ConsoleScreenProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const sectionParam = searchParams.get('section')
   const sectionKeys = useMemo(() => new Set(sections.map((s) => s.key)), [sections])
-  // the active section is derived straight from the URL (?section=), falling
-  // back to Appearance for a missing / unknown / dev-gated key
+  // falls back to Appearance for a missing / unknown / dev-gated key
   const active: SettingsSectionKey =
     sectionParam && sectionKeys.has(sectionParam as SettingsSectionKey)
       ? (sectionParam as SettingsSectionKey)
       : 'appearance'
-  // section save/test results surface through the shell-wide toast (§10) rather
-  // than a settings-local banner, so feedback is consistent across the console
+  // results surface through the shell-wide toast, not a settings-local banner
   const { notify } = useToast()
 
   useEffect(() => {

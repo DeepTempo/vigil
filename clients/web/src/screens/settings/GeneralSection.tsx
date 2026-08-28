@@ -1,9 +1,3 @@
-/* ============================================================
-   Settings · General — auto-sync / notifications / keyring toggles,
-   destructive data cleanup controls, and always-on Mempalace health.
-   Mirrors the legacy Settings.tsx "general" tab. (Cost Analytics
-   embed from the legacy tab is deferred — see CONSOLE_GAPS.md.)
-   ============================================================ */
 import { useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { ConfirmDialog, SettingsCard, ToggleRow } from '../../shared/ui'

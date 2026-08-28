@@ -1,9 +1,5 @@
-/* ============================================================
-   AI-powered custom integration builder. 3 steps:
-   provide docs → review/edit generated metadata + MCP server code →
-   validate & save. Talks to /api/custom-integrations/* directly via
-   fetch (these endpoints aren't in services/api.ts).
-   ============================================================ */
+// Talks to /api/custom-integrations/* by fetch — those endpoints aren't in
+// services/api.ts.
 import { useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { Field, Popup, Select, TextInput } from '../../shared/ui'

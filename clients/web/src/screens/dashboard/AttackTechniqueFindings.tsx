@@ -1,9 +1,3 @@
-/* ============================================================
-   Inline expandable findings list for an ATT&CK technique row —
-   the "Show findings" chevron expands the row to reveal this
-   (a dropdown/accordion, matching the original prototype) rather
-   than opening a modal. Fetches attackApi.getFindingsByTechnique.
-   ============================================================ */
 import { useEffect, useState } from 'react'
 import { attackApi } from '../../services/api'
 import { mapApiFinding, type ApiFinding } from '../../data/mappers'

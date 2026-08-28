@@ -1,11 +1,9 @@
-/* Background palette + ramp helpers — parallel to accent.ts, but instead of
-   painting just the accent it derives the WHOLE surface + line + text ramp from
-   a single base color the user picks. Dark vs. light is decided by the base's
-   relative luminance; every other token is the base mixed toward white/black. */
+/* Derives the whole surface/line/text ramp from one base color: dark vs light
+   comes from its relative luminance, every other token is that base mixed
+   toward white or black. */
 import type { CSSProperties } from 'react'
 import { normHex } from '../shared/accent'
 
-/** base hex for each named preset */
 export const BG_PRESETS: Record<string, string> = {
   slate: '#0c0f14',
   ink: '#08090c',
@@ -14,7 +12,7 @@ export const BG_PRESETS: Record<string, string> = {
   light: '#f4f5f7',
 }
 
-/** preset swatches shown in the tweaks panel, in order (first = default) */
+/** first = default */
 export const BG_SWATCHES: { key: string; color: string }[] = [
   { key: 'slate', color: '#0c0f14' },
   { key: 'ink', color: '#08090c' },
@@ -26,7 +24,6 @@ export const BG_SWATCHES: { key: string; color: string }[] = [
 /** base whose luminance is below this is treated as a dark base */
 export const BG_DARK_CUTOFF = 0.42
 
-/** per-channel lerp between two hex colors: mix(a,b,0)=a, mix(a,b,1)=b */
 export function mix(a: string, b: string, t: number): string {
   const na = parseInt(a.slice(1), 16)
   const nb = parseInt(b.slice(1), 16)

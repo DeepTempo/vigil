@@ -1,9 +1,3 @@
-/* ============================================================
-   Data hook for Settings · SLA Policies — list + CRUD + set-default
-   over slaPoliciesApi. Same useEffect + shared-axios + phase/reload
-   pattern as the other settings hooks (see useSettings.ts). The
-   action helpers reload the list on success. CONSOLE_GAPS.md §8.
-   ============================================================ */
 import { useCallback, useEffect, useState } from 'react'
 import { slaPoliciesApi } from '../../services/api'
 

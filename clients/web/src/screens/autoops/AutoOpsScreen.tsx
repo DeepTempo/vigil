@@ -1,12 +1,3 @@
-/* ============================================================
-   Auto Ops — Autonomous Operations console. Port of the
-   legacy Orchestrator page: live orchestrator status + the
-   investigation queue, the enable/scan/kill controls, and a
-   full-bleed investigation detail (Overview · Files · Reasoning ·
-   Chain of custody). Wired to the real orchestratorApi via
-   useAutoOps; the rail item is always present (no feature gate),
-   so it can no longer "disappear" when the orchestrator is off.
-   ============================================================ */
 import { useEffect, useState, type ReactNode } from 'react'
 import { Icon } from '../../shared/icons'
 import { EmptyState, Toggle, NumberInput } from '../../shared/ui'
@@ -15,7 +6,6 @@ import { useAutoOps, type Investigation, type OrchestratorStatus } from './useAu
 import { StatusBadge } from './statusBadge'
 import InvestigationDetail from './InvestigationDetail'
 
-/** clickable KPI → the investigation statuses it filters the table to */
 interface KpiDef {
   key: string
   label: string

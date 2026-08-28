@@ -2,16 +2,11 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Icon } from './icons'
 
 /**
- * Column-driven table.
- *
- * Hand-written <thead>/<td> pairs couple three things that then have to be kept
- * in sync by hand: the header cells, the body cells, and the colSpan on the
- * loading/empty/error rows. Sorting and searching add a fourth and fifth, as
- * parallel unions of field names. A ColumnDef collapses all of them — a column
- * is sortable because it has `sortVal`, searchable because it has `searchVal`.
- *
- * That also lets columns be built at runtime, which is what makes a table
- * adaptable to rows whose fields differ by source.
+ * Hand-written <thead>/<td> pairs keep five things in sync by hand: header cells,
+ * body cells, the colSpan on the loading/empty/error rows, and the sort and
+ * search field unions. A ColumnDef collapses all five, and lets columns be built
+ * at runtime — which is what makes a table adaptable to rows whose fields differ
+ * by source.
  */
 export interface ColumnDef<T> {
   key: string
@@ -32,7 +27,6 @@ export type SortState = { key: string; dir: 'asc' | 'desc' }
 
 export type TablePhase = 'loading' | 'error' | 'ready'
 
-/** Rows matching `query` across every column that declares `searchVal`. */
 export function searchRows<T>(rows: T[], columns: ColumnDef<T>[], query: string): T[] {
   const q = query.trim().toLowerCase()
   if (!q) return rows
@@ -40,7 +34,6 @@ export function searchRows<T>(rows: T[], columns: ColumnDef<T>[], query: string)
   return rows.filter((r) => searchable.some((c) => c.searchVal!(r).toLowerCase().includes(q)))
 }
 
-/** Rows ordered by the column named in `sort`; unsortable/unknown keys pass through. */
 export function sortRows<T>(rows: T[], columns: ColumnDef<T>[], sort: SortState): T[] {
   const col = columns.find((c) => c.key === sort.key && c.sortVal)
   if (!col) return rows
@@ -88,7 +81,7 @@ export function DataTable<T>({
   onRowClick, className = 'tbl', emptyMessage = 'No rows found.',
   loadingMessage = 'Loading…', onRetry,
 }: DataTableProps<T>) {
-  // Derived, so a column added or hidden can never desync the placeholder rows.
+  // derived, so a column added or hidden can't desync the placeholder rows
   const span = columns.length
 
   return (
@@ -127,7 +120,6 @@ export function DataTable<T>({
   )
 }
 
-/** Checklist of toggleable columns, for use inside a FilterButton/popup. */
 export function ColumnPicker<T>(
   { columns, hidden, onToggle }:
   { columns: ColumnDef<T>[]; hidden: Set<string>; onToggle: (key: string) => void },
@@ -146,7 +138,7 @@ export function ColumnPicker<T>(
   )
 }
 
-/** Sort state + toggle, honouring each column's preferred initial direction. */
+/** honours each column's preferred initial direction */
 export function useTableSort<T>(columns: ColumnDef<T>[], initial: SortState) {
   const [sort, setSort] = useState<SortState>(initial)
   const toggle = (key: string) =>

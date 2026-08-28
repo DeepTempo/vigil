@@ -1,6 +1,3 @@
-// Generic host screen that mounts a connector's page extension: imports its
-// ES-module bundle, instantiates the custom element, seeds host-context, and
-// relays the element's events onto Vigil's toast/router/full-view.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { extensionsApi } from '../services/api'

@@ -1,10 +1,6 @@
-/* ============================================================
-   Shared console UI primitives — a modal Popup and a Dropdown
-   menu. Both are scoped under .soc-console (no portal, so the
-   dark theme styles apply) and carry the a11y affordances the
-   raw divs otherwise lack (Esc, focus return, outside
-   click, role/aria). See CONSOLE_GAPS.md §3, §10.
-   ============================================================ */
+/* Scoped under .soc-console (no portal, so the dark theme styles apply) and
+   carrying the a11y affordances raw divs lack: Esc, focus return, outside
+   click, role/aria. */
 import {
   useCallback,
   useEffect,
@@ -18,8 +14,8 @@ import {
 import { createPortal } from 'react-dom'
 import { Icon, type IconName } from './icons'
 
-// Popup and portal-backed Select can be nested. Keep Escape scoped to the
-// most recently opened interactive layer so one keypress cannot dismiss both.
+// Popup and portal-backed Select nest, so Escape is scoped to the most recently
+// opened layer — one keypress must not dismiss both.
 const escapeLayers: symbol[] = []
 
 function addEscapeLayer(layer: symbol) {
@@ -35,8 +31,7 @@ function isTopEscapeLayer(layer: symbol) {
   return escapeLayers[escapeLayers.length - 1] === layer
 }
 
-/** Enter/Space → activate. For non-button elements given `role="button"` or
- *  `role="switch"` so they stay keyboard-operable (CONSOLE_GAPS.md §10). */
+/** keeps non-button elements given role="button"/"switch" keyboard-operable */
 export function activateOnKey(fn: () => void) {
   return (e: ReactKeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -64,8 +59,7 @@ export function EmptyState({
   secondary?: { label: ReactNode; onClick: () => void; icon?: IconName }
   compact?: boolean
   table?: boolean
-  /** announce as a live region so screen readers hear the transition
-   *  (CONSOLE_GAPS.md §10): `loading` → polite status, `error` → assertive alert */
+  /** live region, so screen readers hear the transition */
   loading?: boolean
   error?: boolean
 }) {
@@ -101,7 +95,6 @@ export function EmptyState({
   return table ? <div className={`empty-state-table${compact ? ' compact' : ''}`}>{content}</div> : content
 }
 
-/* ---------------- Popup (modal dialog) ---------------- */
 export function Popup({
   open,
   onClose,
@@ -118,10 +111,9 @@ export function Popup({
   const panelRef = useRef<HTMLDivElement>(null)
   const escapeLayerRef = useRef(Symbol('popup'))
   const titleId = useId()
-  // Keep the latest onClose in a ref so the focus effect can depend on `open`
-  // alone. Depending on `onClose` (usually a fresh inline arrow each render)
-  // would re-run the effect on every keystroke and steal focus back to the
-  // panel — making inputs inside the modal accept only one character.
+  // onClose is usually a fresh inline arrow each render; depending on it would
+  // re-run the focus effect on every keystroke and steal focus back to the panel,
+  // so inputs inside the modal would accept only one character.
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
 
@@ -169,13 +161,11 @@ export function Popup({
   )
 }
 
-/* ---------------- Filter button + popover ---------------- */
 export interface DropOption {
   value: string
   label: string
 }
 
-/** a single "Filters" button that opens a popover holding the filter groups */
 export function FilterButton({
   activeCount,
   onClearAll,
@@ -231,7 +221,6 @@ export function FilterButton({
   )
 }
 
-/** one labelled row of selectable option chips inside the filter popover */
 export function FilterGroup({
   label,
   value,
@@ -261,10 +250,6 @@ export function FilterGroup({
   )
 }
 
-/* ---------------- Form-field select (styled <select> replacement) ----------------
-   A dark, on-brand dropdown for use inside forms/dialogs where the native
-   <select> popup (light, OS-chrome) looks out of place. Same a11y wiring as
-   Dropdown but rendered as a full-width field matching inputCls. */
 export function Select({
   value,
   options,
@@ -280,9 +265,8 @@ export function Select({
   const ref = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const escapeLayerRef = useRef(Symbol('select'))
-  // Menu is rendered in a fixed-position portal so it escapes any overflow
-  // clipping (cards, .table-wrap, the scrolling settings pane). We anchor it
-  // to the trigger's bounding rect and reposition on scroll/resize.
+  // a fixed-position portal, to escape overflow clipping (cards, .table-wrap,
+  // the scrolling settings pane); anchored to the trigger's rect
   const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null)
   const current = options.find((o) => o.value === value)
 
@@ -330,7 +314,7 @@ export function Select({
         ref={menuRef}
         className="drop-menu field-menu"
         role="listbox"
-        // zIndex above the modal overlay (70) so Selects inside a Popup aren't hidden
+        // above the modal overlay (70), so a Select inside a Popup isn't hidden
         style={{ position: 'fixed', left: pos.left, top: pos.top, width: pos.width, minWidth: pos.width, right: 'auto', zIndex: 80 }}
       >
         {options.map((o) => (
@@ -367,11 +351,6 @@ export function Select({
   )
 }
 
-/* ---------------- Form primitives (settings forms) ----------------
-   Dark, on-brand inputs/toggles matching the console tokens. Built for
-   the Settings screen but generic enough for any console form. */
-
-/** label + control + hint wrapper. Wrap a control as children. */
 export function Field({
   label,
   hint,
@@ -396,17 +375,14 @@ export function Field({
   )
 }
 
-/** single-line text input styled to match .field-select */
 export function TextInput({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={`field-input ${className}`.trim()} {...props} />
 }
 
-/** numeric input — same styling, type=number */
 export function NumberInput({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input type="number" className={`field-input ${className}`.trim()} {...props} />
 }
 
-/** password input with a reveal toggle */
 export function PasswordInput({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
   const [show, setShow] = useState(false)
   return (
@@ -428,7 +404,6 @@ export function PasswordInput({ className = '', ...props }: InputHTMLAttributes<
   )
 }
 
-/** on/off switch (role=switch) */
 export function Toggle({
   checked,
   onChange,
@@ -455,7 +430,6 @@ export function Toggle({
   )
 }
 
-/** a labelled toggle row (switch on the right, text on the left) */
 export function ToggleRow({
   label,
   hint,
@@ -480,13 +454,7 @@ export function ToggleRow({
   )
 }
 
-/* ---------------- Rating (stars) + Slider ----------------
-   The icon set is stroke-only (no fillable star), so Rating inlines its
-   own star glyph; Slider themes a native range input via accent-color.
-   Both are bare controls — wrap in <Field label="…"> for a visible label.
-   Added for the AI Decisions detailed-feedback Popup (DECISIONS_WIRING.md §6). */
-
-/** filled / outline star — fill is controlled (the shared Icon forces fill=none) */
+/** the shared Icon forces fill=none, so fill is controlled here */
 function Star({ filled, size }: { filled: boolean; size: number }) {
   return (
     <svg
@@ -503,7 +471,6 @@ function Star({ filled, size }: { filled: boolean; size: number }) {
   )
 }
 
-/** 1..max star rating; `value` 0 means unrated. Hover previews the score. */
 export function Rating({
   value,
   onChange,
@@ -551,7 +518,6 @@ export function Rating({
   )
 }
 
-/** themed range slider with a live value readout on the right */
 export function Slider({
   value,
   onChange,
@@ -591,8 +557,7 @@ export function Slider({
   )
 }
 
-/** card container for a settings group — reuses .card/.card-h/.card-b.
-   `wide` opts out of the default content max-width (for wide tables). */
+/** `wide` opts out of the default content max-width, for wide tables */
 export function SettingsCard({
   title,
   desc,
@@ -625,7 +590,6 @@ export function SettingsCard({
   )
 }
 
-/** confirmation dialog for destructive actions — wraps Popup */
 export function ConfirmDialog({
   open,
   title,
@@ -672,14 +636,11 @@ export function Dropdown({
   selected,
   onClear,
 }: {
-  /** prefix shown before the value, e.g. "Severity" */
   label: string
   value: string
   options: DropOption[]
   onSelect: (value: string) => void
-  /** whether to render in the highlighted (active) chip style */
   selected?: boolean
-  /** when active, show an ✕ that clears the filter */
   onClear?: () => void
 }) {
   const [open, setOpen] = useState(false)

@@ -1,11 +1,3 @@
-/* ============================================================
-   Data hooks for persistent chat history — fetch via the shared
-   axios client in services/api.ts (auth/CSRF/401-refresh included).
-   useEffect + local state, matching the rest of the app (no
-   React-Query anywhere yet — see screens/cases/useCases.ts).
-   Mutations (rename/archive/delete/import) are called directly on
-   conversationsApi from the component, then `reload()`.
-   ============================================================ */
 import { useCallback, useEffect, useState } from 'react'
 import {
   conversationsApi,

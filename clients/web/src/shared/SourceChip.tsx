@@ -1,6 +1,5 @@
-// Colored chip for a finding's data_source. A connector's manifest badge is the
-// source of truth for its chip, so no vendor branding is hardcoded host-side;
-// falls back to the static source-badge map, then a neutral default.
+// A connector's manifest badge is the source of truth for its chip, so no
+// vendor branding is hardcoded host-side; falls back to the static map.
 import { sourceBadge } from '../config/sourceBadges'
 import { useExtensions } from '../extensions/ExtensionProvider'
 import { Icon, type IconName } from './icons'

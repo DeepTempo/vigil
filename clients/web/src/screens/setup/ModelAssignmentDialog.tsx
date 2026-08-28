@@ -1,6 +1,5 @@
-// Setup step panel — assign models per component (mirrors Settings → AI Config).
-// chat_default is the required base every unset component inherits; the rest are
-// optional overrides.
+// chat_default is the required base every unset component inherits; the rest
+// are optional overrides.
 import { useEffect, useState } from 'react'
 import { Field, Select } from '../../shared/ui'
 import { Banner, StepFooter, useSaveAction } from '../../shared/formKit'
@@ -21,8 +20,7 @@ const INHERIT = 'inherit'
 const ModelAssignmentDialog = ({ onClose, onSaved }: Props) => {
   const [models, setModels] = useState<AIModelInfo[]>([])
   const [components, setComponents] = useState<string[]>([])
-  // component id -> selected value ("provider::model" or INHERIT). `initial` is the
-  // loaded snapshot so save only writes the rows the user actually changed.
+  // `initial` is the loaded snapshot, so save only writes what changed
   const [rows, setRows] = useState<Record<string, string>>({})
   const [initial, setInitial] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -31,15 +29,14 @@ const ModelAssignmentDialog = ({ onClose, onSaved }: Props) => {
 
   useEffect(() => {
     let alive = true
-    // Fail-open (allSettled): a flaky /ai/config still lets the user set the default.
+    // fail-open: a flaky /ai/config still lets the user set the default
     Promise.allSettled([aiConfigApi.listModels(), aiConfigApi.getConfig()]).then(
       ([modelsRes, cfgRes]) => {
         if (!alive) return
         setModels(modelsRes.status === 'fulfilled' ? modelsRes.value.data.models || [] : [])
         const cfg = cfgRes.status === 'fulfilled' ? cfgRes.value.data : null
         const raw = cfg?.components?.length ? cfg.components : Object.keys(COMPONENT_LABELS)
-        // Keep chat_default in the saved list even if the backend omits it —
-        // it's rendered and validated unconditionally, so it must persist.
+        // rendered and validated unconditionally, so it must persist
         const comps = raw.includes(CHAT_DEFAULT_KEY) ? raw : [CHAT_DEFAULT_KEY, ...raw]
         setComponents(comps)
         const next: Record<string, string> = {}
@@ -83,7 +80,7 @@ const ModelAssignmentDialog = ({ onClose, onSaved }: Props) => {
   }
 
   const save = () => {
-    // Validate on click rather than disabling Save with no explanation.
+    // validated on click, rather than disabling Save with no explanation
     if (!(rows[CHAT_DEFAULT_KEY] || '').includes(SEP)) {
       setSelectError(
         models.length === 0 ? 'Connect an AI provider first.' : 'Pick a default model.',
@@ -106,7 +103,6 @@ const ModelAssignmentDialog = ({ onClose, onSaved }: Props) => {
     }, 'Failed to save model assignments')
   }
 
-  // The required default keeps the full Field treatment (label + hint + error).
   const renderDefaultRow = () => {
     const meta = COMPONENT_LABELS[CHAT_DEFAULT_KEY]
     return (
@@ -125,8 +121,7 @@ const ModelAssignmentDialog = ({ onClose, onSaved }: Props) => {
     )
   }
 
-  // Overrides are dense single-line rows: label + hint left, picker right, so
-  // all six stay visible without growing the page into a scroll.
+  // dense rows, so all six stay visible without growing the page into a scroll
   const renderOverrideRow = (component: string) => {
     const meta = COMPONENT_LABELS[component] ?? { label: component, description: '' }
     return (

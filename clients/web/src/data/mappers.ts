@@ -1,10 +1,3 @@
-/* ============================================================
-   Map real backend API responses (snake_case, partial) onto the
-   console's view shapes (Finding / CaseRow). The view shapes
-   carry richer fields than the API returns, so anything the API
-   omits falls back gracefully (em-dash / derived / neutral state).
-   See CONSOLE_GAPS.md §9.
-   ============================================================ */
 import { format } from 'date-fns'
 import type { CaseRow, Finding } from './data'
 import {
@@ -20,7 +13,6 @@ import { techniqueTactic } from './mitre'
 
 const DASH = '—'
 
-/** raw case object as returned by GET /cases/ (fields are best-effort/optional) */
 export interface ApiCase {
   case_id: string
   title?: string
@@ -43,7 +35,6 @@ export interface ApiCase {
   timeline?: Array<{ event?: string; timestamp?: string }>
 }
 
-/** raw finding object as returned by GET /findings/ */
 export interface ApiFinding {
   finding_id: string
   severity?: string
@@ -54,10 +45,8 @@ export interface ApiFinding {
   description?: string
   mitre_predictions?: Record<string, number>
   status?: string
-  /** host / user / IP entities extracted by the backend.
-   *  Open-ended on purpose: the set of keys varies by data source (CrowdStrike
-   *  emits device_id and no dest_ips; Splunk emits dest_ips), so anything
-   *  beyond the known names is carried through to `Finding.extra`. */
+  /** open-ended on purpose: the key set varies by data source, so anything
+   *  beyond the known names is carried through to `Finding.extra` */
   entity_context?: {
     hostnames?: string[]
     usernames?: string[]
@@ -68,9 +57,6 @@ export interface ApiFinding {
   }
 }
 
-/* ---------------- shared helpers ---------------- */
-
-/** "j.reyes" / "Jane Reyes" → "JR"; falls back to em-dash */
 export function initials(name?: string): string {
   if (!name) return DASH
   const parts = name.replace(/[._\-@]/g, ' ').trim().split(/\s+/).filter(Boolean)
@@ -78,7 +64,6 @@ export function initials(name?: string): string {
   return (parts[0] || name).slice(0, 2).toUpperCase()
 }
 
-/** compact relative age: "12m" / "5h" / "3d" */
 export function compactAge(iso?: string): string {
   if (!iso) return DASH
   const then = new Date(iso).getTime()
@@ -94,8 +79,6 @@ function fmt(iso: string | undefined, pattern: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? DASH : format(d, pattern)
 }
-
-/* ---------------- cases ---------------- */
 
 function caseStatus(s?: string): CaseRow['status'] {
   if (s === 'investigating') return 'investigating'
@@ -136,14 +119,11 @@ export function mapApiCase(c: ApiCase): CaseRow {
   }
 }
 
-/** parse an ISO timestamp to epoch ms, or undefined if missing/invalid */
 function epochMs(s?: string): number | undefined {
   if (!s) return undefined
   const d = new Date(s)
   return Number.isNaN(d.getTime()) ? undefined : d.getTime()
 }
-
-/* ---------------- findings ---------------- */
 
 function findingSev(s?: string): Finding['sev'] {
   const v = (s || '').toLowerCase()
@@ -153,11 +133,7 @@ function findingSev(s?: string): Finding['sev'] {
   return 'Medium'
 }
 
-/**
- * The top-confidence MITRE prediction. The backend's mitre_predictions map is
- * keyed by *technique* IDs (e.g. "T1567.002"), so this yields the technique and
- * its confidence.
- */
+/** mitre_predictions is keyed by *technique* id (e.g. "T1567.002") */
 function topTechnique(preds?: Record<string, number>): { tech: string; conf: number } {
   if (!preds) return { tech: DASH, conf: 0 }
   let best = ''
@@ -171,10 +147,9 @@ function topTechnique(preds?: Record<string, number>): { tech: string; conf: num
   return best ? { tech: best, conf: Math.round(bestConf * 100) } : { tech: DASH, conf: 0 }
 }
 
-/** entity_context keys already surfaced as fixed columns; the rest become `extra`. */
+/** already surfaced as fixed columns; the rest become `extra` */
 const MAPPED_ENTITY_KEYS = new Set(['hostnames', 'usernames'])
 
-/** Flatten leftover entity_context entries to display strings. */
 function extraEntities(ec: ApiFinding['entity_context']): Record<string, string> | undefined {
   if (!ec) return undefined
   const out: Record<string, string> = {}
@@ -213,9 +188,6 @@ function findingStatus(s?: string): Finding['status'] {
   return 'open' // new / open / anything else
 }
 
-/* ---------------- AI decisions ---------------- */
-
-/** raw decision as returned by GET /ai/decisions (fields best-effort/optional) */
 export interface ApiDecision {
   decision_id: string
   agent_id?: string
@@ -237,22 +209,15 @@ export interface ApiDecision {
   has_feedback?: boolean
 }
 
-/**
- * `agent_id` on a decision row is an action id from the backend registry
- * (core/agents/builtins.py) — `investigation`, `threat_hunt`,
- * `orchestration`. Those are already words, so the label is derived rather
- * than mapped; custom agents fall through to the same treatment (#476).
- */
+/** `agent_id` is an action id from core/agents/builtins.py, already words, so
+ *  the label is derived rather than mapped (#476) */
 export function getAgentDisplayName(agentId?: string): string {
   if (!agentId) return DASH
   return prettyHandle(agentId)
 }
 
-/**
- * The console's outcome chip collapses the *human verdict*
- * (agree/partial/disagree), NOT the backend's actual_outcome
- * (true/false-positive) — those are separate axes (see DECISIONS_WIRING.md §3).
- */
+/** the human verdict, NOT the backend's actual_outcome — separate axes
+ *  (DECISIONS_WIRING.md §3) */
 function decisionOutcome(human?: string): Outcome {
   if (human === 'agree') return 'agree'
   if (human === 'disagree') return 'disagree'
@@ -260,7 +225,6 @@ function decisionOutcome(human?: string): Outcome {
   return 'pending'
 }
 
-/** human-readable label for the verdict column */
 function decisionHuman(human?: string): string {
   if (human === 'agree') return 'Approved'
   if (human === 'disagree') return 'Rejected'
@@ -268,7 +232,6 @@ function decisionHuman(human?: string): string {
   return 'Pending'
 }
 
-/** minutes → "45m" / "2h" / "2h 30m"; em-dash when absent or zero */
 function timeSaved(minutes?: number): string {
   if (!minutes || minutes <= 0) return DASH
   if (minutes < 60) return `${minutes}m`
@@ -277,7 +240,7 @@ function timeSaved(minutes?: number): string {
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
 }
 
-/** which id to surface in the "Investigation" column — first non-empty wins */
+/** first non-empty wins */
 function decisionInv(d: ApiDecision): string {
   return (
     d.workflow_id ||
@@ -304,14 +267,11 @@ export function mapApiDecision(d: ApiDecision): Decision {
     saved: timeSaved(d.time_saved_minutes),
     time: fmt(d.timestamp, 'MMM d, HH:mm'),
     rationale: d.reasoning || '',
-    // backend returns no evidence list — the detail pane hides the card when empty
+    // no evidence list from the backend; the detail pane hides an empty card
     evidence: [],
   }
 }
 
-/* ---------------- workflows ---------------- */
-
-/** raw workflow as returned by GET /workflows (WorkflowDefinition.to_dict) */
 export interface ApiWorkflow {
   id: string
   name?: string
@@ -323,10 +283,7 @@ export interface ApiWorkflow {
   source?: string
 }
 
-/**
- * The backend doesn't carry a presentation icon, so pick one from keywords in
- * the workflow name (purely cosmetic — falls back to the generic flow glyph).
- */
+/** the backend carries no presentation icon, so derive one from the name */
 function workflowIcon(name: string): IconName {
   const n = name.toLowerCase()
   if (n.includes('hunt')) return 'graph'
@@ -338,8 +295,7 @@ function workflowIcon(name: string): IconName {
 }
 
 export function mapApiWorkflow(w: ApiWorkflow): Workflow {
-  // The backend often returns the slug as the name (e.g. "cloud-incident");
-  // present it as Title Case when it has no spaces.
+  // the backend often returns the slug as the name (e.g. "cloud-incident")
   const raw = w.name || w.id
   const name = raw.includes(' ') ? raw : prettyHandle(raw)
   return {
@@ -354,9 +310,6 @@ export function mapApiWorkflow(w: ApiWorkflow): Workflow {
   }
 }
 
-/* ---------------- agents ---------------- */
-
-/** raw agent as returned by GET /agents (agent_manager.get_agent_list) */
 export interface ApiAgent {
   id: string
   name?: string
@@ -379,9 +332,6 @@ export function mapApiAgent(a: ApiAgent): AgentTemplate {
   }
 }
 
-/* ---------------- skills ---------------- */
-
-/** raw skill as returned by GET /api/skills (SkillResponse) */
 export interface ApiSkill {
   skill_id: string
   name: string
@@ -397,8 +347,7 @@ export function mapApiSkill(s: ApiSkill): Skill {
     name: s.name,
     id: s.skill_id,
     v: `v${s.version ?? 1}`,
-    // 'custom' keeps the accent tag styling; every built-in category folds
-    // into the neutral "built-in" tag.
+    // 'custom' keeps the accent tag; every built-in category folds to neutral
     cat: s.category === 'custom' ? 'custom' : 'builtin',
     active: s.is_active ?? false,
     desc: s.description || '',

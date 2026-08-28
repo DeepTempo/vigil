@@ -1,5 +1,4 @@
-// Setup step panel — sets the Bifrost virtual key + spend cap. The cost-guardrails
-// step reads ready once default_vk is non-empty.
+// The cost-guardrails step reads ready once default_vk is non-empty.
 import { useEffect, useState } from 'react'
 import { Field, NumberInput, Select, TextInput } from '../../shared/ui'
 import { Banner, StepFooter, useSaveAction } from '../../shared/formKit'
@@ -39,8 +38,7 @@ const BudgetDialog = ({ onClose, onSaved }: Props) => {
   }, [])
 
   const save = () => {
-    // vk is the one required field (the cap is enforced through it). Validate on
-    // click instead of disabling Save with no explanation.
+    // the cap is enforced through the vk, so it is the one required field
     if (!vk.trim()) {
       setVkError('Add a Bifrost virtual key — Vigil enforces the spend cap through it.')
       return

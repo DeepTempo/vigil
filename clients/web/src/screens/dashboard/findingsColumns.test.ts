@@ -41,7 +41,6 @@ describe('adaptive findings columns', () => {
     const base = baseFindingColumns(() => {}, () => {})
     expect(base).toHaveLength(11)
     expect(base.filter((c) => c.sortVal).map((c) => c.key)).toEqual(['sev', 'time', 'score', 'status'])
-    // same five fields the old hardcoded search covered, in column order
     expect(base.filter((c) => c.searchVal).map((c) => c.key)).toEqual(['id', 'tech', 'src', 'host', 'user'])
   })
 })

@@ -1,8 +1,3 @@
-/* ============================================================
-   Shared view-model types (Finding, CaseRow) + nav/title config
-   for the SOC console. Screens fetch real data via services/api
-   and map it into these shapes (see data/mappers.ts).
-   ============================================================ */
 import type { IconName } from '../shared/icons'
 
 export type ConsoleScreenKey =
@@ -15,22 +10,15 @@ export type ConsoleScreenKey =
   | 'autoops'
   | 'settings'
 
-/** Runtime-dynamic rail membership, mirroring production's NavigationRail.
- *  A rail item carrying a gate only renders when the gate is satisfied. */
+/** A rail item carrying a gate only renders when the gate is satisfied. */
 export interface NavGate {
-  /** show only when this integration id is in the enabled-integrations list */
+  /** an integration id, matched against the enabled-integrations list */
   integration?: string
-  /** show only when the master orchestrator reports enabled */
   orchestrator?: boolean
 }
 
-/** [icon, label, screen-key | null, gate?] — null marks a not-yet-wired rail
- *  item (none today; Entity Graph now lives as a Dashboard tab). `gate` mirrors
- *  production's dynamic membership; the plumbing is live in SocConsole. No item
- *  is gated today: Auto Ops is intentionally always-visible (gating it made it
- *  vanish confusingly), and Timesketch has no console screen yet — when one
- *  lands, add `['…', 'Timesketch', 'timesketch', { integration: 'timesketch' }]`
- *  and the gating is done. */
+/** Nothing is gated today. Auto Ops is deliberately always-visible — gating it
+ *  made it vanish confusingly — and Timesketch has no screen yet. */
 export const NAV: [IconName, string, ConsoleScreenKey | null, NavGate?][] = [
   ['grid', 'Dashboard', 'dashboard'],
   ['folder', 'Cases', 'cases'],
@@ -52,22 +40,19 @@ export interface Finding {
   host: string
   user: string
   time: string
-  /** epoch ms for the finding's timestamp — used to sort the Time column
-   *  (the `time` string above is display-only and not safely comparable) */
+  /** `time` above is display-only and not safely comparable */
   ts?: number
   score: number
   status: 'open' | 'investigating' | 'closed'
-  /** entity_context keys the fixed fields above don't cover. Sources disagree
-   *  about these — CrowdStrike sends device_id and no dest_ips, Splunk the
-   *  reverse — so they're carried through rather than dropped, and rendered as
-   *  optional columns derived from whatever the loaded rows actually contain. */
+  /** entity_context keys the fixed fields don't cover. Sources disagree about
+   *  these (CrowdStrike sends device_id and no dest_ips, Splunk the reverse), so
+   *  they are carried through and rendered as columns derived from the rows. */
   extra?: Record<string, string>
 }
 
 export interface CaseRow {
   id: string
   title: string
-  /** case description (optional; populated from the API) */
   desc?: string
   status: 'open' | 'investigating' | 'closed'
   prio: 'critical' | 'high' | 'medium' | 'low'
@@ -79,12 +64,11 @@ export interface CaseRow {
   sla: string
   slaState: 'warn' | 'danger' | 'ok'
   updated: string
-  /** epoch ms for chronological sorting (display strings can't sort) */
+  /** display strings can't sort */
   updatedTs?: number
   createdTs?: number
 }
 
-/** title + subtitle per screen (drives the topbar) */
 export const TITLES: Record<ConsoleScreenKey, [string, string]> = {
   dashboard: ['Dashboard', 'Security operations overview'],
   cases: ['Cases', 'Manage investigation cases'],

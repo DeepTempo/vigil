@@ -1,22 +1,7 @@
-/* ============================================================
-   SOC theme context — the single source of truth the Appearance
-   settings page writes to and the SOC console shell reads from (so
-   the deeply-nested settings section can drive the top-level
-   .soc-console styling without prop-drilling).
-
-   Layered over ColorSchemeContext on purpose; do not merge them:
-   - scheme (light/dark) delegates to ColorSchemeContext, which is
-     mounted once at the root (main.tsx) and backend-persisted. THIS
-     provider is mounted twice, in independent trees — SocConsole and
-     LoginScreen each wrap themselves in one — and routing/Loader
-     needs the scheme with no SocThemeProvider above it at all. The
-     preference has to sit above all three, and it has to outlive the
-     browser.
-   - accent + bg are console-only and persist to localStorage. bg is read
-     and written only here; accent's key, shape, default and reader live in
-     shared/accent.ts, because routing/Loader paints from the stored accent
-     before any provider mounts and must not re-derive them.
-   ============================================================ */
+/* Layered over ColorSchemeContext on purpose; do not merge them. This provider
+   is mounted twice in independent trees (SocConsole, LoginScreen) and
+   routing/Loader needs the scheme with none of them above it, so the scheme has
+   to sit higher and outlive the browser. */
 import {
   createContext,
   useCallback,
@@ -40,9 +25,8 @@ import { BG_PRESETS, defaultBaseForScheme, isDarkBase, normHex as normBgHex } fr
 export type { AccentState }
 
 export interface BgState {
-  /** preset key, or null when a custom hex is in use */
   key: string | null
-  /** base color (--bg); the rest of the ramp is derived from it */
+  /** the rest of the surface/line/text ramp is derived from this */
   base: string
 }
 
@@ -50,14 +34,13 @@ interface SocThemeValue {
   scheme: 'light' | 'dark'
   setScheme: (scheme: 'light' | 'dark') => void
   accent: AccentState
-  /** apply a named accent preset from ACCENTS */
   setPreset: (key: string) => void
-  /** apply a free-typed/picked accent hex; returns true if it was valid */
+  /** false when the hex is invalid */
   setHex: (hex: string) => boolean
   bg: BgState
-  /** apply a named background preset from BG_PRESETS (also drives scheme) */
+  /** also drives scheme, from the base's lightness */
   setBgPreset: (key: string) => void
-  /** apply a free-typed/picked background hex (also drives scheme); true if valid */
+  /** also drives scheme; false when the hex is invalid */
   setBgHex: (hex: string) => boolean
 }
 
@@ -74,7 +57,7 @@ function loadBg(): BgState {
       }
     }
   } catch {
-    /* malformed / unavailable localStorage — fall back to the default */
+    /* empty */
   }
   return DEFAULT_BG
 }
@@ -96,7 +79,7 @@ export function SocThemeProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(ACCENT_KEY, JSON.stringify(accent))
     } catch {
-      /* localStorage unavailable — keep the in-memory accent only */
+      /* empty */
     }
   }, [accent])
 
@@ -104,15 +87,12 @@ export function SocThemeProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(BG_KEY, JSON.stringify(bg))
     } catch {
-      /* localStorage unavailable — keep the in-memory background only */
+      /* empty */
     }
   }, [bg])
 
-  // Keep the base coherent with the shared light/dark scheme. The bg setters push
-  // scheme to match the base they apply; this effect handles the other direction —
-  // when scheme changes from outside this provider (backend load, Setup)
-  // and disagrees with the base's lightness, snap the base to that scheme's default.
-  // No-ops whenever a setter already aligned them, so it can't loop with scheme.
+  // The bg setters push scheme; this is the other direction, for a scheme
+  // changed outside the provider (backend load, Setup).
   useEffect(() => {
     if (isDarkBase(bg.base) !== (scheme === 'dark')) {
       setBg(defaultBaseForScheme(scheme))

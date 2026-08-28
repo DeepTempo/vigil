@@ -1,8 +1,5 @@
-/* ============================================================
-   LLM provider add/edit wizard. Steps: pick type → connection (test runs inline
-   here) → model & save. Draft-upsert so /test and /models can run before the
-   final save; retries update the draft row rather than re-POSTing (avoids 409).
-   ============================================================ */
+/* Draft-upsert, so /test and /models can run before the final save; a retry
+   updates the draft row rather than re-POSTing, which would 409. */
 import { useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { Field, Popup, PasswordInput, Select, TextInput, Toggle } from '../../shared/ui'
@@ -42,7 +39,7 @@ interface Props {
   showCancel?: boolean
 }
 
-// Body without modal chrome; the default export below wraps it in a Popup for Settings.
+// no modal chrome; the default export below wraps it in a Popup
 export const LlmProviderWizard = ({
   existing,
   onClose,
@@ -346,8 +343,7 @@ export const LlmProviderWizard = ({
   )
 }
 
-// Modal form used by Settings (Add/Edit provider). The setup screen renders
-// <LlmProviderWizard> directly, inline, instead of this wrapper.
+// the setup screen renders <LlmProviderWizard> inline instead of this wrapper
 const LlmProviderDialog = (props: Props) => {
   return (
     <Popup

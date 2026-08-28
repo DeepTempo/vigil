@@ -1,8 +1,3 @@
-/* ============================================================
-   Settings · SLA Policies — policy CRUD + set-default-per-priority.
-   Production has no UI for slaPoliciesApi; this surfaces it in the
-   console's settings style, mirroring UsersSection. CONSOLE_GAPS §8.
-   ============================================================ */
 import { useState } from 'react'
 import { Icon } from '../../shared/icons'
 import {

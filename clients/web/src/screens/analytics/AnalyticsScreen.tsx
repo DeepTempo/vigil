@@ -1,8 +1,3 @@
-/* ============================================================
-   Analytics Dashboard — report + AI insights rail (Direction B)
-   Ported from app/analytics.js. Wired to /analytics and
-   /analytics/insights via useAnalytics / useAnalyticsInsights.
-   ============================================================ */
 import { useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { Icon } from '../../shared/icons'

@@ -1,4 +1,3 @@
-// Setup step panel — pick a telemetry source, enter credentials, connect.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import IntegrationWizard from '../settings/IntegrationWizard'
 import type { IntegrationMetadata } from '../../config/integrationSchema'
@@ -11,9 +10,8 @@ interface Props {
   onSaved: () => void
 }
 
-// Catalog id → MCP server name for the few data-source ids whose mcp-config.json
-// server key differs from their catalog id. Shared by the picker filter and the
-// connect-on-save so the two can't diverge.
+// for the few ids whose mcp-config.json server key differs from the catalog id.
+// Shared by the picker filter and connect-on-save, so the two can't diverge.
 const CATALOG_TO_SERVER: Record<string, string> = {
   'aws-security-hub': 'aws-security',
   'gcp-security': 'gcp-scc',
@@ -31,13 +29,11 @@ const DataSourceDialog = ({ onSaved }: Props) => {
   const [query, setQuery] = useState('')
   const [availableServers, setAvailableServers] = useState<Set<string> | null>(null)
   const [serversError, setServersError] = useState(false)
-  // Full current config, loaded once, so the save merges instead of clobbering
-  // other integrations (and the wizard can pre-fill an already-configured source).
+  // loaded once, so the save merges instead of clobbering other integrations
   const cfg = useRef<IntegrationsConfig>({ enabled_integrations: [], integrations: {} })
 
-  // The server list drives which sources are offered. A fetch failure is kept
-  // distinct from "no servers" (it gets a retry) so it can't masquerade as an
-  // empty picker. Extracted from the effect so the retry button can re-run it.
+  // a fetch failure is kept distinct from "no servers", so it can't masquerade
+  // as an empty picker
   const loadServers = useCallback(() => {
     setServersError(false)
     setAvailableServers(null)
@@ -68,8 +64,7 @@ const DataSourceDialog = ({ onSaved }: Props) => {
     loadServers()
   }, [loadServers])
 
-  // Only offer sources with a live MCP server behind them — otherwise picking one
-  // would be a dead-end (mirrors Settings' server-first sourcing).
+  // only sources with a live MCP server behind them; the rest are dead ends
   const dataSources = useMemo(() => {
     if (!availableServers) return []
     return getAllIntegrations().filter(
@@ -96,16 +91,12 @@ const DataSourceDialog = ({ onSaved }: Props) => {
 
     const serverName = serverFor(id)
     const { data } = await mcpApi.setServerEnabled(serverName, true)
-    // The endpoint always returns success:true (it only persisted the enabled
-    // bit) — the real connect result is `connected`. false = it didn't come
-    // online; revert (like the Settings toggles) and surface why. null = MCP
-    // subsystem down, not a cred failure — let it through.
+    // success:true only means the enabled bit persisted; `connected` is the real
+    // result. null = MCP subsystem down, not a cred failure, so let it through.
     if (data?.connected === false) {
       mcpApi.setServerEnabled(serverName, false).catch(() => {})
-      // Roll back the enabled bit too (keeping the creds), so the setup
-      // checklist's data-source step — which keys off enabled_integrations —
-      // doesn't count a source that never connected. Only if we just added it,
-      // so re-editing an already-connected source stays enabled.
+      // the checklist keys off enabled_integrations, so a source that never
+      // connected must not count. Only when we just added it.
       if (!alreadyEnabled)
         configApi
           .setIntegrations({ enabled_integrations: cur.enabled_integrations, integrations })

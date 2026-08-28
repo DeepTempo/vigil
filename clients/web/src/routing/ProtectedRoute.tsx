@@ -3,8 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Loader from './Loader';
 
-// Auth-only gate. Per-screen permissions live in SocConsole's SCREEN_PERMS,
-// which reads the same useAuth helpers.
+// Auth only. Per-screen permissions live in SocConsole's SCREEN_PERMS.
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();

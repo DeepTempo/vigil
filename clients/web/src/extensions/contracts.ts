@@ -1,10 +1,7 @@
-// Vigil page-extension contracts (v1): the OSS host owns these types; a
-// connector (e.g. LogLM) conforms to them. Vigil core knows nothing about any
-// specific extension. Four contracts, versioned under `hostApiVersion`:
-// Manifest (connector → host), Config (stored on the integration), Host-context
-// (host → element via `hostContext`), and Extension events (element → host).
+// Page-extension contracts (v1). The host owns these types; a connector conforms
+// to them, and Vigil core knows nothing about any specific extension.
 
-/** We accept any extension whose declared major matches (see isHostApiCompatible). */
+/** any extension whose declared major matches is accepted */
 export const HOST_API_MAJOR = 1
 
 /** Composed so it crosses the element's shadow boundary. */
@@ -26,18 +23,17 @@ export interface ExtensionMountPoint {
   type: 'screen'
   /** URL segment + registry key, e.g. "loglm" */
   key: string
-  /** nav-rail icon name; unknown names render blank (never crash) */
+  /** unknown names render blank rather than crashing */
   icon?: string
   navLabel: string
   title: string
   subtitle?: string
-  /** RBAC permission required to see/open this page (honored by the host) */
   permission?: string
   gate?: ExtensionGate
 }
 
 /** Source-chip branding for findings whose `data_source` == this manifest's id.
- *  Owned by the connector so no vendor colour/icon is hardcoded host-side. */
+ *  Owned by the connector so no vendor colour is hardcoded host-side. */
 export interface ExtensionBadge {
   label?: string
   color?: string
@@ -55,7 +51,6 @@ export interface ExtensionManifest {
   mountPoints: ExtensionMountPoint[]
 }
 
-/** A manifest resolved against the integration that supplied it. */
 export interface RegisteredExtension {
   integrationId: string
   /** connector base URL (== host-context apiBase); resolves relative bundleUrl */

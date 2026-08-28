@@ -1,11 +1,3 @@
-/* ============================================================
-   Global toast / snackbar — the console's shared result-feedback
-   surface (CONSOLE_GAPS.md §10). Scoped under .soc-console so the
-   dark theme + accent apply; the viewport is rendered inside the
-   shell tree (not a portal) for the same reason. Auto-dismisses
-   (errors linger longer); each toast is keyboard-dismissable and
-   announced via aria-live.
-   ============================================================ */
 import {
   createContext,
   useCallback,

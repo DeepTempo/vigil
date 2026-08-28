@@ -1,8 +1,3 @@
-/**
- * Tests for the login screen: it renders the credential form, wires
- * the real auth flow (useAuth().login → navigate into the console), surfaces
- * the MFA step, and toggles light/dark mode.
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -16,15 +11,13 @@ vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ login }),
 }))
 
-// ColorSchemeProvider hydrates/persists the scheme through configApi; stub it so the
-// effect resolves deterministically in jsdom (no network).
+// stubbed so the hydrate effect resolves deterministically in jsdom
 vi.mock('../../services/api', () => ({
   configApi: {
     getTheme: () => Promise.resolve({ data: { theme: 'dark' } }),
     setTheme: () => Promise.resolve({ data: {} }),
   },
-  // The screen asks whether this instance still needs a first admin; an
-  // unmocked export throws inside the mount effect and fails every test here.
+  // unmocked, this throws inside the mount effect and fails every test here
   bootstrapApi: {
     status: () => Promise.resolve({ data: { required: false } }),
     create: () => Promise.resolve({ data: {} }),

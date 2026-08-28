@@ -1,10 +1,3 @@
-/* ============================================================
-   Data hooks for the AI Decisions screen — same useEffect +
-   local-state + Phase pattern as useCases.ts (no React-Query).
-   Fetch via the shared axios client in services/api.ts
-   (auth/CSRF/401-refresh included), map onto the console view
-   shapes. See DECISIONS_WIRING.md §4.
-   ============================================================ */
 import { useCallback, useEffect, useState } from 'react'
 import { agentsApi, aiDecisionsApi, approvalsApi, type AgentSummary } from '../../services/api'
 import { mapApiDecision, type ApiDecision } from '../../data/mappers'
@@ -12,24 +5,16 @@ import type { Decision } from '../../data/appData'
 
 export type Phase = 'loading' | 'ready' | 'error'
 
-/** prefer FastAPI's `detail`, fall back to the axios message, then a default */
 function errMsg(e: unknown, fallback: string): string {
   const r = e as { response?: { data?: { detail?: string } }; message?: string }
   return r?.response?.data?.detail || r?.message || fallback
 }
 
-/**
- * The daemon's own decisions carry this id. It is not an agent, so it never
- * comes back from GET /agents — see core/agents/builtins.py:ORCHESTRATION_DECISION_ID.
- */
+/** the daemon is not an agent, so this never comes back from GET /agents */
 const ORCHESTRATION_DECISION_ID = 'orchestration'
 
-/**
- * Agent filter options for the decisions table, keyed by the action ids the
- * backend stamps on decision rows (#476). Derived from the agent registry so
- * a new agent shows up in the filter without a frontend edit; falls back to
- * the daemon-only id if /agents is unreachable.
- */
+/** derived from the agent registry, so a new agent reaches the filter without
+ *  a frontend edit (#476) */
 export function useDecisionAgentIds(): string[] {
   const [ids, setIds] = useState<string[]>([ORCHESTRATION_DECISION_ID])
 
@@ -54,7 +39,6 @@ export function useDecisionAgentIds(): string[] {
 
 export type DecisionStatus = 'all' | 'pending' | 'completed'
 
-/** All Decisions tab — agent + feedback-status filters drive a refetch */
 export function useDecisions(agentId: string, status: DecisionStatus) {
   const [rows, setRows] = useState<Decision[]>([])
   const [phase, setPhase] = useState<Phase>('loading')
@@ -93,7 +77,6 @@ export function useDecisions(agentId: string, status: DecisionStatus) {
   return { rows, phase, error, reload }
 }
 
-/** Pending tab — decisions awaiting human feedback */
 export function usePendingDecisions() {
   const [rows, setRows] = useState<Decision[]>([])
   const [phase, setPhase] = useState<Phase>('loading')
@@ -126,7 +109,6 @@ export function usePendingDecisions() {
   return { rows, phase, error, reload }
 }
 
-/** KPI strip + Analytics tab — aggregate stats (optionally scoped to one agent) */
 export interface DecisionStats {
   total_decisions: number
   feedback_rate: number // 0–1
@@ -174,7 +156,6 @@ export function useDecisionStats(agentId: string, days?: number) {
   return { stats, phase, error, reload }
 }
 
-/** Pending Approvals tab — separate human-in-the-loop queue (workflow + daemon) */
 export interface ApprovalAction {
   action_id: string
   title?: string

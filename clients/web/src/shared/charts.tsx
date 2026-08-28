@@ -1,28 +1,18 @@
-/* ============================================================
-   SVG chart builders — clean, calm, no library look.
-   Ported from the design's charts.js to React components.
-   Colors are passed through as `var(--*)` strings so charts
-   recolor live when the accent tweak changes.
-   ============================================================ */
 import { useRef, useState } from 'react'
 
 export interface DonutSeg {
   v: number // fraction 0..1
   color: string
-  /** optional key used to link hover state with a legend row */
   label?: string
 }
 
-/* solid pie — filled wedges (no center hole). Thin panel-colored strokes
-   separate the slices, mirroring the donut's gap treatment. Colours are set
-   via the `fill` style so CSS var() resolves (see Donut note above). */
+/* colours go through the `fill` style, so CSS var() resolves */
 export function Pie({ segs, size = 200 }: { segs: DonutSeg[]; size?: number }) {
   const r = size / 2
   const visible = segs.filter((s) => s.v > 0.0001)
-  // preflight is off; pin size/display so the pie stays a fixed circle
+  // preflight is off, so pin size/display to keep the pie a fixed circle
   const svgStyle = { display: 'block', width: size, height: size, flex: '0 0 auto' as const }
-  // a single full slice can't be expressed as an arc path (start === end);
-  // render it as a plain filled circle instead
+  // a single full slice can't be an arc path (start === end)
   if (visible.length === 1) {
     return (
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={svgStyle}>
@@ -49,8 +39,6 @@ export function Pie({ segs, size = 200 }: { segs: DonutSeg[]; size?: number }) {
   )
 }
 
-/* dual area trend — clean, borderless: gradient-filled areas, soft strokes,
-   faint dashed gridlines for reference, no axis box / markers. */
 export function Trend({
   seriesA,
   seriesB,
@@ -63,9 +51,7 @@ export function Trend({
   seriesA: number[]
   seriesB: number[]
   labels: string[]
-  /** full per-bucket labels for the hover tooltip (defaults to `labels`) */
   pointLabels?: string[]
-  /** series names shown in the hover tooltip */
   names?: [string, string]
   w?: number
   h?: number
@@ -84,10 +70,8 @@ export function Trend({
   const X = (i: number) => padL + (i / Math.max(seriesA.length - 1, 1)) * plotW
   const Y = (v: number) => top + plotH - (v / max) * plotH
 
-  // smooth the line with monotone cubic Hermite interpolation
-  // (Fritsch–Carlson). A plain Catmull-Rom fit overshoots flat→climb runs
-  // — e.g. 0,0 → 5 used to dip below 0 before rising — so we clamp the
-  // tangents to keep each segment monotonic (no over/undershoot).
+  // Monotone cubic Hermite (Fritsch–Carlson): a plain Catmull-Rom fit overshoots
+  // flat→climb runs — 0,0 → 5 used to dip below 0 before rising.
   const linePath = (arr: number[]) => {
     const n = arr.length
     if (n === 0) return ''
@@ -108,7 +92,7 @@ export function Trend({
     for (let i = 1; i < n - 1; i++) {
       m[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2
     }
-    // Fritsch–Carlson clamp so the cubic can't overshoot a segment
+    // clamp, so the cubic can't overshoot a segment
     for (let i = 0; i < n - 1; i++) {
       if (slope[i] === 0) {
         m[i] = 0
@@ -141,7 +125,6 @@ export function Trend({
   const aLine = linePath(seriesA)
   const bLine = linePath(seriesB)
 
-  // faint horizontal gridlines + right-aligned y-value labels in the gutter
   const grid = []
   for (let i = 0; i <= 4; i++) {
     const gy = top + (plotH / 4) * i
@@ -154,7 +137,7 @@ export function Trend({
     )
   }
 
-  // show ~7 labels so the axis stays readable at any bucket count
+  // ~7 labels, so the axis stays readable at any bucket count
   const xlab = labels.map((l, i) => {
     if (!l) return null
     return (
@@ -162,8 +145,7 @@ export function Trend({
     )
   })
 
-  // map a pointer position to the nearest bucket index (accounting for the
-  // left gutter so the first/last points line up with the cursor)
+  // accounts for the left gutter, so first/last line up with the cursor
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const rect = svgRef.current?.getBoundingClientRect()
     if (!rect || rect.width === 0 || n === 0) return
@@ -174,7 +156,7 @@ export function Trend({
 
   const tipLabels = pointLabels ?? labels
   const hx = hover != null ? X(hover) : 0
-  // anchor the tooltip so it never runs off the edges
+  // so the tooltip never runs off the edges
   const frac = hover != null ? hx / w : 0.5
   const tipShift = frac > 0.7 ? '-100%' : frac < 0.3 ? '0%' : '-50%'
 
@@ -233,8 +215,6 @@ export interface GroupRow {
   b: number
 }
 
-/* grouped vertical bars — two series per category (e.g. total vs closed).
-   Calm SVG with dashed y-grid + value labels, matching Trend's grid. */
 export function GroupedBars({
   rows,
   w = 760,
@@ -312,7 +292,6 @@ export interface HbarItem {
   cls?: string
 }
 
-/* horizontal bars */
 export function Hbars({ items }: { items: HbarItem[] }) {
   return (
     <div className="hbars">

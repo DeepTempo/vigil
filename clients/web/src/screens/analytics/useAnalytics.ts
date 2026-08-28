@@ -1,15 +1,9 @@
-/* ============================================================
-   Data hooks for the Analytics screen — the full metrics payload
-   (/analytics) plus the AI insights rail (/analytics/insights).
-   Same useEffect + shared-axios + phase pattern as useFindings.
-   ============================================================ */
 import { useCallback, useEffect, useState } from 'react'
 import api from '../../services/api'
 import type { Phase } from '../cases/useCases'
 
 export type { Phase } from '../cases/useCases'
 
-/** Backend time-range tokens. The UI's "All" tab maps to "all". */
 export type TimeRange = '24h' | '7d' | '30d' | 'all'
 
 export interface AnalyticsMetrics {
@@ -85,7 +79,6 @@ export interface AnalyticsData {
   mitreTechniques: MitreTechnique[]
 }
 
-/** full analytics payload for a given time range */
 export function useAnalytics(timeRange: TimeRange) {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [phase, setPhase] = useState<Phase>('loading')
@@ -136,7 +129,6 @@ interface InsightsResponse {
 
 export type InsightLevel = 'crit' | 'high' | 'ok' | 'med'
 
-/** anomalies are loudest, recommendations are calm/positive */
 export function insightLevel(type: ApiInsight['type']): InsightLevel {
   switch (type) {
     case 'anomaly':
@@ -150,7 +142,6 @@ export function insightLevel(type: ApiInsight['type']): InsightLevel {
   }
 }
 
-/** cached AI insights for a given time range */
 export function useAnalyticsInsights(timeRange: TimeRange) {
   const [insights, setInsights] = useState<ApiInsight[]>([])
   const [generatedAt, setGeneratedAt] = useState<string | null>(null)

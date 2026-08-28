@@ -1,6 +1,4 @@
-// Soft-checklist state: runs each step's readiness predicate over fetched state.
-// Purely additive — the hard gate lives in useSetupStatus / SetupGate.
-// `requiredReady` / `incompleteCount` feed a planned dashboard nudge (tests only).
+// Purely additive: the hard gate lives in useSetupStatus / SetupGate.
 import { useCallback, useEffect, useState } from 'react'
 import { llmProviderApi, aiConfigApi, budgetsApi, configApi } from '../../services/api'
 import {
@@ -22,8 +20,8 @@ export interface SetupChecklist {
   refetch: () => void
 }
 
-// Every source fail-opens to its empty default (Promise.allSettled), so one
-// flaky endpoint can't crash the page. Advisory — not a security control.
+// every source fail-opens to its empty default, so one flaky endpoint can't
+// crash the page. Advisory, not a security control.
 const fetchSetupState = async (): Promise<SetupState> => {
   const base = emptySetupState()
   const [providers, integrations, aiConfig, budget, orchestrator] = await Promise.allSettled([
@@ -49,8 +47,7 @@ const useSetupChecklist = (): SetupChecklist => {
   const [state, setState] = useState<SetupState>(emptySetupState)
   const [loading, setLoading] = useState(true)
 
-  // Flip `loading` only on the initial load, not refetches: a refetch updates the
-  // steps in place, and blanking the list to the loader mid-save made it flash.
+  // initial load only: blanking the list to the loader mid-save made it flash
   const refetch = useCallback(() => {
     fetchSetupState()
       .then(setState)

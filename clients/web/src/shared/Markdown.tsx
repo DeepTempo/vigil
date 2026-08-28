@@ -1,5 +1,3 @@
-/* Shared Markdown renderer — used by the chat drawer and case details.
-   Styling lives under the reusable `.md` class in styles.css. */
 import { memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'

@@ -1,12 +1,6 @@
-/* ============================================================
-   Vigil brand logo — inlined from the vector source (Logo Sage.svg)
-   so it recolors with the theme via `fill: currentColor` instead of
-   shipping per-theme raster art (the old black PNGs were CSS-inverted
-   to white, which broke under light mode). `<VigilMark>` is the
-   shield-only glyph for the collapsed rail; `<VigilLogo>` is the full
-   shield + "Vigil" wordmark lockup for the expanded rail. Color is set
-   by CSS (.nav-logo) — sage on dark, near-black on light.
-   ============================================================ */
+/* Inlined from the vector source so it recolors with the theme via
+   `fill: currentColor` — the old black PNGs were CSS-inverted to white, which
+   broke under light mode. */
 import type { CSSProperties } from 'react'
 
 /** the circuit-shield mark; bounding box matches the source clip rect */
@@ -27,7 +21,6 @@ interface LogoProps {
   style?: CSSProperties
 }
 
-/** shield-only mark (square), for the collapsed nav rail */
 export function VigilMark({ className, style }: LogoProps) {
   return (
     <svg
@@ -43,7 +36,6 @@ export function VigilMark({ className, style }: LogoProps) {
   )
 }
 
-/** full shield + "Vigil" wordmark lockup, for the expanded nav rail */
 export function VigilLogo({ className, style }: LogoProps) {
   return (
     <svg

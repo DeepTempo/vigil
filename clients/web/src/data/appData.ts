@@ -1,9 +1,3 @@
-/* ============================================================
-   Shared view-model types + agent display metadata for the
-   Workflows, AI Decisions, Agents and Skills screens. Screens
-   fetch real data via services/api and map it into these shapes
-   (see data/mappers.ts).
-   ============================================================ */
 import type { IconName } from '../shared/icons'
 
 export interface Workflow {
@@ -18,11 +12,10 @@ export interface Workflow {
   useCase: string
 }
 
-// Agent label + dot color used to be mirrored here as AGENT_META; it now comes
-// from GET /agents at runtime via useAgentMeta (#482), so built-in colors/labels
-// can't drift from the backend. prettyHandle stays as the offline fallback.
+// AGENT_META was mirrored here until #482 moved it to GET /agents, so built-in
+// colors/labels can't drift from the backend. prettyHandle is the fallback.
 
-/** "mitre_mapping" → "MITRE Mapping" — labels every agent and action id. */
+/** "mitre_mapping" → "MITRE Mapping" */
 export function prettyHandle(handle: string): string {
   return handle
     .replace(/[._-]+/g, ' ')
@@ -48,11 +41,6 @@ export interface Decision {
   evidence: string[]
 }
 
-// The Decision view shape is now produced by mapApiDecision (mappers.ts) and
-// fed to DecisionsScreen via the useDecisions hooks — the old static mock list
-// and decStats() were removed when the screen was wired to aiDecisionsApi.
-
-/* ---- Agents (built-in templates) ---- */
 export interface AgentTemplate {
   name: string
   handle: string
@@ -65,7 +53,6 @@ export interface AgentTemplate {
   custom: boolean
 }
 
-/* ---- Skills (reusable capabilities) ---- */
 export interface Skill {
   name: string
   id: string

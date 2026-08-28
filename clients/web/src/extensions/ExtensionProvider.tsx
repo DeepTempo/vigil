@@ -1,7 +1,5 @@
-// Runtime page-extension registry. Any enabled integration whose config carries
-// a `connectorUrl` is treated as extension-capable (Vigil stays ignorant of
-// LogLM specifically); its manifest is fetched, validated, and exposed as mount
-// points. Empty by default — no connectors configured means no extension tabs.
+// Any enabled integration whose config carries a `connectorUrl` is treated as
+// extension-capable, so Vigil stays ignorant of any specific connector.
 import {
   createContext,
   useCallback,

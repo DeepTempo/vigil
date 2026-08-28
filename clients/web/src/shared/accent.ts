@@ -1,16 +1,11 @@
-/* Accent palette, hex helpers, and the persisted-accent reader (ported from
-   main.js tweaks logic). Shared rather than shell/: routing/Loader and the
-   login screen paint from these outside the console, and nothing here knows
-   about the shell. The stored accent is read here rather than in each painter
-   so there is one key, one shape and one default. */
+/* Shared rather than shell/: routing/Loader and the login screen paint from
+   these outside the console. */
 import type { CSSProperties } from 'react'
 
 export interface AccentState {
-  /** preset key, or null when a custom hex is in use */
+  /** null when a custom hex is in use */
   key: string | null
-  /** base accent (--accent) */
   a: string
-  /** lightened highlight tone (--accent-2) */
   b: string
 }
 
@@ -21,7 +16,6 @@ export const ACCENTS: Record<string, [string, string]> = {
   coral: ['#e2705f', '#ec8a7b'],
 }
 
-/** preset swatches shown in the tweaks panel, in order */
 export const ACCENT_SWATCHES: { key: string; color: string }[] = [
   { key: 'violet', color: '#7d74f3' },
   { key: 'cyan', color: '#28a9bd' },
@@ -29,7 +23,7 @@ export const ACCENT_SWATCHES: { key: string; color: string }[] = [
   { key: 'coral', color: '#e2705f' },
 ]
 
-/** normalize "#abc" / "abc" / "aabbcc" -> "#aabbcc"; null if invalid */
+/** "#abc" / "abc" / "aabbcc" -> "#aabbcc"; null if invalid */
 export function normHex(v: string): string | null {
   if (!v) return null
   let h = v.trim().replace(/^#/, '').toLowerCase()
@@ -37,7 +31,6 @@ export function normHex(v: string): string | null {
   return /^[0-9a-f]{6}$/.test(h) ? '#' + h : null
 }
 
-/** lighten a hex toward white by amt (0..1) for the --accent-2 highlight tone */
 export function lighten(hex: string, amt: number): string {
   const n = parseInt(hex.slice(1), 16)
   const r = n >> 16
@@ -47,7 +40,6 @@ export function lighten(hex: string, amt: number): string {
   return '#' + [mix(r), mix(g), mix(b)].map((c) => c.toString(16).padStart(2, '0')).join('')
 }
 
-/** build the inline CSS-var style block that paints the accent onto .soc-console */
 export function accentVars(a: string, b: string): CSSProperties {
   return {
     '--accent': a,
@@ -60,9 +52,6 @@ export function accentVars(a: string, b: string): CSSProperties {
 export const ACCENT_KEY = 'soc.accent'
 export const DEFAULT_ACCENT: AccentState = { key: 'violet', a: '#7d74f3', b: '#9a92f7' }
 
-/** read the accent the user last picked (Settings -> Appearance). Called by
- *  SocThemeProvider for its initial state and directly by routing/Loader,
- *  which paints before any provider mounts. */
 export function loadAccent(): AccentState {
   try {
     const raw = localStorage.getItem(ACCENT_KEY)
@@ -73,7 +62,7 @@ export function loadAccent(): AccentState {
       }
     }
   } catch {
-    /* malformed / unavailable localStorage — fall back to the default */
+    /* empty */
   }
   return DEFAULT_ACCENT
 }

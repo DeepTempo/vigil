@@ -1,11 +1,3 @@
-/* ============================================================
-   Settings · Integrations — MCP server grid grouped by category,
-   with search, summary chips, status indicators, and enable/disable
-   toggles (with revert-on-failed-connect), per-server credential
-   wizard + "Not Configured" state, docs links, the custom-integration
-   builder, plus Manual Upload and Detection Rules sub-tabs. Full
-   parity with the legacy Integrations tab.
-   ============================================================ */
 import { useMemo, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { EmptyState, TextInput } from '../../shared/ui'
@@ -67,7 +59,6 @@ function ServersPanel({ notify }: SectionProps) {
     [servers],
   )
 
-  // group visible servers into the ordered categories, with an "Other" bucket
   const grouped = useMemo(() => {
     const q = search.toLowerCase()
     const match = (n: string) =>
@@ -88,7 +79,7 @@ function ServersPanel({ notify }: SectionProps) {
   const enabledCount = visible.filter((n) => enabled[n]).length
   const runningCount = visible.filter((n) => statuses[n] === 'running').length
 
-  // Gate M — MCP server on/off (agent tools); used by every non-extension card.
+  // gate M: MCP server on/off (agent tools)
   const onToggleMcp = async (name: string, want: boolean) => {
     setBusy(name)
     const res = await setServerEnabled(name, want)
@@ -97,7 +88,7 @@ function ServersPanel({ notify }: SectionProps) {
     else notify('err', `Could not start ${prettyServerName(name)}${res.error ? `: ${res.error}` : ''}.`)
   }
 
-  // Master — one switch over both gates for a connector-backed integration.
+  // master: one switch over both gates
   const onToggleMaster = async (name: string, id: string, want: boolean) => {
     setBusy(name)
     const res = await setServerEnabled(name, want)
@@ -132,7 +123,6 @@ function ServersPanel({ notify }: SectionProps) {
         <button className="btn ghost" onClick={() => setBuilderOpen(true)}><Icon name="plus" /> Build Custom</button>
         <button className="btn ghost" onClick={reload}><Icon name="refresh" /> Refresh</button>
       </div>
-
 
       {phase === 'loading' && <EmptyState loading icon="link" title="Loading integrations…" />}
       {phase === 'error' && <EmptyState error icon="alert" title="Couldn’t load connectors" body={error} primary={{ label: 'Retry', onClick: reload, icon: 'refresh' }} />}

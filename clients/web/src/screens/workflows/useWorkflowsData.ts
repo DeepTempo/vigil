@@ -1,10 +1,3 @@
-/* ============================================================
-   Data hooks for the Workflows screen — Workflows · Agents ·
-   Skills tabs. Fetch via the shared axios client (workflows,
-   agents) and the dedicated skills client, then map onto the
-   console view shapes. useEffect + local state, matching the
-   rest of the console (see useCases.ts). CONSOLE_GAPS.md §9.
-   ============================================================ */
 import { useCallback, useEffect, useState } from 'react'
 import { workflowApi, agentsApi } from '../../services/api'
 import { skillsApi } from '../../services/skillsApi'
@@ -20,7 +13,6 @@ import type { Workflow, AgentTemplate, Skill } from '../../data/appData'
 
 export type Phase = 'loading' | 'ready' | 'error'
 
-/** all available workflows (file-based + custom, merged by the backend) */
 export function useWorkflows() {
   const [rows, setRows] = useState<Workflow[]>([])
   const [phase, setPhase] = useState<Phase>('loading')
@@ -53,7 +45,6 @@ export function useWorkflows() {
   return { rows, phase, error, reload }
 }
 
-/** SOC agents (built-in templates + DB-backed customs) */
 export function useAgents() {
   const [rows, setRows] = useState<AgentTemplate[]>([])
   const [phase, setPhase] = useState<Phase>('loading')
@@ -86,7 +77,7 @@ export function useAgents() {
   return { rows, phase, error, reload }
 }
 
-/* Agent label + dot color, sourced from GET /agents (#482 — replaces the old
+/* sourced from GET /agents (#482 — replaces the old
    hardcoded AGENT_META mirror). Fetched once and cached module-wide so the many
    sequence chips share a single request; unknown/custom ids fall back to a
    prettified handle + the accent color. Covers customs too, which the old
@@ -111,7 +102,7 @@ function loadAgentMeta(): Promise<Record<string, AgentMeta>> {
         return map
       })
       .catch(() => {
-        // Don't cache a failed fetch — a transient error shouldn't pin every
+        // a failed fetch isn't cached: a transient error shouldn't pin every
         // chip to the fallback for the rest of the session. Reset so the next
         // mount retries.
         agentMetaCache = null

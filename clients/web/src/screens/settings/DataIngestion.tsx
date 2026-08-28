@@ -1,10 +1,3 @@
-/* ============================================================
-   Settings · Integrations · Manual Upload — first-party ingest
-   sources: local upload, S3 (config + browse/ingest), Kafka
-   (consumer config + live stats), Darktrace (webhook receiver).
-   Mirrors the S3 dialog, KafkaTab, and Darktrace dialog from the
-   legacy Integrations tab.
-   ============================================================ */
 import { useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import {
@@ -45,10 +38,8 @@ export default function DataIngestionPanel({ notify }: SectionProps) {
   )
 }
 
-/* ---------------- Manual upload ---------------- */
 const ACCEPTED_UPLOAD_TYPES = '.parquet,.csv,.json,.jsonl,.ndjson'
 
-/** Independent of S3/Kafka/Darktrace so their failures can't hide it. */
 function ManualUploadPanel({ notify }: SectionProps) {
   const { job, attaching, upload } = useIngestionJob()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -124,7 +115,6 @@ function IngestionJobStatus({ job }: { job: IngestionJob }) {
   )
 }
 
-/* ---------------- S3 ---------------- */
 const AUTH_OPTIONS = [
   { value: 'credentials', label: 'Manual credentials' },
   { value: 'profile', label: 'AWS profile (SSO)' },
@@ -135,7 +125,6 @@ function S3Panel({ notify }: SectionProps) {
   const [saving, setSaving] = useState(false)
   const [confirmSave, setConfirmSave] = useState(false)
 
-  // browse + ingest
   const [prefix, setPrefix] = useState('')
   const [files, setFiles] = useState<{ key: string; size: number; last_modified: string }[]>([])
   const [browsing, setBrowsing] = useState(false)
@@ -353,7 +342,6 @@ function S3Panel({ notify }: SectionProps) {
   )
 }
 
-/* ---------------- Kafka ---------------- */
 const OFFSET_RESETS = [
   { value: 'latest', label: 'latest' },
   { value: 'earliest', label: 'earliest' },
@@ -486,7 +474,6 @@ function KafkaPanel({ notify }: SectionProps) {
   )
 }
 
-/* ---------------- Darktrace ---------------- */
 function DarktracePanel({ notify }: SectionProps) {
   const { config, setConfig, phase, save } = useDarktrace()
   const [saving, setSaving] = useState(false)

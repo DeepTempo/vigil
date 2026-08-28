@@ -1,8 +1,4 @@
-/* ============================================================
-   Timeline data hook — maps timelineApi.getTimelineRange onto the
-   interactive Gantt's TimelineEvent shape. Technique isn't in the
-   range payload, so `tech` is left blank. See CONSOLE_GAPS.md §9.
-   ============================================================ */
+/* Technique isn't in the range payload, so `tech` is left blank. */
 import { useEffect, useState } from 'react'
 import { timelineApi } from '../../services/api'
 import type { TimelineEvent, TimelineKind } from './attackData'

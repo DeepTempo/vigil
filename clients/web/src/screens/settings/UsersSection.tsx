@@ -1,8 +1,3 @@
-/* ============================================================
-   Settings · Users — user CRUD + role assignment + active toggle.
-   Mirrors UserManagementTab.tsx. Uses the raw axios client (no
-   named users API object) and AuthContext for permission gating.
-   ============================================================ */
 import { useState } from 'react'
 import { Icon } from '../../shared/icons'
 import {
@@ -26,9 +21,8 @@ const EMPTY_FORM: UserPayload = {
   role_id: '',
 }
 
-// Pragmatic RFC 5322-ish check: a local part, an @, a domain with a dot.
-// Mirrors what the backend's Pydantic EmailStr will accept, so we fail
-// fast inline instead of round-tripping to a 422.
+// mirrors what the backend's Pydantic EmailStr accepts, so this fails fast
+// inline instead of round-tripping to a 422
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function errText(e: unknown, fallback: string): string {

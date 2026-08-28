@@ -1,8 +1,5 @@
-/**
- * The approvals queue is where a parked agent run gets answered. Compose steps
- * carry a phase id; hunt and investigate park on a checkpoint class instead, and
- * before this the column simply read "—" for them.
- */
+/* Compose steps carry a phase id; hunt and investigate park on a checkpoint
+   class instead, and before this the column simply read "—" for them. */
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { checkpointChip } from './DecisionsScreen'

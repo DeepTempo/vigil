@@ -1,9 +1,3 @@
-/* ============================================================
-   Data hooks for the Settings screen — fetch via the shared axios
-   client in services/api.ts (auth/CSRF/401-refresh included),
-   expose loading/error states. useEffect + local state, matching
-   the rest of the console (no React-Query). See useCases.ts.
-   ============================================================ */
 import { useCallback, useEffect, useState } from 'react'
 import api, {
   aiConfigApi,
@@ -33,7 +27,6 @@ import { loadCustomIntegrations } from '../../config/integrations'
 
 export type Phase = 'loading' | 'ready' | 'error'
 
-/* ---------------- General settings ---------------- */
 export interface GeneralConfig {
   auto_start_sync: boolean
   show_notifications: boolean
@@ -91,7 +84,6 @@ export function useGeneralSettings() {
   return { config, setConfig, phase, error, reload, save }
 }
 
-/* ---------------- Mempalace health ---------------- */
 export function useMempalaceHealth() {
   const [health, setHealth] = useState<MempalaceHealth | null>(null)
   const [loading, setLoading] = useState(true)
@@ -120,7 +112,6 @@ export function useMempalaceHealth() {
   return { health, loading, reload }
 }
 
-/* ---------------- Platform DB proxy ---------------- */
 export type ProxyType = 'none' | 'pgbouncer' | 'ssh_tunnel'
 
 export interface PlatformDbForm {
@@ -215,7 +206,6 @@ export function usePlatformDatabase() {
   return { form, setForm, hasPassword, hasPassphrase, phase, error, reload, save }
 }
 
-/* ---------------- Federation sources ---------------- */
 export function useFederation() {
   const [sources, setSources] = useState<FederationSourceView[]>([])
   const [globalEnabled, setGlobalEnabled] = useState(false)
@@ -243,7 +233,7 @@ export function useFederation() {
         })
     }
     load(true)
-    // refresh every 10s so last_success_at advances (matches legacy FederationTab)
+    // 10s, so last_success_at advances
     const t = setInterval(() => load(false), 10_000)
     return () => {
       cancelled = true
@@ -272,7 +262,6 @@ export function useFederation() {
     [],
   )
 
-  /** optimistic local edit (e.g. typing in the interval field before blur) */
   const editSourceLocal = useCallback((sourceId: string, patch: Partial<FederationSourceView>) => {
     setSources((prev) => prev.map((s) => (s.source_id === sourceId ? { ...s, ...patch } : s)))
   }, [])
@@ -292,7 +281,6 @@ export function useFederation() {
   }
 }
 
-/* ---------------- Users & roles ---------------- */
 export interface User {
   user_id: string
   username: string
@@ -371,7 +359,6 @@ export function useUsers() {
   return { users, roles, phase, error, reload, createUser, updateUser, deleteUser }
 }
 
-/* ---------------- Auto-investigate (orchestrator) ---------------- */
 export interface OrchestratorConfig {
   enabled: boolean
   dry_run: boolean
@@ -461,7 +448,6 @@ export function useOrchestrator() {
   return { config, setConfig, status, models, phase, reload, save, purgeAll }
 }
 
-/* ---------------- Developer · storage / PostgreSQL ---------------- */
 export interface StorageInfo {
   backend?: string
 }
@@ -514,7 +500,6 @@ export function useStorage() {
   return { status, health, configured, phase, error, reload, reconnect, savePostgres }
 }
 
-/* ---------------- Developer · local Splunk Enterprise ---------------- */
 export interface SplunkStatus {
   running?: boolean
   web_url?: string
@@ -544,7 +529,7 @@ export function useSplunk() {
     }
   }, [reloadKey])
 
-  // Splunk state takes a moment to settle, so re-poll after the action resolves.
+  // Splunk state takes a moment to settle
   const run = useCallback(
     (fn: () => Promise<unknown>, delayMs: number) => {
       setBusy(true)
@@ -563,7 +548,6 @@ export function useSplunk() {
   return { status, busy, reload, start, stop, restart }
 }
 
-/* ---------------- AI Config · LLM providers ---------------- */
 export function useLlmProviders() {
   const [providers, setProviders] = useState<LLMProvider[]>([])
   const [phase, setPhase] = useState<Phase>('loading')
@@ -602,7 +586,6 @@ export function useLlmProviders() {
   return { providers, phase, error, reload, test, remove, setDefault }
 }
 
-/* ---------------- AI Config · operations (cost/perf knobs) ---------------- */
 export interface AIOperationsSettings {
   prompt_cache_enabled: boolean
   history_window: number
@@ -652,7 +635,6 @@ export function useAiOperations() {
   return { settings, setSettings, phase, reload, save }
 }
 
-/* ---------------- AI Config · per-component model assignment ---------------- */
 export function useModelAssignment() {
   const [components, setComponents] = useState<string[]>([])
   const [assignments, setAssignments] = useState<Record<string, ComponentAssignment>>({})
@@ -720,7 +702,6 @@ export function useModelAssignment() {
   return { components, assignments, models, phase, error, reload, assign, clearAssign }
 }
 
-/* ---------------- AI Config · budgets (Bifrost virtual key) ---------------- */
 export function useBudgets() {
   const [settings, setSettings] = useState<BudgetSettings>({
     default_vk: '',
@@ -761,7 +742,6 @@ export function useBudgets() {
   return { settings, setSettings, quota, phase, reload, save }
 }
 
-/* ---------------- Integrations · MCP servers ---------------- */
 export interface ToggleResult {
   ok: boolean
   error?: string | null
@@ -776,7 +756,7 @@ export function useMcpServers() {
   const [reloadKey, setReloadKey] = useState(0)
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
 
-  // initial=true drives the phase spinner; silent refreshes keep the grid mounted
+  // silent refreshes keep the grid mounted
   const fetchAll = useCallback((initial: boolean) => {
     if (initial) setPhase('loading')
     return Promise.all([mcpApi.listServers(), mcpApi.getStatuses()])
@@ -814,8 +794,8 @@ export function useMcpServers() {
     }
   }, [fetchAll, reloadKey])
 
-  // Toggle mirrors the legacy transactional behavior: enabling also triggers a
-  // connect; if the connect fails we revert so UI and backend stay in lockstep.
+  // enabling also triggers a connect; a failed connect reverts, so UI and
+  // backend stay in lockstep
   const setServerEnabled = useCallback(
     async (name: string, want: boolean): Promise<ToggleResult> => {
       try {
@@ -842,7 +822,6 @@ export function useMcpServers() {
   return { servers, statuses, enabled, phase, error, reload, setServerEnabled }
 }
 
-/* ---------------- General · cost analytics ---------------- */
 export type CostTimeRange = '24h' | '7d' | '30d' | 'all'
 
 export interface CostTotals {
@@ -902,7 +881,6 @@ export function useCostAnalytics(timeRange: CostTimeRange) {
   return { data, phase, error, reload }
 }
 
-/* ---------------- Integrations · per-integration credentials ---------------- */
 export interface IntegrationsConfig {
   enabled_integrations: string[]
   integrations: Record<string, Record<string, unknown>>
@@ -923,8 +901,7 @@ export function useIntegrationsConfig() {
   useEffect(() => {
     let cancelled = false
     setPhase('loading')
-    // populate custom-integration metadata so getAllIntegrations() is complete,
-    // then load which integrations are enabled + their stored (non-secret) config
+    // custom-integration metadata first, so getAllIntegrations() is complete
     loadCustomIntegrations()
       .catch(() => {})
       .finally(() => {
@@ -952,16 +929,14 @@ export function useIntegrationsConfig() {
   const saveIntegration = useCallback(
     async (integrationId: string, fieldConfig: Record<string, unknown>) => {
       const integrations = { ...config.integrations, [integrationId]: fieldConfig }
-      // Extensions keep configure/enable separate (saving must not flip the gate
-      // on); others auto-enable on save.
+      // extensions keep configure/enable separate: saving must not flip the gate
       const isExtension = Object.prototype.hasOwnProperty.call(fieldConfig, 'connectorUrl')
       const enabled_integrations =
         isExtension || config.enabled_integrations.includes(integrationId)
           ? config.enabled_integrations
           : [...config.enabled_integrations, integrationId]
       await configApi.setIntegrations({ enabled_integrations, integrations })
-      // Refetch so redacted config + secrets_set reflect what persisted (no
-      // plaintext lingers here; a just-entered secret now reads as "set").
+      // refetch, so no plaintext lingers and a just-entered secret reads as "set"
       try {
         const res = await configApi.getIntegrations()
         const d = res.data as Partial<IntegrationsConfig>
@@ -977,8 +952,7 @@ export function useIntegrationsConfig() {
     [config],
   )
 
-  // Toggle enablement without touching stored config, so re-enabling restores
-  // it. Re-POSTing the redacted config is safe — blank secrets are kept server-side.
+  // re-POSTing the redacted config is safe: blank secrets are kept server-side
   const setIntegrationEnabled = useCallback(
     async (integrationId: string, enabled: boolean) => {
       const enabled_integrations = enabled
@@ -994,7 +968,6 @@ export function useIntegrationsConfig() {
   return { config, phase, reload, saveIntegration, setIntegrationEnabled }
 }
 
-/* ---------------- Integrations · S3 storage ---------------- */
 export interface S3Config {
   bucket_name: string
   region: string
@@ -1059,7 +1032,6 @@ export function useS3() {
   return { config, setConfig, phase, error, reload, save }
 }
 
-/* ---------------- Integrations · Kafka ---------------- */
 export interface KafkaConfig {
   enabled: boolean
   bootstrap_servers: string
@@ -1148,7 +1120,6 @@ export function useKafka() {
   return { config, setConfig, stats, daemonReachable, phase, save }
 }
 
-/* ---------------- Integrations · Darktrace webhook ---------------- */
 export interface DarktraceConfig {
   enabled: boolean
   url: string
@@ -1190,8 +1161,7 @@ export function useDarktrace() {
   }, [reloadKey])
 
   const save = useCallback((next: DarktraceConfig) => {
-    // Only send webhook_secret when the user actually entered one — a blank
-    // would otherwise overwrite the stored secret.
+    // a blank webhook_secret would overwrite the stored one
     const base = { enabled: next.enabled, url: next.url, max_body_kb: next.max_body_kb }
     const payload = next.webhook_secret
       ? { ...base, webhook_secret: next.webhook_secret }
@@ -1202,7 +1172,6 @@ export function useDarktrace() {
   return { config, setConfig, phase, reload, save }
 }
 
-/* ---------------- Integrations · detection rule sources ---------------- */
 export interface DetectionSource {
   id: string
   name: string
@@ -1286,10 +1255,8 @@ export function useDetectionRules() {
   return { sources, stats, phase, error, reload, addSource, removeSource, updateSource, updateAll }
 }
 
-/* ---------------- Integrations · Local file ingestion ---------------- */
 const JOB_POLL_MS = 1000
 
-/** Tracks one background ingestion job, re-attaching to whatever already runs. */
 export function useIngestionJob() {
   const [job, setJob] = useState<IngestionJob | null>(null)
   const [attaching, setAttaching] = useState(true)

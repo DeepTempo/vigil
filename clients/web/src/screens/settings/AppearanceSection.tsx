@@ -1,10 +1,3 @@
-/* ============================================================
-   Settings · Appearance — light/dark scheme, accent and background.
-   Replaces the old floating top-bar "tweaks" panel. Scheme is the
-   app-wide preference and persists to the backend; accent and
-   background persist to this browser only. All three are
-   read/written through the SOC theme context.
-   ============================================================ */
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../../shared/icons'
 import { SettingsCard } from '../../shared/ui'

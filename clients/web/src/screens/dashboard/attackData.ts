@@ -1,9 +1,3 @@
-/* ============================================================
-   Timeline view-model types + severity/month display config for
-   the Dashboard timeline. Real events are fetched via timelineApi
-   (see screens/dashboard/useTimeline.ts).
-   ============================================================ */
-
 export type TimelineKind = 'finding' | 'case' | 'alert'
 
 export interface TimelineEvent {

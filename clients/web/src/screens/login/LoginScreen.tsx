@@ -1,11 +1,3 @@
-/* ============================================================
-   Login / auth screen — split brand + form layout, ported from
-   the design's "SOC Login.html" handoff into the console token
-   system so it themes (dark/light) and accents identically to the
-   console. Wired to the real auth flow (useAuth().login), mirroring
-   pages/Login.tsx — including the MFA step — and lands in the
-   console on success.
-   ============================================================ */
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../../styles.css'
@@ -17,8 +9,7 @@ import { accentVars } from '../../shared/accent'
 import { SocThemeProvider, useSocTheme } from '../../shell/theme'
 
 export default function LoginScreen() {
-  // the auth screen lives outside the console shell, so it brings its own
-  // theme provider (mode + accent) — same source of truth the console reads.
+  // outside the console shell, so it brings its own theme provider
   return (
     <SocThemeProvider>
       <LoginInner />
@@ -80,7 +71,6 @@ function LoginInner() {
     setLoading(true)
     try {
       await login(usernameOrEmail, password, showMfa ? mfaCode : undefined)
-      // land in the SOC console (the primary surface)
       navigate('/dashboard')
     } catch (err: any) {
       if (err?.message === 'MFA_REQUIRED') {

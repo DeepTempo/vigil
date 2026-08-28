@@ -1,10 +1,3 @@
-/* ============================================================
-   AI Decisions — A console table → B review queue on click.
-   Wired to the real backend (aiDecisionsApi / approvalsApi) via
-   useDecisions; the four tabs are two features: decision
-   analytics + feedback, and a separate pending-approvals queue.
-   See DECISIONS_WIRING.md.
-   ============================================================ */
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { format } from 'date-fns'
 import { Icon } from '../../shared/icons'
@@ -43,7 +36,6 @@ const OUTCOME_OPTS = [
   { value: 'false_negative', label: 'False negative — missed a real threat' },
 ]
 
-/** prefer FastAPI's `detail`, fall back to the axios message, then a default */
 function apiErr(e: unknown, fallback: string): string {
   const r = e as { response?: { data?: { detail?: string } }; message?: string }
   return r?.response?.data?.detail || r?.message || fallback
@@ -53,7 +45,6 @@ function prettyLabel(k: string): string {
   return k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-/** outcome → severity bar colour for the analytics distribution */
 function outcomeBarCls(k: string): string {
   if (k === 'true_positive' || k === 'true_negative') return 'c-ok'
   if (k === 'false_positive') return 'c-crit'
@@ -90,7 +81,6 @@ function outcomeChip(o: Outcome) {
   return <span className={`outcome ${c}`}>{t}</span>
 }
 
-/* ---------------- shared state rows ---------------- */
 function StateRow({ cols, children }: { cols: number; children: ReactNode }) {
   return (
     <tr>
@@ -105,7 +95,6 @@ function RetryState({ msg, reload }: { msg: string | null; reload: () => void })
   return <EmptyState error table icon="alert" title="Couldn’t load data" body={msg} primary={{ label: 'Retry', onClick: reload, icon: 'refresh' }} />
 }
 
-/* ---------------- KPI strip ---------------- */
 function DecKpis({ s }: { s: DecisionStats | null }) {
   const days = s ? `last ${s.period_days} days` : 'last 30 days'
   return (
@@ -134,7 +123,6 @@ function DecKpis({ s }: { s: DecisionStats | null }) {
   )
 }
 
-/* ---------------- decisions table (Pending + All tabs) ---------------- */
 const DECISIONS_PAGE = 25
 
 function DecisionRows({
@@ -152,10 +140,8 @@ function DecisionRows({
   onSelect: (id: string) => void
   empty: string
 }) {
-  // Cap visible rows so the table doesn't scroll endlessly; "Show more" reveals
-  // another page. Reset to the first page whenever the row set changes
-  // (tab switch / filter / search) — keyed on a stable signature, not the
-  // array identity, so it doesn't reset on every render.
+  // keyed on a stable signature, not the array identity, so the page doesn't
+  // reset on every render
   const [visible, setVisible] = useState(DECISIONS_PAGE)
   const sig = `${rows.length}:${rows[0]?.id ?? ''}:${rows[rows.length - 1]?.id ?? ''}`
   useEffect(() => { setVisible(DECISIONS_PAGE) }, [sig])
@@ -221,7 +207,6 @@ function DecisionRows({
   )
 }
 
-/* ---------------- Analytics tab ---------------- */
 function AnalyticsTab({ s, phase, error, reload }: { s: DecisionStats | null; phase: Phase; error: string | null; reload: () => void }) {
   if (phase === 'loading') return <EmptyState loading icon="bars" title="Loading analytics…" />
   if (phase === 'error') {
@@ -260,8 +245,6 @@ function AnalyticsTab({ s, phase, error, reload }: { s: DecisionStats | null; ph
     </div>
   )
 }
-
-/* ---------------- Pending Approvals tab ---------------- */
 
 /**
  * What the row is waiting on. A phase id for a compose step, or the checkpoint
@@ -349,7 +332,6 @@ function ApprovalsTab({
   )
 }
 
-/* ---------------- detailed-feedback modal (Hybrid path) ---------------- */
 function FeedbackPopup({
   open,
   decision,
@@ -430,7 +412,6 @@ function FeedbackPopup({
   )
 }
 
-/* ---------------- reject-action modal (mandatory reason) ---------------- */
 function RejectActionPopup({
   open,
   action,
@@ -463,7 +444,6 @@ function RejectActionPopup({
   )
 }
 
-/* ---------------- master-detail review queue ---------------- */
 function DecisionsDetail({
   id,
   decisions,
@@ -610,7 +590,6 @@ function DecisionsDetail({
   )
 }
 
-/* ---------------- screen shell ---------------- */
 export default function DecisionsScreen({ setViewFull }: ConsoleScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [tab, setTab] = useState<DecTab>('pending')
@@ -618,7 +597,6 @@ export default function DecisionsScreen({ setViewFull }: ConsoleScreenProps) {
   const [agentF, setAgentF] = useState('all')
   const [statusF, setStatusF] = useState<DecisionStatus>('all')
 
-  // approvals action state
   const [acting, setActing] = useState<string | null>(null)
   const [rejectFor, setRejectFor] = useState<ApprovalAction | null>(null)
   const [approvalBanner, setApprovalBanner] = useState<string | null>(null)
