@@ -2,7 +2,6 @@ import { IntegrationMetadata } from './integrationSchema'
 import { basePath } from './basePath'
 
 export const INTEGRATIONS: IntegrationMetadata[] = [
-  // REFERENCE / PLATFORM
   {
     id: 'github',
     name: 'GitHub',
@@ -22,7 +21,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://docs.github.com/en/rest',
   },
 
-  // THREAT INTELLIGENCE
   {
     id: 'virustotal',
     name: 'VirusTotal',
@@ -169,7 +167,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://ip-api.com/docs',
   },
 
-  // EDR/XDR PLATFORMS
   {
     id: 'crowdstrike',
     name: 'CrowdStrike Falcon',
@@ -700,7 +697,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://apidocs.securitycloud.symantec.com/',
   },
 
-  // DETECTION & AI
   {
     id: 'loglm',
     name: 'LogLM',
@@ -739,7 +735,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://docs.deeptempo.ai/loglm',
   },
 
-  // SIEM
   {
     id: 'splunk',
     name: 'Splunk',
@@ -1207,7 +1202,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://docs.graylog.org/docs/api',
   },
 
-  // CLOUD SECURITY
   {
     id: 'aws-security-hub',
     name: 'AWS Security Hub',
@@ -1505,7 +1499,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://docs.snyk.io/snyk-api-info',
   },
 
-  // IDENTITY & ACCESS
   {
     id: 'okta',
     name: 'Okta',
@@ -1825,7 +1818,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://www.beyondtrust.com/docs/beyondinsight-password-safe/ps/api/index.htm',
   },
 
-  // NETWORK SECURITY
   {
     id: 'palo-alto',
     name: 'Palo Alto Networks',
@@ -2181,7 +2173,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://www.juniper.net/documentation/us/en/software/junos/netconf/index.html',
   },
 
-  // INCIDENT MANAGEMENT
   {
     id: 'jira',
     name: 'Jira',
@@ -2439,7 +2430,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://docs.opsgenie.com/docs/api-overview',
   },
 
-  // COMMUNICATIONS
   {
     id: 'slack',
     name: 'Slack',
@@ -2702,7 +2692,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://developers.mattermost.com/integrate/webhooks/incoming/',
   },
 
-  // SANDBOX ANALYSIS
   {
     id: 'hybrid-analysis',
     name: 'Hybrid Analysis',
@@ -2786,7 +2775,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://capev2.readthedocs.io/en/latest/usage/api.html',
   },
 
-  // FORENSICS & ANALYSIS
   {
     id: 'timesketch',
     name: 'Timesketch',
@@ -3117,7 +3105,6 @@ export const INTEGRATIONS: IntegrationMetadata[] = [
     docs_url: 'https://cuckoo.readthedocs.io/en/latest/',
   },
 
-  // NETWORK TOPOLOGY FUSION
   {
     id: 'vstrike',
     name: 'CloudCurrent VStrike',
@@ -3179,15 +3166,10 @@ export const INTEGRATION_CATEGORIES = [
   'Custom',
 ]
 
-// Custom integrations loaded dynamically
 let customIntegrations: IntegrationMetadata[] = []
 
-// Combined integrations (built-in + custom)
 let allIntegrations: IntegrationMetadata[] = [...INTEGRATIONS]
 
-/**
- * Load custom integrations from the backend
- */
 export async function loadCustomIntegrations(): Promise<void> {
   try {
     const response = await fetch(`${basePath}/api/custom-integrations/list`, {
@@ -3201,7 +3183,6 @@ export async function loadCustomIntegrations(): Promise<void> {
         is_custom: true,
       }))
       
-      // Merge with built-in integrations
       allIntegrations = [...INTEGRATIONS, ...customIntegrations]
       
       console.log(`Loaded ${customIntegrations.length} custom integrations`)
@@ -3213,9 +3194,6 @@ export async function loadCustomIntegrations(): Promise<void> {
   }
 }
 
-/**
- * Get all integrations (built-in + custom)
- */
 export function getAllIntegrations(): IntegrationMetadata[] {
   return allIntegrations
 }

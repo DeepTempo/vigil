@@ -347,7 +347,7 @@ async def recalculate_cost_endpoint(
             detail=(
                 "Bifrost recalculate-cost call failed — check that Bifrost "
                 "is reachable and the logging plugin is enabled with a "
-                "persistence backend (see infra/docker/bifrost/README.md)."
+                "persistence backend (see https://vigilsoc.org/docs/bifrost/)."
             ),
         )
     return result

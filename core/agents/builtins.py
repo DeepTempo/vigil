@@ -258,7 +258,7 @@ Confidence scoring:
    - Tailor to executive audience, minimize technical jargon
 
    BOARD BRIEF (triggered by "board brief", "board report", "risk posture report"):
-   - Follow the board-brief template (docs/templates/board-brief.md)
+   - Follow the board-brief template (core/agents/templates/board-brief.md)
    - Structure: Risk Posture → Key Metrics → Top 3 Actions → Trend
    - Risk Posture: RED (active breach or uncontained critical threats),
      YELLOW (open critical findings with remediation in progress),
