@@ -1,0 +1,312 @@
+import { useRef, useState } from 'react'
+
+export interface DonutSeg {
+  v: number // fraction 0..1
+  color: string
+  label?: string
+}
+
+/* colours go through the `fill` style, so CSS var() resolves */
+export function Pie({ segs, size = 200 }: { segs: DonutSeg[]; size?: number }) {
+  const r = size / 2
+  const visible = segs.filter((s) => s.v > 0.0001)
+  // preflight is off, so pin size/display to keep the pie a fixed circle
+  const svgStyle = { display: 'block', width: size, height: size, flex: '0 0 auto' as const }
+  // a single full slice can't be an arc path (start === end)
+  if (visible.length === 1) {
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={svgStyle}>
+        <circle cx={r} cy={r} r={r} style={{ fill: visible[0].color }} />
+      </svg>
+    )
+  }
+  let a0 = -Math.PI / 2
+  const arcs = visible.map((s, i) => {
+    const a1 = a0 + s.v * 2 * Math.PI
+    const x0 = r + r * Math.cos(a0)
+    const y0 = r + r * Math.sin(a0)
+    const x1 = r + r * Math.cos(a1)
+    const y1 = r + r * Math.sin(a1)
+    const large = s.v > 0.5 ? 1 : 0
+    const d = `M${r},${r} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`
+    a0 = a1
+    return <path key={i} d={d} style={{ fill: s.color }} stroke="var(--panel)" strokeWidth={2} strokeLinejoin="round" />
+  })
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={svgStyle}>
+      {arcs}
+    </svg>
+  )
+}
+
+export function Trend({
+  seriesA,
+  seriesB,
+  labels,
+  pointLabels,
+  names = ['Series A', 'Series B'],
+  w = 760,
+  h = 220,
+}: {
+  seriesA: number[]
+  seriesB: number[]
+  labels: string[]
+  pointLabels?: string[]
+  names?: [string, string]
+  w?: number
+  h?: number
+}) {
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [hover, setHover] = useState<number | null>(null)
+  const n = seriesA.length
+  const padB = 24
+  const padL = 28 // gutter so the y-axis labels sit beside, not under, the area
+  const padR = 6
+  const top = 12
+  const all = [...seriesA, ...seriesB]
+  const max = Math.ceil(Math.max(...all) / 10) * 10 || 10
+  const plotH = h - padB - top
+  const plotW = w - padL - padR
+  const X = (i: number) => padL + (i / Math.max(seriesA.length - 1, 1)) * plotW
+  const Y = (v: number) => top + plotH - (v / max) * plotH
+
+  // Monotone cubic Hermite (Fritsch–Carlson): a plain Catmull-Rom fit overshoots
+  // flat→climb runs — 0,0 → 5 used to dip below 0 before rising.
+  const linePath = (arr: number[]) => {
+    const n = arr.length
+    if (n === 0) return ''
+    const xs = arr.map((_, i) => X(i))
+    const ys = arr.map((v) => Y(v))
+    if (n < 3) return xs.map((x, i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ')
+
+    const dx: number[] = []
+    const slope: number[] = []
+    for (let i = 0; i < n - 1; i++) {
+      dx[i] = xs[i + 1] - xs[i]
+      slope[i] = (ys[i + 1] - ys[i]) / dx[i]
+    }
+    // tangents: average of adjacent secants, flattened at local extrema
+    const m: number[] = new Array(n)
+    m[0] = slope[0]
+    m[n - 1] = slope[n - 2]
+    for (let i = 1; i < n - 1; i++) {
+      m[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2
+    }
+    // clamp, so the cubic can't overshoot a segment
+    for (let i = 0; i < n - 1; i++) {
+      if (slope[i] === 0) {
+        m[i] = 0
+        m[i + 1] = 0
+        continue
+      }
+      const a = m[i] / slope[i]
+      const b = m[i + 1] / slope[i]
+      const s = a * a + b * b
+      if (s > 9) {
+        const t = 3 / Math.sqrt(s)
+        m[i] = t * a * slope[i]
+        m[i + 1] = t * b * slope[i]
+      }
+    }
+    let d = `M${xs[0].toFixed(1)},${ys[0].toFixed(1)}`
+    for (let i = 0; i < n - 1; i++) {
+      const c1x = xs[i] + dx[i] / 3
+      const c1y = ys[i] + (m[i] * dx[i]) / 3
+      const c2x = xs[i + 1] - dx[i] / 3
+      const c2y = ys[i + 1] - (m[i + 1] * dx[i]) / 3
+      d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${xs[i + 1].toFixed(1)},${ys[i + 1].toFixed(1)}`
+    }
+    return d
+  }
+
+  const base = top + plotH
+  const right = X(seriesA.length - 1)
+  const area = (line: string) => `${line} L${right.toFixed(1)},${base.toFixed(1)} L${padL},${base.toFixed(1)} Z`
+  const aLine = linePath(seriesA)
+  const bLine = linePath(seriesB)
+
+  const grid = []
+  for (let i = 0; i <= 4; i++) {
+    const gy = top + (plotH / 4) * i
+    const val = Math.round(max - (max / 4) * i)
+    grid.push(
+      <g key={`g${i}`}>
+        <line x1={padL} y1={gy} x2={w - padR} y2={gy} stroke="var(--line-soft)" strokeWidth={1} strokeDasharray="2 5" />
+        <text x={padL - 6} y={gy + 3} textAnchor="end" fontSize={6.5} fill="var(--tx-faint)" fontFamily="var(--mono)">{val}</text>
+      </g>
+    )
+  }
+
+  // ~7 labels, so the axis stays readable at any bucket count
+  const xlab = labels.map((l, i) => {
+    if (!l) return null
+    return (
+      <text key={`x${i}`} x={X(i)} y={h - 6} textAnchor="middle" fontSize={6.5} fill="var(--tx-faint)">{l}</text>
+    )
+  })
+
+  // accounts for the left gutter, so first/last line up with the cursor
+  const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const rect = svgRef.current?.getBoundingClientRect()
+    if (!rect || rect.width === 0 || n === 0) return
+    const svgX = ((e.clientX - rect.left) / rect.width) * w
+    const dataFrac = (svgX - padL) / plotW
+    setHover(Math.max(0, Math.min(n - 1, Math.round(dataFrac * (n - 1)))))
+  }
+
+  const tipLabels = pointLabels ?? labels
+  const hx = hover != null ? X(hover) : 0
+  // so the tooltip never runs off the edges
+  const frac = hover != null ? hx / w : 0.5
+  const tipShift = frac > 0.7 ? '-100%' : frac < 0.3 ? '0%' : '-50%'
+
+  return (
+    <div className="trend-wrap" style={{ position: 'relative' }}>
+      <svg
+        ref={svgRef}
+        width="100%"
+        viewBox={`0 0 ${w} ${h}`}
+        preserveAspectRatio="xMidYMid meet"
+        onPointerMove={onMove}
+        onPointerLeave={() => setHover(null)}
+      >
+        <defs>
+          <linearGradient id="trendA" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.32} />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="trendB" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--ok)" stopOpacity={0.24} />
+            <stop offset="100%" stopColor="var(--ok)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <path d={area(bLine)} fill="url(#trendB)" />
+        <path d={area(aLine)} fill="url(#trendA)" />
+        {/* grid + axis labels render above the fill so the area never covers them */}
+        {grid}
+        <path d={bLine} fill="none" stroke="var(--ok)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />
+        <path d={aLine} fill="none" stroke="var(--accent)" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+        {xlab}
+        {hover != null && (
+          <g pointerEvents="none">
+            <line x1={hx} y1={top} x2={hx} y2={base} stroke="var(--tx-faint)" strokeWidth={1} strokeDasharray="3 3" />
+            <circle cx={hx} cy={Y(seriesB[hover])} r={3.2} fill="var(--panel)" stroke="var(--ok)" strokeWidth={2} />
+            <circle cx={hx} cy={Y(seriesA[hover])} r={3.2} fill="var(--panel)" stroke="var(--accent)" strokeWidth={2} />
+          </g>
+        )}
+      </svg>
+      {hover != null && (
+        <div
+          className="trend-tip"
+          style={{ left: `${(frac * 100).toFixed(2)}%`, transform: `translateX(${tipShift})` }}
+        >
+          {tipLabels[hover] && <div className="tt-h">{tipLabels[hover]}</div>}
+          <div className="tt-row"><span className="tt-dot" style={{ background: 'var(--accent)' }} />{names[0]}<b>{seriesA[hover]}</b></div>
+          <div className="tt-row"><span className="tt-dot" style={{ background: 'var(--ok)' }} />{names[1]}<b>{seriesB[hover]}</b></div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export interface GroupRow {
+  label: string
+  a: number
+  b: number
+}
+
+export function GroupedBars({
+  rows,
+  w = 760,
+  h = 240,
+  colorA = 'var(--accent)',
+  colorB = 'var(--ok)',
+}: {
+  rows: GroupRow[]
+  w?: number
+  h?: number
+  colorA?: string
+  colorB?: string
+}) {
+  const padB = 26
+  const padL = 26
+  const top = 18
+  const vals = rows.flatMap((r) => [r.a, r.b])
+  const max = Math.max(1, ...vals)
+  const niceMax = max <= 4 ? max : Math.ceil(max / 5) * 5
+  const plotH = h - padB - top
+  const plotW = w - padL - 8
+  const n = rows.length || 1
+  const slot = plotW / n
+  const barW = Math.min(28, slot * 0.26)
+  const gap = Math.min(8, slot * 0.06)
+
+  const gridLines = []
+  for (let i = 0; i <= 4; i++) {
+    const gy = top + (plotH / 4) * i
+    const val = Math.round(niceMax - (niceMax / 4) * i)
+    gridLines.push(
+      <g key={`g${i}`}>
+        <line x1={padL} y1={gy} x2={w - 8} y2={gy} stroke="var(--line-soft)" strokeWidth={1} strokeDasharray={i ? '2 5' : undefined} />
+        <text x={padL - 6} y={gy + 3} textAnchor="end" fontSize={8.5} fill="var(--tx-faint)" fontFamily="var(--mono)">{val}</text>
+      </g>
+    )
+  }
+
+  const bar = (cx: number, v: number, color: string, key: string) => {
+    const bh = (v / niceMax) * plotH
+    const y = top + plotH - bh
+    return (
+      <g key={key}>
+        <rect x={cx} y={y} width={barW} height={Math.max(bh, 0)} rx={3} style={{ fill: color }} opacity={0.9} />
+        {v > 0 && (
+          <text x={cx + barW / 2} y={y - 4} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="var(--tx-2)" fontFamily="var(--mono)">{v}</text>
+        )}
+      </g>
+    )
+  }
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet">
+      {gridLines}
+      {rows.map((r, i) => {
+        const center = padL + slot * i + slot / 2
+        const aX = center - gap / 2 - barW
+        const bX = center + gap / 2
+        return (
+          <g key={i}>
+            {bar(aX, r.a, colorA, `a${i}`)}
+            {bar(bX, r.b, colorB, `b${i}`)}
+            <text x={center} y={h - 8} textAnchor="middle" fontSize={10} fill="var(--tx-3)">{r.label}</text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+export interface HbarItem {
+  label: string
+  val: number | string
+  pct: number
+  cls?: string
+}
+
+export function Hbars({ items }: { items: HbarItem[] }) {
+  return (
+    <div className="hbars">
+      {items.map((it, i) => (
+        <div className="hbar" key={i}>
+          <div className="hb-top">
+            <span>{it.label}</span>
+            <span className="v">{it.val}</span>
+          </div>
+          <div className="track">
+            <i className={it.cls || ''} style={{ width: `${it.pct}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
