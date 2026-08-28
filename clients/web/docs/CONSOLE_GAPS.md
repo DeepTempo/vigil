@@ -4,8 +4,7 @@
 > 2026-06-18 and 2026-06-22 passes and is preserved for the reasoning, not the
 > status. Several sections below were true when written and are not now — §7's
 > "not represented" notes (Auto-Ops runtime, Login) have landed, and §12's open
-> decision was settled by #502. For what is actually left, see
-> [`CONSOLE_TODO.md`](./CONSOLE_TODO.md), reconciled 2026-08-21.
+> decision was settled by #502. Remaining work is tracked as issues, not here.
 >
 > **Paths in this file predate the flatten.** `src/redesign/` no longer exists;
 > the shell is `src/shell/`, views are `src/screens/`, guards and the transition
@@ -546,9 +545,8 @@ Tailwind + CSS-vars console is canonical because it is the only UI — so the mi
 and rollout plan option (a) was said to need is moot, as is the MUI reconciliation
 inventory. Route gating also landed: the console sits behind `ProtectedRoute` +
 `SetupGate`, and `/login` is the single sign-in surface. The one live remnant is
-**cross-device accent**, which is still `localStorage`-only; it is tracked in
-`CONSOLE_TODO.md`. Everything below this line is the 2026-06-22 reasoning, kept for
-history and no longer accurate.
+**cross-device accent**, which is still `localStorage`-only. Everything below this
+line is the 2026-06-22 reasoning, kept for history and no longer accurate.
 **Update (2026-06-22):** the shell now consumes `AuthContext` (account menu +
 permission-gated nav + logout), so it is no longer *auth-blind* — but the
 **`/redesign/:screen` route is still public** (not wrapped in `ProtectedRoute`).
