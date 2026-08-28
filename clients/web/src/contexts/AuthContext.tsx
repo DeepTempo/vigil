@@ -1,14 +1,6 @@
-/**
- * Authentication Context - Global auth state management.
- * 
- * Provides authentication state, login/logout functions, and permission checking.
- * Supports DEV_MODE for bypassing authentication during development.
- */
-
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import api from '../services/api';
 
-// Dev mode flag - reads from Vite environment variable
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true';
 
 if (DEV_MODE) {
@@ -16,7 +8,6 @@ if (DEV_MODE) {
   console.warn('⚠️  This should NEVER be enabled in production!');
 }
 
-// Mock dev user with FULL ADMIN permissions
 const DEV_USER: User = {
   user_id: 'dev-user-id',
   username: 'dev-user',
@@ -29,27 +20,21 @@ const DEV_USER: User = {
   last_login: new Date().toISOString(),
   login_count: 999,
   permissions: {
-    // Findings permissions
     'findings.read': true,
     'findings.write': true,
     'findings.delete': true,
-    // Cases permissions
     'cases.read': true,
     'cases.write': true,
     'cases.delete': true,
     'cases.assign': true,
-    // Integrations permissions
     'integrations.read': true,
     'integrations.write': true,
-    // Users permissions
     'users.read': true,
     'users.write': true,
     'users.delete': true,
-    // Settings permissions
     'settings.read': true,
     'settings.write': true,
     'config.write': true,
-    // AI permissions
     'ai_chat.use': true,
     'ai_decisions.approve': true,
   },
@@ -91,9 +76,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load user on mount. Auth cookies are HttpOnly so we can't read them
-  // from JS — we just call /auth/me and let the cookie (if present and
-  // valid) identify the user. A 401 means not logged in; show the login UI.
+  // Auth cookies are HttpOnly, so JS can't read them: call /auth/me and let the
+  // cookie identify the user. A 401 just means not logged in.
   useEffect(() => {
     const loadUser = async () => {
       if (DEV_MODE) {
@@ -107,9 +91,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const response = await api.get('/auth/me');
         setUser(response.data);
       } catch {
-        // Not logged in — AuthContext stays with user=null and the app
-        // renders the login page. /auth/me also seeds the csrf_token
-        // cookie as a side effect so the subsequent login POST works.
+        // /auth/me also seeds the csrf_token cookie, so the login POST works
       }
       setIsLoading(false);
     };
@@ -117,11 +99,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     loadUser();
   }, []);
 
-  // Auto refresh token before expiration
   useEffect(() => {
     if (!user) return;
 
-    // Refresh token every 23 hours (tokens expire in 24 hours)
+    // tokens expire in 24 hours
     const interval = setInterval(() => {
       refreshToken();
     }, 23 * 60 * 60 * 1000);
@@ -130,16 +111,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [user]);
 
   const login = async (usernameOrEmail: string, password: string, mfaCode?: string) => {
-    // DEV MODE: Skip actual login and use mock user
     if (DEV_MODE) {
       console.log('DEV_MODE: Bypassing login, using mock user');
       setUser(DEV_USER);
       return;
     }
 
-    // PRODUCTION MODE: Normal login flow. The backend sets HttpOnly
-    // cookies for access_token and refresh_token; we just read the user
-    // from the response body.
+    // the backend sets the HttpOnly cookies; only the user comes back in the body
     try {
       const response = await api.post('/auth/login', {
         username_or_email: usernameOrEmail,
@@ -160,15 +138,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const logout = async () => {
-    // DEV MODE: Just clear mock user
     if (DEV_MODE) {
       console.log('DEV_MODE: Mock logout');
       setUser(null);
       return;
     }
 
-    // PRODUCTION MODE: Normal logout. Backend clears the auth cookies
-    // and blacklists the JTI; we just drop the user state.
+    // the backend clears the cookies and blacklists the JTI
     try {
       await api.post('/auth/logout');
     } catch (error) {
@@ -180,7 +156,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refreshToken = async () => {
     try {
-      // Refresh cookie is HttpOnly — the browser sends it automatically.
+      // the refresh cookie is HttpOnly; the browser sends it automatically
       const response = await api.post('/auth/refresh');
       setUser(response.data.user);
     } catch (error) {
@@ -190,7 +166,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const hasPermission = (permission: string): boolean => {
-    // DEV MODE: Always grant all permissions
     if (DEV_MODE && user) return true;
     
     if (!user || !user.permissions) return false;
@@ -198,7 +173,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const hasAnyPermission = (...permissions: string[]): boolean => {
-    // DEV MODE: Always grant all permissions
     if (DEV_MODE && user) return true;
     
     if (!user || !user.permissions) return false;
@@ -206,7 +180,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   const hasAllPermissions = (...permissions: string[]): boolean => {
-    // DEV MODE: Always grant all permissions
     if (DEV_MODE && user) return true;
     
     if (!user || !user.permissions) return false;

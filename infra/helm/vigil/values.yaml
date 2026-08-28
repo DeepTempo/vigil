@@ -1,6 +1,6 @@
 # Default values for the Vigil SOC Helm chart.
 # This is a YAML-formatted file.
-# See docs/HELM.md for a full reference of all values.
+# See https://vigilsoc.org/docs/helm/ for a full reference of all values.
 
 # -----------------------------------------------------------------------------
 # Global

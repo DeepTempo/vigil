@@ -12,7 +12,8 @@ def _read_version() -> str:
     "0.0.0+unknown" if the file is missing, unreadable, or empty/
     whitespace-only — e.g. in unusual test or partial-install
     environments, Docker volume-mount accidents, or tooling truncation.
-    release-please is the sole writer of VERSION; see RELEASING.md.
+    release-please is the sole writer of VERSION; see
+    https://vigilsoc.org/docs/releasing/.
     """
     version_file = Path(__file__).resolve().parents[1] / "VERSION"
     try:

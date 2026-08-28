@@ -56,8 +56,9 @@ ROUTER_META = RouterMeta(
         "HMAC-SHA256 X-Darktrace-Signature and fails closed when no shared "
         "secret is configured."
     ),
-    # env.example and docs/integrations/DARKTRACE.md document DARKTRACE_ENABLED
-    # as the on/off toggle; leaving it unset must leave the receiver off.
+    # env.example and https://vigilsoc.org/docs/integrations/darktrace/
+    # document DARKTRACE_ENABLED as the on/off toggle; leaving it unset
+    # must leave the receiver off.
     enabled=darktrace_enabled,
 )
 
