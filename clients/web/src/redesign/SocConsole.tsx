@@ -4,7 +4,7 @@
    Ported from the design's index HTML + main.js.
    ============================================================ */
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import './styles.css'
 import { useAuth } from '../contexts/AuthContext'
 import { orchestratorApi } from '../services/api'
@@ -114,6 +114,7 @@ function SocConsoleInner() {
   const navigate = useNavigate()
   const { hasPermission } = useAuth()
   const { screen } = useParams<{ screen?: string }>()
+  const location = useLocation()
   const { mountPoints, enabledIntegrations, loading: extLoading } = useExtensions()
 
   // Merge built-in screens/nav/titles/perms with registered extensions;
@@ -223,10 +224,13 @@ function SocConsoleInner() {
     // navigate; options carry the query-string + replace behavior from main.
     (next: string, options?: ScreenGoOptions) => {
       const search = options?.search || ''
-      if (valid && next === current && !search) return
+      // Compare the query too, not just the screen: a repeat badged click is a
+      // no-op that used to push a duplicate history entry, and an unbadged
+      // click from ?tab=approvals is a real move that used to be swallowed.
+      if (valid && next === current && search === location.search) return
       navigate({ pathname: `/${next}`, search }, { replace: options?.replace })
     },
-    [valid, current, navigate],
+    [valid, current, navigate, location.search],
   )
   const goSettings = useCallback(
     (section: SettingsSectionKey) => {

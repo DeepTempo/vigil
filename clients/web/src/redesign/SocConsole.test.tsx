@@ -406,6 +406,42 @@ describe('SocConsole redesign', () => {
     expect(screen.getByRole('tab', { name: 'Pending Approvals (0)' })).toHaveAttribute('aria-selected', 'false')
   })
 
+  // The detail view returns before the tab list renders, so a badged click
+  // while a decision was open used to change only which list the detail read
+  // from -- losing the open decision and never showing the approvals queue.
+  it('leaves an open decision detail when the badge sends it to approvals', async () => {
+    vi.mocked(approvalsApi.listPending).mockResolvedValue({
+      data: { actions: [{ action_id: 'a', action_type: 'isolate_host', title: 'isolate_host: host1', target: 'host1' }] },
+    } as never)
+
+    renderConsole()
+    fireEvent.click(await screen.findByRole('button', { name: 'AI Decisions (1 waiting)' }))
+    // open a decision from the feedback queue first
+    fireEvent.click(screen.getByRole('tab', { name: /^Pending \(/ }))
+    fireEvent.click(await screen.findByText('Cluster merge'))
+    expect(screen.getByText('AI recommendation')).toBeInTheDocument()
+
+    // now the badge: the approvals queue must actually appear
+    fireEvent.click(screen.getByRole('button', { name: 'AI Decisions (1 waiting)' }))
+
+    expect(await screen.findByRole('tab', { name: 'Pending Approvals (1)' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('isolate_host: host1')).toBeInTheDocument()
+    expect(screen.queryByText(/no longer in the current list/)).toBeNull()
+    vi.mocked(approvalsApi.listPending).mockResolvedValue({ data: { actions: [] } } as never)
+  })
+
+  // Approving the last action empties the queue, so the rail loses its badge
+  // while the operator is still sitting on ?tab=approvals. The unbadged click
+  // has to move them, which go()'s dedupe guard used to swallow.
+  it('moves off the approvals tab when the badge is gone', async () => {
+    renderConsole('/decisions?tab=approvals')
+
+    expect(await screen.findByRole('tab', { name: 'Pending Approvals (0)' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'AI Decisions' }))
+
+    expect(await screen.findByRole('tab', { name: /^Pending \(/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('streams an assistant response through the chat SSE pipe', async () => {
     // a Response-like object whose body yields two SSE text deltas then ends
     const chunks = [
