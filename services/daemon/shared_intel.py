@@ -12,7 +12,6 @@ indicators, and reads the whole table.
 """
 
 import logging
-from contextlib import AbstractContextManager
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 from core.storage.connection import get_db_manager
@@ -62,14 +61,6 @@ def _keys_from_finding(finding: Dict[str, Any]) -> Set[str]:
 class SharedIntelligence:
     """Cross-investigation IOC tracker over ``shared_iocs``."""
 
-    def __init__(
-        self,
-        session_scope: Optional[Callable[[], AbstractContextManager]] = None,
-    ):
-        self._session_scope = session_scope or (
-            lambda: get_db_manager().session_scope()
-        )
-
     def register_investigation(
         self, investigation_id: str, findings: Iterable[Dict[str, Any]]
     ):
@@ -83,7 +74,9 @@ class SharedIntelligence:
             keys |= _keys_from_finding(finding)
         if not keys:
             return
-        self._query("register", lambda repo: repo.record(investigation_id, keys), None)
+        self._with_repo(
+            "register", lambda repo: repo.record(investigation_id, keys), None
+        )
 
     def check_overlap(
         self, finding: Dict[str, Any], exclude_id: Optional[str] = None
@@ -93,7 +86,7 @@ class SharedIntelligence:
         if not keys:
             return []
 
-        overlapping = self._query(
+        overlapping = self._with_repo(
             "overlap lookup", lambda repo: repo.open_investigations_for(keys), set()
         )
         if exclude_id:
@@ -107,14 +100,14 @@ class SharedIntelligence:
             keys = repo.keys_for(investigation_id)
             return repo.investigations_for(keys) if keys else set()
 
-        related = self._query("related lookup", _related, set())
+        related = self._with_repo("related lookup", _related, set())
         related.discard(investigation_id)
         return sorted(related)
 
     def get_shared_iocs(self, inv_id_a: str, inv_id_b: str) -> List[str]:
         """Indicator keys shared between two investigations."""
         return sorted(
-            self._query(
+            self._with_repo(
                 "shared lookup",
                 lambda repo: repo.shared_between(inv_id_a, inv_id_b),
                 set(),
@@ -129,15 +122,20 @@ class SharedIntelligence:
         """
         if not case_id:
             return
-        self._query(
+        self._with_repo(
             "close write",
             lambda repo: repo.record_case_for(case_id, investigation_id),
             None,
         )
 
-    def _query(self, operation: str, fn: Callable, default: Any) -> Any:
+    def _with_repo(self, operation: str, fn: Callable, default: Any) -> Any:
+        """Run one repository call in its own transaction.
+
+        Reads degrade to ``default`` and writes are dropped rather than taking
+        the daemon loop down with them; either way the failure is logged loud.
+        """
         try:
-            with self._session_scope() as session:
+            with get_db_manager().session_scope() as session:
                 return fn(SharedIOCRepository(session))
         except Exception as e:
             logger.error("shared_iocs %s failed: %s", operation, e, exc_info=True)

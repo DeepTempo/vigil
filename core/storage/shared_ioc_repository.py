@@ -5,25 +5,51 @@ stripped and lower-cased. That is the form the daemon's correlation code passes
 around; the two halves are stored in separate columns so ``idx_shared_ioc_value``
 can serve the overlap join.
 
-Operates on a caller-provided ``Session`` (wrap it with
-``core.storage.unit_of_work.unit_of_work`` or ``session_scope``); it never opens
-or closes sessions itself.
+Operates on a caller-provided ``Session`` — wrap it with
+``core.storage.unit_of_work.unit_of_work`` or ``DatabaseManager.session_scope``;
+it never opens or closes sessions itself.
 """
 
 import logging
+from datetime import datetime
 from typing import Iterable, List, Optional, Set, Tuple
 
-from sqlalchemy import ColumnElement, and_, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, DateTime, and_, func, literal, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from core.storage.models import CaseIOC, Investigation, SharedIOC
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
-# An investigation in one of these statuses is finished: nothing more will be
-# added to it, so a new finding touching its indicators is related history
-# rather than a duplicate of work in flight.
+# An investigation in one of these statuses is finished. The rest are only
+# *nominally* live: see _live_clause.
 CLOSED_STATUSES = ("completed", "failed")
+
+# Findings yield these five types; ``case_iocs.ioc_type`` is free text and
+# spells several of them differently. Folding the aliases is what lets a row
+# written on case close join a key written at investigation start.
+_TYPE_ALIASES = {
+    "filehash": "hash",
+    "file_hash": "hash",
+    "md5": "hash",
+    "sha1": "hash",
+    "sha256": "hash",
+    "sha512": "hash",
+    "ipaddress": "ip",
+    "ip_address": "ip",
+    "ipv4": "ip",
+    "ipv6": "ip",
+    "src_ip": "ip",
+    "dst_ip": "ip",
+    "dest_ip": "ip",
+    "domain_name": "domain",
+    "fqdn": "domain",
+    "host": "hostname",
+    "account": "user",
+    "user_name": "user",
+    "username": "user",
+}
 
 # Mirrors the column widths on SharedIOC. A value that does not fit is dropped
 # rather than truncated: a truncated indicator would join against unrelated ones.
@@ -34,6 +60,7 @@ _MAX_VALUE_LEN = 500
 def make_key(ioc_type: Optional[str], value: Optional[str]) -> Optional[str]:
     """Build a lookup key, or ``None`` if either half is empty or oversized."""
     ioc_type = (ioc_type or "").strip().lower()
+    ioc_type = _TYPE_ALIASES.get(ioc_type, ioc_type)
     value = (value or "").strip().lower()
     if not ioc_type or not value:
         return None
@@ -76,6 +103,28 @@ def index_case_iocs_on_close(session: Session, case_id: str) -> int:
         return 0
 
 
+def _live_clause(now: datetime) -> ColumnElement[bool]:
+    """An investigation still worth deduplicating a new finding against.
+
+    Status alone is not enough. ``needs_rework`` that nobody reworks, or
+    ``executing`` orphaned by a daemon crash, would otherwise stay live forever
+    and silence every future finding on its indicators. An investigation the
+    daemon has not touched within its own runtime ceiling is stale, so a
+    crashed run's rows age out on their own — as the in-memory index used to do
+    by forgetting on restart.
+    """
+    last_seen = func.coalesce(
+        Investigation.last_activity_at,
+        Investigation.started_at,
+        Investigation.created_at,
+    )
+    age_seconds = func.extract("epoch", literal(now, DateTime) - last_seen)
+    return and_(
+        Investigation.status.notin_(CLOSED_STATUSES),
+        age_seconds < Investigation.max_runtime_seconds,
+    )
+
+
 class SharedIOCRepository:
     """Data access for the cross-investigation IOC index."""
 
@@ -94,11 +143,8 @@ class SharedIOCRepository:
         if not pairs:
             return 0
 
-        already = self.keys_for(investigation_id)
-        added = 0
-        for ioc_type, value in sorted(pairs):
-            if f"{ioc_type}:{value}" in already:
-                continue
+        new = pairs - self._pairs_for(investigation_id)
+        for ioc_type, value in sorted(new):
             self.session.add(
                 SharedIOC(
                     investigation_id=investigation_id,
@@ -106,8 +152,7 @@ class SharedIOCRepository:
                     value=value,
                 )
             )
-            added += 1
-        return added
+        return len(new)
 
     def record_case(self, case_id: str) -> int:
         """Index a case's IOCs against every investigation that belongs to it.
@@ -141,53 +186,60 @@ class SharedIOCRepository:
 
     def keys_for(self, investigation_id: str) -> Set[str]:
         """Every indicator key indexed for one investigation."""
-        rows = self.session.execute(
-            select(SharedIOC.ioc_type, SharedIOC.value).where(
-                SharedIOC.investigation_id == investigation_id
-            )
-        ).all()
-        return {f"{t}:{v}" for t, v in rows}
+        return {f"{t}:{v}" for t, v in self._pairs_for(investigation_id)}
 
     def investigations_for(self, keys: Iterable[str]) -> Set[str]:
         """Every investigation that has seen any of ``keys``, open or finished.
 
         Empty when no investigation has seen any of them.
         """
-        clauses = self._key_clauses(keys)
-        if not clauses:
-            return set()
-        return set(
-            self.session.execute(
-                select(SharedIOC.investigation_id).where(or_(*clauses)).distinct()
-            )
-            .scalars()
-            .all()
-        )
+        return self._investigations(keys, live_only=False)
 
     def open_investigations_for(self, keys: Iterable[str]) -> Set[str]:
-        """As ``investigations_for``, restricted to investigations still open."""
-        clauses = self._key_clauses(keys)
-        if not clauses:
-            return set()
-        return set(
-            self.session.execute(
-                select(SharedIOC.investigation_id)
-                .join(
-                    Investigation,
-                    Investigation.investigation_id == SharedIOC.investigation_id,
-                )
-                .where(or_(*clauses), Investigation.status.notin_(CLOSED_STATUSES))
-                .distinct()
-            )
-            .scalars()
-            .all()
-        )
+        """As ``investigations_for``, restricted to investigations still live."""
+        return self._investigations(keys, live_only=True)
 
     def shared_between(self, inv_id_a: str, inv_id_b: str) -> Set[str]:
         """The indicator keys two investigations both have indexed."""
-        return self.keys_for(inv_id_a) & self.keys_for(inv_id_b)
+        other = aliased(SharedIOC)
+        rows = self.session.execute(
+            select(SharedIOC.ioc_type, SharedIOC.value)
+            .join(
+                other,
+                and_(
+                    other.ioc_type == SharedIOC.ioc_type,
+                    other.value == SharedIOC.value,
+                ),
+            )
+            .where(
+                SharedIOC.investigation_id == inv_id_a,
+                other.investigation_id == inv_id_b,
+            )
+            .distinct()
+        ).all()
+        return {f"{t}:{v}" for t, v in rows}
 
     # ---- internals -----------------------------------------------------
+
+    def _investigations(self, keys: Iterable[str], *, live_only: bool) -> Set[str]:
+        clauses = self._key_clauses(keys)
+        if not clauses:
+            return set()
+        stmt = select(SharedIOC.investigation_id).where(or_(*clauses))
+        if live_only:
+            stmt = stmt.join(
+                Investigation,
+                Investigation.investigation_id == SharedIOC.investigation_id,
+            ).where(_live_clause(utcnow()))
+        return set(self.session.execute(stmt.distinct()).scalars().all())
+
+    def _pairs_for(self, investigation_id: str) -> Set[Tuple[str, str]]:
+        rows = self.session.execute(
+            select(SharedIOC.ioc_type, SharedIOC.value).where(
+                SharedIOC.investigation_id == investigation_id
+            )
+        ).all()
+        return {(t, v) for t, v in rows}
 
     def _case_keys(self, case_id: str) -> Set[str]:
         values = self.session.execute(
