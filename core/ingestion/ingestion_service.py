@@ -363,6 +363,15 @@ class IngestionService:
                     self.stats["cases_skipped"] += 1
                     return True
 
+                notes = case_data.get("notes", [])
+                if isinstance(notes, str):
+                    notes = [
+                        {
+                            "timestamp": utcnow().isoformat() + "Z",
+                            "content": notes,
+                        }
+                    ]
+
                 # Create case in database
                 case = self.db_service.create_case(
                     case_id=case_id,
@@ -373,7 +382,7 @@ class IngestionService:
                     priority=case_data.get("priority", "medium"),
                     assignee=case_data.get("assignee"),
                     tags=case_data.get("tags", []),
-                    notes=case_data.get("notes", []),
+                    notes=notes,
                     timeline=case_data.get("timeline", []),
                     activities=case_data.get("activities", []),
                     resolution_steps=case_data.get("resolution_steps", []),

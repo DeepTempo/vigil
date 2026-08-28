@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from core.integrations.splunk.client import SplunkService
 from core.llm.harness.claude import ClaudeService
 from core.storage.database_data_service import DatabaseDataService
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -455,8 +456,14 @@ Focus on:
 ---
 """
 
-        # Add enrichment note to case
-        self.data_service.update_case(case_id, notes=notes_entry)
+        notes = case.get("notes") or []
+        notes.append(
+            {
+                "timestamp": utcnow().isoformat() + "Z",
+                "content": notes_entry,
+            }
+        )
+        self.data_service.update_case(case_id, notes=notes)
 
         logger.info(f"Enrichment completed for case {case_id}")
 
