@@ -232,13 +232,16 @@ pytest tests/ -m "not external_service"   # what CI's main unit job runs
 pytest tests/unit/test_backend_tools.py -v
 ```
 
-A **unit** test marked `database` or `external_service` does not touch the
-database `DATABASE_URL` names: `tests/unit/conftest.py` provisions a throwaway
-`vigil_test_<pid>` from the ORM models, retargets the `DatabaseManager` at it,
-and drops it afterwards (#747). So the local role needs `CREATEDB`, and a test
-cannot leave rows in the database your own console reads. `tests/integration/`
-is deliberately outside this — it runs against a schema CI provisions from
-`infra/database/init/`, including tables no ORM model covers.
+A **unit** test marked `external_service` does not touch the database your own
+stack uses: `tests/unit/conftest.py` provisions a throwaway
+`vigil_test_<pid>_<rand>` from the ORM models, retargets the `DatabaseManager`
+at it, and drops it afterwards (#747), so a test cannot leave rows in the
+database your console reads. The role therefore needs `CREATEDB` and enough
+privilege for `CREATE EXTENSION vector`. `database` is deliberately *not* a
+trigger — it is used descriptively on offline tests too (`test_dsn_parsing.py`
+parses strings and needs no server), so it cannot mean "needs PostgreSQL".
+`tests/integration/` is outside this: it runs against a schema CI provisions
+from `infra/database/init/`, including tables no ORM model covers.
 
 Available markers: `unit`, `integration`, `slow`, `auth`, `siem`, `claude`,
 `database`, `api`, `daemon`, `performance`, `external_service`.
