@@ -1,10 +1,6 @@
-// Context path (sub-path) the app is served under, e.g. "/vigilsoc" when behind
-// a reverse proxy. Read at runtime from a <meta name="vigil-base-path"> tag that
-// the backend injects into index.html (and the vite dev server injects in dev,
-// from VIGIL_CONTEXT_PATH). A <meta> tag is used rather than an inline <script>
-// because the app's CSP (script-src 'self') blocks inline scripts. Falls back to
-// Vite's build-time BASE_URL. Empty string means served at the root.
-// Consumed by the router basename, the axios baseURL, and absolute fetch calls.
+// The context path is read at runtime from a <meta> tag the backend injects —
+// a <meta>, not an inline <script>, because the CSP is script-src 'self'.
+// Falls back to Vite's build-time BASE_URL. Empty string = served at the root.
 const _meta =
   (typeof document !== 'undefined' &&
     document

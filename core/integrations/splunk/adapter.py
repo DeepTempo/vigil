@@ -6,7 +6,6 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime
-from core.time import utcnow
 from typing import Any, Dict, Optional
 
 from core.config import get_integration_config, is_integration_enabled
@@ -16,6 +15,7 @@ from core.federation.contract import (
     FetchResult,
     register_adapter,
 )
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class SplunkAdapter:
             return FetchResult(findings=[], cursor=fresh_cursor())
 
         # Use cursor's last_poll_at when available; otherwise "now" sentinel
-        # (no cold-start backfill — see CLAUDE.md / federation MVP design).
+        # (no cold-start backfill — federation MVP design).
         last = parse_cursor_since(cursor) or since
         if last is not None:
             # Convert to relative Splunk earliest_time (rounded up to minute)

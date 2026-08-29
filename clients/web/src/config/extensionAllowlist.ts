@@ -1,9 +1,6 @@
-// Trusted page-extension connector origins, read at runtime from a
-// <meta name="vigil-extension-allowlist"> tag (a <meta>, not inline <script>,
-// because the CSP is script-src 'self'; mirrors config/basePath.ts). The same
-// list drives the backend CSP + SSRF guard (services/extension_trust.py), so
-// the browser trust gate can't drift into "trusted-here but CSP-blocked". Falls
-// back to the deprecated build-time VITE_EXTENSION_ORIGIN_ALLOWLIST.
+// Read at runtime from a <meta> tag (not inline <script>: the CSP is
+// script-src 'self'). The same list drives the backend CSP + SSRF guard, so the
+// browser trust gate can't drift into "trusted here but CSP-blocked".
 const _meta =
   (typeof document !== 'undefined' &&
     document

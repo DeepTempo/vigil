@@ -19,7 +19,7 @@ we do not backport to earlier minors.
 | Version | Supported | Notes |
 |---------|-----------|-------|
 | Latest `0.x` minor (currently `0.5.x`) | ✅ | Fixes ship here. Upgrade before reporting a bug you can only reproduce on an older tag. |
-| Older `0.x` minors | ❌ | No backports. While in `0.x`, minor bumps may break agent prompts, workflow schemas, and MCP interfaces — see [CONTRIBUTING.md](CONTRIBUTING.md#versioning-and-releases). |
+| Older `0.x` minors | ❌ | No backports. While in `0.x`, minor bumps may break agent prompts, workflow schemas, and MCP interfaces — see [contributing](https://vigilsoc.org/docs/contributing/#versioning-and-releases). |
 | `main` (unreleased) | ✅ | Reports welcome; note the commit SHA. |
 
 Container images (`ghcr.io/vigil-soc/vigil-backend`, `vigil-daemon`) and the
@@ -195,18 +195,18 @@ Not vulnerabilities. Reports on these will be closed with a pointer back here:
 
 - **`DEV_MODE=true` bypassing authentication.** That is its documented purpose.
   It defaults to `false` in `core/config.py`, and `env.example` ships `true`
-  only for local development. See [DEV_MODE.md](DEV_MODE.md).
+  only for local development. See [DEV_MODE](https://vigilsoc.org/docs/dev-mode/).
 - **Default credentials in development material** — the `admin` / `admin123`
   dev login and the default PostgreSQL password in
   `infra/docker/docker-compose.yml`. Both are documented as
   must-change-before-production in
-  [docs/PRODUCTION_SECURITY.md](docs/PRODUCTION_SECURITY.md).
+  [production security](https://vigilsoc.org/docs/production-security/).
 - **Placeholder values in `env.example`.** They are a template, not a
   configuration.
 - **Findings that require a misconfiguration we already document as unsafe** —
   for example exposing port 6987 to the internet with `DEV_MODE=true`, or
   running with the report-only CSRF switch turned on in production. If you find
-  a case [docs/PRODUCTION_SECURITY.md](docs/PRODUCTION_SECURITY.md) does *not*
+  a case [production security](https://vigilsoc.org/docs/production-security/) does *not*
   cover, that gap is worth reporting.
 - **Vulnerabilities in an upstream product Vigil integrates with** (Splunk,
   CrowdStrike, VirusTotal, and the rest). Report those to that vendor. If
@@ -228,17 +228,17 @@ Not vulnerabilities. Reports on these will be closed with a pointer back here:
 Most incidents we would expect to see are configuration, not code. Before you
 run Vigil anywhere real:
 
-- **[docs/PRODUCTION_SECURITY.md](docs/PRODUCTION_SECURITY.md)** — the
+- **[Production security](https://vigilsoc.org/docs/production-security/)** — the
   auditable checklist of every security-relevant switch and its production
   value. Start here.
-- **[DEV_MODE.md](DEV_MODE.md)** — what the auth bypass does and why it must
+- **[DEV_MODE](https://vigilsoc.org/docs/dev-mode/)** — what the auth bypass does and why it must
   never be enabled in production.
-- **[docs/STATE.md](docs/STATE.md)** — where secrets live, and why provider
+- **[State and secrets](https://vigilsoc.org/docs/state/)** — where secrets live, and why provider
   keys and integration credentials belong in the UI and the encrypted store
   rather than in `.env`.
-- **[docs/HELM-SECRETS.md](docs/HELM-SECRETS.md)** — secret management for
+- **[Helm secrets](https://vigilsoc.org/docs/helm-secrets/)** — secret management for
   Kubernetes deployments.
-- **[docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** — network exposure,
+- **[Deployment guide](https://vigilsoc.org/docs/deployment/)** — network exposure,
   TLS termination, and reverse-proxy placement.
 
 Non-negotiables: set `DEV_MODE=false`, generate a real `JWT_SECRET_KEY`, change

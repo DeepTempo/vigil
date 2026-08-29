@@ -222,15 +222,14 @@ def _select_active_provider(provider_id: Optional[str]):
       1. An explicit ``provider_id`` — the model picker can send the model as
          ``provider_id::model_id`` (#348); look the provider up by id.
       2. The configured default provider (``get_default_provider_spec``) — so a
-         *bare* model id (the shape the redesigned Chat dock sends) still routes
-         to a non-Anthropic default instead of falling through to the Anthropic
-         SDK and 503-ing on Ollama-only deployments.
+         *bare* model id (the shape the Chat dock sends) still routes to a
+         non-Anthropic default instead of falling through to the Anthropic SDK
+         and 503-ing on Ollama-only deployments.
 
     Returns a ``ProviderSpec`` or ``None``. Lookups are wrapped so a transient
     DB error degrades to the ClaudeService/Anthropic path rather than 500-ing.
     """
-    from core.llm.router.router import (get_default_provider_spec,
-                                        get_provider_spec)
+    from core.llm.router.router import get_default_provider_spec, get_provider_spec
 
     provider = None
     if provider_id:
@@ -606,7 +605,7 @@ async def summarize_conversation(request: SummarizeRequest):
             full_text[:max_chars] + "\n\n[... earlier conversation truncated ...]"
         )
 
-    summary_prompt = f"""Summarize the following conversation between a user and an AI assistant (Vigil SOC platform). 
+    summary_prompt = f"""Summarize the following conversation between a user and an AI assistant (Vigil SOC platform).
 Preserve ALL important context including:
 - Key findings, case IDs, IOCs, and entity references discussed
 - Decisions made and actions taken
@@ -803,8 +802,7 @@ async def generate_chat_report(request: ChatReportRequest):
     from datetime import datetime
     from pathlib import Path
 
-    from core.reporting.report_service import (REPORTLAB_AVAILABLE,
-                                               ReportService)
+    from core.reporting.report_service import REPORTLAB_AVAILABLE, ReportService
 
     if not REPORTLAB_AVAILABLE:
         raise HTTPException(

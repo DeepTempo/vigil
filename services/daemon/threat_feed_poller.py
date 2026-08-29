@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from core.time import utcnow
 from typing import Any, Dict, List, Optional
+
 from core.config import get_settings
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,13 @@ class ThreatFeedPoller:
     """Pull STIX 2.1 indicators from configured TAXII collections."""
 
     def __init__(self) -> None:
-        self.stats = {"runs": 0, "indicators_seen": 0, "inserted": 0, "updated": 0, "errors": 0}
+        self.stats = {
+            "runs": 0,
+            "indicators_seen": 0,
+            "inserted": 0,
+            "updated": 0,
+            "errors": 0,
+        }
 
     @staticmethod
     def is_enabled() -> bool:
@@ -42,6 +49,7 @@ class ThreatFeedPoller:
 
         try:
             from core.config import get_integration_config
+
             cfg = get_integration_config("cloudforce_one") or {}
             raw = cfg.get("poll_interval_seconds")
         except Exception:  # noqa: BLE001
@@ -73,7 +81,9 @@ class ThreatFeedPoller:
         collection_ids_raw = cfg.get("collection_ids") or ""
 
         if not api_token or not server_url or not collection_ids_raw:
-            logger.info("Cloudforce One configured but missing token/url/collections; skipping")
+            logger.info(
+                "Cloudforce One configured but missing token/url/collections; skipping"
+            )
             return {"skipped": "incomplete_config"}
 
         collection_ids: List[str] = [

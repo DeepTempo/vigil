@@ -17,12 +17,22 @@ from pydantic import BaseModel, Field
 
 from core.llm.bifrost.admin import push_provider_key, sync_all_provider_models
 from core.llm.providers import provider_service
+
+# Anthropic's live /v1/models endpoint is consulted via
+# ``core.llm.providers.discovery``; the fallback tuple here is the
+# cold-boot list used only when the live call fails (e.g. no API key
+# was provided at /discover-models time).
+from core.llm.providers.registry import (
+    _FALLBACK_MODELS_BY_PROVIDER,
+    fetch_provider_models,
+    invalidate_model_cache,
+)
 from core.platform.url_safety import UrlSafetyError, validate_provider_url
 from core.routing import Auth, RouterMeta, UnitOfWorkSession
-from core.time import utcnow
 from core.secrets import delete_secret, get_secret, set_secret
 from core.storage.models import LLMProviderConfig, User
 from core.storage.schemas import LLMProviderConfigSchema
+from core.time import utcnow
 from services.api.middleware.auth import get_current_active_user, require_settings_admin
 
 logger = logging.getLogger(__name__)
@@ -36,16 +46,6 @@ ROUTER_META = RouterMeta(
 
 VALID_PROVIDER_TYPES = {"anthropic", "openai", "ollama", "vertex"}
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
-
-# Anthropic's live /v1/models endpoint is consulted via
-# ``core.llm.providers.discovery``; the fallback tuple here is the
-# cold-boot list used only when the live call fails (e.g. no API key
-# was provided at /discover-models time).
-from core.llm.providers.registry import (
-    _FALLBACK_MODELS_BY_PROVIDER,
-    fetch_provider_models,
-    invalidate_model_cache,
-)
 
 ANTHROPIC_FALLBACK_MODELS = list(_FALLBACK_MODELS_BY_PROVIDER["anthropic"])
 

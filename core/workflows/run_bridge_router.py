@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import logging
-from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header
@@ -15,6 +14,7 @@ from core.deps import provide_approvals, provide_workflow_runs
 from core.response.approval_service import ApprovalService
 from core.response.checkpoints import raise_for_checkpoint, withdraw_for_run
 from core.routing import Auth, RouterMeta
+from core.time import utcnow
 from core.workflows.workflow_run_service import WorkflowRunService
 
 router = APIRouter()

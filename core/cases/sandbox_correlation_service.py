@@ -20,13 +20,13 @@ Design notes
 from __future__ import annotations
 
 import logging
-from core.time import utcnow
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
 from core.storage.models import CaseEvidence, CaseIOC
 from core.storage.unit_of_work import unit_of_work
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 

@@ -26,6 +26,7 @@ fi
 ensure_venv
 install_python_deps
 echo "Python dependencies installed."
+install_dev_deps
 
 # uv / uvx — several integration MCP servers (crowdstrike, sentinelone,
 # pagerduty, aws-security, gcp-*, cribl-stream) are launched via `uvx`. Without

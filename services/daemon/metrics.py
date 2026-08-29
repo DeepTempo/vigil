@@ -15,12 +15,12 @@ DAEMON_HEALTH_PORT (default 9091) exposing /health and /status.
 import asyncio
 import logging
 from collections import defaultdict
-from core.time import utcnow
 from typing import Any, Dict
 
 from aiohttp import web
 
 from core.config import get_settings
+from core.time import utcnow
 from services.daemon.config import MetricsConfig
 
 logger = logging.getLogger(__name__)
@@ -291,9 +291,7 @@ class MetricsServer:
         status = {
             "daemon": {
                 "start_time": self._start_time.isoformat(),
-                "uptime_seconds": (
-                    utcnow() - self._start_time
-                ).total_seconds(),
+                "uptime_seconds": (utcnow() - self._start_time).total_seconds(),
             },
             "poller": metrics.get("poller", {}),
             "kafka": metrics.get("kafka", {}),

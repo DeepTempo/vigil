@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from core.federation.adapters._siem_base import SIEMIngestionAdapter
 from core.federation.contract import FederationAdapter, register_adapter
-
 from core.integrations.elastic.ingestion import ElasticIngestion
 
 

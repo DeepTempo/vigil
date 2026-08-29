@@ -1,5 +1,5 @@
-// Display labels for the backend AI components (ids: core/llm/providers/registry.py
-// COMPONENTS). Shared by AI Config settings + the setup wizard so they can't drift.
+// Shared by AI Config settings and the setup wizard, so the two can't drift.
+// Ids come from core/llm/providers/registry.py COMPONENTS.
 export const CHAT_DEFAULT_KEY = 'chat_default'
 
 export const COMPONENT_LABELS: Record<string, { label: string; description: string }> = {
