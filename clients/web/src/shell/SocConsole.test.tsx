@@ -4,7 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { ColorSchemeProvider } from '../contexts/ColorSchemeContext'
 import SocConsole from './SocConsole'
 // these resolve to the mocked implementations (vi.mock below is hoisted)
-import { streamFetch, aiDecisionsApi, approvalsApi } from '../services/api'
+import { streamFetch, aiDecisionsApi, approvalsApi, timelineApi } from '../services/api'
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -99,10 +99,17 @@ vi.mock('../services/api', () => ({
     getFindingsByTechnique: () => Promise.resolve({ data: { findings: [] } }),
   },
   timelineApi: {
-    getTimelineRange: () =>
-      Promise.resolve({
-        data: { events: [{ id: 'finding-f-1', start: '2026-06-12T11:36:33Z', type: 'finding', severity: 'medium', metadata: { finding_id: 'f-1' } }] },
-      }),
+    getTimelineRange: vi.fn((params: { start?: string; end?: string } = {}) => {
+      const events = [
+        { id: 'finding-f-1', start: '2026-06-12T11:36:33Z', type: 'finding', severity: 'medium', metadata: { finding_id: 'f-1' } },
+        { id: 'finding-f-2', start: '2026-06-13T11:36:33Z', type: 'finding', severity: 'high', metadata: { finding_id: 'f-2' } },
+      ]
+      const start = params.start ? Date.parse(params.start) : Number.NEGATIVE_INFINITY
+      const end = params.end ? Date.parse(params.end) : Number.POSITIVE_INFINITY
+      return Promise.resolve({
+        data: { events: events.filter((event) => Date.parse(event.start) >= start && Date.parse(event.start) <= end) },
+      })
+    }),
   },
   aiDecisionsApi: {
     getPendingFeedback: () =>
@@ -233,6 +240,46 @@ describe('SocConsole', () => {
     expect(await screen.findByText(/events$/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('tab', { name: 'Entity Graph' }))
     expect(screen.getByText('No entity graph yet')).toBeInTheDocument()
+  })
+
+  it('filters Timeline events by an inclusive date range and clears it', async () => {
+    renderConsole()
+    fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
+    expect(await screen.findByText('2 events')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Timeline start date'), { target: { value: '2026-06-12' } })
+    fireEvent.change(screen.getByLabelText('Timeline end date'), { target: { value: '2026-06-12' } })
+
+    await waitFor(() => expect(screen.getByText('1 event')).toBeInTheDocument())
+    const timelineCalls = vi.mocked(timelineApi.getTimelineRange).mock.calls
+    const lastTimelineQuery = timelineCalls[timelineCalls.length - 1]?.[0]
+    expect(lastTimelineQuery).toMatchObject({ limit: 200 })
+    expect(lastTimelineQuery?.start).toBe(new Date('2026-06-12T00:00:00').toISOString())
+    expect(lastTimelineQuery?.end).toBe(new Date('2026-06-12T23:59:59.999').toISOString())
+
+    fireEvent.click(screen.getByRole('button', { name: /^Clear$/ }))
+    await waitFor(() => expect(screen.getByText('2 events')).toBeInTheDocument())
+  })
+
+  it('rejects an inverted Timeline date range without sending it to the API', async () => {
+    renderConsole()
+    fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
+    expect(await screen.findByText('2 events')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Timeline start date'), { target: { value: '2026-06-13' } })
+    await waitFor(() => {
+      const calls = vi.mocked(timelineApi.getTimelineRange).mock.calls
+      expect(calls[calls.length - 1]?.[0]?.start).toBe(new Date('2026-06-13T00:00:00').toISOString())
+    })
+    const callsBeforeInvalidEnd = vi.mocked(timelineApi.getTimelineRange).mock.calls.length
+
+    fireEvent.change(screen.getByLabelText('Timeline end date'), { target: { value: '2026-06-12' } })
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Start date must be on or before end date.')
+    expect(screen.getByLabelText('Timeline start date')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Timeline end date')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByText('0 events')).toBeInTheDocument()
+    await waitFor(() => expect(vi.mocked(timelineApi.getTimelineRange)).toHaveBeenCalledTimes(callsBeforeInvalidEnd))
   })
 
   it('opens the Cases master-detail and returns to the table', async () => {
