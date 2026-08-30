@@ -12,6 +12,13 @@ import FindingPopup from './FindingPopup'
 import AttackTechniqueFindings from './AttackTechniqueFindings'
 import { SEV_COLOR, TL_MONTHS, type TimelineEvent } from './attackData'
 import type { ConsoleScreenProps } from '../../shared/types'
+import { useToast } from '../../shell/toast'
+import { downloadFindingsCsv } from './findingsExport'
+import {
+  isFindingsSeverityFilter,
+  loadFindingsViewPreferences,
+  saveFindingsViewPreferences,
+} from './findingsPreferences'
 
 type DashTab = 'findings' | 'attack' | 'timeline' | 'entity'
 
@@ -59,17 +66,21 @@ function findingPrompt(f: Finding): string {
 }
 
 function FindingsTab({ openChat, goSettings }: Pick<ConsoleScreenProps, 'openChat' | 'goSettings'>) {
+  const { notify } = useToast()
   const { rows, phase, error, reload } = useFindings()
   const { kpis, reload: reloadKpis } = useDashboardKpis()
+  const [initialPreferences] = useState(loadFindingsViewPreferences)
   const [query, setQuery] = useState('')
-  const [sev, setSev] = useState('any')
-  const [src, setSrc] = useState('any')
+  const [sev, setSev] = useState(initialPreferences.severity)
+  const [src, setSrc] = useState(initialPreferences.source)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [pageSize, setPageSize] = useState(10)
   const [page, setPage] = useState(1)
   // null = untouched, so use each column's default visibility. An empty Set is
   // meaningfully different: the user unhid everything.
-  const [hiddenCols, setHiddenCols] = useState<Set<string> | null>(null)
+  const [hiddenCols, setHiddenCols] = useState<Set<string> | null>(
+    initialPreferences.hiddenColumns ? new Set(initialPreferences.hiddenColumns) : null,
+  )
 
   // derived from whatever entity keys the rows carry, so a new source needs no
   // code change here
@@ -99,6 +110,20 @@ function FindingsTab({ openChat, goSettings }: Pick<ConsoleScreenProps, 'openCha
     return [{ value: 'any', label: 'Any' }, ...set.map((s) => ({ value: s, label: s }))]
   }, [rows])
 
+  useEffect(() => {
+    if (phase === 'ready' && src !== 'any' && !srcOptions.some((option) => option.value === src)) {
+      setSrc('any')
+    }
+  }, [phase, src, srcOptions])
+
+  useEffect(() => {
+    saveFindingsViewPreferences({
+      severity: sev,
+      source: src,
+      hiddenColumns: hiddenCols ? [...hiddenCols].sort() : null,
+    })
+  }, [sev, src, hiddenCols])
+
   const filtered = useMemo(() => {
     const byFacet = rows.filter((f) => {
       if (sev !== 'any' && f.sev.toLowerCase() !== sev) return false
@@ -112,6 +137,15 @@ function FindingsTab({ openChat, goSettings }: Pick<ConsoleScreenProps, 'openCha
   }, [rows, query, sev, src, allColumns])
 
   const sorted = useMemo(() => sortRows(filtered, allColumns, sort), [filtered, allColumns, sort])
+
+  const exportFindings = () => {
+    try {
+      downloadFindingsCsv(sorted)
+      notify('ok', `Exported ${sorted.length} finding${sorted.length === 1 ? '' : 's'} as CSV.`)
+    } catch (error) {
+      notify('err', (error as { message?: string })?.message || 'Failed to export findings.')
+    }
+  }
 
   // re-sorting keeps the same rows, so it doesn't reset the page
   useEffect(() => { setPage(1) }, [query, sev, src, pageSize])
@@ -168,7 +202,9 @@ function FindingsTab({ openChat, goSettings }: Pick<ConsoleScreenProps, 'openCha
           <FilterGroup
             label="Severity"
             value={sev}
-            onSelect={setSev}
+            onSelect={(value) => {
+              if (isFindingsSeverityFilter(value)) setSev(value)
+            }}
             options={[
               { value: 'any', label: 'Any' },
               { value: 'critical', label: 'Critical' },
@@ -191,7 +227,12 @@ function FindingsTab({ openChat, goSettings }: Pick<ConsoleScreenProps, 'openCha
         </FilterButton>
         <div className="flex-1" />
         <button className="btn ghost icon" title="Refresh" onClick={refresh}><Icon name="refresh" /></button>
-        <button className="btn primary"><Icon name="download" /> Export</button>
+        <button
+          className="btn primary"
+          disabled={sorted.length === 0}
+          title="Export filtered findings as CSV"
+          onClick={exportFindings}
+        ><Icon name="download" /> Export</button>
       </div>
 
       <div className="table-wrap list-scroll list-scroll-kpi">
