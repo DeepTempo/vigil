@@ -219,7 +219,13 @@ def _load_connection_string_secret() -> Optional[str]:
 
 class DatabaseConfig:
     def __init__(self, *, connection_string: Optional[str] = None):
-        """Initialize from the connection-string secret, else the environment."""
+        """Initialize from the encrypted-store DSN, else POSTGRES_*.
+
+        DATABASE_URL is not consulted. The TypeScript agent and
+        ``scripts/migrate_schema.py`` read it; ranking an env DSN here would
+        let the MCP default in ``services/api/main.py`` pin an operator's
+        target to localhost. See ``_load_connection_string_secret``.
+        """
         dsn = (
             connection_string
             if connection_string is not None
