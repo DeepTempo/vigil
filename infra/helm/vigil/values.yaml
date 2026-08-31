@@ -280,7 +280,8 @@ postgresql:
     # Either set .existingSecret + .existingSecretKey OR provide password via secrets.postgresPassword.
     existingSecret: ""
     existingSecretKey: POSTGRES_PASSWORD
-    # If true, append ?sslmode=require to the DATABASE_URL.
+    # Unused: Helm injects discrete POSTGRES_* vars, not a DSN. Require SSL with
+    # POSTGRES_SSL_MODE=require via extraConfig / extraEnv.
     sslRequired: false
 
   # Bitnami postgresql subchart (issue #114). When enabled, the MVP in-chart
@@ -523,7 +524,8 @@ secrets:
   # Required (at least one of these must be set for the backend to do useful work).
   anthropicApiKey: ""
 
-  # DB. Used by dbInit and DATABASE_URL assembly.
+  # DB password. Materialized as POSTGRES_PASSWORD; db-init and app pods
+  # consume the discrete POSTGRES_* parts, not an assembled DSN.
   postgresPassword: "change-me-before-production"
 
   # Required when DEV_MODE=false (see env.example). Generate with:

@@ -134,9 +134,6 @@ class DaemonConfig:
     llm_queue: LLMQueueConfig = field(default_factory=LLMQueueConfig)
     kafka: KafkaConfig = field(default_factory=KafkaConfig)
 
-    # Database
-    database_url: Optional[str] = None
-
     # Logging
     log_level: str = "INFO"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -146,7 +143,6 @@ class DaemonConfig:
         config = cls()
         settings = get_settings()
 
-        config.database_url = settings.database_url
         config.log_level = settings.daemon_log_level
 
         config.polling.splunk_interval = settings.daemon_splunk_poll_interval

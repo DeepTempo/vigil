@@ -16,10 +16,13 @@ Operators run this periodically — say, monthly — and apply the
 recommendations through Settings → AI Config → AI Operations (PR-F) or
 by editing ``core/agents/builtins.py`` for per-agent thinking budgets.
 
+Connects through ``get_session()`` (encrypted DSN / POSTGRES_*), the same
+path the backend and daemon use. ``DATABASE_URL`` is not consulted.
+
 Usage::
 
-    DATABASE_URL=postgresql://... python scripts/compute_tuning_recommendations.py
-    DATABASE_URL=...  python scripts/compute_tuning_recommendations.py --days 30
+    python scripts/compute_tuning_recommendations.py
+    python scripts/compute_tuning_recommendations.py --days 30
 
 Exit code 0 always — this is informational, never a gate.
 """
@@ -227,7 +230,8 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         print(f"[ERROR] Unable to read LLMInteractionLog: {exc}", file=sys.stderr)
         print(
-            "  Check DATABASE_URL. This script is read-only — it needs the",
+            "  Check POSTGRES_* / the encrypted POSTGRESQL_CONNECTION_STRING.",
+            "  This script is read-only — it uses get_session() and needs the",
             "  same DB the backend + daemon write interaction logs to.",
             sep="\n",
             file=sys.stderr,
