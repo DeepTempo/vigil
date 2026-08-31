@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@v7
       
       - name: Run hadolint
-        uses: hadolint/hadolint-action@v3.4.0
+        uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: infra/docker/Dockerfile.backend
           ignore: DL3008,DL3009
@@ -123,7 +123,7 @@ jobs:
       # (#635) and installs no apt packages, so the two rules waived above have
       # nothing to say about it. Advisory here would only let it rot.
       - name: Run hadolint (agent)
-        uses: hadolint/hadolint-action@v3.4.0
+        uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: infra/docker/Dockerfile.agent
 

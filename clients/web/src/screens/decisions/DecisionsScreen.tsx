@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { Icon } from '../../shared/icons'
 import { Hbars, type HbarItem } from '../../shared/charts'
@@ -19,7 +20,10 @@ import {
 import { aiDecisionsApi, approvalsApi } from '../../services/api'
 import { EmptyState, Popup, Field, TextInput, Select, Rating, Slider, Dropdown, activateOnKey } from '../../shared/ui'
 
-type DecTab = 'pending' | 'all' | 'analytics' | 'approvals'
+// One list, so a new tab cannot be added to the union and forgotten here --
+// an unknown ?tab= falls back silently, which a divergence would make invisible.
+const DEC_TABS = ['pending', 'all', 'analytics', 'approvals'] as const
+type DecTab = (typeof DEC_TABS)[number]
 type Assessment = 'agree' | 'partial' | 'disagree'
 
 const STATUS_OPTS = [
@@ -592,7 +596,24 @@ function DecisionsDetail({
 
 export default function DecisionsScreen({ setViewFull }: ConsoleScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState<DecTab>('pending')
+  // The open tab lives in ?tab= so the rail can send the approvals badge
+  // straight to the queue it counted instead of the feedback tab (#746), and so
+  // a tab is deep-linkable at all. Missing / unknown falls back to feedback.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const tab: DecTab =
+    tabParam && (DEC_TABS as readonly string[]).includes(tabParam) ? (tabParam as DecTab) : 'pending'
+  // replace, not push: a tab is view state, not a navigation step, and pushing
+  // made Back walk tabs instead of leaving the screen. Copying the existing
+  // params keeps anything else on the URL.
+  const setTab = useCallback(
+    (next: DecTab) => {
+      const params = new URLSearchParams(searchParams)
+      params.set('tab', next)
+      setSearchParams(params, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
   const [query, setQuery] = useState('')
   const [agentF, setAgentF] = useState('all')
   const [statusF, setStatusF] = useState<DecisionStatus>('all')
@@ -617,6 +638,14 @@ export default function DecisionsScreen({ setViewFull }: ConsoleScreenProps) {
   useEffect(() => {
     setViewFull(selected !== null)
   }, [selected, setViewFull])
+
+  // A change of tab closes any open decision. The detail below returns before
+  // the tab list renders, so leaving it open would show neither the approvals
+  // queue the rail asked for nor the decision that was being read -- the detail
+  // would silently re-source its rows from the other list.
+  useEffect(() => {
+    setSelected(null)
+  }, [tab])
 
   const reloadDecisions = () => { pending.reload(); all.reload(); stats.reload() }
   const onSubmitted = () => { reloadDecisions(); setSelected(null) }
