@@ -48,16 +48,14 @@ def test_conftest_disables_dotenv_before_settings_import():
     subprocess imports conftest the same way collection does, without running
     fixtures, and checks Settings was defined with env_file already off.
     """
-    script = textwrap.dedent(
-        """\
+    script = textwrap.dedent("""\
         import tests.conftest  # noqa: F401
         from core.config import Settings
 
         env_file = Settings.model_config.get("env_file")
         assert env_file is None, f"env_file still {env_file!r}"
         print("ok")
-        """
-    )
+        """)
     result = _run_isolated(script)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"
@@ -66,15 +64,13 @@ def test_conftest_disables_dotenv_before_settings_import():
 @pytest.mark.unit
 def test_settings_loads_repo_dotenv_when_marker_absent():
     """Production import must still point at the root .env (#520)."""
-    script = textwrap.dedent(
-        """\
+    script = textwrap.dedent("""\
         from core.config import REPO_ROOT, Settings
 
         env_file = Settings.model_config.get("env_file")
         assert env_file == REPO_ROOT / ".env", f"env_file is {env_file!r}"
         print("ok")
-        """
-    )
+        """)
     result = _run_isolated(script)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"
