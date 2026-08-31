@@ -133,6 +133,30 @@ several — Splunk has both an official server and the self-hosted one Vigil shi
 `mcp-config.json` key.
 _Avoid_: integration id, tool name
 
+**Episodic Memory** (`memory`):
+What earlier investigations saw and concluded, derived from a **Ledger** after a
+run reaches its terminal so a later run stops re-deriving a settled answer.
+Reorders the frontier and never decides (ADR 0015).
+_Avoid_: MemPalace (the component this replaces), cache, RAG
+
+**Source Tier**:
+What a source *is*: `telemetry` observed our own estate, `feed` asserts about the
+world, `not_evidence` is neither. Distinct from **Trust**, which is who
+concluded — `analyst` or `agent`. Both sit on a **Verdict**'s sources, and one
+does not imply the other: a feed can be cited by an analyst.
+_Avoid_: connector trust, confidence, severity
+
+**Trust**:
+Who concluded — `analyst` when a person closed it, `agent` when the daemon did.
+The other axis on a **Verdict**'s sources, alongside **Source Tier**. Unrelated
+to **Connector Trust**, which is about admitting a third-party origin.
+_Avoid_: connector trust, source tier, confidence
+
+**Verdict**:
+What one investigation concluded about one hypothesis, naming its subjects
+rather than every entity its evidence touched (ADR 0016).
+_Avoid_: finding, case closure, outcome
+
 ### Shared-infrastructure tier
 
 **Storage** (`storage`):
@@ -241,6 +265,17 @@ _Avoid_: page, tab, view
 ## Relationships
 
 - A **Case** groups one or more **Findings**
+- **Episodic Memory** derives **Verdicts** from a **Ledger** after an
+  investigation terminates; it never writes during a run, and a run reads it
+  once at start (ADR 0015)
+- A **Verdict**'s sources each carry a **Source Tier** and the Verdict carries
+  one **Trust**. The two are independent axes: **Trust** is who concluded, and
+  a `feed`-tier source can be cited by an `analyst`
+- **Source Tier** is stamped at write time, never joined at read time, so
+  recategorising an **Integration** later cannot change how a past **Verdict**
+  was corroborated
+- **Trust** is unrelated to **Connector Trust**, which is about admitting a
+  third-party origin rather than weighing a conclusion
 - **Ingestion** produces **Findings** and depends on **Storage** (never the reverse)
 - **Federation** drives **Ingestion** (an adapter wraps an ingestion service);
   Ingestion never depends on Federation
