@@ -16,7 +16,7 @@ phases:
   - id: triage
     agent: triage
     name: "Triage & Classify"
-    tools: [get_finding, list_findings]
+    tools: [get_finding, list_findings, recall_entity]
     instructions: |
       Rapidly assess the alert: severity scoring, false-positive check,
       categorisation.
@@ -37,7 +37,7 @@ phases:
   - id: investigation
     agent: investigator
     name: "Deep Investigation"
-    tools: [get_finding, list_findings, nearest_neighbors, search_detections]
+    tools: [get_finding, list_findings, nearest_neighbors, search_detections, recall_entity]
     instructions: |
       Root cause analysis, evidence collection, timeline reconstruction and
       cross-source correlation.
@@ -56,7 +56,7 @@ phases:
   - id: response
     agent: responder
     name: "Contain & Respond"
-    tools: [create_approval_action, get_finding, update_case]
+    tools: [create_approval_action, get_finding, update_case, recall_entity]
     approval_required: true
     instructions: |
       NIST IR containment: isolate hosts, block IPs, revoke credentials, plan
@@ -80,7 +80,7 @@ phases:
   - id: report
     agent: reporter
     name: "Document & Report"
-    tools: [get_case, list_findings, create_attack_layer]
+    tools: [get_case, list_findings, create_attack_layer, recall_entity]
     instructions: |
       Generate an audience-tailored incident report with executive summary,
       technical detail and lessons learned.
