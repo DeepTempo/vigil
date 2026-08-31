@@ -265,6 +265,17 @@ _Avoid_: page, tab, view
 ## Relationships
 
 - A **Case** groups one or more **Findings**
+- **Episodic Memory** derives **Verdicts** from a **Ledger** after an
+  investigation terminates; it never writes during a run, and a run reads it
+  once at start (ADR 0015)
+- A **Verdict**'s sources each carry a **Source Tier** and the Verdict carries
+  one **Trust**. The two are independent axes: **Trust** is who concluded, and
+  a `feed`-tier source can be cited by an `analyst`
+- **Source Tier** is stamped at write time, never joined at read time, so
+  recategorising an **Integration** later cannot change how a past **Verdict**
+  was corroborated
+- **Trust** is unrelated to **Connector Trust**, which is about admitting a
+  third-party origin rather than weighing a conclusion
 - **Ingestion** produces **Findings** and depends on **Storage** (never the reverse)
 - **Federation** drives **Ingestion** (an adapter wraps an ingestion service);
   Ingestion never depends on Federation

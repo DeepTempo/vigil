@@ -1,17 +1,24 @@
 """The source-to-Source-Tier map (#728).
 
 Ranking needs two telemetry sources agreeing to outweigh two feeds agreeing,
-and needs some sources not to count as evidence at all. Memory owns this map
-and stamps the tier onto the row at write time rather than joining at read
-time, so an integration removed or recategorised later cannot retroactively
-change how a past Verdict was corroborated.
+and needs some sources not to count as evidence at all. Memory owns this map;
+the caller stamps what it returns onto the row at write time rather than
+joining at read time, so an integration removed or recategorised later cannot
+retroactively change how a past Verdict was corroborated. Nothing calls this
+yet — `distil` (#731) is the write path.
 
-The map is keyed twice, because the two investigation kinds name sources in
-different vocabularies. A hunt names a telemetry domain, narrowed to the
-playbook's ``data_domains`` by ``attributeSource``. A Case names the
-``data_source`` of the Findings it groups, which is a vendor pipeline. Both
-land in memory's own ``source_system`` column, so ``source_tier`` takes the
-investigation kind to know which vocabulary it is reading.
+Three key spaces reach it, not two. The two that ``investigation_kind``
+selects between: a hunt names a telemetry domain, narrowed to the playbook's
+``data_domains`` by ``attributeSource``; a Case names the ``data_source`` of
+the Findings it groups, which is a vendor pipeline. The third is the **MCP
+Server Name** — reference servers and sandboxes, which CONTEXT.md defines as
+deliberately distinct from both. It is matched before either vocabulary and
+spans both kinds, because a server name means the same thing wherever it
+lands.
+
+Both land in memory's own ``source_system`` column, so
+``resolve_source_tier`` takes the investigation kind to know which vocabulary
+it is reading.
 """
 
 import logging
@@ -44,12 +51,17 @@ DEFAULT_TIER = SourceTier.FEED
 # call are none of them a second look at the estate. `not_evidence` on a Verdict
 # is a defect rather than a weak row, so these exist to make it visible.
 #
-# The harness-internal three reach the ledger under their own names because
-# `attributeSource` collapses only `provenance === "worker"`, and each of them
-# is appended under a different provenance. The two reference servers cannot
-# arrive on either path today — they write no findings, and a worker naming one
-# collapses to `undeclared` first. They are listed because AC 4 asks for the
-# guard, and a guard is meant to have no hits in healthy data.
+# The harness-internal names reach the ledger under their own names because
+# `attributeSource` collapses only `provenance === "worker"`, and each is
+# appended under a different provenance. There are four such categories, not
+# three: `critic` (null_check), `operator` (operator_gap), `dispatcher`, and
+# enrichment, which sets `source_system` to an unbounded `chain.id` and so
+# cannot be enumerated here — it takes the default.
+#
+# The two reference servers cannot arrive on either path today: they write no
+# findings, and a worker naming one collapses to `undeclared` first. They are
+# listed because AC 4 asks for the guard, and a guard is meant to have no hits
+# in healthy data.
 _NOT_EVIDENCE: Set[str] = {
     "attack-layer",
     "security-detections",
@@ -58,17 +70,15 @@ _NOT_EVIDENCE: Set[str] = {
     "dispatcher",
 }
 
-# Detonation is a real observation, but of an artifact rather than of our
-# estate, so two sandboxes agreeing is not two independent looks at it.
-_SANDBOX: Set[str] = {
-    "cape-sandbox",
-    "joe-sandbox",
-}
-
 # The nine values present in `findings.data_source`, enumerated against live
 # data on 2026-08-28: `loglm` carries 98% of rows and the rest are the ingest
-# and demo pipeline labels behind it. All nine observe our own estate. The two
-# ingest fallbacks below are reachable in code but absent from that census.
+# and demo pipeline labels behind it. All nine observe our own estate.
+#
+# A census of what the column holds, not of what it can hold: `data_source` is
+# caller-supplied (`ingestion_service` takes it as a parameter), the Kafka
+# consumer mints `kafka:<topic>`, and a connector extension brands findings
+# with its own manifest id, so vendor names are a designed path. Values outside
+# this set are expected and take the default.
 _CASE_TIERS: Dict[str, SourceTier] = {
     "loglm": SourceTier.TELEMETRY,
     "firewall": SourceTier.TELEMETRY,
@@ -79,12 +89,6 @@ _CASE_TIERS: Dict[str, SourceTier] = {
     "email": SourceTier.TELEMETRY,
     "endpoint": SourceTier.TELEMETRY,
     "siem": SourceTier.TELEMETRY,
-    # Ingest fallbacks, used when a row declared no source of its own. Known
-    # values, deliberately left at the default: an import of unstated
-    # provenance is exactly what the conservative direction is for, and naming
-    # them here keeps them out of the unknown-source log.
-    "imported": SourceTier.FEED,
-    "csv_import": SourceTier.FEED,
 }
 
 # Two sets of `data_domains`. `network`/`authentication`/`endpoint` are the
@@ -103,6 +107,34 @@ _HUNT_TIERS: Dict[str, SourceTier] = {
     # The collapse already decided this source could not be vouched for, so it
     # takes the default rather than the tier of the domains around it.
     "undeclared": SourceTier.FEED,
+}
+
+# Known pipelines whose suffix is caller-chosen, so they cannot be enumerated
+# as exact keys. Matched by prefix purely to keep a recognised pipeline out of
+# the unknown-source log; the tier is the default either way, and reading a
+# stronger tier off a prefix anyone can mint is what this deliberately avoids.
+# Known names that take :data:`DEFAULT_TIER` deliberately rather than by
+# failing to match. One shape for all of them, so "we decided this is a feed"
+# never reads as "we forgot this one": the tier is the default either way, and
+# the only behavioural difference is that these do not log.
+#
+# Detonation is a real observation, but of an artifact rather than of our
+# estate, so two sandboxes agreeing is not two independent looks at it. The
+# ingest fallbacks stand in when a row declared no source of its own, which is
+# exactly the unstated provenance the conservative direction is for.
+_KNOWN_DEFAULTED: Set[str] = {
+    "cape-sandbox",
+    "joe-sandbox",
+    "imported",
+    "csv_import",
+}
+
+# The same idea where the name's suffix is caller-chosen and so cannot be
+# enumerated. Reading a stronger tier off a prefix anyone can mint is what this
+# deliberately avoids; matching at all just keeps a recognised pipeline out of
+# the unknown-source log.
+_KNOWN_DEFAULTED_PREFIXES: Set[str] = {
+    "kafka:",
 }
 
 _TIERS_BY_KIND: Dict[InvestigationKind, Dict[str, SourceTier]] = {
@@ -138,8 +170,10 @@ def resolve_source_tier(
     if name in _NOT_EVIDENCE:
         return SourceTier.NOT_EVIDENCE
 
-    if name in _SANDBOX:
-        return SourceTier.FEED
+    if name in _KNOWN_DEFAULTED or any(
+        name.startswith(prefix) for prefix in _KNOWN_DEFAULTED_PREFIXES
+    ):
+        return DEFAULT_TIER
 
     tier = _TIERS_BY_KIND[investigation_kind].get(name)
     if tier is None:
