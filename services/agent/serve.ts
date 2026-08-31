@@ -148,8 +148,17 @@ async function writeNarrative(state: State, runId: string, res: ServerResponse, 
   const opened = events[0];
   if (opened === undefined || opened.run_kind !== "hunt") return refuse(res, 404, `no hunt to write up: ${runId}`);
 
+  // Narrowed here, on the line that just established the kind, rather than inline at the
+  // call. Through unknown because TS will not relate the two -- the store is generic over
+  // kinds it never reads, holding every payload as JSON, so the parameter is a claim about
+  // these events and the check above is what makes it. projectionOf sidesteps this by
+  // dispatching through archFor(); registering narrate the same way is the typed fix, and
+  // is worth doing the moment a second run kind wants an account.
+  const hunt = state as unknown as State<HuntKinds>;
+  const written = events as readonly HuntEvent[];
+
   try {
-    const narrative = await narrateRun(state as unknown as State<HuntKinds>, runId, events as readonly HuntEvent[], build);
+    const narrative = await narrateRun(hunt, runId, written, build);
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(narrative));
   } catch (error) {

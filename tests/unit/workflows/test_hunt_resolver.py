@@ -297,7 +297,7 @@ class TestThePricingPreflight:
         assert workflows_router._pricing()["source"] == "unknown"
 
     def test_prices_the_families_a_deployment_actually_runs(self):
-        from core.llm.cost.pricing_router import _priced_as
+        from core.llm.cost.pricing_router import priced_as
         from core.llm.providers.registry import get_registry
 
         registry = get_registry()
@@ -310,7 +310,7 @@ class TestThePricingPreflight:
             "gemini-2.5-pro",
             "bedrock/claude-sonnet-4",
         ):
-            provider, bare = _priced_as("bifrost", model)
+            provider, bare = priced_as("bifrost", model)
             assert registry.get_pricing_source(bare, provider) != "unknown", model
             assert registry.get_cost_rates(bare, provider)[0] > 0, model
 
