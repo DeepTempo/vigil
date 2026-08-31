@@ -115,8 +115,9 @@ class Settings(BaseSettings):
     # this stays tri-state and each site supplies its own fallback.
     mempalace_daemon_enabled: Optional[bool] = None
 
-    # Database
-    database_url: Optional[str] = None
+    # Database. DATABASE_URL is not a field: Settings.extra is ignore so the
+    # agent and scripts/migrate_schema.py can keep it in the environment.
+    # Python sessions go through DatabaseConfig (encrypted DSN / POSTGRES_*).
     postgresql_connection_string: Optional[str] = None
     postgres_host: str = "localhost"
     postgres_port: int = 5432

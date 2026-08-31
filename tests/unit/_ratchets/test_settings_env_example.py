@@ -93,6 +93,9 @@ NOT_SETTINGS = {
     # Read by the TypeScript agent processes themselves, not by Settings.
     "AGENT_HEALTH_PORT",
     "AGENT_HTTP_PORT",
+    # Agent (services/agent/core/db.ts) and scripts/migrate_schema.py.
+    # Python DatabaseConfig reads the encrypted DSN / POSTGRES_* instead (#752).
+    "DATABASE_URL",
     # The agent worker's Redis parts. Python has no equivalent -- it reads
     # REDIS_URL, which is a Setting.
     "REDIS_HOST",

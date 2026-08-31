@@ -219,7 +219,12 @@ def _load_connection_string_secret() -> Optional[str]:
 
 class DatabaseConfig:
     def __init__(self, *, connection_string: Optional[str] = None):
-        """Initialize from the connection-string secret, else the environment."""
+        """Initialize from the encrypted-store DSN, else POSTGRES_*.
+
+        DATABASE_URL is not consulted — that is the TypeScript agent's
+        knob, and ``scripts/migrate_schema.py``. Inserting it as a third
+        source would break the ranking this class is built on.
+        """
         dsn = (
             connection_string
             if connection_string is not None
