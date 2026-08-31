@@ -159,7 +159,6 @@ def _splunk_event_to_finding(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "raw_event": event,
         "anomaly_score": 0.5,
         "mitre_predictions": {},
-        "embedding": [],
     }
 
 

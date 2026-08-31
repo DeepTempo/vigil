@@ -218,7 +218,6 @@ class IngestionService:
                 # Create finding in database
                 finding = self.db_service.create_finding(
                     finding_id=finding_id,
-                    embedding=finding_data.get('embedding', [0.0] * 768),
                     mitre_predictions=finding_data.get('mitre_predictions', {}),
                     anomaly_score=float(finding_data.get('anomaly_score', 0.0)),
                     timestamp=timestamp,
@@ -586,17 +585,6 @@ class IngestionService:
             import uuid
             finding_id = f"f-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
         
-        # Parse embedding if present (comma-separated floats)
-        embedding = []
-        if 'embedding' in row and row['embedding']:
-            try:
-                embedding = [float(x.strip()) for x in row['embedding'].split(',')]
-            except ValueError:
-                logger.warning(f"Invalid embedding format for {finding_id}, using empty")
-                embedding = [0.0] * 768
-        else:
-            embedding = [0.0] * 768
-        
         # Parse MITRE predictions (JSON string or comma-separated)
         mitre_predictions = {}
         if 'mitre_predictions' in row and row['mitre_predictions']:
@@ -621,7 +609,6 @@ class IngestionService:
         
         return {
             'finding_id': finding_id,
-            'embedding': embedding,
             'mitre_predictions': mitre_predictions,
             'anomaly_score': float(row.get('anomaly_score', 0.0)),
             'timestamp': row.get('timestamp', datetime.utcnow().isoformat()),
@@ -697,7 +684,6 @@ class IngestionService:
 
         return {
             'finding_id': finding_id,
-            'embedding': [0.0] * 768,
             'mitre_predictions': mitre_predictions,
             'anomaly_score': anomaly_score,
             'timestamp': event_ts.isoformat(),
@@ -840,13 +826,6 @@ class IngestionService:
         id_hash = hashlib.sha256(unique_key.encode()).hexdigest()[:ID_HASH_WIDTH]
         finding_id = f"f-{event_ts.strftime('%Y%m%d')}-{id_hash}"
 
-        # Embedding: stored as-is regardless of dimension
-        embedding = row.get('embedding')
-        if embedding is not None:
-            embedding = [float(v) for v in embedding]
-        else:
-            embedding = [0.0] * 768
-
         # MITRE predictions from logits (softmax) when available, else from argmax label
         mitre_predictions = {}
         mitre_logits = row.get('mitre_logits')
@@ -911,7 +890,6 @@ class IngestionService:
 
         return {
             'finding_id': finding_id,
-            'embedding': embedding,
             'mitre_predictions': mitre_predictions,
             'anomaly_score': anomaly_score,
             'timestamp': event_ts.isoformat(),
@@ -953,7 +931,6 @@ class IngestionService:
 
         return {
             'finding_id': finding_id,
-            'embedding': [0.0] * 768,
             'mitre_predictions': {},
             'anomaly_score': 0.0,
             'timestamp': event_ts.isoformat(),

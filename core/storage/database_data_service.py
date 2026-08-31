@@ -145,17 +145,9 @@ class DatabaseDataService:
         cluster_id: Optional[str] = None, min_anomaly_score: Optional[float] = None,
         status: Optional[str] = None, search_query: Optional[str] = None,
         sort_by: str = "timestamp", sort_order: str = "desc",
-        include_embedding: bool = True,
     ) -> List[Dict]:
-        # Callers that only render/aggregate findings pass include_embedding=False
-        # to drop the 768-float vector they never use.
-        def _strip(items: List[Dict]) -> List[Dict]:
-            if include_embedding:
-                return items
-            return [{k: v for k, v in f.items() if k != "embedding"} for f in items]
-
         if self._demo_mode and self._demo_service:
-            return _strip(self._demo_service.get_findings(limit))
+            return self._demo_service.get_findings(limit)
         if self._db_available:
             try:
                 findings = self._db_service.get_findings(
@@ -165,9 +157,7 @@ class DatabaseDataService:
                     limit=limit, offset=offset,
                     sort_by=sort_by, sort_order=sort_order,
                 )
-                if include_embedding:
-                    return FindingSchema.dump_many(findings)
-                return FindingSchema.dump_many_summary(findings)
+                return FindingSchema.dump_many(findings)
             except Exception as e:
                 logger.error(f"Error getting findings from DB: {e}")
                 return []
@@ -273,7 +263,6 @@ class DatabaseDataService:
             try:
                 finding = self._db_service.create_finding(
                     finding_id=finding_data.get('finding_id'),
-                    embedding=finding_data.get('embedding', [0.0] * 768),
                     mitre_predictions=finding_data.get('mitre_predictions', {}),
                     anomaly_score=float(finding_data.get('anomaly_score', 0.0)),
                     timestamp=finding_data.get('timestamp', datetime.utcnow()),
@@ -653,7 +642,6 @@ class DatabaseDataService:
                                 # Create new finding
                                 self._db_service.create_finding(
                                     finding_id=finding.get('finding_id'),
-                                    embedding=finding.get('embedding', [0.0] * 768),
                                     mitre_predictions=finding.get('mitre_predictions', {}),
                                     anomaly_score=float(finding.get('anomaly_score', 0.0)),
                                     timestamp=finding.get('timestamp', datetime.utcnow()),

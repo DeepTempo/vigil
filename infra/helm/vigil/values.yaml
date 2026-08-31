@@ -409,6 +409,7 @@ dbInit:
     - 20_agent_directives.sql
     - 21_agent_run_leases.sql
     - 22_workflow_run_deleted.sql
+    - 23_drop_finding_embedding.sql
   resources:
     requests:
       cpu: 50m

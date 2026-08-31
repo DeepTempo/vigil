@@ -72,9 +72,6 @@ def get_findings(
         cluster_id=cluster_id_str, min_anomaly_score=min_anomaly_score,
         status=status, search_query=search,
         sort_by=sort_by, sort_order=sort_order,
-        # The list view never uses the 768-float embedding — omit it so a
-        # 1000-row page (polled every 10s) isn't several MB of vectors.
-        include_embedding=False,
     )
 
     return {
@@ -113,7 +110,7 @@ def get_findings_summary():
     Returns:
         Summary statistics
     """
-    findings = data_service.get_findings(include_embedding=False)
+    findings = data_service.get_findings()
 
     # Calculate statistics
     severity_counts = {}

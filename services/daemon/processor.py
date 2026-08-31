@@ -412,10 +412,10 @@ class FindingProcessor:
 
     async def _update_finding(self, finding: Dict[str, Any]):
         """Persist only what triage/enrich produced — severity, status, and the
-        cached AI analysis. Never write the whole finding back: the in-memory copy
-        still carries the raw, un-normalized embedding, and re-sending it to the
-        vector(768) column fails for non-768 sources (e.g. LogLM's 512), which
-        would silently drop the triage result."""
+        cached AI analysis. This is a targeted partial update: the in-memory copy
+        carries transient, source-derived keys (raw_event, entity context, etc.)
+        that shouldn't be written back over the stored row, so only the
+        whitelisted fields are sent."""
         finding_id = finding.get("finding_id")
         if not finding_id or not self._data_service:
             return

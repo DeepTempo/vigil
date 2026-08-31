@@ -8,7 +8,6 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
     Boolean,
@@ -27,10 +26,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
-# Fixed width for the findings vector column; sources of other dimensions
-# (LogLM 512) are zero-padded/truncated to this before storage.
-EMBEDDING_DIM = 768
 
 
 class Base(DeclarativeBase):
@@ -65,9 +60,6 @@ class Finding(Base):
     # Primary key
     finding_id: Mapped[str] = mapped_column(String(50), primary_key=True)
 
-    embedding: Mapped[List[float]] = mapped_column(
-        Vector(EMBEDDING_DIM), nullable=False
-    )
     mitre_predictions: Mapped[dict] = mapped_column(JSONB, nullable=False)
     anomaly_score: Mapped[float] = mapped_column(Float, nullable=False)
 
@@ -120,13 +112,6 @@ class Finding(Base):
         Index("idx_finding_data_source", "data_source"),
         Index("idx_finding_cluster_id", "cluster_id"),
         Index("idx_finding_anomaly_score", "anomaly_score"),
-        # HNSW ANN index for embedding cosine similarity (see find_similar_findings).
-        Index(
-            "idx_finding_embedding_hnsw",
-            "embedding",
-            postgresql_using="hnsw",
-            postgresql_ops={"embedding": "vector_cosine_ops"},
-        ),
         Index(
             "idx_finding_description",
             "description",

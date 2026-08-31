@@ -13,26 +13,12 @@ from core.storage.models import (
     Case,
     Finding,
     AIDecisionLog,
-    EMBEDDING_DIM,
 )
 from core.storage.connection import get_db_manager
 from core.storage.case_repository import CaseRepository
 from core.storage.schemas import FindingSchema
 
 logger = logging.getLogger(__name__)
-
-
-def _normalize_embedding(embedding: Optional[List[float]]) -> List[float]:
-    """Zero-pad/truncate an embedding to the fixed ``EMBEDDING_DIM`` width
-    (sources vary: LogLM 512, deeptempo 768); missing → all-zero vector."""
-    if not embedding:
-        return [0.0] * EMBEDDING_DIM
-    vec = [float(x) for x in embedding]
-    if len(vec) < EMBEDDING_DIM:
-        return vec + [0.0] * (EMBEDDING_DIM - len(vec))
-    if len(vec) > EMBEDDING_DIM:
-        return vec[:EMBEDDING_DIM]
-    return vec
 
 
 class DatabaseService:
@@ -47,7 +33,6 @@ class DatabaseService:
     def create_finding(
         self,
         finding_id: str,
-        embedding: List[float],
         mitre_predictions: dict,
         anomaly_score: float,
         timestamp: datetime,
@@ -56,10 +41,9 @@ class DatabaseService:
     ) -> Optional[Finding]:
         """
         Create a new finding.
-        
+
         Args:
             finding_id: Unique finding ID
-            embedding: embedding vector (padded/truncated to EMBEDDING_DIM)
             mitre_predictions: MITRE ATT&CK predictions
             anomaly_score: Anomaly score (0-1)
             timestamp: Finding timestamp
@@ -73,7 +57,6 @@ class DatabaseService:
             with self.db_manager.session_scope() as session:
                 finding = Finding(
                     finding_id=finding_id,
-                    embedding=_normalize_embedding(embedding),
                     mitre_predictions=mitre_predictions,
                     anomaly_score=anomaly_score,
                     timestamp=timestamp,
@@ -115,7 +98,6 @@ class DatabaseService:
                     r = by_id[finding_id]
                     session.add(Finding(
                         finding_id=finding_id,
-                        embedding=_normalize_embedding(r.get('embedding')),
                         mitre_predictions=r.get('mitre_predictions') or {},
                         anomaly_score=r.get('anomaly_score', 0.0),
                         timestamp=r['timestamp'],
@@ -239,54 +221,6 @@ class DatabaseService:
             logger.error(f"Error getting findings: {e}")
             return []
     
-    def find_similar_findings(
-        self,
-        finding_id: str,
-        limit: int = 10,
-        same_source: bool = False,
-    ) -> Optional[List[Dict[str, Any]]]:
-        """Findings most similar to ``finding_id`` by cosine distance, via the
-        pgvector ``<=>`` operator (HNSW-backed) instead of a Python scan. Returns
-        ``None`` when the query can't run (e.g. pgvector unavailable) so the caller
-        can fall back. ``same_source`` restricts to the seed's own data_source,
-        avoiding comparison across distinct embedding model spaces."""
-        try:
-            with self.db_manager.session_scope() as session:
-                seed = session.get(Finding, finding_id)
-                if seed is None or seed.embedding is None:
-                    return []
-                distance = Finding.embedding.cosine_distance(seed.embedding)
-                query = select(Finding, distance.label("distance")).where(
-                    Finding.finding_id != finding_id
-                )
-                if same_source and seed.data_source:
-                    query = query.where(Finding.data_source == seed.data_source)
-                query = query.order_by(distance).limit(limit)
-
-                neighbors: List[Dict[str, Any]] = []
-                for finding, dist in session.execute(query).all():
-                    # pgvector cosine distance is in [0, 2]; similarity = 1 - d
-                    similarity = 1.0 - float(dist) if dist is not None else None
-                    neighbors.append(
-                        {
-                            "finding_id": finding.finding_id,
-                            "similarity": (
-                                round(similarity, 4) if similarity is not None else None
-                            ),
-                            "cluster_id": finding.cluster_id,
-                            "severity": finding.severity,
-                            "data_source": finding.data_source,
-                            "anomaly_score": float(finding.anomaly_score or 0),
-                        }
-                    )
-                return neighbors
-        except Exception as e:
-            logger.warning(
-                f"pgvector similarity query failed for {finding_id}, "
-                f"caller should fall back: {e}"
-            )
-            return None
-
     def get_findings_missing_enrichment(
         self, limit: int = 100, max_age_hours: Optional[int] = None
     ) -> List[Dict[str, Any]]:

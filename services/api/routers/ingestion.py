@@ -205,7 +205,6 @@ async def get_supported_formats():
                     "findings": [
                         {
                             "finding_id": "f-20260114-abc123",
-                            "embedding": [0.1, 0.2, "...768 values"],
                             "mitre_predictions": {"T1071.001": 0.85},
                             "anomaly_score": 0.75,
                             "timestamp": "2026-01-14T10:00:00Z",
@@ -243,7 +242,6 @@ async def get_supported_formats():
                     "severity",
                     "status",
                     "cluster_id",
-                    "embedding (comma-separated floats)",
                     "mitre_predictions (JSON string or technique:score pairs)",
                     "entity_context (JSON string)"
                 ],
@@ -264,7 +262,6 @@ async def get_supported_formats():
                 "description": "Supported parquet files. Columns are auto-mapped to findings when the schema is recognized.",
                 "expected_columns": [
                     "sequence_id (-> finding_id)",
-                    "embedding (variable-dimension float vector)",
                     "mitre_pred (integer class label -> mitre_predictions)",
                     "focal_ip (-> entity_context.src_ip)",
                     "engaged_ip (-> entity_context.dst_ip)",
@@ -276,14 +273,13 @@ async def get_supported_formats():
             }
         },
         "data_types": {
-            "finding": "Security findings with embeddings and MITRE predictions",
+            "finding": "Security findings with MITRE predictions",
             "case": "Investigation cases grouping related findings"
         },
         "notes": [
             "finding_id and case_id are auto-generated if not provided",
             "Duplicate IDs are automatically skipped",
             "All data is stored in PostgreSQL when available, falls back to JSON files",
-            "Embeddings default to 768-dimensional zero vector if not provided",
             "Timestamps are parsed from various formats or default to current time"
         ]
     }
@@ -304,7 +300,7 @@ async def get_csv_template(data_type: str):
         return {
             "template": "finding_id,anomaly_score,timestamp,data_source,severity,status,cluster_id,mitre_predictions,entity_context\n" +
                        "f-20260114-example,0.85,2026-01-14T10:00:00Z,flow,high,new,c-beaconing-001,\"{\"\"T1071.001\"\": 0.85}\",\"{\"\"src_ip\"\": \"\"192.168.1.100\"\"}\"\n",
-            "description": "CSV template for findings. Note: embedding column omitted for brevity (768 values)"
+            "description": "CSV template for findings"
         }
     elif data_type == 'case':
         return {

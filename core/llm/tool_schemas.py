@@ -189,7 +189,7 @@ DEEPTEMPO_FINDING_TOOLS = [
     },
     {
         "name": "get_finding",
-        "description": "Get detailed information about a specific finding by ID. Returns full finding details including predicted techniques, embeddings, and related context.",
+        "description": "Get detailed information about a specific finding by ID. Returns full finding details including predicted techniques and related context.",
         "input_schema": {
             "type": "object",
             "properties": {
