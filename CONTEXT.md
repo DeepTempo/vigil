@@ -264,6 +264,14 @@ run-scoped concept, distinct from **Source Evidence**, which attaches to a
 Finding.
 _Avoid_: finding, result, observation
 
+**Visibility Gap**:
+Something a run could not see because a tool timed out or was unavailable —
+recorded so an absence of evidence is not read as evidence of absence. A refusal
+or a bad argument is a defect and must never be recorded as one
+(`services/agent/contracts/tool.ts`). Distinct from a **Declared Gap**, which is
+a question nobody gathered evidence for rather than a lookup that failed.
+_Avoid_: declared gap, error, failure, unknown
+
 **Digest**:
 The bounded view of a Projection presented to the lead for a single decision:
 recent Evidence, entities seen, open questions. Its sampling is seeded from the
