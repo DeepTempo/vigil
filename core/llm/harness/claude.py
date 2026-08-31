@@ -1,4 +1,4 @@
-"""Claude API service for Anthropic integration with Agent SDK support."""
+"""Claude API service for Anthropic integration."""
 
 import json
 import logging
@@ -81,7 +81,7 @@ from core.integrations.mcp.registry import MCPRegistry  # noqa: E402
 
 
 class ClaudeService:
-    """Service for interacting with Claude API with Agent SDK support."""
+    """Service for interacting with Claude API."""
 
     SERVICE_NAME = "deeptempo-ai-soc"
     API_KEY_NAME = "claude_api_key"
@@ -960,5 +960,3 @@ Provide only the JSON, no additional text."""
         except Exception as e:
             logger.error(f"Error generating event analysis: {e}")
             raise
-
-    # Agent SDK Methods

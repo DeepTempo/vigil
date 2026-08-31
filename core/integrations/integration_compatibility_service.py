@@ -150,14 +150,6 @@ class IntegrationCompatibilityService:
                 "display_name": "PostgreSQL",
                 "category": "Data Storage",
             },
-            # Core
-            "claude-agent-sdk": {
-                "package": "claude-agent-sdk",
-                "min_version": "0.1.0",
-                "display_name": "Claude Agent SDK",
-                "category": "Core",
-                "python_min_version": "3.10",
-            },
         }
 
     def check_package_installed(self, package_name: str) -> Tuple[bool, Optional[str]]:

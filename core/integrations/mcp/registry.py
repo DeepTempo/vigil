@@ -95,29 +95,6 @@ class MCPRegistry:
         """Get all tool names (server-prefixed) from active servers."""
         return [t["name"] for t in self.get_all_tools()]
 
-    def get_agent_sdk_configs(self) -> List[Dict]:
-        """
-        Get MCP server configurations formatted for Agent SDK's
-        ClaudeAgentOptions.mcp_servers parameter.
-
-        Returns:
-            List of MCP server config dicts with name, command, args, env.
-        """
-        configs = []
-        for name in self.get_active_servers():
-            server_info = self._servers.get(name, {})
-            config = server_info.get("config", {})
-            if config.get("command"):
-                configs.append(
-                    {
-                        "name": name,
-                        "command": config["command"],
-                        "args": config.get("args", []),
-                        "env": config.get("env", {}),
-                    }
-                )
-        return configs
-
     def get_summary(self) -> Dict[str, Any]:
         """Get a summary of the registry state."""
         return {
