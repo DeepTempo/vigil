@@ -95,7 +95,7 @@ redis>=5.0.0
 bullmq==2.15.0
 
 # Kafka ingestion (optional; only used when KAFKA_ENABLED=true)
-aiokafka>=0.10.0
+aiokafka>=0.14.0
 
 # STIX/TAXII threat-intel feed ingestion (optional; only used when the
 # Cloudforce One integration is enabled). Imports are lazy in
