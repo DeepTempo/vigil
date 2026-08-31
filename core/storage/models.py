@@ -6,12 +6,14 @@ Defines the database schema for cases, findings, and related entities.
 
 import uuid
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Iterable, List, Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
+    BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Float,
@@ -25,7 +27,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -2294,4 +2296,254 @@ class ChatMessage(Base):
     __table_args__ = (
         UniqueConstraint("conversation_id", "seq", name="uq_chat_messages_conv_seq"),
         Index("idx_chat_messages_conversation", "conversation_id"),
+    )
+
+
+# --- Episodic memory (#731) ------------------------------------------------
+#
+# The vocabularies below are imported, not restated: `core/memory/recall_contract.py`
+# declares them and `services/agent/contracts/memory.ts` mirrors it under a ratchet,
+# so a value added there reaches these constraints without a second edit.
+from core.memory.recall_contract import (  # noqa: E402
+    GapDisposition,
+    InvestigationKind,
+    Stance,
+    Trust,
+    VerdictOutcome,
+    WindowSource,
+)
+from core.memory.source_tier import SourceTier  # noqa: E402
+
+#
+# What investigations saw and what they concluded, joined on entity keys.
+# Everything is keyed by investigation_kind + investigation_id and never by
+# run_id: a run-keyed schema cannot represent the Case-authored Verdicts that
+# follow, which have a Case behind them and no run at all.
+#
+# No column is nullable. An empty list means known-to-be-none, and there is no
+# unknown state to represent. The DDL these mirror is
+# infra/database/init/22_episodic_memory.sql.
+
+def _one_of(column: str, values: Iterable[str], name: str) -> CheckConstraint:
+    """A CHECK spelling out a vocabulary the contract already declares.
+
+    Built from the enum rather than restated, so a value added to the contract
+    cannot be enforced here in an older spelling.
+    """
+    allowed = ", ".join(f"'{value}'" for value in values)
+    return CheckConstraint(f"{column} IN ({allowed})", name=name)
+
+
+def _kind_check(name: str) -> CheckConstraint:
+    return _one_of("investigation_kind", _values(InvestigationKind), name)
+
+
+def _values(enum: type) -> List[str]:
+    return [member.value for member in enum]
+
+
+class EpisodicSighting(Base):
+    """What an investigation observed: one row per entity, investigation and source.
+
+    Never one row per evidence record — growth tracks investigations, not
+    telemetry volume, so a hunt that saw one address ten thousand times in one
+    system writes one row carrying a hit count.
+    """
+
+    __tablename__ = "episodic_sightings"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # ``type:value``, normalised by Python. Only Python writes an Entity Key;
+    # the harness's extractor output arrives as a candidate type and value.
+    entity_key: Mapped[str] = mapped_column(Text, nullable=False)
+    investigation_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    investigation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # Memory's own column, not a foreign key into either producer: a hunt fills
+    # it from the Ledger's source_system, a Case from its Findings' data_source.
+    source_system: Mapped[str] = mapped_column(Text, nullable=False)
+    hit_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    attacker_influenceable: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # When the investigation concluded, not when the row was written: the Distil
+    # polls, so one that ended Monday can be written Wednesday carrying Monday.
+    concluded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "entity_key",
+            "investigation_kind",
+            "investigation_id",
+            "source_system",
+            name="episodic_sightings_unique",
+        ),
+        _kind_check("episodic_sightings_kind"),
+        CheckConstraint("hit_count > 0", name="episodic_sightings_hits"),
+        CheckConstraint("first_seen <= last_seen", name="episodic_sightings_window"),
+        # The recall join and the order it reads in. Ties break on the primary
+        # key: a LIMIT over a partial order lets Postgres return a different set
+        # on identical data, which surfaces as a replay diff rather than an error.
+        Index("idx_episodic_sightings_recall", "entity_key", text("concluded_at DESC"), "id"),
+        Index("idx_episodic_sightings_investigation", "investigation_kind", "investigation_id"),
+    )
+
+
+class EpisodicVerdict(Base):
+    """What an investigation concluded, one row per Hypothesis."""
+
+    __tablename__ = "episodic_verdicts"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    investigation_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    investigation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # Stable, because the prose gets re-worded. A Case's is its case id.
+    hypothesis_id: Mapped[str] = mapped_column(Text, nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Reaches no ranking function: confident-sounding model text must not move a
+    # priority (ADR 0015). Carried for a human reading the run back.
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    # The entities the Hypothesis named, typically one to three — not the 38 to
+    # 76 its evidence touched, which stay reachable through Sightings (ADR 0016).
+    # Empty is legitimate: "is there any lateral movement at all" names none.
+    subject_entities: Mapped[List[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("ARRAY[]::text[]")
+    )
+    attacker_influenceable_only: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # Who concluded, as distinct from what the source is.
+    trust: Mapped[str] = mapped_column(String(16), nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # A retrospective sweep over old archives asserts its window rather than
+    # observing it, and ranking discounts the weaker one.
+    window_source: Mapped[str] = mapped_column(String(16), nullable=False)
+    concluded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "investigation_kind",
+            "investigation_id",
+            "hypothesis_id",
+            name="episodic_verdicts_unique",
+        ),
+        _kind_check("episodic_verdicts_kind"),
+        _one_of("outcome", _values(VerdictOutcome), "episodic_verdicts_outcome"),
+        _one_of("trust", _values(Trust), "episodic_verdicts_trust"),
+        _one_of("window_source", _values(WindowSource), "episodic_verdicts_window_source"),
+        CheckConstraint("first_seen <= last_seen", name="episodic_verdicts_window"),
+        # Recall joins Verdicts on the subject array rather than a key column.
+        Index(
+            "idx_episodic_verdicts_subjects",
+            "subject_entities",
+            postgresql_using="gin",
+        ),
+        Index("idx_episodic_verdicts_recall", text("concluded_at DESC"), "id"),
+        Index("idx_episodic_verdicts_investigation", "investigation_kind", "investigation_id"),
+    )
+
+
+class EpisodicVerdictSource(Base):
+    """One row per Verdict and source, carrying direction.
+
+    Replaces a flat corroborated list, which cannot say that a source argued
+    against the claim.
+    """
+
+    __tablename__ = "episodic_verdict_sources"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    verdict_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("episodic_verdicts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_system: Mapped[str] = mapped_column(Text, nullable=False)
+    stance: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Stamped at write time and never joined at read time: an integration removed
+    # or recategorised later must not retroactively change how a past Verdict was
+    # corroborated. ``not_evidence`` here is a defect rather than a weak row, and
+    # is representable so that it is visible.
+    source_tier: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("verdict_id", "source_system", name="episodic_verdict_sources_unique"),
+        _one_of("stance", _values(Stance), "episodic_verdict_sources_stance"),
+        _one_of("source_tier", _values(SourceTier), "episodic_verdict_sources_tier"),
+    )
+
+
+class EpisodicGap(Base):
+    """A question an investigation never gathered evidence for.
+
+    No activity window, which is the reason these are not Verdict rows carrying
+    an empty outcome.
+    """
+
+    __tablename__ = "episodic_gaps"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    investigation_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    investigation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    hypothesis_id: Mapped[str] = mapped_column(Text, nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    disposition: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    subject_entities: Mapped[List[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default=text("ARRAY[]::text[]")
+    )
+    concluded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "investigation_kind",
+            "investigation_id",
+            "hypothesis_id",
+            name="episodic_gaps_unique",
+        ),
+        _kind_check("episodic_gaps_kind"),
+        _one_of("disposition", _values(GapDisposition), "episodic_gaps_disposition"),
+        Index("idx_episodic_gaps_subjects", "subject_entities", postgresql_using="gin"),
+        Index("idx_episodic_gaps_recall", text("concluded_at DESC"), "id"),
+        Index("idx_episodic_gaps_investigation", "investigation_kind", "investigation_id"),
+    )
+
+
+class EpisodicDistilMarker(Base):
+    """The only record that an investigation was processed.
+
+    Deliberately not derived from the presence of rows: an investigation that
+    concluded nothing writes no Sightings, no Verdicts and no Gaps, and is still
+    done. Written in the same transaction as the rows.
+    """
+
+    __tablename__ = "episodic_distil_markers"
+
+    investigation_kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    investigation_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    # Where it came from, so a marker can be traced back to a ledger.
+    origin_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    # The seq of the terminal this was derived from. A hunt that resumed past its
+    # own terminal appends a second one to the same run, and comparing seq is what
+    # makes the later conclusions re-derive instead of being skipped as a run
+    # already seen.
+    origin_seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Bumped when the mapping changes. Re-deriving is delete-then-insert, so a
+    # bump that now yields fewer rows leaves none of the old ones behind.
+    distil_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Set, never incremented: a count that drifts from its rows is worse than no
+    # count, because it reads as authoritative.
+    sightings_written: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    verdicts_written: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    gaps_written: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    concluded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    distilled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        _kind_check("episodic_distil_markers_kind"),
+        CheckConstraint("sightings_written >= 0", name="episodic_markers_sightings"),
+        CheckConstraint("verdicts_written >= 0", name="episodic_markers_verdicts"),
+        CheckConstraint("gaps_written >= 0", name="episodic_markers_gaps"),
+        Index("idx_episodic_markers_origin", "origin_run_id"),
     )

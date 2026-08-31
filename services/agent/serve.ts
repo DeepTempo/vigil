@@ -16,6 +16,8 @@ import { harnessFor, type HarnessFactory } from "./harness.js";
 const CHAT = "/chat/stream";
 // GET /runs/<id>/projection -- what a supervisor outside this process reads.
 const PROJECTION = /^\/runs\/([0-9a-fA-F-]{36})\/projection$/;
+// GET /runs/<id>/distil -- what episodic memory reads once the run has ended.
+const DISTIL = /^\/runs\/([0-9a-fA-F-]{36})\/distil$/;
 // A conversation is prose and a config, not an upload. Anything larger is a
 // mistake or an attack, and either way it is refused before it is parsed.
 const MAX_BODY = 1_000_000;
@@ -118,22 +120,26 @@ function refuse(res: ServerResponse, status: number, detail: string): void {
   res.end(JSON.stringify({ detail }));
 }
 
-// A run folded by the workflow that owns it. The events stay ours: a supervisor
-// reads what the run decided, never how it was written down.
-export async function projectionOf(state: State, runId: string): Promise<unknown | null> {
+// A run folded by the workflow that owns it. The events stay ours: a reader gets
+// what the run decided or what it saw, never how either was written down.
+async function foldedBy(state: State, runId: string, view: "projection" | "distil"): Promise<unknown | null> {
   const events = await state.read(runId);
   const opened = events[0];
   if (opened === undefined || !registeredKinds().includes(opened.run_kind)) return null;
 
-  const project = archFor(opened.run_kind).projection;
+  const project = archFor(opened.run_kind)[view];
   return project === undefined ? null : project(runId, events);
 }
 
-async function readProjection(state: State, runId: string, res: ServerResponse): Promise<void> {
-  const projection = await projectionOf(state, runId);
-  if (projection === null) return refuse(res, 404, `no readable run: ${runId}`);
+export async function projectionOf(state: State, runId: string): Promise<unknown | null> {
+  return foldedBy(state, runId, "projection");
+}
+
+async function readFold(state: State, runId: string, view: "projection" | "distil", res: ServerResponse): Promise<void> {
+  const folded = await foldedBy(state, runId, view);
+  if (folded === null) return refuse(res, 404, `no readable run: ${runId}`);
   res.writeHead(200, { "content-type": "application/json" });
-  res.end(JSON.stringify(projection));
+  res.end(JSON.stringify(folded));
 }
 
 async function openChat(state: State, req: IncomingMessage, res: ServerResponse, build: HarnessFactory): Promise<void> {
@@ -165,7 +171,10 @@ export function chatServer(state: State, ready: Ready, build: HarnessFactory = h
       if (req.method === "POST" && url === CHAT) return openChat(state, req, res, build);
 
       const run = req.method === "GET" ? PROJECTION.exec(url) : null;
-      if (run !== null) return readProjection(state, run[1] as string, res);
+      if (run !== null) return readFold(state, run[1] as string, "projection", res);
+
+      const distilled = req.method === "GET" ? DISTIL.exec(url) : null;
+      if (distilled !== null) return readFold(state, distilled[1] as string, "distil", res);
 
       return refuse(res, 404, `no such route: ${req.method} ${url}`);
     })();
