@@ -221,10 +221,9 @@ class DatabaseConfig:
     def __init__(self, *, connection_string: Optional[str] = None):
         """Initialize from the encrypted-store DSN, else POSTGRES_*.
 
-        DATABASE_URL is not consulted. The TypeScript agent and
-        ``scripts/migrate_schema.py`` read it; ranking an env DSN here would
-        let the MCP default in ``services/api/main.py`` pin an operator's
-        target to localhost. See ``_load_connection_string_secret``.
+        DATABASE_URL is not consulted — that is the TypeScript agent's
+        knob, and ``scripts/migrate_schema.py``. Inserting it as a third
+        source would break the ranking this class is built on.
         """
         dsn = (
             connection_string
