@@ -66,6 +66,7 @@ class Base(DeclarativeBase):
                 )
             setattr(self, key, value)
 
+
 # Association table for case-finding many-to-many relationship
 case_findings = Table(
     "case_findings",

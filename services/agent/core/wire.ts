@@ -25,11 +25,8 @@ type Body = Omit<OpenAI.Chat.ChatCompletionCreateParams, "stream" | "stream_opti
 // refusal is a property of the schema as much as of the provider.
 const emitModes = new Map<string, "schema" | "tool" | "prompt">();
 
-// A worker process outlives every run it serves, and assembleSpec bakes this run's
-// data_domains, attack_techniques and worker ids into the schemas it hands out -- so
-// the keys are per-run, not per-arch, and an unbounded map is a leak that holds a
-// serialized schema per entry. Oldest out first: what a gateway refuses is a property
-// of the deployment, so a re-learned mode costs one downgrade, not a wrong answer.
+// assembleSpec bakes each run's domains, techniques and worker ids into the schema, so
+// these keys are per-run in a process that outlives every run. Re-learning costs one call.
 const REMEMBERED_MODES = 256;
 
 function rememberMode(key: string, mode: "schema" | "tool" | "prompt"): void {
@@ -65,10 +62,8 @@ export function resetEmitMode(): void {
   emitModes.clear();
 }
 
-// Every rung of the emission ladder is a billed call, and all but the one that lands
-// are discarded for being the wrong shape. Summed onto whichever turn wins, because
-// stream() reports usage once: what is not carried there was spent and never counted,
-// and the cost ceiling is the only thing governing the run.
+// stream() reports usage once, but emit() discards every rung that carried the wrong
+// shape. Summed onto the turn that wins, or a billed call governs nothing.
 interface Tally {
   count(turn: Turn): Turn;
 }
@@ -159,10 +154,8 @@ class OpenAiSurface implements Provider {
     );
   }
 
-  // The emission carried by a forced tool call, or null when this wire cannot carry it
-  // here -- the gateway refused, or the model answered with something else. The tally is
-  // the caller's: an attempt that answers null was still billed, and the prompted rung
-  // behind it has to report what this one spent.
+  // The emission carried by a forced tool call, or null when this wire cannot carry it.
+  // The tally is the caller's: an attempt that answers null was still billed.
   private async viaTool(
     messages: OpenAI.Chat.ChatCompletionMessageParam[],
     schema: Record<string, unknown>,

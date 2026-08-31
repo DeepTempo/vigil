@@ -525,10 +525,8 @@ export class HuntController {
     return { ...DEFAULT_CHECKPOINTS, ...(this.ledger.projection.hunt.spec.checkpoints ?? {}) };
   }
 
-  // This run's fan-out, for the reason budgetsOf derives max_calls from it rather than
-  // from the shipped constant: an arch with more workers costs more calls per turn, and
-  // an extension priced at the constant would hand a wide run a ceiling below the one it
-  // is already running under. Falls back for a ledger written before either was journaled.
+  // This run's fan-out, as budgetsOf used at start: priced at the shipped constant, an
+  // extension would hand a wide arch a ceiling below the one it is already running under.
   private get callsPerTurn(): number {
     const spec = this.ledger.projection.hunt.spec;
     const workers = spec.dispatch?.max_workers;
