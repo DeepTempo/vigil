@@ -1,9 +1,12 @@
 # DEV_MODE=true before any test module imports: API tests import routers at module
 # load, and auth_service raises at import time without DEV_MODE or JWT_SECRET_KEY.
+# VIGIL_DISABLE_DOTENV likewise: import-time get_settings() captures run during
+# collection, before the autouse fixture can neutralize env_file.
 
 import os
 
 os.environ.setdefault("DEV_MODE", "true")
+os.environ["VIGIL_DISABLE_DOTENV"] = "1"
 
 import pytest  # noqa: E402
 

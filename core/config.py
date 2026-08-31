@@ -80,11 +80,20 @@ def state_dir_status() -> dict:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _settings_env_file() -> Optional[Path]:
+    # Tests set this before collection so import-time get_settings() captures
+    # do not read a developer's root .env. os.environ, not Settings: resolved
+    # while Settings is being defined, like VIGIL_DIR.
+    if os.environ.get("VIGIL_DISABLE_DOTENV"):  # noqa: ENV001 - pre-Settings bootstrap
+        return None
+    return REPO_ROOT / ".env"
+
+
 class Settings(BaseSettings):
     # Anchored to the repo so the same .env loads regardless of working directory.
     # Real env vars still win, keeping container and Helm injection authoritative.
     model_config = SettingsConfigDict(
-        env_file=REPO_ROOT / ".env",
+        env_file=_settings_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
