@@ -95,6 +95,7 @@ async def test_dispatch_bifrost_for_ollama():
     assert kwargs["model"] == "ollama/llama3.1:8b"
     assert kwargs["messages"][0] == {"role": "system", "content": "be terse"}
     assert kwargs["messages"][1] == {"role": "user", "content": "hi"}
+    assert kwargs["reasoning_effort"] == "none"
 
     assert out["path"] == "bifrost"
     assert out["provider"] == "ollama"
@@ -103,6 +104,31 @@ async def test_dispatch_bifrost_for_ollama():
     assert out["output_tokens"] == 7
     # The OpenAI-format dispatcher must close its client (no httpx pool leak).
     mock_client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_bifrost_maps_enabled_ollama_thinking_to_reasoning_effort():
+    router = LLMRouter(bifrost_url="http://test-bifrost:8080")
+    fake_resp = SimpleNamespace(
+        choices=[
+            SimpleNamespace(message=SimpleNamespace(content="done", tool_calls=None))
+        ],
+        model="ollama/llama3.1:8b",
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+    )
+    mock_client = MagicMock()
+    mock_client.close = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=fake_resp)
+
+    with patch("openai.AsyncOpenAI", return_value=mock_client):
+        await router.dispatch(
+            provider=_ollama_spec(),
+            messages=[{"role": "user", "content": "think"}],
+            enable_thinking=True,
+        )
+
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["reasoning_effort"] == "medium"
 
 
 @pytest.mark.asyncio
@@ -240,6 +266,8 @@ async def test_dispatch_bifrost_openai_no_cache_details_safe():
             provider=_openai_spec(),
             messages=[{"role": "user", "content": "hi"}],
         )
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert "reasoning_effort" not in kwargs
     assert out["cache_read_tokens"] == 0
     assert out["cache_creation_tokens"] == 0
 
@@ -631,6 +659,7 @@ async def test_dispatch_openai_stream_yields_text_and_skips_empty():
     assert oai_ctor.call_args.kwargs["base_url"] == "http://test-bifrost:8080/v1"
     kwargs = mock_client.chat.completions.create.call_args.kwargs
     assert kwargs["stream"] is True
+    assert kwargs["reasoning_effort"] == "none"
     # model is provider-prefixed so Bifrost routes to the right backend
     assert kwargs["model"] == "ollama/llama3.1:8b"
     assert kwargs["messages"][0] == {"role": "system", "content": "be terse"}
@@ -652,12 +681,14 @@ async def test_stream_openai_raw_include_usage_sets_stream_options():
                 provider=_ollama_spec(),
                 messages=[{"role": "user", "content": "hi"}],
                 include_usage=True,
+                enable_thinking=True,
             )
         ]
 
     kwargs = mock_client.chat.completions.create.call_args.kwargs
     assert kwargs["stream"] is True
     assert kwargs["stream_options"] == {"include_usage": True}
+    assert kwargs["reasoning_effort"] == "medium"
     mock_client.close.assert_awaited_once()
 
 
