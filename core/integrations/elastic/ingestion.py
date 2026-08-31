@@ -9,9 +9,10 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from core.config import get_integration_config
 from core.ingestion.siem_ingestion_service import SIEMIngestionService
 from core.integrations.elastic.client import ElasticService
-from core.config import get_integration_config
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,9 @@ class ElasticIngestion(SIEMIngestionService):
         try:
             host = self.config.get("elasticsearch_url")
             if not host:
-                logger.error("Elastic configuration incomplete: missing elasticsearch_url")
+                logger.error(
+                    "Elastic configuration incomplete: missing elasticsearch_url"
+                )
                 return None
 
             self._elastic_service = ElasticService(
@@ -63,7 +66,7 @@ class ElasticIngestion(SIEMIngestionService):
                 return []
 
             if not start_time:
-                start_time = datetime.utcnow() - timedelta(hours=24)
+                start_time = utcnow() - timedelta(hours=24)
 
             time_filter: Dict[str, Any] = {
                 "bool": {
@@ -84,9 +87,7 @@ class ElasticIngestion(SIEMIngestionService):
                 }
             }
 
-            result = await svc.fetch_detection_alerts(
-                query=time_filter, size=limit
-            )
+            result = await svc.fetch_detection_alerts(query=time_filter, size=limit)
             if not result:
                 return []
 
@@ -159,9 +160,8 @@ class ElasticIngestion(SIEMIngestionService):
 
             # MITRE ATT&CK from rule threat metadata
             mitre_predictions: Dict[str, float] = {}
-            threats = (
-                source.get("kibana.alert.rule.threat", [])
-                or rule.get("threat", [])
+            threats = source.get("kibana.alert.rule.threat", []) or rule.get(
+                "threat", []
             )
             if isinstance(threats, list):
                 for threat in threats:
@@ -175,7 +175,7 @@ class ElasticIngestion(SIEMIngestionService):
             return {
                 "finding_id": finding_id,
                 "data_source": "elastic",
-                "timestamp": source.get("@timestamp", datetime.utcnow().isoformat()),
+                "timestamp": source.get("@timestamp", utcnow().isoformat()),
                 "severity": severity,
                 "status": "new",
                 "title": title,
@@ -188,8 +188,7 @@ class ElasticIngestion(SIEMIngestionService):
                 "metadata": {
                     "elastic_alert_id": alert_id,
                     "rule_id": (
-                        source.get("kibana.alert.rule.uuid")
-                        or rule.get("id", "")
+                        source.get("kibana.alert.rule.uuid") or rule.get("id", "")
                     ),
                     "rule_name": title,
                     "index": alert.get("_index", ""),

@@ -171,8 +171,7 @@ class SplunkService:
 
             if response.status_code not in [200, 201]:
                 logger.error(
-                    "Failed to create search job: "
-                    f"{response.status_code} - {response.text}"
+                    f"Failed to create search job: {response.status_code} - {response.text}"
                 )
                 return None
 

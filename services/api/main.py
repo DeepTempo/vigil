@@ -36,6 +36,7 @@ from core.platform.monitoring import (
 )
 from core.version import __version__
 from services.api.discovery import mount_routers
+from services.api.errors import register_exception_handlers
 from services.api.middleware.auth import get_current_active_user
 from services.api.middleware.csrf import CSRFMiddleware
 from services.api.middleware.rate_limit import limiter
@@ -122,6 +123,10 @@ _CONTEXT_PATH = get_settings().vigil_context_path.rstrip("/")
 # limits (@limiter.limit) read state from app.state.limiter, so both must be set.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Domain errors and anything unhandled become JSON here rather than in each
+# route. Registered before the routers so every mounted route inherits it.
+register_exception_handlers(app)
 
 # Instrument FastAPI with OTEL tracing (health + metrics endpoints excluded)
 try:
@@ -267,6 +272,13 @@ async def _connect_external_services(mcp_client, registry):
 
             connected_count = 0
             for server_name in servers:
+                # A disabled server is intentionally off, not a failure — don't
+                # dial it or log it as one (the old code tried every server and
+                # reported each disabled one as "Failed to connect", which read
+                # as dozens of errors on a normal boot).
+                if not mcp_service.is_server_enabled(server_name):
+                    logger.debug("MCP server %s disabled, skipping", server_name)
+                    continue
                 try:
                     success = await mcp_client.connect_to_server(
                         server_name, persistent=True
@@ -663,6 +675,18 @@ async def metrics():
 @app.get(f"{_CONTEXT_PATH}/api/health")
 async def health_check():
     """Health check endpoint with storage backend info."""
+    # Read first, and in both branches: schema drift severe enough to raise
+    # UndefinedColumn is exactly what sends this handler down the except path,
+    # and that is the case the verdict exists to explain (#562). A plain dict
+    # read of the verdict recorded at startup — inspecting here would walk every
+    # mapped table on the event loop.
+    from core.storage.connection import get_schema_drift_report
+
+    drift = get_schema_drift_report()
+    # State only. This route is public; the missing table and column names are
+    # schema internals and stay on GET /api/storage/status, which is not.
+    schema_block = {"state": drift["state"]} if drift is not None else None
+
     try:
         from core.config import is_demo_mode, state_dir_status
         from core.storage.database_data_service import DatabaseDataService
@@ -671,7 +695,7 @@ async def health_check():
         backend_info = service.get_backend_info()
         state_dir = state_dir_status()
 
-        return {
+        payload = {
             "status": "healthy",
             "version": __version__,
             "demo_mode": is_demo_mode(),
@@ -687,14 +711,20 @@ async def health_check():
                 "demo_mode": backend_info.get("demo_mode", False),
             },
         }
+        if schema_block is not None:
+            payload["schema"] = schema_block
+        return payload
     except Exception as e:
         logger.error(f"Health check error: {e}")
-        return {
+        payload = {
             "status": "healthy",
             "version": __version__,
             "demo_mode": False,
             "storage": {"backend": "unknown", "error": str(e)},
         }
+        if schema_block is not None:
+            payload["schema"] = schema_block
+        return payload
 
 
 # Serve React static files in production

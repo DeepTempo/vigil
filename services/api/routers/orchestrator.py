@@ -575,11 +575,12 @@ def _assemble_chain_of_custody(investigation_id: str) -> Dict[str, Any]:
     LLMInteractionLog rows, and reads selected workdir files.
     """
     from core.storage.connection import get_db_manager
-    from core.storage.models import (Investigation, InvestigationLog,
-                                     LLMInteractionLog)
-    from core.storage.schemas import (InvestigationLogSchema,
-                                      InvestigationSchema,
-                                      LLMInteractionLogSchema)
+    from core.storage.models import Investigation, InvestigationLog, LLMInteractionLog
+    from core.storage.schemas import (
+        InvestigationLogSchema,
+        InvestigationSchema,
+        LLMInteractionLogSchema,
+    )
 
     db_manager = get_db_manager()
     result: Dict[str, Any] = {

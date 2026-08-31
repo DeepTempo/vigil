@@ -11,13 +11,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from core.storage.connection import get_db_manager
 from core.storage.models import WorkflowRun, WorkflowRunPhase
 from core.storage.schemas import WorkflowRunPhaseSchema, WorkflowRunSchema
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
 
 def generate_run_id() -> str:
     """Return a new run_id shaped ``wfr-YYYYMMDD-<uuid8>``."""
-    return f"wfr-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+    return f"wfr-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
 
 
 class WorkflowRunService:
@@ -57,7 +58,7 @@ class WorkflowRunService:
                     status="running",
                     triggered_by=triggered_by,
                     trigger_context=trigger_context or {},
-                    started_at=datetime.utcnow(),
+                    started_at=utcnow(),
                     skill_tools_available=list(skill_tools_available or []),
                 )
                 session.add(row)
@@ -108,7 +109,7 @@ class WorkflowRunService:
                 if row is None:
                     logger.warning("finalize_run: unknown run %s", run_id)
                     return False
-                now = datetime.utcnow()
+                now = utcnow()
                 row.status = status
                 row.finished_at = now
                 # Truncate result_summary to avoid committing megabyte
@@ -179,7 +180,7 @@ class WorkflowRunService:
                 row = session.get(WorkflowRun, run_id)
                 if row is None or row.deleted_at is not None:
                     return False
-                row.deleted_at = datetime.utcnow()
+                row.deleted_at = utcnow()
                 return True
         except SQLAlchemyError as e:
             logger.warning("Error deleting workflow run %s: %s", run_id, e)

@@ -8,61 +8,62 @@ import asyncio
 import logging
 import threading
 import time
-from dataclasses import astuple, dataclass, field
-from typing import Any, Dict, Optional, Generator, TYPE_CHECKING
-from urllib.parse import parse_qsl, quote, unquote, urlsplit
 from contextlib import contextmanager
+from dataclasses import astuple, dataclass, field
+from typing import TYPE_CHECKING, Any, Dict, Generator, Optional
+from urllib.parse import parse_qsl, quote, unquote, urlsplit
+
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
 if TYPE_CHECKING:
     from core.storage.db_proxy import ProxyConfig
 
-from core.storage.models import Base
+from core.config import get_settings
+from core.secrets import get_secret
 
-# Import all models to register them with Base.metadata before create_all()
-from core.storage.models import (
-    Finding,
-    Case,
-    SketchMapping,
-    AttackLayer,
+# Import all models to register them with Base.metadata before create_all().
+# Unused by name, which is the point -- the import is the registration.
+from core.storage.models import (  # noqa: F401
     AIDecisionLog,
-    SystemConfig,
-    UserPreference,
-    IntegrationConfig,
-    ConfigAuditLog,
-    SLAPolicy,
-    CaseSLA,
+    AttackLayer,
+    Base,
+    Case,
+    CaseAttachment,
+    CaseAuditLog,
+    CaseClosureInfo,
     CaseComment,
-    CaseWatcher,
+    CaseEscalation,
     CaseEvidence,
     CaseIOC,
+    CaseMetrics,
+    CaseNotification,
+    CaseRelationship,
+    CaseSLA,
     CaseTask,
     CaseTemplate,
-    CaseRelationship,
-    CaseMetrics,
-    CaseAttachment,
-    CaseClosureInfo,
-    CaseEscalation,
-    CaseAuditLog,
-    User,
-    Role,
+    CaseWatcher,
+    ChatMessage,
+    ConfigAuditLog,
+    Conversation,
+    CustomAgent,
+    CustomWorkflow,
+    Finding,
+    IntegrationConfig,
     Investigation,
     InvestigationLog,
     LLMInteractionLog,
-    SharedIOC,
-    CaseNotification,
-    CustomAgent,
-    CustomWorkflow,
-    Skill,
     LLMProviderConfig,
-    Conversation,
-    ChatMessage,
+    Role,
+    SharedIOC,
+    SketchMapping,
+    Skill,
+    SLAPolicy,
+    SystemConfig,
+    User,
+    UserPreference,
 )
-
-from core.config import get_settings
-from core.secrets import get_secret
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +92,8 @@ def _load_platform_db_proxy() -> "ProxyConfig":
     configured.
     """
     try:
-        from core.storage.db_proxy import ProxyConfig
         from core.secrets_manager import get_secret
+        from core.storage.db_proxy import ProxyConfig
     except ImportError:
         # If the secrets manager isn't importable yet skip proxy support gracefully.
         from core.storage.db_proxy import ProxyConfig
@@ -754,6 +755,166 @@ def get_session() -> Session:
     return get_db_session()
 
 
+class SchemaDriftError(RuntimeError):
+    """The deployed schema does not match what the ORM expects.
+
+    Raised only when ``DB_STRICT_SCHEMA`` is set; the default is to report the
+    drift loudly and keep serving.
+    """
+
+
+# States that mean the schema cannot serve the models. ``empty`` counts only
+# when the caller has just run create_all: an empty schema at that point means
+# create_all did nothing, which is worse than a missing column, not better.
+_UNSERVICEABLE = {"drifted", "empty"}
+
+# How long a non-healthy verdict is reused before re-inspecting. An `ok` is
+# final and cached for good; anything else is provisional — the operator may be
+# part-way through a migration, or the inspection may not have reached the
+# database — so it is retried, but not on every call: init_database() runs on
+# every DatabaseDataService construction, including inside the health handler,
+# and schema_report() walks every mapped table.
+_SCHEMA_RECHECK_SECONDS = 30.0
+
+_schema_drift_report: Optional[Dict[str, Any]] = None
+_schema_drift_report_at = 0.0
+# Separate from the report so the ERROR is emitted once per process while the
+# strict-mode refusal still fires on every call.
+_schema_drift_logged = False
+# Serializes inspect-and-record. Without it two threads arriving together each
+# walk every mapped table and each log the same ERROR.
+_schema_drift_lock = threading.Lock()
+
+
+def reset_schema_drift_check() -> None:
+    """Forget the cached verdict so the next check re-inspects. For tests."""
+    global _schema_drift_report, _schema_drift_report_at, _schema_drift_logged
+    with _schema_drift_lock:
+        _schema_drift_report = None
+        _schema_drift_report_at = 0.0
+        _schema_drift_logged = False
+
+
+def get_schema_drift_report() -> Optional[Dict[str, Any]]:
+    """The cached startup verdict, or None if no check has succeeded yet.
+
+    A plain dict read: callers on the event loop (the health endpoint) must
+    never trigger an inspection, which walks every mapped table.
+    """
+    return _schema_drift_report
+
+
+def check_schema_drift(
+    db_manager: Optional["DatabaseManager"] = None,
+    *,
+    provisioned: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """Report a schema that is a release behind the models, at startup.
+
+    ``create_all`` is ``checkfirst=True``: it creates missing tables and never
+    alters existing ones, and it returns successfully either way. A column added
+    to a model therefore reaches every existing deployment as silent drift, and
+    surfaces much later as ``UndefinedColumn`` on a column that is plainly
+    present in ``models.py``. ``schema_report()`` has always been able to spot
+    this; nothing consulted it outside an on-demand endpoint. See #562.
+
+    The comparison is by column **name**. A changed type, a new ``NOT NULL`` or
+    a changed foreign key is drift this cannot see, so ``state: ok`` means "every
+    column the models name exists", not "the schema matches the models".
+
+    Default behaviour is to log at ERROR and keep serving — taking a running SOC
+    offline over a missing nullable column is worse than the drift. Set
+    ``DB_STRICT_SCHEMA=true`` (CI, fresh deploys) to make it fatal instead.
+
+    Args:
+        db_manager: the manager to inspect; the process-wide one by default.
+        provisioned: True when the caller has just run create_all, which makes
+            an ``empty`` schema a failure rather than a database awaiting
+            provisioning.
+
+    Returns:
+        The report, or None if none could be produced yet. A healthy verdict is
+        memoised for good and an unhealthy one for ``_SCHEMA_RECHECK_SECONDS``;
+        the strict-mode refusal is not memoised at all.
+    """
+    global _schema_drift_report, _schema_drift_report_at, _schema_drift_logged
+
+    with _schema_drift_lock:
+        report = _schema_drift_report
+        now = time.monotonic()
+        # An "ok" is final: create_all is the only thing that reshapes the
+        # schema under us, and it cannot remove a column. Anything else is
+        # provisional. A cached "empty" is additionally void the moment a
+        # caller has run create_all, which every DatabaseDataService
+        # construction does — the tables it was recorded against may exist now.
+        if report is None or (
+            report["state"] != "ok"
+            and (
+                now - _schema_drift_report_at >= _SCHEMA_RECHECK_SECONDS
+                or (report["state"] == "empty" and provisioned)
+            )
+        ):
+            manager = db_manager if db_manager is not None else get_db_manager()
+            try:
+                fresh = manager.schema_report()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Could not check for schema drift: %s", e)
+                fresh = None
+            # "unknown" is schema_report() reporting that it could not inspect,
+            # not a verdict about the schema. Recording it would let one blip
+            # while the database comes up disable this check — strict mode
+            # included — for the life of the process, defeating the reconnect
+            # retry in DatabaseDataService._db_available.
+            if fresh is not None and fresh["state"] != "unknown":
+                _schema_drift_report = fresh
+                _schema_drift_report_at = now
+                report = fresh
+            elif report is None:
+                return None
+
+        state = report["state"]
+        if state not in _UNSERVICEABLE or (state == "empty" and not provisioned):
+            return report
+
+        missing = [
+            f"{table}.{column}"
+            for table, columns in sorted(report["missing_columns"].items())
+            for column in columns
+        ]
+        detail = ", ".join(missing) or "none"
+        tables = ", ".join(report["missing_tables"])
+
+        if state == "empty":
+            summary = (
+                "Database has no Vigil tables after create_all, so nothing "
+                "provisioned it. Check the database user can CREATE, and that "
+                "the target is the database you meant."
+            )
+        else:
+            summary = (
+                f"Database schema is behind the models: missing columns: "
+                f"{detail}. create_all cannot add them (checkfirst=True never "
+                "alters an existing table), so reads of these tables will fail "
+                "with UndefinedColumn. Run scripts/migrate_schema.py against "
+                "this database, and check it has a step for each column above — "
+                "it only covers columns registered by hand."
+            )
+
+        if not _schema_drift_logged:
+            logger.error("%s", summary)
+            if tables:
+                logger.error("Database schema is also missing tables: %s", tables)
+            _schema_drift_logged = True
+
+    if get_settings().db_strict_schema:
+        raise SchemaDriftError(
+            f"Refusing to start with an unusable schema (DB_STRICT_SCHEMA is "
+            f"set). {summary}" + (f" Missing tables: {tables}." if tables else "")
+        )
+
+    return report
+
+
 def init_database(echo: bool = False, create_tables: bool = True):
     """
     Initialize the database.
@@ -761,9 +922,16 @@ def init_database(echo: bool = False, create_tables: bool = True):
     Args:
         echo: If True, log all SQL statements
         create_tables: If True, create all tables
+
+    Raises:
+        SchemaDriftError: if the schema cannot serve the models and
+            ``DB_STRICT_SCHEMA`` is set.
     """
     db_manager = get_db_manager()
     db_manager.initialize(echo=echo)
 
     if create_tables:
         db_manager.create_tables()
+
+    # After create_all, so we report what the schema actually ended up as.
+    check_schema_drift(db_manager, provisioned=create_tables)

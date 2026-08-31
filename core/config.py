@@ -119,6 +119,10 @@ class Settings(BaseSettings):
     db_pool_timeout: int = 30
     db_pool_recycle: int = 3600
     db_config_check_interval: float = 5.0
+    # Refuse to start when the schema cannot serve the models. Off by
+    # default: a missing nullable column should not take a running SOC
+    # offline. See #562.
+    db_strict_schema: bool = False
 
     # Redis / queue. None means "no Redis configured" — the rate limiter falls back
     # to in-memory on None, so a default here would silently change its behavior.
@@ -215,6 +219,10 @@ class Settings(BaseSettings):
     daemon_threat_hunt_enabled: bool = True
     daemon_threat_hunt_interval: int = 86400
     daemon_cleanup_retention_days: int = 90
+    # Separate from cleanup_retention_days on purpose: that governs bulk data
+    # retention and wants a long horizon, while an unanswered containment
+    # proposal goes stale in days (#675).
+    daemon_approval_expiry_days: int = 7
     daemon_metrics_enabled: bool = True
     daemon_health_host: str = "localhost"
     daemon_health_port: int = 9091

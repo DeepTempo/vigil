@@ -6,6 +6,15 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from core.config import get_settings
+from core.llm.router.format import (
+    anthropic_messages_to_openai,
+    anthropic_tools_to_openai,
+)
+from core.llm.security import (
+    PromptInjectionBlocked,
+    scan_for_injection,
+    wrap_tool_result,
+)
 from core.secrets import get_secret
 
 logger = logging.getLogger(__name__)
@@ -77,7 +86,6 @@ def _wrap_tool_results_in_messages(
     so messages that already passed through ``ClaudeService`` won't be
     double-wrapped here.
     """
-    from core.llm.security import wrap_tool_result
 
     out: List[Dict[str, Any]] = []
     for msg in messages:
@@ -128,7 +136,6 @@ def _wrap_tool_results_in_messages(
 
 def _scan_messages_for_injection(messages: List[Dict[str, Any]]) -> List[str]:
     """Run pattern scan over text content in *messages*; return matched names."""
-    from core.llm.security import scan_for_injection
 
     patterns: List[str] = []
     for msg in messages:
@@ -171,7 +178,6 @@ def _pre_dispatch_sanitize(
     Returns the (possibly rewritten) ``messages`` and the system prompt
     (returned as-is — we never silently mutate user system prompts).
     """
-    from core.llm.security import PromptInjectionBlocked, scan_for_injection
 
     wrapped = _wrap_tool_results_in_messages(messages)
 
@@ -258,6 +264,7 @@ class LLMRouter:
                 max_tokens=max_tokens,
                 temperature=temperature,
                 tools=tools,
+                enable_thinking=enable_thinking,
                 extra_headers=extra_headers_or_none,
             )
         )
@@ -274,12 +281,10 @@ class LLMRouter:
         max_tokens: int,
         temperature: Optional[float],
         tools: Optional[List[Dict[str, Any]]],
+        enable_thinking: bool = False,
         extra_headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         from openai import AsyncOpenAI  # lazy — avoids hard dep for tests
-
-        from core.llm.router.format import (anthropic_messages_to_openai,
-                                            anthropic_tools_to_openai)
 
         # Callers (the daemon tool loop, workflows) build conversations in
         # Anthropic shape — assistant tool_use blocks, user tool_result blocks,
@@ -300,6 +305,13 @@ class LLMRouter:
             "messages": oai_messages,
             "max_tokens": max_tokens,
         }
+        # Ollama's OpenAI-compatible API uses ``reasoning_effort`` rather
+        # than its native ``think`` field. When the option is omitted,
+        # reasoning-capable local models may enable it implicitly and consume
+        # the response budget before producing user-visible content. Preserve
+        # the caller's explicit thinking choice across the Bifrost boundary.
+        if provider.provider_type == "ollama":
+            kwargs["reasoning_effort"] = "medium" if enable_thinking else "none"
         if temperature is not None:
             kwargs["temperature"] = temperature
         if tools:
@@ -358,13 +370,11 @@ class LLMRouter:
         tools: Optional[List[Dict[str, Any]]] = None,
         interaction_id: Optional[str] = None,
         include_usage: bool = False,
+        enable_thinking: bool = False,
     ):
         """Yield raw OpenAI stream chunks (tool-call deltas, finish_reason,
         usage) for non-Anthropic Bifrost providers."""
         from openai import AsyncOpenAI
-
-        from core.llm.router.format import (anthropic_messages_to_openai,
-                                            anthropic_tools_to_openai)
 
         messages, system_prompt = _pre_dispatch_sanitize(messages, system_prompt)
         model = model or provider.default_model
@@ -384,6 +394,8 @@ class LLMRouter:
             "max_tokens": max_tokens,
             "stream": True,
         }
+        if provider.provider_type == "ollama":
+            kwargs["reasoning_effort"] = "medium" if enable_thinking else "none"
         if include_usage:
             kwargs["stream_options"] = {"include_usage": True}
         if temperature is not None:
@@ -422,6 +434,7 @@ class LLMRouter:
         temperature: Optional[float] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         interaction_id: Optional[str] = None,
+        enable_thinking: bool = False,
     ):
         """Yield OpenAI-format text chunks for non-Anthropic Bifrost providers."""
         async for chunk in self.stream_openai_raw(
@@ -433,6 +446,7 @@ class LLMRouter:
             temperature=temperature,
             tools=tools,
             interaction_id=interaction_id,
+            enable_thinking=enable_thinking,
         ):
             if not chunk.choices:
                 continue

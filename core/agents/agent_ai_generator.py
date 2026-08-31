@@ -3,7 +3,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from core.integrations.mcp.registry import MCPRegistry
+from core.integrations.mcp.registry import MCPRegistry, safe_tool_names
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,6 @@ class AgentAIGenerator:
 
     def __init__(self, mcp_registry: Optional[MCPRegistry] = None) -> None:
         self._mcp_registry = mcp_registry
-        self._mcp_tool_names_cache: Optional[List[str]] = None
 
     async def generate(
         self,
@@ -228,16 +227,17 @@ class AgentAIGenerator:
         return "\n".join(lines)
 
     def _get_mcp_tool_names(self) -> List[str]:
-        if self._mcp_tool_names_cache is not None:
-            return self._mcp_tool_names_cache
+        # Refresh from the running client each turn so a server connected since
+        # startup (e.g. a credential just saved + enabled) is usable without a
+        # restart. Not memoised for the same reason. See registry.refresh_from_client.
+        from core.integrations.mcp.registry import refresh_from_client
+
+        registry = self._mcp_registry or MCPRegistry()
         try:
-            registry = self._mcp_registry or MCPRegistry()
-            names = list(registry.get_tool_names() or [])
+            refresh_from_client(registry)
         except Exception as e:
-            logger.debug(f"MCP registry unavailable: {e}")
-            names = []
-        self._mcp_tool_names_cache = names
-        return names
+            logger.debug(f"MCP refresh failed: {e}")
+        return safe_tool_names(registry)
 
     def _base_prompt_shape(self) -> str:
         return (

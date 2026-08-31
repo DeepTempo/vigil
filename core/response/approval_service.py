@@ -26,6 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from core.storage.config_service import get_config_service
 from core.storage.connection import get_db_manager
 from core.storage.models import ApprovalAction as ApprovalActionRow
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +284,7 @@ class ApprovalService:
                     confidence=float(confidence),
                     reason=reason,
                     evidence=list(evidence or []),
-                    created_at=datetime.utcnow(),
+                    created_at=utcnow(),
                     created_by=created_by,
                     requires_approval=requires_approval,
                     status=status,
@@ -350,6 +351,30 @@ class ApprovalService:
             logger.error("DB error listing actions: %s", e)
             return []
 
+    def list_stale_pending(self, cutoff: datetime) -> List[str]:
+        """Ids of pending actions created before ``cutoff``, oldest first.
+
+        Deliberately not expressed as ``list_actions(...)`` filtered in Python:
+        that orders newest-first and caps at 500, so once the queue is larger
+        than the cap it hides the oldest rows — the exact ones a sweep is for.
+        Ids rather than ``PendingAction`` because the caller only rejects them,
+        and because ``PendingAction.created_at`` is a serialized string, not a
+        datetime to compare against.
+        """
+        try:
+            db = get_db_manager()
+            with db.session_scope() as session:
+                stmt = (
+                    select(ApprovalActionRow.action_id)
+                    .where(ApprovalActionRow.status == ActionStatus.PENDING.value)
+                    .where(ApprovalActionRow.created_at < cutoff)
+                    .order_by(ApprovalActionRow.created_at.asc())
+                )
+                return list(session.execute(stmt).scalars().all())
+        except SQLAlchemyError as e:
+            logger.error("DB error listing stale pending actions: %s", e)
+            return []
+
     def approve_action(
         self,
         action_id: str,
@@ -371,7 +396,7 @@ class ApprovalService:
                     )
                     return _row_to_pending(row)
                 row.status = ActionStatus.APPROVED.value
-                row.approved_at = datetime.utcnow()
+                row.approved_at = utcnow()
                 row.approved_by = approved_by
                 session.flush()
                 pending = _row_to_pending(row)
@@ -405,7 +430,7 @@ class ApprovalService:
                 row.status = ActionStatus.REJECTED.value
                 row.rejection_reason = reason
                 row.approved_by = rejected_by
-                row.approved_at = datetime.utcnow()
+                row.approved_at = utcnow()
                 session.flush()
                 pending = _row_to_pending(row)
             logger.info(
@@ -439,7 +464,7 @@ class ApprovalService:
                     )
                     return _row_to_pending(row)
                 row.status = ActionStatus.EXECUTED.value
-                row.executed_at = datetime.utcnow()
+                row.executed_at = utcnow()
                 row.execution_result = result
                 session.flush()
                 return _row_to_pending(row)
@@ -460,7 +485,7 @@ class ApprovalService:
                 if row is None:
                     return None
                 row.status = ActionStatus.FAILED.value
-                row.executed_at = datetime.utcnow()
+                row.executed_at = utcnow()
                 row.execution_result = {"error": error}
                 session.flush()
                 logger.error("Action %s failed: %s", action_id, error)

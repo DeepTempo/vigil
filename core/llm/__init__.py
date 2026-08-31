@@ -1,1 +1,1 @@
-# Vigil's LLM layer. See README.md for the harness/router boundary.
+# Vigil's LLM layer. See https://vigilsoc.org/docs/llm-layer/ for the harness/router boundary.

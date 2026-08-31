@@ -1,11 +1,12 @@
 import asyncio
 import json
 import logging
+
 import httpx
-from mcp.server.models import InitializationOptions
+import mcp.server.stdio
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
-import mcp.server.stdio
+from mcp.server.models import InitializationOptions
 
 logger = logging.getLogger(__name__)
 server = Server("ip-geolocation")

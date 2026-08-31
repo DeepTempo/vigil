@@ -40,7 +40,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deeptempo_secure_password_change_me}
       POSTGRES_INITDB_ARGS: "-E UTF8"
     ports:
-      - "5432:5432"
+      # Loopback-only. A bare "5432:5432" publishes on 0.0.0.0, which put the
+      # findings, cases and llm_provider_configs tables in reach of anything on
+      # the operator's network -- behind a password whose default is committed
+      # above. Nothing off-host consumes this: sibling containers dial
+      # postgres:5432 over deeptempo-network and a host-run backend uses
+      # loopback. Widening this is a deployment decision, not a default.
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Path is relative to this compose file (infra/docker/), so ../ points
@@ -60,7 +66,10 @@ services:
     image: redis:7-alpine
     container_name: deeptempo-redis
     ports:
-      - "6379:6379"
+      # Loopback-only, for the same reason as postgres above, and with less
+      # standing in the way: this Redis runs without requirepass, so anything
+      # that reaches the port owns the ARQ queue and the session store.
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
@@ -78,6 +87,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.12}
     container_name: deeptempo-backend
     environment:
       - POSTGRES_HOST=postgres
@@ -115,6 +126,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.daemon
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.12}
     container_name: deeptempo-daemon
     environment:
       # Database
@@ -204,6 +217,8 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.12}
     container_name: deeptempo-llm-worker
     command: ["python", "-m", "services.worker"]
     healthcheck:
@@ -312,7 +327,13 @@ services:
     image: maximhq/bifrost:latest
     container_name: deeptempo-bifrost
     ports:
-      - "8080:8080"
+      # Loopback-only, for the same reason as postgres and redis above, and
+      # with the least standing of the three: Bifrost serves an unauthenticated
+      # config API on its inference port, so anything that reaches this can read
+      # and rewrite provider credentials via PUT /api/providers/{name}/keys/
+      # {key_id}. Sibling containers dial bifrost:8080 over deeptempo-network;
+      # the UI at http://localhost:8080 is unaffected from the host.
+      - "127.0.0.1:8080:8080"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -342,9 +363,18 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@deeptempo.ai}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      # SERVER_MODE is deliberately left at pgAdmin's default (True). Setting it
+      # to 'False' selects desktop mode, which disables the login prompt
+      # entirely -- the container logs "Configuring authentication for DESKTOP
+      # mode" and GET / lands straight on /browser/ with no credential check.
+      # That made PGADMIN_DEFAULT_PASSWORD decorative rather than a gate (#707).
     ports:
-      - "5050:80"
+      # Loopback-only, for the same reason as postgres and redis above. This
+      # console reaches the database over deeptempo-network by service name, so
+      # it is inside the perimeter that the loopback binds establish -- an
+      # unauthenticated console published on 0.0.0.0 would route straight around
+      # them, using the default password committed above.
+      - "127.0.0.1:5050:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     depends_on:
@@ -490,6 +520,131 @@ services:
     profiles:
       - kafka
 
+  # ─── Elastic Security (opt-in: --profile elastic) ────────────────────────
+  # Single-node Elasticsearch + Kibana for SIEM testing, mirroring the Splunk
+  # profile. Security is disabled for local use, so the integration connects
+  # over plain HTTP with no credentials. Seed data via Kibana's built-in sample
+  # datasets (:5601 → Add data) or bulk-index to a logs-* index.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: deeptempo-elasticsearch
+    hostname: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "127.0.0.1:9200:9200"   # REST API
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - elastic
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: deeptempo-kibana
+    hostname: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "127.0.0.1:5601:5601"   # Web UI
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    profiles:
+      - elastic
+
+  # ─── MISP threat-intel (opt-in: --profile misp) ──────────────────────────
+  # Official MISP stack (core + modules + its own db/redis). Unlike Splunk/
+  # Elastic there is no credential-less mode: after first boot, log into
+  # https://localhost:8443 (admin@admin.test / admin), generate an Auth Key
+  # (Administration → Auth Keys), put it in .env as MISP_API_KEY, then enable
+  # the `misp` MCP server. First boot takes several minutes to initialise.
+  misp-db:
+    image: mariadb:11.4
+    container_name: deeptempo-misp-db
+    environment:
+      - MYSQL_USER=misp
+      - MYSQL_PASSWORD=misp
+      - MYSQL_ROOT_PASSWORD=misp_root
+      - MYSQL_DATABASE=misp
+    command: --innodb-buffer-pool-size=256M
+    volumes:
+      - misp_db:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    profiles:
+      - misp
+
+  misp-redis:
+    image: valkey/valkey:7.2
+    container_name: deeptempo-misp-redis
+    # misp-core defaults to redis password "redispassword" (incl. the PHP
+    # session save_path); require it here so sessions authenticate.
+    command: ["valkey-server", "--requirepass", "redispassword"]
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    profiles:
+      - misp
+
+  misp-modules:
+    image: ghcr.io/misp/misp-docker/misp-modules:latest
+    container_name: deeptempo-misp-modules
+    environment:
+      - REDIS_BACKEND=misp-redis
+    depends_on:
+      - misp-redis
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    profiles:
+      - misp
+
+  misp-core:
+    image: ghcr.io/misp/misp-docker/misp-core:latest
+    container_name: deeptempo-misp-core
+    environment:
+      - BASE_URL=https://localhost:8443
+      - MYSQL_HOST=misp-db
+      - MYSQL_USER=misp
+      - MYSQL_PASSWORD=misp
+      - MYSQL_DATABASE=misp
+      # This image reads REDIS_HOST/PORT/PASSWORD (not REDIS_FQDN). Point at our
+      # own misp-redis — otherwise it defaults to host "redis", which collides
+      # with Vigil's redis on this network and breaks sessions. Keep the image's
+      # default password so the PHP session save_path matches misp-redis.
+      - REDIS_HOST=misp-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redispassword
+      - DISABLE_IPV6=true
+    ports:
+      - "127.0.0.1:8443:443"   # Web UI + REST (self-signed TLS)
+    volumes:
+      - misp_config:/var/www/MISP/app/Config
+      - misp_files:/var/www/MISP/app/files
+      - misp_logs:/var/www/MISP/app/tmp/logs
+    depends_on:
+      - misp-db
+      - misp-redis
+      - misp-modules
+    restart: unless-stopped
+    networks:
+      - deeptempo-network
+    profiles:
+      - misp
+
 volumes:
   postgres_data:
     driver: local
@@ -508,6 +663,16 @@ volumes:
   grafana_data:
     driver: local
   kafka_data:
+    driver: local
+  elastic_data:
+    driver: local
+  misp_db:
+    driver: local
+  misp_config:
+    driver: local
+  misp_files:
+    driver: local
+  misp_logs:
     driver: local
 
 networks:

@@ -17,17 +17,20 @@ from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 from arq.jobs import DeserializationError
 
-from core.config import get_settings
+from core.config import DEFAULT_REDIS_URL, get_settings
 from core.llm.defaults import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "arq:llm"
 
-DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 
+def redis_settings() -> RedisSettings:
+    """ARQ connection settings derived from ``redis_url``.
 
-def _redis_settings() -> RedisSettings:
+    Public: the llm-worker builds its WorkerSettings from the same values, so
+    the queue it drains is the one the gateway enqueues onto.
+    """
     url = get_settings().redis_url or DEFAULT_REDIS_URL
     # Parse redis://host:port/db
     from urllib.parse import urlparse
@@ -102,7 +105,7 @@ class LLMGateway:
 
     @classmethod
     async def create(cls, settings: Optional[RedisSettings] = None) -> "LLMGateway":
-        settings = settings or _redis_settings()
+        settings = settings or redis_settings()
         pool = await create_pool(settings)
 
         # Instrument the underlying Redis client with OTEL tracing

@@ -21,7 +21,7 @@ fi
 step submodules ok
 
 step python start
-PYTHON=$(find_python) || { step python fail; exit 1; }
+ensure_uv >&2 || { step python fail; exit 1; }
 step python ok
 
 step env start
@@ -29,11 +29,11 @@ load_env
 step env ok
 
 step venv start
-ensure_venv "$PYTHON" >&2 || { step venv fail; exit 1; }
+ensure_venv >&2 || { step venv fail; exit 1; }
 step venv ok
 
 step deps start
-install_python_deps >&2
+install_python_deps >&2 || { step deps fail; exit 1; }
 step deps ok
 
 step frontend-deps start
