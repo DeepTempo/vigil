@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import '../styles.css'
 import { useAuth } from '../contexts/AuthContext'
 import { orchestratorApi } from '../services/api'
@@ -96,6 +96,7 @@ function SocConsoleInner() {
   const navigate = useNavigate()
   const { hasPermission } = useAuth()
   const { screen } = useParams<{ screen?: string }>()
+  const location = useLocation()
   const { mountPoints, enabledIntegrations, loading: extLoading } = useExtensions()
 
   // built-ins win, so an extension can't shadow a core screen
@@ -197,10 +198,13 @@ function SocConsoleInner() {
   const go = useCallback(
     (next: string, options?: ConsoleScreenGoOptions) => {
       const search = options?.search || ''
-      if (valid && next === current && !search) return
+      // Compare the query too, not just the screen: a repeat badged click is a
+      // no-op that used to push a duplicate history entry, and an unbadged
+      // click from ?tab=approvals is a real move that used to be swallowed.
+      if (valid && next === current && search === location.search) return
       navigate({ pathname: `/${next}`, search }, { replace: options?.replace })
     },
-    [valid, current, navigate],
+    [valid, current, navigate, location.search],
   )
   const goSettings = useCallback(
     (section: SettingsSectionKey) => {
@@ -283,7 +287,9 @@ function SocConsoleInner() {
               <button
                 key={label}
                 className={`nav-btn${active ? ' active' : ''}`}
-                onClick={key ? () => go(key) : undefined}
+                // a badged item is a pointer at the approvals queue, so send the
+                // click there rather than to the screen's default tab (#746)
+                onClick={key ? () => go(key, waiting ? { search: '?tab=approvals' } : undefined) : undefined}
                 aria-label={waiting ? `${label} (${waiting} waiting)` : label}
               >
                 <Icon name={icon} />
