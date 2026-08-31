@@ -47,8 +47,11 @@ export default function UserMenu() {
 
   if (!user) return null
 
-  const initials = user.full_name
-    .split(' ')
+  // full_name is null on the in-memory DEV_MODE user (and any account without one)
+  const displayName = user.full_name?.trim() || user.username
+  const initials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
     .map((n) => n[0])
     .join('')
     .toUpperCase()
@@ -72,7 +75,7 @@ export default function UserMenu() {
         style={{ position: 'fixed', left: pos.left, bottom: pos.bottom, zIndex: 80 }}
       >
         <div className="user-pop-head">
-          <div className="user-pop-name">{user.full_name}</div>
+          <div className="user-pop-name">{displayName}</div>
           <div className="user-pop-email">{user.email}</div>
           <div className="user-pop-role">Role: {role}</div>
         </div>
@@ -100,8 +103,8 @@ export default function UserMenu() {
         aria-label="Account menu"
       >
         <span className="avatar">{initials}</span>
-        <span className="nav-label">{user.full_name}</span>
-        <span className="tip">{user.full_name}</span>
+        <span className="nav-label">{displayName}</span>
+        <span className="tip">{displayName}</span>
       </button>
       {menu && (root ? createPortal(menu, root) : menu)}
     </div>
