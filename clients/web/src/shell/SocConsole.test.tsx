@@ -235,6 +235,27 @@ describe('SocConsole', () => {
     expect(screen.getByText('No entity graph yet')).toBeInTheDocument()
   })
 
+  it('restores and clears versioned findings preferences', async () => {
+    localStorage.setItem('soc.findings.filters.v1', JSON.stringify({
+      severity: 'critical',
+      source: 'any',
+      hiddenColumns: null,
+    }))
+    renderConsole()
+    await screen.findByText('f-20260614-3b5c585e')
+
+    const filters = screen.getByRole('button', { name: /Filters/ })
+    expect(filters).toHaveClass('has-filters')
+    fireEvent.click(filters)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
+
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('soc.findings.filters.v1') || '{}')).toEqual({
+      severity: 'any',
+      source: 'any',
+      hiddenColumns: null,
+    }))
+  })
+
   it('opens the Cases master-detail and returns to the table', async () => {
     renderConsole()
     fireEvent.click(screen.getByRole('button', { name: 'Cases' }))
@@ -472,6 +493,25 @@ describe('SocConsole', () => {
 
     expect(createUrl).toHaveBeenCalledTimes(1)
     expect(captured?.type).toBe('text/csv')
+    clickSpy.mockRestore()
+  })
+
+  it('exports the filtered findings as a browser CSV download', async () => {
+    let captured: Blob | undefined
+    const createUrl = vi.fn((blob: Blob) => {
+      captured = blob
+      return 'blob:findings'
+    })
+    ;(URL as unknown as { createObjectURL: unknown }).createObjectURL = createUrl
+    ;(URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = vi.fn()
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderConsole()
+    await screen.findByText('f-20260614-3b5c585e')
+    fireEvent.click(screen.getByTitle('Export filtered findings as CSV'))
+
+    expect(createUrl).toHaveBeenCalledTimes(1)
+    expect(captured?.type).toBe('text/csv;charset=utf-8')
     clickSpy.mockRestore()
   })
 })
