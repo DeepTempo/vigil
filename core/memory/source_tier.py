@@ -25,6 +25,8 @@ import logging
 from enum import Enum
 from typing import Dict, Set
 
+from core.integrations._base.descriptor import iter_descriptors
+
 logger = logging.getLogger(__name__)
 
 
@@ -137,6 +139,72 @@ _KNOWN_DEFAULTED_PREFIXES: Set[str] = {
     "kafka:",
 }
 
+# Vigil's own servers and the Catalog Entries. Neither can declare a category
+# of its own: the first are not products anyone sells, and the second are
+# integrations Vigil holds a credential for but carries no code for, which per
+# CONTEXT.md is exactly what has no Integration Descriptor. Everything else
+# comes from `_INTEGRATION_TIERS` below rather than being listed here.
+#
+# They do not share a tier. Flow data is an observation; a rule catalogue is a
+# lookup; reading our own findings back is a run agreeing with itself.
+_UNDECLARED_SERVERS: Dict[str, SourceTier] = {
+    "tempo-flow": SourceTier.TELEMETRY,
+    "deeptempo-findings": SourceTier.NOT_EVIDENCE,
+    "approval": SourceTier.NOT_EVIDENCE,
+    "gcp-secops": SourceTier.TELEMETRY,
+    "gcp-scc": SourceTier.TELEMETRY,
+    "cribl-stream": SourceTier.TELEMETRY,
+    "gcp-threat-intel": SourceTier.FEED,
+    "github": SourceTier.NOT_EVIDENCE,
+}
+
+# What a whole category of product is, so a new integration is graded on
+# arrival instead of defaulting to `feed` until someone edits this module.
+# `category` is free text and inconsistent with it — `EDR` and `EDR/XDR` are
+# both in use — so variants are listed rather than normalised away.
+#
+# `Communications` is a feed, not `not_evidence`: an analyst asserting
+# something in Slack is a claim about the world, and `not_evidence` is reserved
+# for things that assert nothing at all.
+_CATEGORY_TIERS: Dict[str, SourceTier] = {
+    "EDR": SourceTier.TELEMETRY,
+    "EDR/XDR": SourceTier.TELEMETRY,
+    "SIEM": SourceTier.TELEMETRY,
+    "Cloud Security": SourceTier.TELEMETRY,
+    "Identity & Access": SourceTier.TELEMETRY,
+    "Network Security": SourceTier.TELEMETRY,
+    "Threat Intelligence": SourceTier.FEED,
+    "Sandbox Analysis": SourceTier.FEED,
+    "Communications": SourceTier.FEED,
+    "Incident Management": SourceTier.NOT_EVIDENCE,
+}
+
+
+def _integration_tiers() -> Dict[str, SourceTier]:
+    """Grade every integration from the category it declares about itself.
+
+    Built once at import. A vendor already states what kind of product it is,
+    so the alternative — transcribing thirty-odd server names here — would go
+    stale the first time someone added one.
+    """
+    tiers: Dict[str, SourceTier] = {}
+    for descriptor in iter_descriptors():
+        tier = _CATEGORY_TIERS.get(descriptor.category)
+        if tier is None:
+            logger.warning(
+                "Source Tier: integration %r declares category %r, which maps "
+                "to no tier; its sources will take the default",
+                descriptor.id,
+                descriptor.category,
+            )
+            continue
+        for name in descriptor.mcp_server_names:
+            tiers[name] = tier
+    return tiers
+
+
+_INTEGRATION_TIERS: Dict[str, SourceTier] = _integration_tiers()
+
 _TIERS_BY_KIND: Dict[InvestigationKind, Dict[str, SourceTier]] = {
     InvestigationKind.CASE: _CASE_TIERS,
     InvestigationKind.HUNT: _HUNT_TIERS,
@@ -169,6 +237,10 @@ def resolve_source_tier(
 
     if name in _NOT_EVIDENCE:
         return SourceTier.NOT_EVIDENCE
+
+    server_tier = _UNDECLARED_SERVERS.get(name) or _INTEGRATION_TIERS.get(name)
+    if server_tier is not None:
+        return server_tier
 
     if name in _KNOWN_DEFAULTED or any(
         name.startswith(prefix) for prefix in _KNOWN_DEFAULTED_PREFIXES
