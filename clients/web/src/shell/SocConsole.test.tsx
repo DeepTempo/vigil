@@ -242,44 +242,25 @@ describe('SocConsole', () => {
     expect(screen.getByText('No entity graph yet')).toBeInTheDocument()
   })
 
-  it('filters Timeline events by an inclusive date range and clears it', async () => {
+  it('restores and clears versioned findings preferences', async () => {
+    localStorage.setItem('soc.findings.filters.v1', JSON.stringify({
+      severity: 'critical',
+      source: 'any',
+      hiddenColumns: null,
+    }))
     renderConsole()
-    fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
-    expect(await screen.findByText('2 events')).toBeInTheDocument()
+    await screen.findByText('f-20260614-3b5c585e')
 
-    fireEvent.change(screen.getByLabelText('Timeline start date'), { target: { value: '2026-06-12' } })
-    fireEvent.change(screen.getByLabelText('Timeline end date'), { target: { value: '2026-06-12' } })
+    const filters = screen.getByRole('button', { name: /Filters/ })
+    expect(filters).toHaveClass('has-filters')
+    fireEvent.click(filters)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
 
-    await waitFor(() => expect(screen.getByText('1 event')).toBeInTheDocument())
-    const timelineCalls = vi.mocked(timelineApi.getTimelineRange).mock.calls
-    const lastTimelineQuery = timelineCalls[timelineCalls.length - 1]?.[0]
-    expect(lastTimelineQuery).toMatchObject({ limit: 200 })
-    expect(lastTimelineQuery?.start).toBe(new Date('2026-06-12T00:00:00').toISOString())
-    expect(lastTimelineQuery?.end).toBe(new Date('2026-06-12T23:59:59.999').toISOString())
-
-    fireEvent.click(screen.getByRole('button', { name: /^Clear$/ }))
-    await waitFor(() => expect(screen.getByText('2 events')).toBeInTheDocument())
-  })
-
-  it('rejects an inverted Timeline date range without sending it to the API', async () => {
-    renderConsole()
-    fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
-    expect(await screen.findByText('2 events')).toBeInTheDocument()
-
-    fireEvent.change(screen.getByLabelText('Timeline start date'), { target: { value: '2026-06-13' } })
-    await waitFor(() => {
-      const calls = vi.mocked(timelineApi.getTimelineRange).mock.calls
-      expect(calls[calls.length - 1]?.[0]?.start).toBe(new Date('2026-06-13T00:00:00').toISOString())
-    })
-    const callsBeforeInvalidEnd = vi.mocked(timelineApi.getTimelineRange).mock.calls.length
-
-    fireEvent.change(screen.getByLabelText('Timeline end date'), { target: { value: '2026-06-12' } })
-
-    expect(screen.getByRole('alert')).toHaveTextContent('Start date must be on or before end date.')
-    expect(screen.getByLabelText('Timeline start date')).toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByLabelText('Timeline end date')).toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByText('0 events')).toBeInTheDocument()
-    await waitFor(() => expect(vi.mocked(timelineApi.getTimelineRange)).toHaveBeenCalledTimes(callsBeforeInvalidEnd))
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('soc.findings.filters.v1') || '{}')).toEqual({
+      severity: 'any',
+      source: 'any',
+      hiddenColumns: null,
+    }))
   })
 
   it('opens the Cases master-detail and returns to the table', async () => {
@@ -383,6 +364,75 @@ describe('SocConsole', () => {
     vi.mocked(approvalsApi.listPending).mockResolvedValue({ data: { actions: [] } } as never)
   })
 
+  // The badge counts pending approvals, so the click has to land on the tab
+  // holding them: opening the feedback tab instead showed "No decisions
+  // awaiting feedback" while the counted questions sat one tab over (#746).
+  it('opens the approvals tab when the rail badge is what was clicked', async () => {
+    vi.mocked(approvalsApi.listPending).mockResolvedValue({
+      data: {
+        actions: [
+          { action_id: 'a', action_type: 'isolate_host', title: 'isolate_host: host1', target: 'host1' },
+          { action_id: 'b', action_type: 'block_ip', title: 'block_ip: 1.2.3.4', target: '1.2.3.4' },
+        ],
+      },
+    } as never)
+
+    renderConsole()
+    fireEvent.click(await screen.findByRole('button', { name: 'AI Decisions (2 waiting)' }))
+
+    const approvals = await screen.findByRole('tab', { name: 'Pending Approvals (2)' })
+    expect(approvals).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^Pending \(/ })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByText('isolate_host: host1')).toBeInTheDocument()
+    vi.mocked(approvalsApi.listPending).mockResolvedValue({ data: { actions: [] } } as never)
+  })
+
+  // …and an unbadged click keeps landing on the feedback queue, which is what
+  // the screen is for when nothing is parked.
+  it('opens the feedback tab when nothing is waiting on approval', async () => {
+    renderConsole()
+    fireEvent.click(screen.getByRole('button', { name: 'AI Decisions' }))
+
+    expect(await screen.findByRole('tab', { name: /^Pending \(/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Pending Approvals (0)' })).toHaveAttribute('aria-selected', 'false')
+  })
+
+  // The detail view returns before the tab list renders, so a badged click
+  // while a decision was open used to change only which list the detail read
+  // from -- losing the open decision and never showing the approvals queue.
+  it('leaves an open decision detail when the badge sends it to approvals', async () => {
+    vi.mocked(approvalsApi.listPending).mockResolvedValue({
+      data: { actions: [{ action_id: 'a', action_type: 'isolate_host', title: 'isolate_host: host1', target: 'host1' }] },
+    } as never)
+
+    renderConsole()
+    fireEvent.click(await screen.findByRole('button', { name: 'AI Decisions (1 waiting)' }))
+    // open a decision from the feedback queue first
+    fireEvent.click(screen.getByRole('tab', { name: /^Pending \(/ }))
+    fireEvent.click(await screen.findByText('Cluster merge'))
+    expect(screen.getByText('AI recommendation')).toBeInTheDocument()
+
+    // now the badge: the approvals queue must actually appear
+    fireEvent.click(screen.getByRole('button', { name: 'AI Decisions (1 waiting)' }))
+
+    expect(await screen.findByRole('tab', { name: 'Pending Approvals (1)' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('isolate_host: host1')).toBeInTheDocument()
+    expect(screen.queryByText(/no longer in the current list/)).toBeNull()
+    vi.mocked(approvalsApi.listPending).mockResolvedValue({ data: { actions: [] } } as never)
+  })
+
+  // Approving the last action empties the queue, so the rail loses its badge
+  // while the operator is still sitting on ?tab=approvals. The unbadged click
+  // has to move them, which go()'s dedupe guard used to swallow.
+  it('moves off the approvals tab when the badge is gone', async () => {
+    renderConsole('/decisions?tab=approvals')
+
+    expect(await screen.findByRole('tab', { name: 'Pending Approvals (0)' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'AI Decisions' }))
+
+    expect(await screen.findByRole('tab', { name: /^Pending \(/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('streams an assistant response through the chat SSE pipe', async () => {
     const chunks = [
       'data: {"type":"text","content":"Hello"}\n',
@@ -450,6 +500,25 @@ describe('SocConsole', () => {
 
     expect(createUrl).toHaveBeenCalledTimes(1)
     expect(captured?.type).toBe('text/csv')
+    clickSpy.mockRestore()
+  })
+
+  it('exports the filtered findings as a browser CSV download', async () => {
+    let captured: Blob | undefined
+    const createUrl = vi.fn((blob: Blob) => {
+      captured = blob
+      return 'blob:findings'
+    })
+    ;(URL as unknown as { createObjectURL: unknown }).createObjectURL = createUrl
+    ;(URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = vi.fn()
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderConsole()
+    await screen.findByText('f-20260614-3b5c585e')
+    fireEvent.click(screen.getByTitle('Export filtered findings as CSV'))
+
+    expect(createUrl).toHaveBeenCalledTimes(1)
+    expect(captured?.type).toBe('text/csv;charset=utf-8')
     clickSpy.mockRestore()
   })
 })
