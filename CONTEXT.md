@@ -133,11 +133,43 @@ several — Splunk has both an official server and the self-hosted one Vigil shi
 `mcp-config.json` key.
 _Avoid_: integration id, tool name
 
+**Declared Gap**:
+A question an investigation never gathered evidence for, carrying why nothing was
+gathered. Not a **Verdict** with an empty outcome: it has no activity window,
+because there was no activity to bound. Gaps are the common case rather than the
+exception, and what ranks an entity up is accumulation of them across
+investigations, never being one.
+_Avoid_: visibility gap (that is a tool that could not answer), unknown, null result
+
 **Episodic Memory** (`memory`):
 What earlier investigations saw and concluded, derived from a **Ledger** after a
 run reaches its terminal so a later run stops re-deriving a settled answer.
 Reorders the frontier and never decides (ADR 0015).
 _Avoid_: MemPalace (the component this replaces), cache, RAG
+
+**Recall**:
+One read of **Episodic Memory** on exact entity keys. A run performs one at start
+and renders it into the frozen prefix; a worker performs one mid-run through the
+`recall_entity` tool, which lands in the prompt tail and leaves the prefix
+undisturbed. Recall never contributes to corroboration — it reorders what to look
+at and settles nothing (ADR 0015).
+_Avoid_: search, retrieval, lookup (unqualified), context
+
+**Recall Event**:
+The **Ledger** record of one run-start **Recall**: the keys queried, the rows
+returned with their provenance, what was dropped and why, and the selection
+parameters in force. It carries rows and not an order — the order they were
+presented in is a fold, so ranking may change without invalidating a historical
+Ledger. The parameters are copied in rather than referenced, because a **RunSpec**
+records the arch by name and not by version.
+_Avoid_: recall log (that is the audit table, which is Python's), snapshot
+
+**Sighting**:
+What one investigation observed about one entity from one source. One row per
+entity, investigation and source, so growth tracks hunts and not telemetry
+volume. The weaker and truer claim a **Verdict** does not make: *seen during a run
+that concluded X*, rather than a subject of that conclusion.
+_Avoid_: finding, evidence, observation, hit
 
 **Source Tier**:
 What a source *is*: `telemetry` observed our own estate, `feed` asserts about the
@@ -145,6 +177,13 @@ world, `not_evidence` is neither. Distinct from **Trust**, which is who
 concluded — `analyst` or `agent`. Both sit on a **Verdict**'s sources, and one
 does not imply the other: a feed can be cited by an analyst.
 _Avoid_: connector trust, confidence, severity
+
+**Stance**:
+How one source bore on a **Verdict**: `supports`, `weakens` or `neither`. Replaces
+a flat corroborated list, which cannot express direction — a source that weakened
+a hypothesis and a source that never bore on it are not the same row.
+_Avoid_: corroboration (that is the effect of several sources agreeing, not one
+source's direction), confidence, polarity, sentiment
 
 **Trust**:
 Who concluded — `analyst` when a person closed it, `agent` when the daemon did.
@@ -225,6 +264,14 @@ run-scoped concept, distinct from **Source Evidence**, which attaches to a
 Finding.
 _Avoid_: finding, result, observation
 
+**Visibility Gap**:
+Something a run could not see because a tool timed out or was unavailable —
+recorded so an absence of evidence is not read as evidence of absence. A refusal
+or a bad argument is a defect and must never be recorded as one
+(`services/agent/contracts/tool.ts`). Distinct from a **Declared Gap**, which is
+a question nobody gathered evidence for rather than a lookup that failed.
+_Avoid_: declared gap, error, failure, unknown
+
 **Digest**:
 The bounded view of a Projection presented to the lead for a single decision:
 recent Evidence, entities seen, open questions. Its sampling is seeded from the
@@ -276,6 +323,13 @@ _Avoid_: page, tab, view
   was corroborated
 - **Trust** is unrelated to **Connector Trust**, which is about admitting a
   third-party origin rather than weighing a conclusion
+- A **Recall** returns **Sightings**, **Verdicts** and **Declared Gaps** in one
+  shape, carried two ways: journaled verbatim as the **Recall Event** at run
+  start, and returned as the single row of a `recall_entity` tool result mid-run.
+  One shape and not two — a parallel payload is a second contract, and the second
+  one drifts. Declared in `core/memory/recall_contract.py` and
+  `services/agent/contracts/memory.ts`, with a ratchet that fails when they
+  disagree
 - **Ingestion** produces **Findings** and depends on **Storage** (never the reverse)
 - **Federation** drives **Ingestion** (an adapter wraps an ingestion service);
   Ingestion never depends on Federation
