@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import UserMenu from './UserMenu'
@@ -6,7 +6,7 @@ import UserMenu from './UserMenu'
 const auth = vi.hoisted(() => ({
   user: {
     username: 'dev-user',
-    full_name: 'Test User' as string | null,
+    full_name: 'Test User' as string | null | undefined,
     email: 'dev@localhost',
     role_id: 'role-admin',
     mfa_enabled: false,
@@ -27,22 +27,29 @@ function renderMenu() {
 }
 
 describe('UserMenu', () => {
-  it('renders initials and labels from full_name', () => {
+  beforeEach(() => {
+    auth.user.username = 'dev-user'
     auth.user.full_name = 'Test User'
+  })
+
+  it('renders initials and labels from full_name', () => {
     renderMenu()
     expect(screen.getByText('TU')).toBeInTheDocument()
     expect(screen.getAllByText('Test User').length).toBeGreaterThan(0)
   })
 
-  it('falls back to username when full_name is null', async () => {
-    auth.user.full_name = null
-    renderMenu()
-    expect(screen.getByRole('button', { name: 'Account menu' })).toBeInTheDocument()
-    expect(screen.getByText('D')).toBeInTheDocument()
-    expect(screen.getAllByText('dev-user').length).toBeGreaterThan(0)
+  it.each([null, undefined, '', '   '])(
+    'falls back to username when full_name is %j',
+    async (full_name) => {
+      auth.user.full_name = full_name
+      renderMenu()
+      expect(screen.getByRole('button', { name: 'Account menu' })).toBeInTheDocument()
+      expect(screen.getByText('D')).toBeInTheDocument()
+      expect(screen.getAllByText('dev-user').length).toBeGreaterThan(0)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
-    const menu = await screen.findByRole('menu', { name: 'Account' })
-    expect(menu).toHaveTextContent('dev-user')
-  })
+      fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+      const menu = await screen.findByRole('menu', { name: 'Account' })
+      expect(menu).toHaveTextContent('dev-user')
+    },
+  )
 })

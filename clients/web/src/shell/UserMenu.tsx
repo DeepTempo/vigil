@@ -47,8 +47,8 @@ export default function UserMenu() {
 
   if (!user) return null
 
-  // full_name is null on the in-memory DEV_MODE user (and any account without one)
-  const displayName = user.full_name?.trim() || user.username
+  // /auth/me can send null/omitted full_name even though the TS type is string
+  const displayName = user.full_name?.trim() || user.username || ''
   const initials = displayName
     .split(/\s+/)
     .filter(Boolean)
