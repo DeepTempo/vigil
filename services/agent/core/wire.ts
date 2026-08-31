@@ -25,6 +25,20 @@ type Body = Omit<OpenAI.Chat.ChatCompletionCreateParams, "stream" | "stream_opti
 // refusal is a property of the schema as much as of the provider.
 const emitModes = new Map<string, "schema" | "tool" | "prompt">();
 
+// A worker process outlives every run it serves, and assembleSpec bakes this run's
+// data_domains, attack_techniques and worker ids into the schemas it hands out -- so
+// the keys are per-run, not per-arch, and an unbounded map is a leak that holds a
+// serialized schema per entry. Oldest out first: what a gateway refuses is a property
+// of the deployment, so a re-learned mode costs one downgrade, not a wrong answer.
+const REMEMBERED_MODES = 256;
+
+function rememberMode(key: string, mode: "schema" | "tool" | "prompt"): void {
+  emitModes.set(key, mode);
+  if (emitModes.size <= REMEMBERED_MODES) return;
+  const oldest = emitModes.keys().next();
+  if (!oldest.done) emitModes.delete(oldest.value);
+}
+
 // Statuses that mean the gateway will not carry this shape, however often it is asked.
 // Everything else -- a 504, a 429, a dropped socket -- is a fact about load, not shape.
 const REFUSED = new Set([400, 404, 422, 501]);
@@ -49,6 +63,29 @@ function renamed(error: unknown, current: OutputCap): OutputCap | null {
 
 export function resetEmitMode(): void {
   emitModes.clear();
+}
+
+// Every rung of the emission ladder is a billed call, and all but the one that lands
+// are discarded for being the wrong shape. Summed onto whichever turn wins, because
+// stream() reports usage once: what is not carried there was spent and never counted,
+// and the cost ceiling is the only thing governing the run.
+interface Tally {
+  count(turn: Turn): Turn;
+}
+
+function tally(): Tally {
+  let held: TokenCounts = { input: 0, output: 0, cache_read: 0, cache_write: 0 };
+  return {
+    count(turn: Turn): Turn {
+      held = {
+        input: held.input + turn.tokens.input,
+        output: held.output + turn.tokens.output,
+        cache_read: held.cache_read + turn.tokens.cache_read,
+        cache_write: held.cache_write + turn.tokens.cache_write,
+      };
+      return { ...turn, tokens: held };
+    },
+  };
 }
 
 export function openAiSurface(client: OpenAI, model: string, limiter: Limiter, provider_type: string): Provider {
@@ -82,47 +119,54 @@ class OpenAiSurface implements Provider {
   private async emit(request: TurnRequest, schema: Record<string, unknown>): Promise<Turn> {
     const messages = wire(request.messages);
     const mode = `${this.model}\n${JSON.stringify(schema)}`;
+    // Shared with viaTool, so a downgrade that spans both still reports one total.
+    const spend = tally();
     if ((emitModes.get(mode) ?? "schema") === "schema") {
       try {
         const format = { type: "json_schema" as const, json_schema: { name: "emission", strict: false, schema } };
-        const turn = turnOf(await this.call({ model: this.model, messages, response_format: format }, request.signal));
+        const turn = spend.count(turnOf(await this.call({ model: this.model, messages, response_format: format }, request.signal)));
         // A gateway that drops response_format answers 200 with an object of the model's
         // own invention, so fall through to the tool, whose parameters it does forward.
         if (honours(turn.content, schema)) return turn;
-        emitModes.set(mode, "tool");
+        rememberMode(mode, "tool");
       } catch (error) {
         if (statusOf(error) !== 400) throw error;
-        emitModes.set(mode, "tool");
+        rememberMode(mode, "tool");
       }
     }
 
     if (emitModes.get(mode) !== "prompt") {
-      const carried = await this.viaTool(messages, schema, request.signal);
+      const carried = await this.viaTool(messages, schema, spend, request.signal);
       if (carried !== null) return carried;
-      emitModes.set(mode, "prompt");
+      rememberMode(mode, "prompt");
     }
 
     // Neither wire carried it, so the schema goes in the prompt, which asks nothing of
     // the gateway. What comes back is JSON the caller already parses and corrects.
     const asked = [...messages, { role: "user" as const, content: prompted(schema) }];
-    const turn = turnOf(await this.call({ model: this.model, messages: asked }, request.signal));
+    const turn = spend.count(turnOf(await this.call({ model: this.model, messages: asked }, request.signal)));
     if (turn.content !== "" || turn.tool_calls.length === 0) return turn;
 
     // No tools were offered and it called one anyway: a provider that finds a name in
     // the transcript reaches for it rather than answering. Correct it, as viaTool does.
-    return turnOf(
-      await this.call(
-        { model: this.model, messages: [...asked, { role: "user", content: instead(turn) }] },
-        request.signal,
+    return spend.count(
+      turnOf(
+        await this.call(
+          { model: this.model, messages: [...asked, { role: "user", content: instead(turn) }] },
+          request.signal,
+        ),
       ),
     );
   }
 
   // The emission carried by a forced tool call, or null when this wire cannot carry it
-  // here -- the gateway refused, or the model answered with something else.
+  // here -- the gateway refused, or the model answered with something else. The tally is
+  // the caller's: an attempt that answers null was still billed, and the prompted rung
+  // behind it has to report what this one spent.
   private async viaTool(
     messages: OpenAI.Chat.ChatCompletionMessageParam[],
     schema: Record<string, unknown>,
+    spend: Tally,
     signal?: AbortSignal,
   ): Promise<Turn | null> {
     const emit = { name: EMIT_TOOL, description: "Emit your answer.", parameters: schema };
@@ -135,7 +179,7 @@ class OpenAiSurface implements Provider {
 
     let turn: Turn;
     try {
-      turn = turnOf(await this.call(forced, signal));
+      turn = spend.count(turnOf(await this.call(forced, signal)));
     } catch (error) {
       // Only a refusal: returning null claims this wire never works here, which a local
       // fault (no status) and a ceiling ("not now") do not establish.
@@ -150,10 +194,12 @@ class OpenAiSurface implements Provider {
 
     // Asked for the emission and handed a call to something else: a provider that does
     // not enforce tool_choice reaches for a name out of the transcript. Say so plainly.
-    const corrected = turnOf(
-      await this.call(
-        { ...forced, messages: [...messages, { role: "user", content: instead(turn, `Call ${EMIT_TOOL} with your final answer, and call nothing else.`) }] },
-        signal,
+    const corrected = spend.count(
+      turnOf(
+        await this.call(
+          { ...forced, messages: [...messages, { role: "user", content: instead(turn, `Call ${EMIT_TOOL} with your final answer, and call nothing else.`) }] },
+          signal,
+        ),
       ),
     );
     const second = emissionOf(corrected);
