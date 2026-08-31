@@ -10,7 +10,7 @@ import {
   type LLMProviderCreate,
 } from '../../services/api'
 
-type ProviderType = 'anthropic' | 'openai' | 'ollama'
+type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'vertex'
 
 const STEPS = ['Provider', 'Connection', 'Model & Save']
 
@@ -18,16 +18,20 @@ const DEFAULT_BASE_URLS = {
   anthropic: '',
   openai: 'https://api.openai.com/v1',
   ollama: 'http://localhost:11434',
+  // Vertex routes through Bifrost, which holds the credential; no base_url needed.
+  vertex: '',
 } satisfies Record<ProviderType, string>
 const DEFAULT_MODEL = {
   anthropic: 'claude-sonnet-4-5-20250929',
   openai: 'gpt-4o-mini',
   ollama: 'llama3.1:8b',
+  vertex: 'gemini-3.6-flash',
 } satisfies Record<ProviderType, string>
 const TYPE_OPTIONS: { value: ProviderType; label: string; desc: string }[] = [
   { value: 'ollama', label: 'Ollama', desc: 'Local or remote Ollama server' },
   { value: 'openai', label: 'OpenAI', desc: 'OpenAI or OpenAI-compatible endpoint' },
   { value: 'anthropic', label: 'Anthropic', desc: 'Additional Anthropic account' },
+  { value: 'vertex', label: 'Vertex AI', desc: 'Google Vertex (Gemini) via Bifrost' },
 ]
 
 interface Props {

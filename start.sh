@@ -41,10 +41,12 @@ done
 ensure_docker || exit 1
 
 SKIP_FRONTEND=0
+# Opt out explicitly (e.g. to run scripts/agent_up.sh by hand) with SKIP_AGENT=1.
+SKIP_AGENT="${SKIP_AGENT:-0}"
 if ! command -v node &>/dev/null; then
-    echo "Node.js not found. Frontend will not start."; SKIP_FRONTEND=1
+    echo "Node.js not found. Frontend + agent layer will not start."; SKIP_FRONTEND=1; SKIP_AGENT=1
 elif ! node -e "process.exit(parseInt(process.version.slice(1))>=18?0:1)" 2>/dev/null; then
-    echo "Node.js 18+ required. Frontend will not start."; SKIP_FRONTEND=1
+    echo "Node.js 18+ required. Frontend + agent layer will not start."; SKIP_FRONTEND=1; SKIP_AGENT=1
 fi
 
 # --- Git submodules ---
@@ -115,6 +117,16 @@ start_frontend() {
     fi
 }
 
+# The TypeScript agent layer drains the BullMQ agent-runs queue the backend
+# enqueues to. Without it, a run is accepted, reported queued, and never picked
+# up — no error anywhere. agent_up.sh self-backgrounds worker+serve, waits on
+# their health, and writes logs/agent-{worker,serve}.pid; failures here are
+# non-fatal so the rest of the stack still comes up.
+start_agent_layer() {
+    [ "$SKIP_AGENT" -eq 0 ] || return 0
+    scripts/agent_up.sh || echo "Warning: agent layer failed to start (workflow runs won't be picked up)."
+}
+
 if [ "$DAEMON" -eq 0 ]; then
     # Foreground
     cleanup() {
@@ -122,6 +134,8 @@ if [ "$DAEMON" -eq 0 ]; then
         [ -n "${BACKEND_PID:-}" ] && kill $BACKEND_PID 2>/dev/null
         [ -n "${WORKER_PID:-}" ] && kill $WORKER_PID 2>/dev/null
         [ -n "${FRONTEND_PID:-}" ] && kill $FRONTEND_PID 2>/dev/null
+        [ -f logs/agent-worker.pid ] && kill "$(cat logs/agent-worker.pid)" 2>/dev/null
+        [ -f logs/agent-serve.pid ] && kill "$(cat logs/agent-serve.pid)" 2>/dev/null
         pkill -f "uvicorn services.api.main:app" 2>/dev/null
         exit 0
     }
@@ -135,6 +149,7 @@ if [ "$DAEMON" -eq 0 ]; then
     WORKER_PID=$!
 
     start_frontend
+    start_agent_layer
     print_ready
     echo "Press Ctrl+C to stop"
 
@@ -173,6 +188,8 @@ else
     nohup "${PWD}/venv/bin/python" -m services.worker > logs/llm_worker.log 2>&1 &
     echo $! > logs/llm_worker.pid
 
+    start_agent_layer
+
     if [ "$SKIP_FRONTEND" -eq 0 ] && [ -d "clients/web/node_modules" ]; then
         # Absolute log dir: the `cd clients/web` only applies inside the
         # backgrounded (&) job, not the subsequent `echo`, which still runs
@@ -185,6 +202,6 @@ else
 
     print_ready
     echo ""
-    echo "Logs: tail -f logs/{backend,daemon,llm_worker,frontend}.log"
+    echo "Logs: tail -f logs/{backend,daemon,llm_worker,frontend,agent-worker,agent-serve}.log"
     echo "Stop: ./shutdown_all.sh"
 fi

@@ -125,7 +125,8 @@
       "args": ["core/integrations/elastic/tool.py"],
       "cwd": "${workspaceFolder}",
       "env": {
-        "_setup_note": "Elastic Security via Elasticsearch REST API. Set ELASTIC_HOST (e.g., https://elasticsearch.example.com:9200), ELASTIC_API_KEY or ELASTIC_USERNAME/ELASTIC_PASSWORD, and optionally ELASTIC_KIBANA_URL in .env."
+        "_setup_note": "Elastic Security via Elasticsearch REST API. Set ELASTIC_HOST (e.g., https://elasticsearch.example.com:9200); for a secured cluster also set ELASTIC_API_KEY or ELASTIC_USERNAME/ELASTIC_PASSWORD, and optionally ELASTIC_KIBANA_URL in .env. ELASTIC_HOST is the only required var (a local security-disabled cluster needs no credentials); the tool loads the rest from .env directly.",
+        "ELASTIC_HOST": "${ELASTIC_HOST}"
       }
     },
 
@@ -187,7 +188,8 @@
 
     "gcp-secops": {
       "command": "uvx",
-      "args": ["--from", "google-secops-mcp", "secops_mcp"],
+      "_comment": "Pin mcp<2: this server uses the v1 mcp.server.fastmcp API, which mcp 2.x removed.",
+      "args": ["--with", "mcp<2", "--from", "google-secops-mcp", "secops_mcp"],
       "env": {
         "CHRONICLE_PROJECT_ID": "${CHRONICLE_PROJECT_ID}",
         "CHRONICLE_CUSTOMER_ID": "${CHRONICLE_CUSTOMER_ID}",
@@ -197,7 +199,8 @@
 
     "gcp-threat-intel": {
       "command": "uvx",
-      "args": ["gti_mcp"],
+      "_comment": "Pin mcp<2: this server uses the v1 mcp.server.fastmcp API, which mcp 2.x removed.",
+      "args": ["--with", "mcp<2", "gti_mcp"],
       "env": {
         "VT_APIKEY": "${VIRUSTOTAL_API_KEY}"
       }
@@ -205,7 +208,8 @@
 
     "gcp-scc": {
       "command": "uvx",
-      "args": ["scc_mcp"],
+      "_comment": "Pin mcp<2: this server uses the v1 mcp.server.fastmcp API, which mcp 2.x removed.",
+      "args": ["--with", "mcp<2", "scc_mcp"],
       "env": {}
     },
 
@@ -306,7 +310,11 @@
     "misp": {
       "command": "python3",
       "args": ["core/integrations/misp/tool.py"],
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "_setup_note": "MISP via REST API. Set MISP_URL and MISP_API_KEY (generate an Auth Key in the MISP UI) in .env; MISP_VERIFY_SSL=false for a local self-signed cert (defaults to verify). The tool loads all three from .env directly; only MISP_API_KEY gates dormancy, so the server stays dormant until it is set.",
+        "MISP_API_KEY": "${MISP_API_KEY}"
+      }
     },
 
     "hybrid-analysis": {

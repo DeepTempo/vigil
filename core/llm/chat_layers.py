@@ -13,6 +13,77 @@ from core.llm.tool_schemas import ALL_TOOLS
 
 REMOTE = "remote"
 
+# Direct-action verbs that make an MCP tool destructive: calling it changes the
+# world (isolates a host, blocks an IP, kills a process) and a later read cannot
+# undo it. Chat declares connected MCP tools unconditionally (see ``_declare``),
+# but the chat surface has no approval-resume path — a parked call would hang
+# forever, never gate — so these are dropped from chat entirely. Real containment
+# goes through the approval queue (``create_approval_action``) and workflows, not
+# ad-hoc chat calls.
+_DESTRUCTIVE_VERBS = frozenset(
+    {
+        "isolate",
+        "unisolate",
+        "contain",
+        "quarantine",
+        "block",
+        "unblock",
+        "kill",
+        "terminate",
+        "shutdown",
+        "disable",
+        "deactivate",
+        "suspend",
+        "delete",
+        "remove",
+        "purge",
+        "wipe",
+        "revoke",
+        "ban",
+        "remediate",
+        "detonate",
+        "reset",
+        "release",
+    }
+)
+# A read-only lead verb (get_isolation_status, list_blocked_ips) is safe even
+# when a destructive noun follows, so it overrides the verb check.
+_READONLY_LEADS = frozenset(
+    {
+        "get",
+        "list",
+        "search",
+        "describe",
+        "fetch",
+        "query",
+        "show",
+        "read",
+        "lookup",
+        "count",
+        "stats",
+        "status",
+        "check",
+    }
+)
+
+
+def _is_destructive_mcp(name: str) -> bool:
+    """True for a server-prefixed MCP tool that performs an irreversible action.
+
+    MCP names arrive as ``{server}_{tool}``; the action is the tool part. A
+    read-only lead verb wins outright; otherwise any destructive verb token marks
+    it. Deliberately conservative — a spurious drop just means chat recommends the
+    action instead of calling it, whereas a missed one is an ungated detonation.
+    """
+    action = name.split("_", 1)[1] if "_" in name else name
+    tokens = action.split("_")
+    if not tokens:
+        return False
+    if tokens[0] in _READONLY_LEADS:
+        return False
+    return any(tok in _DESTRUCTIVE_VERBS for tok in tokens)
+
+
 # A conversation is one answer at a time with a person waiting, so the ceiling is
 # per turn rather than per run: they will say so long before a budget would.
 DEFAULT_BUDGETS = {"max_calls": 12, "max_wall_ms": 300_000, "max_cost_usd": 2.0}
@@ -29,9 +100,26 @@ def run_id_for(session_id: str) -> str:
 
 # A tool with no description is dropped rather than declared: the agent layer
 # refuses one, because a model cannot choose between two blank tools.
-def _declare(wanted: Optional[List[str]]) -> List[Dict[str, Any]]:
-    catalogue = {tool["name"]: tool for tool in ALL_TOOLS if tool.get("name")}
-    names = list(catalogue) if wanted is None else [n for n in wanted if n in catalogue]
+def _declare(
+    wanted: Optional[List[str]],
+    mcp_tools: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    # Two surfaces. Static built-ins are curated: a per-agent recommended-tools
+    # list (``wanted``) narrows them. Connected MCP integrations (server-prefixed,
+    # e.g. virustotal_get_ip_report) are ALWAYS offered when present — a user who
+    # connected an integration expects the assistant to use it regardless of any
+    # agent's tool list, and hunts curate separately (playbook_resolver). So a
+    # ``wanted`` list filters only the built-ins; live integrations are appended —
+    # except direct-action MCP tools (see ``_is_destructive_mcp``), which chat
+    # cannot safely gate and so never declares.
+    static = {t["name"]: t for t in ALL_TOOLS if t.get("name")}
+    mcp = {t["name"]: t for t in (mcp_tools or []) if t.get("name")}
+    static_names = (
+        list(static) if wanted is None else [n for n in wanted if n in static]
+    )
+    mcp_names = [n for n in mcp if n not in static_names and not _is_destructive_mcp(n)]
+    names = static_names + mcp_names
+    catalogue = {**static, **mcp}
     declared = []
     for name in names:
         entry = catalogue[name]
@@ -49,12 +137,16 @@ def _declare(wanted: Optional[List[str]]) -> List[Dict[str, Any]]:
     return declared
 
 
-def chat_config(model: str, tools: Optional[List[str]] = None) -> str:
+def chat_config(
+    model: str,
+    tools: Optional[List[str]] = None,
+    mcp_tools: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     document = {
         "model": model,
         "budgets": DEFAULT_BUDGETS,
         "runtime": DEFAULT_RUNTIME,
-        "tools": _declare(tools),
+        "tools": _declare(tools, mcp_tools),
         # A chat tool asks the person directly rather than parking on a
         # checkpoint: they are already in the conversation.
         "approvals": [],
