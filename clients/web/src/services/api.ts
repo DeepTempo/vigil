@@ -1070,6 +1070,12 @@ export const workflowApi = {
   cancelRun: (runId: string, reason: string, rejectedBy?: string) =>
     api.post(`/workflows/runs/${runId}/cancel`, { reason, ...(rejectedBy && { rejected_by: rejectedBy }) }),
 
+  // Another pass over the same ledger, for a finished run whose write-up reads badly.
+  // The timeout sits above the backend's own 180s so its answer — the account is still
+  // being written, reopen the run for it — is what an operator sees, not a client giving up.
+  narrateRun: (runId: string) =>
+    api.post(`/workflows/runs/${runId}/narrate`, null, { timeout: LLM_TIMEOUT + 20_000 }),
+
   // Steer a run that is already going. Queued rather than journalled: the worker holding
   // the ledger is what turns a directive into an event on it. `fields` carries the typed
   // half — the entity a benign suppresses, the grant an extend buys — which prose in

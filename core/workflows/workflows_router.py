@@ -35,6 +35,12 @@ logger = logging.getLogger(__name__)
 # to go and never where, so neither is a target.
 TARGET_PARAMS = frozenset({"finding_id", "case_id", "context", "hypothesis"})
 
+# Rewrites in flight. One press is a whole model call over a run's record, and the two
+# an impatient operator makes race to append to the same ledger. Per process, which is
+# what a second worker behind a load balancer would slip past -- it bounds the common
+# case (one person, one console) without a lock nobody else here takes.
+_narrating: set[str] = set()
+
 
 # -----------------------------------------------------------------------------
 # Pydantic schemas
@@ -284,12 +290,12 @@ def _capabilities(registry: Any) -> Dict[str, Any]:
 # What the run will be charged at, and how confidently. An unpriced model is refused a
 # few calls in, correctly but after the spend, so it is said here instead.
 def _pricing() -> Dict[str, Any]:
-    from core.llm.cost.pricing_router import _priced_as
+    from core.llm.cost.pricing_router import priced_as
     from core.llm.defaults import DEFAULT_MODEL
     from core.llm.providers.registry import get_registry
 
     try:
-        provider, model = _priced_as("bifrost", DEFAULT_MODEL)
+        provider, model = priced_as("bifrost", DEFAULT_MODEL)
         source = get_registry().get_pricing_source(model, provider)
     except Exception as exc:  # noqa: BLE001
         logger.debug("could not read the rate for the default model: %s", exc)
@@ -513,11 +519,36 @@ async def narrate_workflow_run(
 
     if not run_service.get_run(run_id):
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    if run_id in _narrating:
+        raise HTTPException(
+            status_code=409,
+            detail="This run is already being written up. Reopen it when that finishes.",
+        )
+    _narrating.add(run_id)
     try:
-        return {"success": True, "narrative": await write_narrative(run_id)}
+        narrative = await write_narrative(run_id)
     except Exception as exc:  # noqa: BLE001 — the operator is owed the reason
         logger.error("could not write up run %s: %s", run_id, exc)
         raise HTTPException(status_code=502, detail=str(exc)) from None
+    finally:
+        _narrating.discard(run_id)
+
+    await _restate_summary(run_id, run_service)
+    return {"success": True, "narrative": narrative}
+
+
+# result_summary was rendered with the account this rewrite supersedes. The console
+# reads the projection and would show the new one either way, but the row is what an
+# export and the case note the run filed both read, so leaving it makes two accounts
+# of one hunt. Best effort: the account is written and journaled whatever happens here.
+async def _restate_summary(run_id: str, run_service: WorkflowRunService) -> None:
+    try:
+        projection = await read_projection(run_id) or {}
+        restated = projection.get("report_markdown")
+        if restated:
+            run_service.set_result_summary(run_id, restated)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not restate the stored summary of %s: %s", run_id, exc)
 
 
 @router.delete("/workflows/runs/{run_id}")

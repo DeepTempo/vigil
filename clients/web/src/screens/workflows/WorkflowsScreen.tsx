@@ -1000,7 +1000,7 @@ export function RunDetail({ d, onSteered }: { d: WfRunDetail; onSteered: () => v
           <pre className="font-mono text-[11.5px] leading-[1.5] whitespace-pre-wrap m-0" style={{ color: 'var(--crit)' }}>{d.error}</pre>
         </div>
       )}
-      {hunt ? <HuntTabs d={d} hunt={hunt} /> : <ComposeDetail d={d} />}
+      {hunt ? <HuntTabs d={d} hunt={hunt} onReload={onSteered} /> : <ComposeDetail d={d} />}
       {IN_FLIGHT.includes(d.status) && <Steer runId={d.run_id} hunt={hunt !== null} onSteered={onSteered} />}
     </div>
   )
@@ -1081,7 +1081,7 @@ type HuntTab = 'hyp' | 'evidence' | 'moves' | 'frontier' | 'gaps' | 'esc' | 'rep
 
 /** Views of one run as tabs rather than stacked tables. A view with nothing in it
  *  is not offered rather than offered empty. */
-function HuntTabs({ d, hunt }: { d: WfRunDetail; hunt: HuntView }) {
+function HuntTabs({ d, hunt, onReload }: { d: WfRunDetail; hunt: HuntView; onReload: () => void }) {
   const found = hunt.evidence ?? []
   // Live, not only from the finalized report, so gaps are visible mid-run.
   const gaps = hunt.report?.gaps ?? found.filter((one) => one.is_gap).map(liveGap)
@@ -1127,7 +1127,17 @@ function HuntTabs({ d, hunt }: { d: WfRunDetail; hunt: HuntView }) {
       )}
       {shown === 'report' && (report === ''
         ? <div className="muted text-[12.5px] py-3">The report is written when the hunt reaches a terminal state — completed, cancelled, or stopped at its budget.</div>
-        : <HuntAccount hunt={hunt} report={report} gaps={gaps.length} onGo={setTab} />)}
+        : (
+          <HuntAccount
+            hunt={hunt}
+            report={report}
+            gaps={gaps.length}
+            onGo={setTab}
+            // A run still going writes its own account when it ends, so rewriting one
+            // now buys a page about to be replaced.
+            rewrite={IN_FLIGHT.includes(d.status) ? null : { runId: d.run_id, onRewritten: onReload }}
+          />
+        ))}
       {shown === 'next' && <HuntActions hunt={hunt} />}
     </HypLabels.Provider>
   )
@@ -1135,7 +1145,7 @@ function HuntTabs({ d, hunt }: { d: WfRunDetail; hunt: HuntView }) {
 
 /** The account, laid out — what happened, with the tabs carrying the evidence and
  *  metadata the report also lists. The markdown itself is untouched. */
-function HuntAccount({ hunt, report, gaps, onGo }: { hunt: HuntView; report: string; gaps: number; onGo: (tab: HuntTab) => void }) {
+function HuntAccount({ hunt, report, gaps, onGo, rewrite }: { hunt: HuntView; report: string; gaps: number; onGo: (tab: HuntTab) => void; rewrite: RewriteTarget | null }) {
   const account = hunt.narrative ?? null
   if (account === null) { // no narrative written: show the whole report rather than nothing
     return (
@@ -1143,6 +1153,7 @@ function HuntAccount({ hunt, report, gaps, onGo }: { hunt: HuntView; report: str
         <div className="hunt-account-foot" style={{ marginTop: 0, borderTop: 'none', paddingTop: 0 }}>
           <span className="muted text-[11.5px]">No account was written for this run.</span>
           <span className="flex-1" />
+          {rewrite && <Rewrite target={rewrite} label="write the account" />}
           <CopyReport md={report} />
         </div>
         <ReportBody md={withoutHeader(report)} />
@@ -1162,6 +1173,7 @@ function HuntAccount({ hunt, report, gaps, onGo }: { hunt: HuntView; report: str
         <button className="btn ghost text-[11px]" onClick={() => onGo('evidence')}>Evidence ▸</button>
         {gaps > 0 && <button className="btn ghost text-[11px]" onClick={() => onGo('gaps')}>Gaps ▸</button>}
         <span className="flex-1" />
+        {rewrite && <Rewrite target={rewrite} label="rewrite" />}
         <CopyReport md={report} />
       </div>
       <div className="muted text-[11px] mt-2">
@@ -1230,6 +1242,38 @@ function VerdictStrip({ hunt, onGo }: { hunt: HuntView; onGo: (tab: HuntTab) => 
 }
 
 /** The markdown is the deliverable; not rendering it inline is not taking it away. */
+interface RewriteTarget { runId: string; onRewritten: () => void }
+
+/** Another pass over the same ledger. One press is a whole model call over the run's
+ *  record, so the button is the only thing stopping two: nothing on the server refuses
+ *  a second while the first is still writing. The answer comes back on the response,
+ *  but the reload is what renders it — the ledger, not this call, is the account. */
+function Rewrite({ target, label }: { target: RewriteTarget; label: string }) {
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+
+  const ask = () => {
+    setBusy(true)
+    setFailed(null)
+    workflowApi
+      .narrateRun(target.runId)
+      .then(() => { setBusy(false); target.onRewritten() })
+      .catch((e) => { setFailed(errMsg(e)); setBusy(false) })
+  }
+
+  return (
+    <span className="flex gap-1.5 items-center">
+      {/* The reason, not "failed": a timeout here means it is still being written. */}
+      {failed !== null && (
+        <span className="text-[11px] max-w-[320px] truncate" style={{ color: 'var(--crit)' }} title={failed}>{failed}</span>
+      )}
+      <button className="btn ghost text-[11px]" disabled={busy} onClick={ask}>
+        {busy ? 'writing…' : label}
+      </button>
+    </span>
+  )
+}
+
 function CopyReport({ md }: { md: string }) {
   const [said, setSaid] = useState(false)
   const copy = () => {
