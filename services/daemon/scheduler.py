@@ -44,6 +44,9 @@ class TaskScheduler:
         # Services (lazy loaded)
         self._data_service = None
         self._claude_service = None
+        # The orchestrator's intake, handed over by the daemon: a scheduled hunt is
+        # one more item on the queue that already owns the run and its budget.
+        self._investigation_queue: Optional[asyncio.Queue] = None
 
         # Stats
         self.stats = {
@@ -56,6 +59,10 @@ class TaskScheduler:
 
         # Register default tasks
         self._register_default_tasks()
+
+    def set_investigation_queue(self, queue: asyncio.Queue):
+        """Give the scheduler the orchestrator's intake, as the processor has."""
+        self._investigation_queue = queue
 
     def _register_default_tasks(self):
         """Register default scheduled tasks."""
@@ -198,124 +205,59 @@ class TaskScheduler:
         logger.info("Task scheduler stopped")
 
     async def _run_threat_hunt(self):
-        """Execute periodic threat hunting queries."""
+        """Open a hypothesis-driven hunt on the orchestrator's intake.
+
+        Queued rather than run here: the orchestrator owns the investigation
+        record, the budget and the reconcile, and a second path to any of those
+        would be a second set of guardrails.
+        """
         logger.info("Starting scheduled threat hunt...")
         self.stats["threat_hunts"] += 1
 
+        if self._investigation_queue is None:
+            logger.warning(
+                "No investigation queue; the scheduled hunt cannot be opened"
+            )
+            return
+
+        hypothesis = self._hunt_hypothesis()
+        await self._investigation_queue.put(
+            {
+                "type": "manual",
+                "workflow_id": "threat-hunt",
+                "trigger_type": "scheduled",
+                "priority": "low",
+                "finding_ids": [],
+                "hypothesis": hypothesis,
+            }
+        )
+        logger.info(
+            "Queued a scheduled threat hunt: %s",
+            hypothesis or "the definition's hypotheses",
+        )
+
+    # What this hunt is out to test, read off the techniques the estate is showing, so
+    # a nightly hunt follows it rather than repeating one fixed question.
+    def _hunt_hypothesis(self) -> str:
         if not self._data_service:
-            logger.warning("Data service not available for threat hunt")
-            return
+            return ""
+        try:
+            findings = self._data_service.get_findings(limit=500)
+        except Exception:  # noqa: BLE001 -- a hunt with no steer is still a hunt
+            logger.exception("could not read findings to steer the scheduled hunt")
+            return ""
 
-        # Get recent findings for analysis
-        findings = self._data_service.get_findings()
-        if not findings:
-            logger.info("No findings to analyze for threat hunt")
-            return
-
-        # Analyze patterns in recent findings
-        analysis = await self._analyze_finding_patterns(findings)
-
-        # Look for indicators of compromise across data
-        iocs = self._extract_iocs(findings)
-
-        # Query for related activity (if Splunk is available)
-        await self._hunt_for_iocs(iocs)
-
-        # Generate threat hunt summary
-        summary = {
-            "timestamp": utcnow().isoformat(),
-            "findings_analyzed": len(findings),
-            "patterns_detected": analysis.get("patterns", []),
-            "iocs_found": len(iocs),
-            "recommendations": analysis.get("recommendations", []),
-        }
-
-        logger.info(f"Threat hunt complete: {summary}")
-        return summary
-
-    async def _analyze_finding_patterns(self, findings: List[Dict]) -> Dict[str, Any]:
-        """Analyze patterns in findings."""
-        patterns = []
-        recommendations = []
-
-        # Group by MITRE technique
-        technique_counts = {}
-        for finding in findings:
-            mitre = finding.get("mitre_predictions", {})
-            for technique in mitre.keys():
-                technique_counts[technique] = technique_counts.get(technique, 0) + 1
-
-        # Identify common techniques
-        for technique, count in sorted(technique_counts.items(), key=lambda x: -x[1])[
-            :5
-        ]:
-            if count >= 3:
-                patterns.append(
-                    {"type": "common_technique", "technique": technique, "count": count}
-                )
-                recommendations.append(
-                    f"Review defenses for {technique} (seen {count} times)"
-                )
-
-        # Group by severity
-        severity_counts = {}
-        for finding in findings:
-            sev = finding.get("severity", "unknown")
-            severity_counts[sev] = severity_counts.get(sev, 0) + 1
-
-        critical_count = severity_counts.get("critical", 0)
-
-        if critical_count > 5:
-            patterns.append(
-                {
-                    "type": "severity_spike",
-                    "severity": "critical",
-                    "count": critical_count,
-                }
-            )
-            recommendations.append(
-                f"Investigate spike in critical findings ({critical_count})"
-            )
-
-        return {
-            "patterns": patterns,
-            "severity_distribution": severity_counts,
-            "technique_distribution": technique_counts,
-            "recommendations": recommendations,
-        }
-
-    def _extract_iocs(self, findings: List[Dict]) -> Dict[str, List[str]]:
-        """Extract IOCs from findings."""
-        iocs = {"ips": set(), "domains": set(), "hashes": set(), "users": set()}
-
-        for finding in findings:
-            context = finding.get("entity_context", {})
-
-            for ip in context.get("src_ips", []):
-                if ip and not ip.startswith(("10.", "192.168.", "172.")):
-                    iocs["ips"].add(ip)
-
-            for ip in context.get("dest_ips", []):
-                if ip and not ip.startswith(("10.", "192.168.", "172.")):
-                    iocs["ips"].add(ip)
-
-            for domain in context.get("domains", []):
-                iocs["domains"].add(domain)
-
-            for hash_val in context.get("file_hashes", []):
-                iocs["hashes"].add(hash_val)
-
-            for user in context.get("usernames", []):
-                iocs["users"].add(user)
-
-        return {k: list(v) for k, v in iocs.items()}
-
-    async def _hunt_for_iocs(self, iocs: Dict[str, List[str]]):
-        """Hunt for IOCs in connected systems."""
-        # This would query Splunk/SIEM for IOC matches
-        # For now, just log
-        total_iocs = sum(len(v) for v in iocs.values())
-        logger.info(f"Hunting for {total_iocs} IOCs across systems")
+        named = [
+            str(entry["technique"])
+            for entry in (self._get_top_techniques(findings, 3) if findings else [])
+            if entry.get("technique")
+        ]
+        if not named:
+            return ""
+        return (
+            f"Activity consistent with {', '.join(named)} is present in the estate "
+            "and has not been explained"
+        )
 
     async def _generate_report(self):
         """Generate periodic summary report."""

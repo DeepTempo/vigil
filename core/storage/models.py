@@ -1849,6 +1849,8 @@ class WorkflowRun(Base):
         JSONB, nullable=False, default=list, server_default="[]"
     )
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Set when an operator removes the run from History. The row and its ledger stay.
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (
         Index("idx_workflow_runs_workflow_id", "workflow_id", "started_at"),

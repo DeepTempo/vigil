@@ -243,21 +243,57 @@ _ANTHROPIC_TIERS: Tuple[_TierPattern, ...] = (
 )
 
 _OPENAI_TIERS: Tuple[_TierPattern, ...] = (
+    (r"gpt-5-nano", 0.05, 0.40),
+    (r"gpt-5-mini", 0.25, 2.0),
+    (r"gpt-5", 1.25, 10.0),
     (r"gpt-4o-mini", 0.15, 0.60),
     (r"gpt-4o", 2.50, 10.0),
     (r"gpt-4\.1-mini", 0.40, 1.60),
     (r"gpt-4\.1", 2.0, 8.0),
     (r"gpt-4-turbo", 10.0, 30.0),
     (r"gpt-4", 30.0, 60.0),
+    (r"o4-mini", 1.10, 4.40),
     (r"o3-mini", 1.10, 4.40),
     (r"o3", 10.0, 40.0),
     (r"o1-mini", 1.10, 4.40),
     (r"o1", 15.0, 60.0),
 )
 
+# Google's own surface, serving the same ids Vertex does at the same rates. A separate
+# key because the two are separate provider_types on the wire.
+_GEMINI_TIERS: Tuple[_TierPattern, ...] = (
+    (r"flash-lite", 0.10, 0.40),
+    (r"flash", 0.30, 2.50),
+    (r"pro", 1.25, 10.0),
+)
+
+# Bedrock and Azure resell other people's models, so the id picks the rate card. Only
+# families this catalog knows: a zero would record a billed model as free, which is what
+# pricing_source "unknown" exists to keep visible.
+_BEDROCK_TIERS: Tuple[_TierPattern, ...] = (
+    (r"opus", 15.0, 75.0),
+    (r"sonnet", 3.0, 15.0),
+    (r"haiku", 0.80, 4.0),
+)
+
+# Vertex serves both families, so the model id picks the rate card. Without an entry a
+# Vertex model is unpriced, and the run budget refuses a run it cannot cost.
+_VERTEX_TIERS: Tuple[_TierPattern, ...] = (
+    (r"flash-lite", 0.10, 0.40),
+    (r"flash", 0.30, 2.50),
+    (r"gemini.*pro", 1.25, 10.0),
+    (r"opus", 15.0, 75.0),
+    (r"sonnet", 3.0, 15.0),
+    (r"haiku", 0.80, 4.0),
+)
+
 _TIER_HEURISTIC: Dict[str, Tuple[_TierPattern, ...]] = {
     "anthropic": _ANTHROPIC_TIERS,
     "openai": _OPENAI_TIERS,
+    "azure": _OPENAI_TIERS,  # the same models, resold
+    "vertex": _VERTEX_TIERS,
+    "gemini": _GEMINI_TIERS,
+    "bedrock": _BEDROCK_TIERS,
     "ollama": (),  # always $0 — handled as a separate branch
 }
 
@@ -322,8 +358,10 @@ def infer_provider_type(model_id: str) -> str:
     mid = model_id.lower()
     if mid.startswith("claude-"):
         return "anthropic"
-    if mid.startswith(("gpt-", "o1", "o3", "text-embedding")):
+    if mid.startswith(("gpt-", "o1", "o3", "o4", "text-embedding")):
         return "openai"
+    if mid.startswith("gemini"):
+        return "gemini"
     # Ollama has no canonical prefix; the remaining path is a soft match
     # against common open-weight names.
     if any(s in mid for s in ("llama", "mistral", "mixtral", "qwen", "gemma")):

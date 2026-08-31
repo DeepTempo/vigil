@@ -10,6 +10,8 @@ export interface Workflow {
   /** "file" (built-in, read-only) or "custom" (DB-backed, editable/deletable) */
   source: string
   useCase: string
+  /** "hunt" runs the hypothesis loop and is bounded by turns; the rest walk phases. */
+  runKind: string
 }
 
 // AGENT_META was mirrored here until #482 moved it to GET /agents, so built-in

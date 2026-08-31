@@ -196,12 +196,11 @@ mount_routers(
 
 
 def _mcp_auto_connect_enabled() -> bool:
-    # Off by default in DEV_MODE so optional MCP processes cannot block a local
-    # backend startup; an explicit setting wins either way.
-    settings = get_settings()
-    if settings.mcp_auto_connect_on_startup is not None:
-        return settings.mcp_auto_connect_on_startup
-    return not settings.dev_mode
+    # One definition site: the registry reads the same rule to decide whether it may
+    # trust its warm-start cache.
+    from core.integrations.mcp.registry import eager_connect_enabled
+
+    return eager_connect_enabled()
 
 
 async def _connect_external_services(mcp_client, registry):
@@ -258,6 +257,11 @@ async def _connect_external_services(mcp_client, registry):
         logger.info(
             "MCP auto-connect disabled; optional MCP servers will connect on demand"
         )
+        # On demand still needs the registry: it is what makes a capability bindable,
+        # and call_tool reconnects itself.
+        from core.integrations.mcp.registry import populate_from_cache
+
+        populate_from_cache(registry)
         return
 
     logger.info("Initializing MCP client with persistent connections...")

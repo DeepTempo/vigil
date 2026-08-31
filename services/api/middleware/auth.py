@@ -27,46 +27,41 @@ if DEV_MODE:
     logger.warning("⚠️  DEV_MODE is ENABLED - Authentication is BYPASSED!")
     logger.warning("⚠️  This should NEVER be enabled in production!")
 
-# Mock dev user for dev mode
+# The synthetic stand-in, for a database with no admin row. Cached because it is
+# never persisted: re-building it per request would hand out a new user_id each time.
 _dev_user = None
 
 
 def _get_dev_user(session: Session) -> User:
-    """
-    Get or create a mock dev user for development mode.
+    """Resolve the admin the DEV_MODE bypass authenticates as.
 
-    Args:
-        session: Database session
-
-    Returns:
-        Mock dev user with admin permissions
+    The real row is re-read every request: a cached ORM instance detaches when
+    the session that loaded it closes, and reading a column off it then raises
+    DetachedInstanceError. Only the transient fallback below is held.
     """
     global _dev_user
 
+    admin = session.query(User).filter(User.username == "admin").first()
+    if admin is not None:
+        return admin
+
+    # Transient and never added to the session, so its attributes cannot expire.
     if _dev_user is None:
-        # Try to get existing admin user
-        _dev_user = session.query(User).filter(User.username == "admin").first()
+        import uuid
 
-        # If no admin, create a mock user object (won't be persisted)
-        if _dev_user is None:
-            import uuid
+        from core.storage.models import Role
 
-            from core.storage.models import Role
-
-            # Try to get admin role
-            admin_role = session.query(Role).filter(Role.name == "admin").first()
-
-            # Create mock user
-            _dev_user = User(
-                user_id=str(uuid.uuid4()),
-                username="dev-user",
-                email="dev@localhost",
-                password_hash="",  # Not used in dev mode
-                role_id=admin_role.role_id if admin_role else str(uuid.uuid4()),
-                is_active=True,
-                mfa_enabled=False,
-            )
-            logger.info("Created mock dev user (not persisted to DB)")
+        admin_role = session.query(Role).filter(Role.name == "admin").first()
+        _dev_user = User(
+            user_id=str(uuid.uuid4()),
+            username="dev-user",
+            email="dev@localhost",
+            password_hash="",  # Not used in dev mode
+            role_id=admin_role.role_id if admin_role else str(uuid.uuid4()),
+            is_active=True,
+            mfa_enabled=False,
+        )
+        logger.info("Created mock dev user (not persisted to DB)")
 
     return _dev_user
 

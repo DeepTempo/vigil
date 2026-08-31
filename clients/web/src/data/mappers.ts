@@ -280,6 +280,7 @@ export interface ApiWorkflow {
   use_case?: string
   trigger_examples?: string[]
   source?: string
+  run_kind?: string
 }
 
 /** the backend carries no presentation icon, so derive one from the name */
@@ -306,6 +307,7 @@ export function mapApiWorkflow(w: ApiWorkflow): Workflow {
     cmds: w.trigger_examples || [],
     source: w.source || 'file',
     useCase: w.use_case || '',
+    runKind: w.run_kind || 'compose',
   }
 }
 
