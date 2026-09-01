@@ -323,6 +323,60 @@ def create_case(
         return jdump({"error": str(e)})
 
 
+def _record_agent_close(case_id: str) -> None:
+    """Record that an agent closed this Case, and stated no category.
+
+    `unspecified` is not a determination and does not pretend to be one: the
+    Case closed and no reason was given, which is what happened, and becomes an
+    inconclusive Verdict rather than a claim nobody made. An agent that has a
+    determination calls `close_case` and says which.
+
+    Trust is `agent` unconditionally here. There is no authenticated person
+    behind an MCP call, and `analyst` is the one record this system will not let
+    an agent claim on its own behalf.
+    """
+    from core.cases.closure import ClosedByKind, ClosureCategory
+    from core.storage.connection import get_db_session
+    from core.storage.models import CaseClosureInfo
+
+    session = get_db_session()
+    try:
+        if session.get(CaseClosureInfo, case_id) is not None:
+            return
+        session.add(
+            CaseClosureInfo(
+                case_id=case_id,
+                closure_category=ClosureCategory.UNSPECIFIED.value,
+                closed_by="agent",
+                closed_by_kind=ClosedByKind.AGENT.value,
+                closed_at=utcnow(),
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+
+def _drop_closure(case_id: str) -> None:
+    """Forget how a Case closed, because it is no longer closed.
+
+    Left behind on a reopen, the next close finds a row already there and writes
+    none, so the Case keeps the first close's category and instant -- and memory
+    goes on stating the determination the reopen overturned.
+    """
+    from core.storage.connection import get_db_session
+    from core.storage.models import CaseClosureInfo
+
+    session = get_db_session()
+    try:
+        existing = session.get(CaseClosureInfo, case_id)
+        if existing is not None:
+            session.delete(existing)
+            session.commit()
+    finally:
+        session.close()
+
+
 @mcp.tool()
 def update_case(
     case_id: str,
@@ -358,9 +412,21 @@ def update_case(
             )
             updates["notes"] = notes
 
-        if db.update_case(case_id, **updates):
-            return jdump({"success": True, "case_id": case_id})
-        return jdump({"error": "Failed to update case"})
+        was_closed = (case.status or "").strip() == "closed"
+        if not db.update_case(case_id, **updates):
+            return jdump({"error": "Failed to update case"})
+
+        # The status edit is a close, so it records one -- the same fact the
+        # console's PATCH records, from the other side. An agent closing this
+        # way used to leave no closure row at all, so episodic memory read the
+        # close off `cases.updated_at`, which moves on every later edit and
+        # re-derives the Verdict for changes that concluded nothing.
+        if updates.get("status") == "closed" and not was_closed:
+            _record_agent_close(case_id)
+        elif was_closed and updates.get("status") not in (None, "closed"):
+            _drop_closure(case_id)
+
+        return jdump({"success": True, "case_id": case_id})
     except Exception as e:
         return jdump({"error": str(e)})
 

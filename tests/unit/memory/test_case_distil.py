@@ -757,3 +757,41 @@ class TestTheTick:
         }
         session.expire_all()
         assert len(verdicts(session)) == 1
+
+
+class TestTheAgentStatusEdit:
+    """An agent closing by editing the status records one too (MCP path)."""
+
+    def test_it_records_an_agent_close_with_no_category(self, session):
+        from tools.mcp.deeptempo_findings import _record_agent_close
+
+        case(session)
+        session.commit()
+
+        _record_agent_close("case-733")
+
+        session.expire_all()
+        recorded = session.get(CaseClosureInfo, "case-733")
+        assert recorded.closure_category == ClosureCategory.UNSPECIFIED.value
+        # `analyst` is the one record this system will not let an agent claim.
+        assert recorded.closed_by_kind == ClosedByKind.AGENT.value
+
+        write_case_distil(session, "case-733")
+        (row,) = verdicts(session)
+        assert row.outcome == "inconclusive"
+        assert row.trust == "agent"
+
+    def test_it_never_overwrites_a_stated_category(self, session):
+        from tools.mcp.deeptempo_findings import _record_agent_close
+
+        case(session)
+        closure(session, category=ClosureCategory.FALSE_POSITIVE.value)
+        session.commit()
+
+        _record_agent_close("case-733")
+
+        session.expire_all()
+        assert (
+            session.get(CaseClosureInfo, "case-733").closure_category
+            == ClosureCategory.FALSE_POSITIVE.value
+        )
