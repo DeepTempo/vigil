@@ -225,6 +225,17 @@ def _subjects(session: Session, case_id: str) -> List[str]:
     as an entity nobody has looked at rather than as a bad write. And an IOC
     list has no sentence to bound it, where the extractor works on one, so the
     cap ADR 0016 assumes is stated here and logged when it bites.
+
+    **Known limitation.** Nothing populates ``case_iocs`` on any close path:
+    they arrive only from an analyst using the console's IOC form or an agent
+    calling ``add_case_ioc``, and across the live estate the table is empty. So
+    an ordinary Case names no subjects today and its Verdict is reachable only
+    by narrative recall, exactly as #731's hunt Verdicts are. This is not an
+    argument for the alternatives -- extracting a Case title yields nothing
+    either, and scooping ``Finding.entity_context`` across a Case's Findings
+    yields the shared infrastructure ADR 0016 exists to keep off a Verdict. How
+    a Case names its subjects is an open question with its own issue; this is
+    the half of it that is decided, and it is right whenever the IOCs exist.
     """
     rows = (
         session.query(CaseIOC.ioc_type, CaseIOC.value)
@@ -433,7 +444,11 @@ def write_case_distil(session: Session, case_id: str) -> Dict[str, int]:
 
 
 def pending(session: Session, limit: int = DEFAULT_BATCH) -> List[str]:
-    """Closed Cases no marker at this version covers, newest close first."""
+    """Cases whose episodic rows disagree with their state, newest close first.
+
+    Both directions: closed Cases with no Verdict, a stale one, or one derived
+    at another version, and reopened Cases still holding one to withdraw.
+    """
     rows = session.execute(
         _CANDIDATES, {"version": CASE_DISTIL_MAPPING_VERSION, "limit": limit}
     ).all()
@@ -460,6 +475,7 @@ async def case_distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
 
     for case_id in candidates:
         counts = await write_with_retry(
+            InvestigationKind.CASE,
             case_id,
             lambda: _write_in_own_session(case_id),
             CaseDistilRefused,

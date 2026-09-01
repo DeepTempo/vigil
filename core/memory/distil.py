@@ -30,7 +30,17 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+)
 
 from sqlalchemy import delete, text
 from sqlalchemy.dialects.postgresql import insert
@@ -594,6 +604,7 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
             continue
 
         counts = await write_with_retry(
+            InvestigationKind.HUNT,
             str(terminal.run_id),
             lambda: _write_in_own_session(terminal, payload),
             DistilRefused,
@@ -610,9 +621,10 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
 
 
 async def write_with_retry(
+    kind: InvestigationKind,
     label: str,
     write: Callable[[], Dict[str, int]],
-    refusal: type,
+    refusal: Type[Exception],
     written: Dict[str, int],
 ) -> Optional[Dict[str, int]]:
     """One investigation's write, off the loop and retried once. None if it did
@@ -634,20 +646,23 @@ async def write_with_retry(
         try:
             return await asyncio.to_thread(write)
         except refusal as exc:
-            logger.warning("Distil refused %s: %s", label, exc)
+            logger.warning("%s Distil refused %s: %s", kind.value, label, exc)
             written["refused"] += 1
             return None
         except Exception:
             if attempt < ATTEMPTS:
                 logger.warning(
-                    "Distil failed on %s, attempt %s of %s; retrying",
+                    "%s Distil failed on %s, attempt %s of %s; retrying",
+                    kind.value,
                     label,
                     attempt,
                     ATTEMPTS,
                 )
                 continue
             logger.error(
-                "Distil failed on %s after %s attempts, leaving neither rows nor marker",
+                "%s Distil failed on %s after %s attempts, leaving neither rows "
+                "nor marker",
+                kind.value,
                 label,
                 ATTEMPTS,
                 exc_info=True,

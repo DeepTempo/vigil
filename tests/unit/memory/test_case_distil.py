@@ -759,10 +759,10 @@ class TestTheTick:
         assert len(verdicts(session)) == 1
 
 
-class TestTheAgentStatusEdit:
-    """An agent closing by editing the status records one too (MCP path)."""
+class TestTheOneWriter:
+    """Every close goes through CaseWorkflowService.close_case (#733 review)."""
 
-    def test_it_records_an_agent_close_with_no_category(self, session):
+    def test_an_agent_status_edit_records_an_unspecified_agent_close(self, session):
         from tools.mcp.deeptempo_findings import _record_agent_close
 
         case(session)
@@ -781,17 +781,134 @@ class TestTheAgentStatusEdit:
         assert row.outcome == "inconclusive"
         assert row.trust == "agent"
 
-    def test_it_never_overwrites_a_stated_category(self, session):
+    def test_an_unstated_close_never_overwrites_a_stated_one(self, session):
         from tools.mcp.deeptempo_findings import _record_agent_close
 
         case(session)
-        closure(session, category=ClosureCategory.FALSE_POSITIVE.value)
+        closure(
+            session,
+            category=ClosureCategory.FALSE_POSITIVE.value,
+            closed_by="nestor",
+            root_cause="internal vulnerability scan",
+        )
         session.commit()
 
         _record_agent_close("case-733")
 
         session.expire_all()
-        assert (
-            session.get(CaseClosureInfo, "case-733").closure_category
-            == ClosureCategory.FALSE_POSITIVE.value
+        recorded = session.get(CaseClosureInfo, "case-733")
+        assert recorded.closure_category == ClosureCategory.FALSE_POSITIVE.value
+        # And the Trust with it: an agent's status edit after an analyst's
+        # determination must not downgrade the highest-trust record we produce.
+        assert recorded.closed_by_kind == ClosedByKind.ANALYST.value
+        assert recorded.closed_by == "nestor"
+
+    def test_a_re_close_keeps_the_write_up_it_did_not_restate(self, session):
+        from core.cases.case_workflow_service import CaseWorkflowService
+
+        case(session)
+        closure(
+            session,
+            category=ClosureCategory.RESOLVED.value,
+            root_cause="compromised credentials",
+            lessons_learned="enforce MFA",
         )
+
+        CaseWorkflowService().close_case(
+            session,
+            "case-733",
+            closure_category=ClosureCategory.FALSE_POSITIVE,
+            closed_by="nestor",
+            closed_by_kind=ClosedByKind.ANALYST,
+        )
+
+        recorded = session.get(CaseClosureInfo, "case-733")
+        assert recorded.closure_category == ClosureCategory.FALSE_POSITIVE.value
+        # Merging a fresh row would have nulled both: a re-close that states no
+        # root cause has nothing to say about it, which is not the same as
+        # saying there was none.
+        assert recorded.root_cause == "compromised credentials"
+        assert recorded.lessons_learned == "enforce MFA"
+
+    def test_closing_by_status_edit_stops_the_sla_clock(self, session, monkeypatch):
+        from tools.mcp.deeptempo_findings import _record_agent_close
+
+        marked = []
+        import core.cases.case_sla_service as sla
+
+        monkeypatch.setattr(
+            sla.CaseSLAService,
+            "mark_resolution_complete",
+            lambda self, case_id, s: marked.append(case_id),
+        )
+
+        case(session)
+        session.commit()
+
+        _record_agent_close("case-733")
+
+        # The consolidation this PR performed on the MCP close, applied to the
+        # status edits too: a Case closed this way used to skip the clock.
+        assert marked == ["case-733"]
+
+
+class TestReopeningTheRecord:
+    """Reopening retracts the determination and keeps the write-up."""
+
+    def test_it_clears_the_category_and_keeps_the_prose(self, session):
+        from core.cases.case_workflow_service import CaseWorkflowService
+
+        case(session)
+        closure(
+            session,
+            category=ClosureCategory.RESOLVED.value,
+            root_cause="compromised credentials",
+            lessons_learned="enforce MFA",
+            executive_summary="contained",
+        )
+
+        CaseWorkflowService().reopen_case(session, "case-733")
+
+        recorded = session.get(CaseClosureInfo, "case-733")
+        assert recorded.closure_category == ClosureCategory.UNSPECIFIED.value
+        # Root cause and lessons learned are work, not a verdict. Deleting the
+        # row to clear the determination is a data loss nobody asked for.
+        assert recorded.root_cause == "compromised credentials"
+        assert recorded.lessons_learned == "enforce MFA"
+        assert recorded.executive_summary == "contained"
+
+    def test_a_re_close_after_a_reopen_does_not_restate_the_old_verdict(self, session):
+        from core.cases.case_workflow_service import CaseWorkflowService
+
+        case(session)
+        closure(session, category=ClosureCategory.RESOLVED.value)
+        write_case_distil(session, "case-733")
+        assert verdicts(session)[0].outcome == "proven"
+
+        session.get(Case, "case-733").status = "investigating"
+        CaseWorkflowService().reopen_case(session, "case-733")
+        write_case_distil(session, "case-733")
+        assert verdicts(session) == []
+
+        CaseWorkflowService().close_case(
+            session,
+            "case-733",
+            closure_category=ClosureCategory.UNSPECIFIED,
+            closed_by="nestor",
+            closed_by_kind=ClosedByKind.ANALYST,
+        )
+        write_case_distil(session, "case-733")
+
+        (row,) = verdicts(session)
+        # `proven` was retracted by the reopen and never restated, so the Case
+        # comes back inconclusive rather than back into its old determination.
+        assert row.outcome == "inconclusive"
+
+    def test_reopening_a_case_that_never_closed_is_fine(self, session):
+        from core.cases.case_workflow_service import CaseWorkflowService
+
+        case(session, status="open")
+
+        CaseWorkflowService().reopen_case(session, "case-733")
+
+        assert session.get(CaseClosureInfo, "case-733") is None

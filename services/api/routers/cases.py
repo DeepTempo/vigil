@@ -257,11 +257,12 @@ def _record_status_close(session, case_id: str, closed_by: str) -> None:
     said no -- reaches episodic memory as nothing at all, because there is no
     closure row for the Case Distil to read a category or an actor from.
 
-    The category written is ``unspecified``, which is not a determination and
-    does not pretend to be one: it says the Case was closed and no reason was
-    stated, which is exactly what happened, and becomes an inconclusive Verdict
-    rather than a claim nobody made. A Case closed through the dedicated close
-    path already has a real category, and that is never overwritten here.
+    The category is ``unspecified``, which is not a determination and does not
+    pretend to be one: it says the Case was closed and no reason was stated, and
+    becomes an inconclusive Verdict rather than a claim nobody made. It goes
+    through ``close_case`` like every other close, so this path stops the SLA
+    resolution clock and indexes the Case's IOCs as the others do, and cannot
+    overwrite a determination an earlier close already stated.
 
     This lands in the request's own transaction while the status change went
     through ``data_service`` in its own, so a failure here 500s with the Case
@@ -269,36 +270,22 @@ def _record_status_close(session, case_id: str, closed_by: str) -> None:
     stated reason -- the Verdict is still written, at Trust ``agent`` rather
     than ``analyst``. Degraded, and never a Case that closed and vanished.
     """
-    from core.storage.models import CaseClosureInfo
+    from core.cases.case_workflow_service import CaseWorkflowService
 
-    if session.get(CaseClosureInfo, case_id) is not None:
-        return
-    session.add(
-        CaseClosureInfo(
-            case_id=case_id,
-            closure_category=ClosureCategory.UNSPECIFIED.value,
-            closed_by=closed_by,
-            closed_by_kind=ClosedByKind.ANALYST.value,
-            closed_at=utcnow(),
-        )
+    CaseWorkflowService().close_case(
+        session,
+        case_id,
+        closure_category=ClosureCategory.UNSPECIFIED,
+        closed_by=closed_by,
+        closed_by_kind=ClosedByKind.ANALYST,
     )
 
 
-def _drop_closure(session, case_id: str) -> None:
-    """Forget how a Case closed, because it is no longer closed.
+def _record_reopen(session, case_id: str) -> None:
+    """Retract what closing the Case determined, keeping what it wrote."""
+    from core.cases.case_workflow_service import CaseWorkflowService
 
-    A closure row is one-to-one with a closed Case. Left behind on a reopen it
-    outlives what it describes, and the damage is not cosmetic: the next close
-    finds a row already there and writes none, so the Case keeps the *first*
-    close's category and instant. Episodic memory then sees a `concluded_at` no
-    later than its marker's and never re-derives, leaving a Verdict that states
-    the determination the analyst reopened the Case to overturn.
-    """
-    from core.storage.models import CaseClosureInfo
-
-    existing = session.get(CaseClosureInfo, case_id)
-    if existing is not None:
-        session.delete(existing)
+    CaseWorkflowService().reopen_case(session, case_id)
 
 
 @router.patch("/{case_id}")
@@ -354,7 +341,7 @@ async def update_case(
     if updates.get("status") == "closed" and not was_closed:
         _record_status_close(session, case_id, current_user.username)
     elif was_closed and updates.get("status") not in (None, "closed"):
-        _drop_closure(session, case_id)
+        _record_reopen(session, case_id)
 
     # Fire upstream SIEM status sync when status changes
     if case_data.status is not None:
@@ -1010,7 +997,7 @@ async def close_case(
     closure = CaseWorkflowService().close_case(
         session,
         case_id,
-        closure_category=data.closure_category.value,
+        closure_category=data.closure_category,
         closed_by=current_user.username,
         closed_by_kind=ClosedByKind.ANALYST,
         root_cause=data.root_cause,

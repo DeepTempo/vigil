@@ -24,22 +24,27 @@ pytestmark = pytest.mark.unit
 ANALYST = SimpleNamespace(username="nestor")
 
 
-class _Session:
-    """Enough session for the router: what it looked up, added, and deleted."""
+class _Service:
+    """Stands in for CaseWorkflowService, recording what the router asked of it."""
 
-    def __init__(self, existing=None):
-        self._existing = existing
-        self.added = []
-        self.deleted = []
+    calls: list = []
 
-    def get(self, _model, _pk):
-        return self._existing
+    def close_case(self, session, case_id, **kwargs):
+        type(self).calls.append(("close", case_id, kwargs))
+        return MagicMock()
 
-    def add(self, row):
-        self.added.append(row)
+    def reopen_case(self, session, case_id):
+        type(self).calls.append(("reopen", case_id, {}))
 
-    def delete(self, row):
-        self.deleted.append(row)
+
+@pytest.fixture
+def service(monkeypatch):
+    """Every close goes through the service, so that is what these assert on."""
+    import core.cases.case_workflow_service as workflow
+
+    _Service.calls = []
+    monkeypatch.setattr(workflow, "CaseWorkflowService", _Service)
+    return _Service
 
 
 def _routes(monkeypatch, *, case, updated=True):
@@ -57,86 +62,82 @@ def _routes(monkeypatch, *, case, updated=True):
 
 
 @pytest.mark.asyncio
-async def test_a_status_edit_to_closed_records_the_principal(monkeypatch):
+async def test_a_status_edit_to_closed_records_the_principal(monkeypatch, service):
     from services.api.routers.cases import CaseUpdate
 
     cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "investigating"})
-    session = _Session()
 
-    await cases.update_case("c1", CaseUpdate(status="closed"), session, ANALYST)
+    await cases.update_case("c1", CaseUpdate(status="closed"), MagicMock(), ANALYST)
 
-    (closure,) = session.added
-    assert closure.case_id == "c1"
+    ((kind, case_id, kwargs),) = service.calls
+    assert (kind, case_id) == ("close", "c1")
     # The name comes from the authenticated principal, never from the body:
     # a client-supplied one would let any caller claim an analyst concluded.
-    assert closure.closed_by == "nestor"
-    assert closure.closed_by_kind == ClosedByKind.ANALYST.value
-    assert closure.closure_category == ClosureCategory.UNSPECIFIED.value
-    assert closure.closed_at is not None
+    assert kwargs["closed_by"] == "nestor"
+    assert kwargs["closed_by_kind"] is ClosedByKind.ANALYST
 
 
 @pytest.mark.asyncio
-async def test_it_does_not_invent_a_determination(monkeypatch):
+async def test_it_does_not_invent_a_determination(monkeypatch, service):
     from services.api.routers.cases import CaseUpdate
 
     cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "open"})
-    session = _Session()
+
+    await cases.update_case("c1", CaseUpdate(status="closed"), MagicMock(), ANALYST)
+
+    # `unspecified` is not one of the four determinations. It says the Case
+    # closed and no reason was stated, which is what happened -- and the
+    # service refuses to let it overwrite a determination already on record.
+    assert service.calls[0][2]["closure_category"] is ClosureCategory.UNSPECIFIED
+
+
+@pytest.mark.asyncio
+async def test_it_closes_through_the_service_and_not_around_it(monkeypatch, service):
+    from services.api.routers.cases import CaseUpdate
+
+    cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "open"})
+    session = MagicMock()
 
     await cases.update_case("c1", CaseUpdate(status="closed"), session, ANALYST)
 
-    (closure,) = session.added
-    # `unspecified` is not one of the four determinations. It says the Case
-    # closed and no reason was stated, which is what happened.
-    assert closure.closure_category not in {
-        ClosureCategory.RESOLVED.value,
-        ClosureCategory.FALSE_POSITIVE.value,
-        ClosureCategory.DUPLICATE.value,
-        ClosureCategory.UNABLE_TO_RESOLVE.value,
-    }
+    # Writing the row here instead would skip the SLA resolution clock and the
+    # IOC index, leaving a Case that is closed differently from every other one.
+    assert service.calls[0][0] == "close"
+    session.add.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_a_status_edit_to_something_else_records_nothing(monkeypatch):
+async def test_a_status_edit_to_something_else_records_nothing(monkeypatch, service):
     from services.api.routers.cases import CaseUpdate
 
     cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "open"})
-    session = _Session()
 
-    await cases.update_case("c1", CaseUpdate(status="investigating"), session, ANALYST)
+    await cases.update_case(
+        "c1", CaseUpdate(status="investigating"), MagicMock(), ANALYST
+    )
 
-    assert session.added == []
+    assert service.calls == []
 
 
 @pytest.mark.asyncio
-async def test_re_saving_an_already_closed_case_is_an_edit_and_not_a_close(monkeypatch):
+async def test_re_saving_an_already_closed_case_is_an_edit_and_not_a_close(
+    monkeypatch, service
+):
     from services.api.routers.cases import CaseUpdate
 
     cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "closed"})
-    session = _Session()
 
     await cases.update_case(
-        "c1", CaseUpdate(title="retitled", status="closed"), session, ANALYST
+        "c1", CaseUpdate(title="retitled", status="closed"), MagicMock(), ANALYST
     )
 
-    # Stamping here would move the closure's date and re-derive its Verdict for
-    # a change that concluded nothing new.
-    assert session.added == []
+    # Closing again here would move the closure's date and re-derive its Verdict
+    # for a change that concluded nothing new.
+    assert service.calls == []
 
 
 @pytest.mark.asyncio
-async def test_a_real_category_is_never_overwritten(monkeypatch):
-    from services.api.routers.cases import CaseUpdate
-
-    cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "investigating"})
-    session = _Session(existing=SimpleNamespace(case_id="c1"))
-
-    await cases.update_case("c1", CaseUpdate(status="closed"), session, ANALYST)
-
-    assert session.added == []
-
-
-@pytest.mark.asyncio
-async def test_a_failed_update_records_no_close(monkeypatch):
+async def test_a_failed_update_records_no_close(monkeypatch, service):
     from fastapi import HTTPException
 
     from services.api.routers.cases import CaseUpdate
@@ -144,30 +145,46 @@ async def test_a_failed_update_records_no_close(monkeypatch):
     cases, _ = _routes(
         monkeypatch, case={"case_id": "c1", "status": "open"}, updated=False
     )
-    session = _Session()
 
     with pytest.raises(HTTPException):
-        await cases.update_case("c1", CaseUpdate(status="closed"), session, ANALYST)
+        await cases.update_case("c1", CaseUpdate(status="closed"), MagicMock(), ANALYST)
 
-    assert session.added == []
+    assert service.calls == []
 
 
 @pytest.mark.asyncio
-async def test_the_close_endpoint_takes_the_principal_and_not_the_body(monkeypatch):
+async def test_reopening_retracts_the_determination(monkeypatch, service):
+    from services.api.routers.cases import CaseUpdate
+
+    cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "closed"})
+
+    await cases.update_case(
+        "c1", CaseUpdate(status="investigating"), MagicMock(), ANALYST
+    )
+
+    assert service.calls == [("reopen", "c1", {})]
+
+
+@pytest.mark.asyncio
+async def test_an_edit_that_does_not_touch_status_retracts_nothing(
+    monkeypatch, service
+):
+    from services.api.routers.cases import CaseUpdate
+
+    cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "closed"})
+
+    await cases.update_case("c1", CaseUpdate(title="retitled"), MagicMock(), ANALYST)
+
+    assert service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_the_close_endpoint_takes_the_principal_and_not_the_body(
+    monkeypatch, service
+):
     from services.api.routers import cases
     from services.api.routers.cases import ClosureInfo
 
-    captured = {}
-
-    class _Service:
-        def close_case(self, session, case_id, **kwargs):
-            captured.update(kwargs)
-            captured["case_id"] = case_id
-            return MagicMock()
-
-    import core.cases.case_workflow_service as workflow
-
-    monkeypatch.setattr(workflow, "CaseWorkflowService", _Service)
     monkeypatch.setattr(cases.CaseClosureInfoSchema, "dump", staticmethod(lambda r: {}))
 
     await cases.close_case(
@@ -180,61 +197,19 @@ async def test_the_close_endpoint_takes_the_principal_and_not_the_body(monkeypat
         ANALYST,
     )
 
-    assert captured["closed_by"] == "nestor"
-    assert captured["closed_by_kind"] is ClosedByKind.ANALYST
+    ((_, case_id, kwargs),) = service.calls
+    assert case_id == "c1"
+    assert kwargs["closed_by"] == "nestor"
+    assert kwargs["closed_by_kind"] is ClosedByKind.ANALYST
     # Named in the rationale fallback and previously not an argument at all, so
     # the dedicated close path could never write the field it fell back to.
-    assert captured["false_positive_reason"] == "the scanner is ours"
+    assert kwargs["false_positive_reason"] == "the scanner is ours"
 
 
 def test_the_close_request_has_no_closed_by_field():
     from services.api.routers.cases import ClosureInfo
 
     assert "closed_by" not in ClosureInfo.model_fields
-
-
-class TestReopening:
-    """A reopened Case is not a closed one, and stops carrying a closure."""
-
-    @pytest.mark.asyncio
-    async def test_reopening_drops_the_closure(self, monkeypatch):
-        from services.api.routers.cases import CaseUpdate
-
-        cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "closed"})
-        recorded = SimpleNamespace(case_id="c1")
-        session = _Session(existing=recorded)
-
-        await cases.update_case(
-            "c1", CaseUpdate(status="investigating"), session, ANALYST
-        )
-
-        # Left behind, the next close finds a row already there and writes
-        # none, so the Case keeps the first close's category and instant --
-        # and memory keeps stating the determination the reopen overturned.
-        assert session.deleted == [recorded]
-
-    @pytest.mark.asyncio
-    async def test_reopening_a_case_that_never_recorded_one_is_fine(self, monkeypatch):
-        from services.api.routers.cases import CaseUpdate
-
-        cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "closed"})
-        session = _Session()
-
-        await cases.update_case("c1", CaseUpdate(status="open"), session, ANALYST)
-
-        assert session.deleted == []
-
-    @pytest.mark.asyncio
-    async def test_an_edit_that_does_not_touch_status_drops_nothing(self, monkeypatch):
-        from services.api.routers.cases import CaseUpdate
-
-        cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "closed"})
-        session = _Session(existing=SimpleNamespace(case_id="c1"))
-
-        await cases.update_case("c1", CaseUpdate(title="retitled"), session, ANALYST)
-
-        assert session.deleted == []
-        assert session.added == []
 
 
 def test_the_close_request_states_its_category_vocabulary():

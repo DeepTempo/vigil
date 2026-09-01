@@ -323,56 +323,64 @@ def create_case(
         return jdump({"error": str(e)})
 
 
+def _close_through_the_service(case_id: str, **kwargs) -> None:
+    """Close a Case the one way a Case is closed.
+
+    Its own session, because this tool reaches the database directly rather
+    than through the API. Going through the service is what makes an agent's
+    close the same shape as everyone else's -- the SLA resolution clock stops
+    and the Case's IOCs are indexed, neither of which happens when a caller
+    writes the closure row itself.
+    """
+    from core.cases.case_workflow_service import CaseWorkflowService
+    from core.storage.connection import get_db_session
+
+    session = get_db_session()
+    try:
+        CaseWorkflowService().close_case(session, case_id, **kwargs)
+        session.commit()
+    finally:
+        session.close()
+
+
 def _record_agent_close(case_id: str) -> None:
     """Record that an agent closed this Case, and stated no category.
 
     `unspecified` is not a determination and does not pretend to be one: the
     Case closed and no reason was given, which is what happened, and becomes an
     inconclusive Verdict rather than a claim nobody made. An agent that has a
-    determination calls `close_case` and says which.
+    determination calls `close_case` and says which. The service refuses to let
+    this overwrite a determination already on record.
 
     Trust is `agent` unconditionally here. There is no authenticated person
     behind an MCP call, and `analyst` is the one record this system will not let
     an agent claim on its own behalf.
     """
     from core.cases.closure import ClosedByKind, ClosureCategory
-    from core.storage.connection import get_db_session
-    from core.storage.models import CaseClosureInfo
 
-    session = get_db_session()
-    try:
-        if session.get(CaseClosureInfo, case_id) is not None:
-            return
-        session.add(
-            CaseClosureInfo(
-                case_id=case_id,
-                closure_category=ClosureCategory.UNSPECIFIED.value,
-                closed_by="agent",
-                closed_by_kind=ClosedByKind.AGENT.value,
-                closed_at=utcnow(),
-            )
-        )
-        session.commit()
-    finally:
-        session.close()
+    _close_through_the_service(
+        case_id,
+        closure_category=ClosureCategory.UNSPECIFIED,
+        closed_by="agent",
+        closed_by_kind=ClosedByKind.AGENT,
+    )
 
 
-def _drop_closure(case_id: str) -> None:
-    """Forget how a Case closed, because it is no longer closed.
+def _record_reopen(case_id: str) -> None:
+    """Retract what closing the Case determined, keeping what it wrote.
 
-    Left behind on a reopen, the next close finds a row already there and writes
-    none, so the Case keeps the first close's category and instant -- and memory
-    goes on stating the determination the reopen overturned.
+    The write-up survives -- root cause and lessons learned are work, not a
+    verdict. The category does not: left standing, the next status edit states
+    no category of its own and would close the Case back into the determination
+    the reopen retracted.
     """
+    from core.cases.case_workflow_service import CaseWorkflowService
     from core.storage.connection import get_db_session
-    from core.storage.models import CaseClosureInfo
 
     session = get_db_session()
     try:
-        existing = session.get(CaseClosureInfo, case_id)
-        if existing is not None:
-            session.delete(existing)
-            session.commit()
+        CaseWorkflowService().reopen_case(session, case_id)
+        session.commit()
     finally:
         session.close()
 
@@ -424,7 +432,7 @@ def update_case(
         if updates.get("status") == "closed" and not was_closed:
             _record_agent_close(case_id)
         elif was_closed and updates.get("status") not in (None, "closed"):
-            _drop_closure(case_id)
+            _record_reopen(case_id)
 
         return jdump({"success": True, "case_id": case_id})
     except Exception as e:
@@ -1441,8 +1449,22 @@ def close_case(
     """
     try:
         from core.cases.case_workflow_service import CaseWorkflowService
-        from core.cases.closure import ClosedByKind
+        from core.cases.closure import ClosedByKind, ClosureCategory
         from core.storage.connection import get_db_session
+
+        # Stated here rather than left to the mapping. An unknown category
+        # closes the Case and then reaches memory as nothing -- the Distil has
+        # no outcome for one, so it writes a marker and no Verdict and the Case
+        # never comes back. The API rejects one; so does this.
+        try:
+            category = ClosureCategory(str(closure_category).strip().lower())
+        except ValueError:
+            return jdump(
+                {
+                    "error": f"{closure_category!r} is not a closure category",
+                    "categories": [member.value for member in ClosureCategory],
+                }
+            )
 
         session = get_db_session()
         try:
@@ -1454,7 +1476,7 @@ def close_case(
             closure = CaseWorkflowService().close_case(
                 session,
                 case_id,
-                closure_category=closure_category,
+                closure_category=category,
                 closed_by=closed_by,
                 # No authenticated person behind an MCP call. Episodic memory
                 # reads this as Trust, and `analyst` is the one record this
@@ -1477,14 +1499,14 @@ def close_case(
             add_case_activity(
                 case_id,
                 "case_closed",
-                f"Case closed as {closure_category}",
-                {"closure_category": closure_category, "closed_by": closed_by},
+                f"Case closed as {category.value}",
+                {"closure_category": category.value, "closed_by": closed_by},
             )
 
             return jdump(
                 {
                     "success": True,
-                    "message": f"Closed {case_id} as {closure_category}",
+                    "message": f"Closed {case_id} as {category.value}",
                     "closure": payload,
                 }
             )
