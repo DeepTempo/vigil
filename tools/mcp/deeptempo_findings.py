@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from core.time import utcnow
 
 logger = logging.getLogger(__name__)
-mcp = FastMCP("deeptempo-findings")
+mcp = MCPServer("deeptempo-findings")
 
 DATA_DIR = Path(
     os.environ.get("DEEPTEMPO_DATA_DIR", Path(__file__).parent.parent / "data")

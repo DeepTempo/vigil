@@ -333,7 +333,8 @@ class Orchestrator:
         await self._create_investigation(
             workflow_id=workflow_id,
             findings=findings,
-            trigger_type="manual",
+            # The intake is shared, so what put the item on it is the item's to say.
+            trigger_type=item.get("trigger_type") or "manual",
             priority=item.get("priority", "medium"),
             case_id=case_id,
             hypothesis=hypothesis,
@@ -371,6 +372,10 @@ class Orchestrator:
             if prior_context:
                 context_md = context_md + "\n\n" + prior_context
         self.workdir.write_file(inv_id, "context.md", context_md)
+        # Beside the context and read back the same way at enqueue: what the hunt was
+        # opened to test reaches its board as a hypothesis, not as prose in the brief.
+        if hypothesis:
+            self.workdir.write_file(inv_id, "hypotheses.txt", hypothesis)
 
         can_start_now = (
             not self.config.dry_run
@@ -631,6 +636,15 @@ class Orchestrator:
             "config": "",
             "arch": "",
             "prompt": self.workdir.read_file(inv_id, "context.md") or "",
+            # One per line, as the console's run modal sends them. Empty for a workflow
+            # that walks phases and has no board to put them on.
+            "hypotheses": [
+                line.strip()
+                for line in (
+                    self.workdir.read_file(inv_id, "hypotheses.txt") or ""
+                ).splitlines()
+                if line.strip()
+            ],
             # ORCHESTRATOR_MAX_COST and ORCHESTRATOR_MAX_RUNTIME keep their meaning
             # as the ceilings the budget seam refuses the next call at.
             "overrides": {

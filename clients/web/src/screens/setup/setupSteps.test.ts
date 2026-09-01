@@ -41,10 +41,18 @@ describe('DATA_SOURCE_CATALOG_IDS', () => {
 })
 
 describe('step readiness predicates', () => {
-  it('llm-provider: ready only when a provider is active AND default', () => {
+  it('llm-provider: ready when a legacy provider is active AND default', () => {
     expect(ready('llm-provider', state({ providers: [provider()] }))).toBe(true)
     expect(ready('llm-provider', state({ providers: [provider({ is_default: false })] }))).toBe(false)
     expect(ready('llm-provider', emptySetupState())).toBe(false)
+  })
+
+  it('llm-provider: also ready on a routable Bifrost provider alone', () => {
+    expect(ready('llm-provider', state({ bifrostRoutable: true }))).toBe(true)
+    // No legacy default and no Bifrost provider → still not ready.
+    expect(ready('llm-provider', state({ providers: [provider({ is_default: false })], bifrostRoutable: false }))).toBe(
+      false,
+    )
   })
 
   it('data-source: ready once a data-source integration is enabled, not for non-sources', () => {

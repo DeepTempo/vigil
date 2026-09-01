@@ -12,12 +12,15 @@ import { assembleSpec, loadArch, parseConfig, parsePlaybook, SpecError, type Pla
 import { chatEvents, sse } from "./workflows/chat/sse.js";
 import { runChat, type Turn } from "./workflows/chat/workflow.js";
 import { harnessFor, type HarnessFactory } from "./harness.js";
+import { narrateRun } from "./workflows/hunt/workflow.js";
+import type { HuntEvent, HuntKinds } from "./workflows/hunt/ledger.js";
 
 const CHAT = "/chat/stream";
 // GET /runs/<id>/projection -- what a supervisor outside this process reads.
 const PROJECTION = /^\/runs\/([0-9a-fA-F-]{36})\/projection$/;
 // GET /runs/<id>/distil -- what episodic memory reads once the run has ended.
 const DISTIL = /^\/runs\/([0-9a-fA-F-]{36})\/distil$/;
+const NARRATE = /^\/runs\/([0-9a-fA-F-]{36})\/narrate$/;
 // A conversation is prose and a config, not an upload. Anything larger is a
 // mistake or an attack, and either way it is refused before it is parsed.
 const MAX_BODY = 1_000_000;
@@ -138,6 +141,29 @@ async function readFold(state: State, runId: string, view: "projection" | "disti
   res.end(JSON.stringify(folded));
 }
 
+// A fresh account of a run, on demand. Served here rather than queued as a directive
+// because it needs neither the lease nor the loop, which also makes it answerable for a
+// run that has ended. The store assigns seq and the fold ignores the kind, so appending
+// from outside does not break the ledger's one-writer rule.
+async function writeNarrative(state: State, runId: string, res: ServerResponse, build: HarnessFactory): Promise<void> {
+  const events = await state.read(runId);
+  const opened = events[0];
+  if (opened === undefined || opened.run_kind !== "hunt") return refuse(res, 404, `no hunt to write up: ${runId}`);
+
+  // Narrowed on the line that established the kind: the store holds payloads as JSON and
+  // never reads them. archFor() is the typed fix when a second kind wants an account.
+  const hunt = state as unknown as State<HuntKinds>;
+  const written = events as readonly HuntEvent[];
+
+  try {
+    const narrative = await narrateRun(hunt, runId, written, build);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(narrative));
+  } catch (error) {
+    return refuse(res, 502, error instanceof Error ? error.message : String(error));
+  }
+}
+
 async function openChat(state: State, req: IncomingMessage, res: ServerResponse, build: HarnessFactory): Promise<void> {
   let request: ChatRequest;
   try {
@@ -171,6 +197,9 @@ export function chatServer(state: State, ready: Ready, build: HarnessFactory = h
 
       const distilled = req.method === "GET" ? DISTIL.exec(url) : null;
       if (distilled !== null) return readFold(state, distilled[1] as string, "distil", res);
+
+      const asked = req.method === "POST" ? NARRATE.exec(url) : null;
+      if (asked !== null) return writeNarrative(state, asked[1] as string, res, build);
 
       return refuse(res, 404, `no such route: ${req.method} ${url}`);
     })();

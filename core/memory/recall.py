@@ -25,13 +25,13 @@ cap sees a row.
 tell it apart from an entity with a short history unless it is told.
 
 ``concluded_at <= as_of`` is a freshness filter and nothing more, never a
-substitute for logging the rows. ``23_episodic_read_log.sql`` says why on the
+substitute for logging the rows. ``25_episodic_read_log.sql`` says why on the
 column that carries it.
 
 The log is written here, inside the query, rather than at either call site, so a
 read through ``/internal/tools/invoke`` and a direct ``execute_backend_tool``
 leave the same record. What it is for, and why it alone is retained, is stated on
-the table in ``infra/database/init/23_episodic_read_log.sql``.
+the table in ``infra/database/init/25_episodic_read_log.sql``.
 """
 
 from __future__ import annotations
@@ -111,8 +111,7 @@ def _order_by(alias: str) -> str:
 # to choose, and the dedup in _page -- that same Verdict, arriving twice -- would
 # keep whichever copy came first.
 def _statement(table: str, predicate: str, matches_any: str, columns: str) -> Any:
-    return text(
-        f"""
+    return text(f"""
         SELECT m.total AS matched_total, {columns}
         FROM unnest(CAST(:keys AS text[])) AS k(key)
         CROSS JOIN LATERAL (
@@ -128,8 +127,7 @@ def _statement(table: str, predicate: str, matches_any: str, columns: str) -> An
             LIMIT :per_key_cap
         ) AS r
         ORDER BY {_order_by("r")}, k.key ASC
-        """
-    ).bindparams(bindparam("keys", type_=PGArray(SAText)))
+        """).bindparams(bindparam("keys", type_=PGArray(SAText)))
 
 
 # Sightings carry the key on a column. Verdicts and Gaps name their subjects in
@@ -162,9 +160,7 @@ _GAP_COLUMNS = (
 )
 
 _QUERIES = {
-    "sightings": _statement(
-        "episodic_sightings", _BY_KEY, _ANY_KEY, _SIGHTING_COLUMNS
-    ),
+    "sightings": _statement("episodic_sightings", _BY_KEY, _ANY_KEY, _SIGHTING_COLUMNS),
     "verdicts": _statement(
         "episodic_verdicts", _BY_SUBJECT, _ANY_SUBJECT, _VERDICT_COLUMNS
     ),
@@ -174,24 +170,20 @@ _QUERIES = {
 # Fetched for the Verdicts that survived both caps rather than joined into the
 # page above, which would multiply a Verdict by its sources and spend the per-key
 # cap on copies of one conclusion.
-_VERDICT_SOURCES = text(
-    """
+_VERDICT_SOURCES = text("""
     SELECT verdict_id, source_system, stance, source_tier
     FROM episodic_verdict_sources
     WHERE verdict_id = ANY(CAST(:verdict_ids AS bigint[]))
     ORDER BY verdict_id ASC, source_system ASC
-    """
-)
+    """)
 
-_LOG_READ = text(
-    """
+_LOG_READ = text("""
     INSERT INTO episodic_read_log
         (caller_kind, caller_id, keys, as_of, row_counts, dropped, ranking)
     VALUES
         (:caller_kind, :caller_id, CAST(:keys AS text[]), :as_of,
          CAST(:row_counts AS jsonb), CAST(:dropped AS jsonb), CAST(:ranking AS jsonb))
-    """
-).bindparams(bindparam("keys", type_=PGArray(SAText)))
+    """).bindparams(bindparam("keys", type_=PGArray(SAText)))
 
 
 _EXPIRE_READ_LOG = text("DELETE FROM episodic_read_log WHERE ts < :cutoff")
@@ -231,9 +223,7 @@ def _as_of(raw: Any) -> datetime:
         try:
             moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
         except ValueError:
-            raise _refuse(
-                f"as_of {stamp!r} is not ISO-8601 with an offset"
-            ) from None
+            raise _refuse(f"as_of {stamp!r} is not ISO-8601 with an offset") from None
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
@@ -340,7 +330,7 @@ def _page(
 
 
 def _apply_overall_cap(
-    pages: Mapping[str, List[_Selected]]
+    pages: Mapping[str, List[_Selected]],
 ) -> Tuple[Dict[str, List[_Selected]], Dict[str, int]]:
     """Spend the overall cap across all kinds and keys, newest first.
 

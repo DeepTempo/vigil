@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.config import vigil_path
+from core.config import _safe_home, vigil_path
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class DetectionRulesService:
 
     def __init__(self):
         self.config_path = vigil_path(_CONFIG_FILENAME)
-        self.base_dir = Path.home() / "security-detections"
+        self.base_dir = _safe_home() / "security-detections"
         self.sources: List[Dict[str, Any]] = []
         self._load_config()
 

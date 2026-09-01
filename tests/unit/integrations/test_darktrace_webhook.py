@@ -121,7 +121,6 @@ class TestTransforms:
         }
         assert f["mitre_predictions"] == {"T1071.001": 0.7, "T1048": 0.7}
         assert f["evidence_links"][0]["ref"].endswith("/#modelbreach/4242")
-        assert len(f["embedding"]) == 768
 
     def test_model_breach_idempotent_finding_id(self):
         svc = DarktraceIngestionService()

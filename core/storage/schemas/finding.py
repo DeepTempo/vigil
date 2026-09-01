@@ -2,19 +2,11 @@
 
 from typing import Any, Optional
 
-from core.storage.schemas.base import Embedding, OptDateTime, ORMSchema
-
-# List/summary responses never consume the embedding, and shipping a
-# 768-float vector per row is expensive — omit the field entirely.
-WITHOUT_EMBEDDING = {"embedding"}
+from core.storage.schemas.base import OptDateTime, ORMSchema
 
 
 class FindingSchema(ORMSchema):
-    """A security finding.
-
-    ``embedding`` is present by default; callers that don't need the vector
-    should use :meth:`dump_summary`.
-    """
+    """A security finding."""
 
     finding_id: Optional[str] = None
     description: Optional[str] = None
@@ -31,14 +23,3 @@ class FindingSchema(ORMSchema):
     ai_enrichment: Optional[Any] = None
     created_at: OptDateTime = None
     updated_at: OptDateTime = None
-    embedding: Embedding = None
-
-    @classmethod
-    def dump_summary(cls, obj: Any, **kwargs: Any) -> dict:
-        """Serialize without the embedding vector."""
-        return cls.dump(obj, exclude=WITHOUT_EMBEDDING, **kwargs)
-
-    @classmethod
-    def dump_many_summary(cls, objs: Any, **kwargs: Any) -> list[dict]:
-        """Serialize an iterable without embedding vectors."""
-        return [cls.dump_summary(obj, **kwargs) for obj in objs]

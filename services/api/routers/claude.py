@@ -12,6 +12,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
 from core.agents.projections import agent_route
+from core.deps import provide_mcp_registry
+from core.integrations.mcp.registry import MCPRegistry, live_mcp_tools
 from core.llm.chat_layers import chat_config, run_id_for
 from core.llm.defaults import DEFAULT_MODEL
 from core.llm.harness.claude import ClaudeService
@@ -329,6 +331,7 @@ class AgentTaskRequest(BaseModel):
 async def chat_stream(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),
+    registry: MCPRegistry = Depends(provide_mcp_registry),
 ):
     """Stream a chat turn from the agent layer, holding this wire contract."""
     # Resolved here because this is the side that knows what an agent is: the
@@ -353,12 +356,17 @@ async def chat_stream(
         _raise_no_provider()
     request.model = _router_model(active_provider, request.model)
 
+    # Surface whatever MCP integrations are connected right now (VirusTotal, OTX,
+    # MISP, Shodan, …) so the assistant can call them the moment their server is
+    # connected — refreshed per turn, no restart.
+    mcp_tools = live_mcp_tools(registry) or None
+
     session_id = request.session_id or str(uuid.uuid4())
     payload = {
         "run_id": run_id_for(session_id),
         "turns": _turns_of(request.messages),
         "system_prompt": system_prompt or "",
-        "config": chat_config(request.model, tools),
+        "config": chat_config(request.model, tools, mcp_tools),
     }
     if request.parent_run_id:
         payload["parent_run_id"] = request.parent_run_id

@@ -167,3 +167,12 @@ class TestDaemonThinkingBudget:
     def test_no_daemon_rows(self, rec):
         rows = [_row(agent_id="investigator", thinking_content="x" * 40000)]
         assert rec.recommend_daemon_thinking_budget(rows) == {"samples": 0}
+
+
+def test_script_does_not_tell_operators_to_set_database_url():
+    """Usage used to export DATABASE_URL. The script connects through
+    get_session(), which ignores that variable (#752)."""
+    text = SCRIPT.read_text()
+    assert "DATABASE_URL=" not in text
+    assert "Check DATABASE_URL" not in text
+    assert "get_session()" in text

@@ -9,6 +9,16 @@ Config comes from the descriptor: ``url`` from the stored integration config
 under the ``cape-sandbox`` id, ``api_key`` from the encrypted secrets store.
 """
 
+import sys
+from pathlib import Path
+
+# Spawned as ``python3 core/integrations/<vendor>/tool.py`` with a narrowed env,
+# so the repo root is not on sys.path and PYTHONPATH is not forwarded. Add it
+# here so the ``core.*`` imports below resolve; otherwise they fail at spawn.
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import asyncio
 import json
 import logging
@@ -25,8 +35,6 @@ from core.integrations._base.config import resolve
 from core.integrations.cape_sandbox.descriptor import CAPE_SANDBOX
 
 logger = logging.getLogger(__name__)
-server = Server("cape-sandbox")
-
 
 DEFAULT_TIMEOUT = 30
 REPORT_TIMEOUT = 60
@@ -98,7 +106,6 @@ def _extract_iocs(report: Dict[str, Any]) -> Dict[str, List[str]]:
     return {k: sorted(v) for k, v in iocs.items()}
 
 
-@server.list_tools()
 async def handle_list_tools() -> List[types.Tool]:
     return [
         types.Tool(
@@ -210,7 +217,6 @@ async def handle_list_tools() -> List[types.Tool]:
     ]
 
 
-@server.call_tool()
 async def handle_call_tool(name: str, arguments: Optional[dict]):
     cfg = _load_config()
     base = cfg["url"]
@@ -384,6 +390,28 @@ async def handle_call_tool(name: str, arguments: Optional[dict]):
     except Exception as e:
         logger.exception("CAPE tool call failed")
         return result({"error": str(e)})
+
+
+async def _on_list_tools(_ctx, _params):
+    return types.ListToolsResult(tools=await handle_list_tools())
+
+
+async def _on_call_tool(_ctx, params):
+    try:
+        content = await handle_call_tool(params.name, params.arguments)
+    except Exception as exc:
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=str(exc))],
+            is_error=True,
+        )
+    return types.CallToolResult(content=content)
+
+
+server = Server(
+    "cape-sandbox",
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
 
 
 async def main() -> None:

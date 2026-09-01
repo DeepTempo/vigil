@@ -96,8 +96,7 @@ BUDGET_TERMINATED = "budget_terminated"
 # marker has to say which runs it accounts for. Matching the version in the join
 # rather than the filter is what makes a bump re-offer every covered run instead
 # of only the origin one.
-_CANDIDATES = text(
-    """
+_CANDIDATES = text("""
     SELECT DISTINCT ON (e.run_id) e.run_id AS run_id, e.seq AS seq
     FROM agent_events e
     LEFT JOIN episodic_distil_markers m
@@ -111,8 +110,7 @@ _CANDIDATES = text(
       )
     ORDER BY e.run_id, e.seq DESC
     LIMIT :limit
-    """
-)
+    """)
 
 
 @dataclass(frozen=True)
@@ -196,7 +194,9 @@ def _outcome_of(status: str) -> Optional[VerdictOutcome]:
     return None
 
 
-def _sources_of(conclusion: Mapping[str, Any], investigation_id: str) -> List[Dict[str, str]]:
+def _sources_of(
+    conclusion: Mapping[str, Any], investigation_id: str
+) -> List[Dict[str, str]]:
     """Per-source Stance and stamped Source Tier.
 
     The tier is stamped here and never joined at read time: an integration
@@ -252,7 +252,9 @@ def _sighting_rows(concluded: Concluded) -> List[Dict[str, Any]]:
         # A row missing any of these cannot be joined, ordered or counted, and
         # writing a guessed one puts an entity in history it was never in.
         if not key or first is None or last is None or hits <= 0:
-            logger.warning("Distil: %s dropped an unusable sighting %r", investigation_id, sighting)
+            logger.warning(
+                "Distil: %s dropped an unusable sighting %r", investigation_id, sighting
+            )
             continue
         rows.append(
             {
@@ -273,7 +275,9 @@ def _sighting_rows(concluded: Concluded) -> List[Dict[str, Any]]:
     return rows
 
 
-def _conclusion_rows(concluded: Concluded) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def _conclusion_rows(
+    concluded: Concluded,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Split the hunt's conclusions into Verdict rows and Gap rows."""
     payload, investigation_id = concluded.payload, concluded.investigation_id
     run_outcome = str(payload.get("outcome") or "")
@@ -283,7 +287,9 @@ def _conclusion_rows(concluded: Concluded) -> Tuple[List[Dict[str, Any]], List[D
     for conclusion in payload.get("conclusions") or []:
         hypothesis_id = str(conclusion.get("hypothesis_id", "")).strip()
         if not hypothesis_id:
-            logger.warning("Distil: %s has a conclusion with no hypothesis id", investigation_id)
+            logger.warning(
+                "Distil: %s has a conclusion with no hypothesis id", investigation_id
+            )
             continue
 
         status = str(conclusion.get("status", ""))
@@ -383,12 +389,16 @@ def _accept(terminal: Terminal, payload: Mapping[str, Any]) -> Concluded:
 
     concluded_at = _utc(payload.get("concluded_at"))
     if concluded_at is None:
-        raise DistilRefused(f"{terminal.run_id} has not concluded, so there is nothing to distil")
+        raise DistilRefused(
+            f"{terminal.run_id} has not concluded, so there is nothing to distil"
+        )
 
     return Concluded(payload, investigation_id, concluded_at)
 
 
-def _superseded_by(marker: Optional[EpisodicDistilMarker], concluded: Concluded, terminal: Terminal) -> bool:
+def _superseded_by(
+    marker: Optional[EpisodicDistilMarker], concluded: Concluded, terminal: Terminal
+) -> bool:
     """Whether this investigation already holds rows from a later terminal.
 
     One investigation can reach a terminal in more than one run, and the poll
@@ -405,7 +415,9 @@ def _superseded_by(marker: Optional[EpisodicDistilMarker], concluded: Concluded,
     )
 
 
-def write_distil(session: Session, terminal: Terminal, payload: Mapping[str, Any]) -> Dict[str, int]:
+def write_distil(
+    session: Session, terminal: Terminal, payload: Mapping[str, Any]
+) -> Dict[str, int]:
     """Map one payload to rows and write them, marker included.
 
     Everything here is one transaction the caller owns. A failure raises with
@@ -417,7 +429,9 @@ def write_distil(session: Session, terminal: Terminal, payload: Mapping[str, Any
 
     marker = session.get(EpisodicDistilMarker, (kind.value, concluded.investigation_id))
     # origin_run_id included, so the covered set is what the poll needs on its own.
-    covered = sorted({*(marker.origin_run_ids if marker is not None else []), terminal.run_id})
+    covered = sorted(
+        {*(marker.origin_run_ids if marker is not None else []), terminal.run_id}
+    )
 
     if _superseded_by(marker, concluded, terminal):
         marker.origin_run_ids = covered  # type: ignore[union-attr]
@@ -449,7 +463,11 @@ def write_distil(session: Session, terminal: Terminal, payload: Mapping[str, Any
             for source in verdict["sources"]:
                 session.add(EpisodicVerdictSource(verdict_id=row.id, **source))
 
-        counts = {"sightings": len(sightings), "verdicts": len(verdicts), "gaps": len(gaps)}
+        counts = {
+            "sightings": len(sightings),
+            "verdicts": len(verdicts),
+            "gaps": len(gaps),
+        }
 
     row = {
         "investigation_kind": kind.value,
@@ -471,7 +489,11 @@ def write_distil(session: Session, terminal: Terminal, payload: Mapping[str, Any
         .values(**row)
         .on_conflict_do_update(
             index_elements=["investigation_kind", "investigation_id"],
-            set_={key: row[key] for key in row if key not in ("investigation_kind", "investigation_id")}
+            set_={
+                key: row[key]
+                for key in row
+                if key not in ("investigation_kind", "investigation_id")
+            }
             | {"distilled_at": text("now()")},
         )
     )
@@ -482,7 +504,11 @@ def pending(session: Session, limit: int = DEFAULT_BATCH) -> List[Terminal]:
     """Terminals no marker at this version covers, newest terminal per run."""
     rows = session.execute(
         _CANDIDATES,
-        {"kinds": list(DISTILLED_RUN_KINDS), "version": DISTIL_MAPPING_VERSION, "limit": limit},
+        {
+            "kinds": list(DISTILLED_RUN_KINDS),
+            "version": DISTIL_MAPPING_VERSION,
+            "limit": limit,
+        },
     ).all()
     return [Terminal(uuid.UUID(str(row.run_id)), int(row.seq)) for row in rows]
 
@@ -571,7 +597,9 @@ def _pending_in_own_session(limit: int) -> List[Terminal]:
         return pending(session, limit)
 
 
-def _write_in_own_session(terminal: Terminal, payload: Mapping[str, Any]) -> Dict[str, int]:
+def _write_in_own_session(
+    terminal: Terminal, payload: Mapping[str, Any]
+) -> Dict[str, int]:
     with unit_of_work() as session:
         return write_distil(session, terminal, payload)
 

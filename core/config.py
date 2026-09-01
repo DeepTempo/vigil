@@ -21,6 +21,22 @@ DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_SANDBOX_FILE_TYPES = "exe,dll,doc,docx,xls,xlsx,pdf,js,vbs,ps1,bat,msi"
 
 
+def _safe_home() -> Path:
+    """Return the user's home directory, or a safe writable fallback if home is root (/)."""
+    try:
+        home = Path.home()
+    except Exception:
+        home = Path("/")
+    if home == Path("/") or str(home) == "/":
+        # When running in a container where HOME=/ or unset, Path.home() is Path("/").
+        # Root (/) is never a valid user home directory and writing to /.vigil will fail
+        # with PermissionError (Errno 13).
+        if Path("/home/vigil").is_dir():
+            return Path("/home/vigil")
+        return Path("/tmp")
+    return home
+
+
 # The State Directory: the one per-install directory holding what the metadata
 # DB does not. VIGIL_DIR if exported, else ~/.vigil — nothing else. A write that
 # cannot happen raises; callers that want to degrade catch it themselves.
@@ -34,7 +50,7 @@ def vigil_path(*parts: str, write: bool = False) -> Path:
     if override:
         target = legacy = Path(override)
     else:
-        home = Path.home()  # per call, so tests can patch home
+        home = _safe_home()
         target, legacy = home / _VIGIL_DIRNAME, home / _LEGACY_DIRNAME
     if parts:
         target, legacy = target.joinpath(*parts), legacy.joinpath(*parts)
@@ -80,11 +96,20 @@ def state_dir_status() -> dict:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _settings_env_file() -> Optional[Path]:
+    # Tests set this before collection so import-time get_settings() captures
+    # do not read a developer's root .env. os.environ, not Settings: resolved
+    # while Settings is being defined, like VIGIL_DIR.
+    if os.environ.get("VIGIL_DISABLE_DOTENV"):  # noqa: ENV001 - pre-Settings bootstrap
+        return None
+    return REPO_ROOT / ".env"
+
+
 class Settings(BaseSettings):
     # Anchored to the repo so the same .env loads regardless of working directory.
     # Real env vars still win, keeping container and Helm injection authoritative.
     model_config = SettingsConfigDict(
-        env_file=REPO_ROOT / ".env",
+        env_file=_settings_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -106,8 +131,9 @@ class Settings(BaseSettings):
     # explicit false for emergency disable.
     mempalace_daemon_enabled: Optional[bool] = None
 
-    # Database
-    database_url: Optional[str] = None
+    # Database. DATABASE_URL is not a field: Settings.extra is ignore so the
+    # agent and scripts/migrate_schema.py can keep it in the environment.
+    # Python sessions go through DatabaseConfig (encrypted DSN / POSTGRES_*).
     postgresql_connection_string: Optional[str] = None
     postgres_host: str = "localhost"
     postgres_port: int = 5432

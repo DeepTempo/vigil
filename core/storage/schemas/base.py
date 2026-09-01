@@ -28,13 +28,6 @@ def _none_to_zero(value: Any) -> Any:
     return 0.0 if value is None else value
 
 
-def _as_plain_list(value: Any) -> Any:
-    """pgvector hands back a numpy array; JSON needs a plain list."""
-    if value is not None and hasattr(value, "tolist"):
-        return value.tolist()
-    return value
-
-
 # The columns behind these are `timestamp without time zone` holding UTC, so a
 # naive value's offset is known and merely unwritten. Stamped before serializing
 # because a reader parsing one without it lands in its own zone instead --
@@ -64,8 +57,6 @@ ZeroFloat = Annotated[float, BeforeValidator(_none_to_zero)]
 
 # Nullable Boolean columns the contract narrows to a real bool.
 CoercedBool = Annotated[bool, BeforeValidator(bool)]
-
-Embedding = Annotated[Optional[list[float]], BeforeValidator(_as_plain_list)]
 
 
 class ORMSchema(BaseModel):

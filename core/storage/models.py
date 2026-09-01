@@ -8,7 +8,6 @@ import uuid
 from datetime import datetime
 from typing import Any, List, Optional
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
     BigInteger,
@@ -31,10 +30,6 @@ from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from core.time import utcnow
-
-# Fixed width for the findings vector column; sources of other dimensions
-# (LogLM 512) are zero-padded/truncated to this before storage.
-EMBEDDING_DIM = 768
 
 JSONBList = MutableList.as_mutable(JSONB)
 
@@ -96,9 +91,6 @@ class Finding(Base):
     # Primary key
     finding_id: Mapped[str] = mapped_column(String(50), primary_key=True)
 
-    embedding: Mapped[List[float]] = mapped_column(
-        Vector(EMBEDDING_DIM), nullable=False
-    )
     mitre_predictions: Mapped[dict] = mapped_column(JSONB, nullable=False)
     anomaly_score: Mapped[float] = mapped_column(Float, nullable=False)
 
@@ -151,13 +143,6 @@ class Finding(Base):
         Index("idx_finding_data_source", "data_source"),
         Index("idx_finding_cluster_id", "cluster_id"),
         Index("idx_finding_anomaly_score", "anomaly_score"),
-        # HNSW ANN index for embedding cosine similarity (see find_similar_findings).
-        Index(
-            "idx_finding_embedding_hnsw",
-            "embedding",
-            postgresql_using="hnsw",
-            postgresql_ops={"embedding": "vector_cosine_ops"},
-        ),
         Index(
             "idx_finding_description",
             "description",
@@ -1850,6 +1835,8 @@ class WorkflowRun(Base):
         JSONB, nullable=False, default=list, server_default="[]"
     )
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Set when an operator removes the run from History. The row and its ledger stay.
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (
         Index("idx_workflow_runs_workflow_id", "workflow_id", "started_at"),
@@ -2309,7 +2296,7 @@ class ChatMessage(Base):
 # unknown state to represent.
 #
 # The domains these columns range over are stated once, in
-# infra/database/init/22_episodic_memory.sql, as every other table in that
+# infra/database/init/24_episodic_memory.sql, as every other table in that
 # directory states them. They are not restated here: `core/memory` owns the
 # vocabularies and `core/storage` is the tier underneath it, so mirroring them
 # would mean the shared-infrastructure tier importing a capability domain
@@ -2338,11 +2325,15 @@ class EpisodicSighting(Base):
     source_system: Mapped[str] = mapped_column(Text, nullable=False)
     hit_count: Mapped[int] = mapped_column(Integer, nullable=False)
     attacker_influenceable: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # When the investigation concluded, not when the row was written: the Distil
     # polls, so one that ended Monday can be written Wednesday carrying Monday.
-    concluded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    concluded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -2355,8 +2346,17 @@ class EpisodicSighting(Base):
         # The recall join and the order it reads in. Ties break on the primary
         # key: a LIMIT over a partial order lets Postgres return a different set
         # on identical data, which surfaces as a replay diff rather than an error.
-        Index("idx_episodic_sightings_recall", "entity_key", text("concluded_at DESC"), "id"),
-        Index("idx_episodic_sightings_investigation", "investigation_kind", "investigation_id"),
+        Index(
+            "idx_episodic_sightings_recall",
+            "entity_key",
+            text("concluded_at DESC"),
+            "id",
+        ),
+        Index(
+            "idx_episodic_sightings_investigation",
+            "investigation_kind",
+            "investigation_id",
+        ),
     )
 
 
@@ -2384,12 +2384,16 @@ class EpisodicVerdict(Base):
     attacker_influenceable_only: Mapped[bool] = mapped_column(Boolean, nullable=False)
     # Who concluded, as distinct from what the source is.
     trust: Mapped[str] = mapped_column(String(16), nullable=False)
-    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # A retrospective sweep over old archives asserts its window rather than
     # observing it, and ranking discounts the weaker one.
     window_source: Mapped[str] = mapped_column(String(16), nullable=False)
-    concluded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    concluded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -2405,7 +2409,11 @@ class EpisodicVerdict(Base):
             postgresql_using="gin",
         ),
         Index("idx_episodic_verdicts_recall", text("concluded_at DESC"), "id"),
-        Index("idx_episodic_verdicts_investigation", "investigation_kind", "investigation_id"),
+        Index(
+            "idx_episodic_verdicts_investigation",
+            "investigation_kind",
+            "investigation_id",
+        ),
     )
 
 
@@ -2433,7 +2441,9 @@ class EpisodicVerdictSource(Base):
     source_tier: Mapped[str] = mapped_column(String(16), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("verdict_id", "source_system", name="episodic_verdict_sources_unique"),
+        UniqueConstraint(
+            "verdict_id", "source_system", name="episodic_verdict_sources_unique"
+        ),
     )
 
 
@@ -2456,7 +2466,9 @@ class EpisodicGap(Base):
     subject_entities: Mapped[List[str]] = mapped_column(
         ARRAY(Text), nullable=False, server_default=text("ARRAY[]::text[]")
     )
-    concluded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    concluded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -2467,7 +2479,9 @@ class EpisodicGap(Base):
         ),
         Index("idx_episodic_gaps_subjects", "subject_entities", postgresql_using="gin"),
         Index("idx_episodic_gaps_recall", text("concluded_at DESC"), "id"),
-        Index("idx_episodic_gaps_investigation", "investigation_kind", "investigation_id"),
+        Index(
+            "idx_episodic_gaps_investigation", "investigation_kind", "investigation_id"
+        ),
     )
 
 
@@ -2496,7 +2510,9 @@ class EpisodicDistilMarker(Base):
     # without this, each run of one investigation misses the other's marker and
     # both re-distil on every tick forever.
     origin_run_ids: Mapped[List[uuid.UUID]] = mapped_column(
-        ARRAY(UUID(as_uuid=True)), nullable=False, server_default=text("ARRAY[]::uuid[]")
+        ARRAY(UUID(as_uuid=True)),
+        nullable=False,
+        server_default=text("ARRAY[]::uuid[]"),
     )
     # Bumped when the mapping changes. Re-deriving is delete-then-insert, so a
     # bump that now yields fewer rows leaves none of the old ones behind.
@@ -2506,7 +2522,9 @@ class EpisodicDistilMarker(Base):
     sightings_written: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     verdicts_written: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     gaps_written: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    concluded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    concluded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     distilled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -2520,7 +2538,7 @@ class EpisodicReadLog(Base):
     """One row per read of episodic memory, for audit rather than replay.
 
     Why it exists and why it alone is retained is stated once, in
-    ``infra/database/init/23_episodic_read_log.sql``.
+    ``infra/database/init/25_episodic_read_log.sql``.
     """
 
     __tablename__ = "episodic_read_log"

@@ -321,11 +321,6 @@
           "created_at": "2024-03-14T15:09:26.535000+00:00",
           "data_source": "data_source-value",
           "description": "description-value",
-          "embedding": [
-            0.1,
-            0.2,
-            0.3
-          ],
           "entity_context": {
             "sample": "entity_context-value"
           },
@@ -1156,74 +1151,7 @@
     }
   },
   "Finding": {
-    "empty.to_dict.with_embedding": {
-      "ai_enrichment": null,
-      "anomaly_score": null,
-      "cluster_id": null,
-      "created_at": null,
-      "data_source": null,
-      "description": null,
-      "embedding": null,
-      "entity_context": null,
-      "evidence_links": null,
-      "external_id": null,
-      "finding_id": null,
-      "mitre_predictions": null,
-      "severity": null,
-      "status": null,
-      "timestamp": null,
-      "updated_at": null
-    },
-    "empty.to_dict.without_embedding": {
-      "ai_enrichment": null,
-      "anomaly_score": null,
-      "cluster_id": null,
-      "created_at": null,
-      "data_source": null,
-      "description": null,
-      "entity_context": null,
-      "evidence_links": null,
-      "external_id": null,
-      "finding_id": null,
-      "mitre_predictions": null,
-      "severity": null,
-      "status": null,
-      "timestamp": null,
-      "updated_at": null
-    },
-    "populated.to_dict.with_embedding": {
-      "ai_enrichment": {
-        "sample": "ai_enrichment-value"
-      },
-      "anomaly_score": 1.21,
-      "cluster_id": "cluster_id-value",
-      "created_at": "2024-03-14T15:09:26.535000+00:00",
-      "data_source": "data_source-value",
-      "description": "description-value",
-      "embedding": [
-        0.1,
-        0.2,
-        0.3
-      ],
-      "entity_context": {
-        "sample": "entity_context-value"
-      },
-      "evidence_links": [
-        {
-          "item": "evidence_links-0"
-        }
-      ],
-      "external_id": "external_id-value",
-      "finding_id": "finding_id-value",
-      "mitre_predictions": {
-        "sample": "mitre_predictions-value"
-      },
-      "severity": "severity-value",
-      "status": "status-value",
-      "timestamp": "2024-03-14T15:09:26.535000+00:00",
-      "updated_at": "2024-03-14T15:09:26.535000+00:00"
-    },
-    "populated.to_dict.without_embedding": {
+    "populated.to_dict.default": {
       "ai_enrichment": {
         "sample": "ai_enrichment-value"
       },
@@ -1249,6 +1177,23 @@
       "status": "status-value",
       "timestamp": "2024-03-14T15:09:26.535000+00:00",
       "updated_at": "2024-03-14T15:09:26.535000+00:00"
+    },
+    "empty.to_dict.default": {
+      "ai_enrichment": null,
+      "anomaly_score": null,
+      "cluster_id": null,
+      "created_at": null,
+      "data_source": null,
+      "description": null,
+      "entity_context": null,
+      "evidence_links": null,
+      "external_id": null,
+      "finding_id": null,
+      "mitre_predictions": null,
+      "severity": null,
+      "status": null,
+      "timestamp": null,
+      "updated_at": null
     }
   },
   "IntegrationConfig": {
