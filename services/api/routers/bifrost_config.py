@@ -100,13 +100,14 @@ def _resolve_key_value(body: Dict[str, Any], key_id: Optional[str]) -> None:
 
     Two providers break the plain ``value`` shape:
 
-    * **Vertex** is always scoped by ``project_id``/``region`` under
-      ``vertex_key_config`` and authenticates one of two ways. A *service
-      account* carries its JSON in ``vertex_key_config.auth_credentials`` (the
-      presence of that field is what marks the mode); an *API key* carries a
-      bare ``value`` like any other provider. Either credential is mirrored to
-      ``value`` so a single ``llm_key_<id>`` ref backs the key, and an edit that
-      leaves the credential blank substitutes the stored copy back in.
+    * **Vertex** authenticates one of two ways. A *service account* is scoped
+      by ``project_id``/``region`` under ``vertex_key_config`` and carries its
+      JSON in ``vertex_key_config.auth_credentials``; an *API key* carries a
+      bare ``value`` like any other provider and sends no ``vertex_key_config``
+      at all. The presence of that block is therefore what marks the mode.
+      Either credential is mirrored to ``value`` so a single ``llm_key_<id>``
+      ref backs the key, and an edit that leaves the credential blank
+      substitutes the stored copy back in.
     * **Ollama** carries a URL the operator typed under ``ollama_key_config``,
       not a secret we mask or store — so such a write needs no substitution.
     """
@@ -114,8 +115,13 @@ def _resolve_key_value(body: Dict[str, Any], key_id: Optional[str]) -> None:
         return
 
     vertex = body.get("vertex_key_config")
-    if isinstance(vertex, dict) and "auth_credentials" in vertex:
+    if isinstance(vertex, dict):
         # Service-account mode: the JSON is the credential, mirrored to value.
+        # Keyed on the block, not on ``auth_credentials`` within it: editing
+        # project/region without retyping the JSON omits that field entirely
+        # (AiProvidersPanel), and keying on it sent exactly that edit down the
+        # API-key path — ``value`` was restored but ``auth_credentials`` was
+        # left unset, handing Bifrost a scoped key with no credential.
         sa = vertex.get("auth_credentials")
         if not _is_masked(sa) and sa:
             body["value"] = sa
@@ -133,8 +139,6 @@ def _resolve_key_value(body: Dict[str, Any], key_id: Optional[str]) -> None:
         vertex["auth_credentials"] = stored
         body["value"] = stored
         return
-    # Vertex API-key mode (vertex_key_config with no auth_credentials) falls
-    # through to the plain-value path below, keeping its project/region intact.
 
     if not _is_masked(body.get("value")) and body.get("value"):
         return
