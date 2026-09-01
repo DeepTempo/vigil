@@ -178,7 +178,9 @@ cython_debug/
 # IDEs
 .vscode/
 .idea/
-.cursor/
+.cursor/*
+!.cursor/environment.json
+!.cursor/Dockerfile
 .claude/
 *.swp
 *.swo
