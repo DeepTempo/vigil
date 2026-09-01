@@ -21,11 +21,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
 from typing import Any, Dict, Optional
 
-from core.ingestion.kafka_config import KafkaConfig
 from core.ingestion.dedup import RedisDedupSet
+from core.ingestion.kafka_config import KafkaConfig
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +147,7 @@ class KafkaConsumerService:
     async def _handle_message(self, topic: str, msg) -> None:
         """Decode, dedupe, and enqueue a single Kafka message."""
         self.stats["messages_consumed"] += 1
-        self.stats["last_message_at"] = datetime.utcnow().isoformat()
+        self.stats["last_message_at"] = utcnow().isoformat()
 
         try:
             raw = msg.value
@@ -187,7 +187,7 @@ class KafkaConsumerService:
                 "type": "finding",
                 "source": f"kafka:{topic}",
                 "data": finding,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": utcnow().isoformat(),
             }
         )
         await self._dedup.mark_processed(finding_id)
@@ -195,4 +195,4 @@ class KafkaConsumerService:
 
     def _record_error(self, msg: str) -> None:
         self.stats["last_error"] = msg
-        self.stats["last_error_at"] = datetime.utcnow().isoformat()
+        self.stats["last_error_at"] = utcnow().isoformat()

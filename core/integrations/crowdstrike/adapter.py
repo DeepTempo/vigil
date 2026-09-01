@@ -14,6 +14,7 @@ from core.federation.contract import (
     FetchResult,
     register_adapter,
 )
+from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +72,17 @@ class CrowdStrikeAdapter:
         cutoff = parse_cursor_since(cursor) or since
         if cutoff is None:
             # First run: small window, no backfill.
-            cutoff = datetime.utcnow() - timedelta(minutes=1)
+            cutoff = utcnow() - timedelta(minutes=1)
 
         try:
-            detections = await asyncio.to_thread(
-                svc.get_detections,
-                filter_query=f"created_timestamp:>='{cutoff.isoformat()}Z'",
-                limit=max_items,
-            ) or []
+            detections = (
+                await asyncio.to_thread(
+                    svc.get_detections,
+                    filter_query=f"created_timestamp:>='{cutoff.isoformat()}Z'",
+                    limit=max_items,
+                )
+                or []
+            )
         except Exception as e:
             logger.debug("CrowdStrike fetch failed: %s", e)
             detections = []
@@ -100,7 +104,9 @@ def _detection_to_finding(detection: Dict[str, Any]) -> Optional[Dict[str, Any]]
     external_id = str(detection_id)[:128]
     finding_id = f"cs-{external_id[:32]}"
 
-    severity = _SEVERITY_MAP.get(detection.get("max_severity_displayname", "Medium"), "medium")
+    severity = _SEVERITY_MAP.get(
+        detection.get("max_severity_displayname", "Medium"), "medium"
+    )
 
     mitre_predictions: Dict[str, float] = {}
     for behavior in detection.get("behaviors", []) or []:
@@ -120,7 +126,7 @@ def _detection_to_finding(detection: Dict[str, Any]) -> Optional[Dict[str, Any]]
         "finding_id": finding_id,
         "data_source": "crowdstrike",
         "external_id": external_id,
-        "timestamp": detection.get("created_timestamp") or datetime.utcnow().isoformat(),
+        "timestamp": detection.get("created_timestamp") or utcnow().isoformat(),
         "severity": severity,
         "status": "new",
         "title": detection.get("scenario") or "CrowdStrike Detection",

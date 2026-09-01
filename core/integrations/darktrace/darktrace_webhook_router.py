@@ -24,9 +24,9 @@ from typing import Any, Callable, Dict, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
+from core.config import get_settings
 from core.integrations.darktrace.ingestion import DarktraceIngestionService
 from core.routing import Auth, RouterMeta
-from core.config import get_settings
 from core.secrets import get_secret
 
 logger = logging.getLogger(__name__)
@@ -56,8 +56,9 @@ ROUTER_META = RouterMeta(
         "HMAC-SHA256 X-Darktrace-Signature and fails closed when no shared "
         "secret is configured."
     ),
-    # env.example and docs/integrations/DARKTRACE.md document DARKTRACE_ENABLED
-    # as the on/off toggle; leaving it unset must leave the receiver off.
+    # env.example and https://vigilsoc.org/docs/integrations/darktrace/
+    # document DARKTRACE_ENABLED as the on/off toggle; leaving it unset
+    # must leave the receiver off.
     enabled=darktrace_enabled,
 )
 
@@ -66,6 +67,7 @@ def _get_settings() -> Dict[str, Any]:
     """Read darktrace.settings from system_config (DB). Falls back to env vars."""
     try:
         from core.storage.config_service import get_config_service
+
         value = get_config_service().get_system_config("darktrace.settings") or {}
         if value:
             return value

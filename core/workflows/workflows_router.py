@@ -35,6 +35,12 @@ logger = logging.getLogger(__name__)
 # to go and never where, so neither is a target.
 TARGET_PARAMS = frozenset({"finding_id", "case_id", "context", "hypothesis"})
 
+# Rewrites in flight. One press is a whole model call over a run's record, and the two
+# an impatient operator makes race to append to the same ledger. Per process, which is
+# what a second worker behind a load balancer would slip past -- it bounds the common
+# case (one person, one console) without a lock nobody else here takes.
+_narrating: set[str] = set()
+
 
 # -----------------------------------------------------------------------------
 # Pydantic schemas
@@ -123,13 +129,9 @@ async def list_workflows(service: WorkflowsService = Depends(provide_workflows))
     Returns:
         { workflows: [...], count: int }
     """
-    try:
-        workflows = service.list_workflows()
+    workflows = service.list_workflows()
 
-        return {"workflows": workflows, "count": len(workflows)}
-    except Exception as e:
-        logger.error(f"Error listing workflows: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"workflows": workflows, "count": len(workflows)}
 
 
 # Static routes MUST come before parameterized {workflow_id} routes
@@ -140,18 +142,14 @@ async def reload_workflows(service: WorkflowsService = Depends(provide_workflows
 
     Does not affect database-backed custom workflows.
     """
-    try:
-        service.reload()
-        workflows = service.list_workflows()
+    service.reload()
+    workflows = service.list_workflows()
 
-        return {
-            "success": True,
-            "message": f"Reloaded workflows (total={len(workflows)})",
-            "count": len(workflows),
-        }
-    except Exception as e:
-        logger.error(f"Error reloading workflows: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "success": True,
+        "message": f"Reloaded workflows (total={len(workflows)})",
+        "count": len(workflows),
+    }
 
 
 # -----------------------------------------------------------------------------
@@ -165,12 +163,8 @@ async def list_custom_workflows(
     service: CustomWorkflowService = Depends(provide_custom_workflows),
 ):
     """List database-backed custom workflows."""
-    try:
-        rows = service.list(active_only=active_only)
-        return {"workflows": rows, "count": len(rows)}
-    except Exception as e:
-        logger.error(f"Error listing custom workflows: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    rows = service.list(active_only=active_only)
+    return {"workflows": rows, "count": len(rows)}
 
 
 @router.post("/workflows/custom", status_code=201)
@@ -195,19 +189,13 @@ async def get_custom_workflow(
     service: CustomWorkflowService = Depends(provide_custom_workflows),
 ):
     """Fetch a single custom workflow."""
-    try:
-        wf = service.get(workflow_id)
-        if not wf:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Custom workflow not found: {workflow_id}",
-            )
-        return wf
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Error fetching custom workflow")
-        raise HTTPException(status_code=500, detail=str(e))
+    wf = service.get(workflow_id)
+    if not wf:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Custom workflow not found: {workflow_id}",
+        )
+    return wf
 
 
 @router.put("/workflows/custom/{workflow_id}")
@@ -241,19 +229,13 @@ async def delete_custom_workflow(
     service: CustomWorkflowService = Depends(provide_custom_workflows),
 ):
     """Soft-delete a custom workflow (sets is_active=False)."""
-    try:
-        ok = service.delete(workflow_id)
-        if not ok:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Custom workflow not found: {workflow_id}",
-            )
-        return {"success": True, "workflow_id": workflow_id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Error deleting custom workflow")
-        raise HTTPException(status_code=500, detail=str(e))
+    ok = service.delete(workflow_id)
+    if not ok:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Custom workflow not found: {workflow_id}",
+        )
+    return {"success": True, "workflow_id": workflow_id}
 
 
 # -----------------------------------------------------------------------------
@@ -271,19 +253,13 @@ async def generate_workflow(
 
     Does NOT save. Frontend can tweak the draft and POST to /workflows/custom.
     """
-    try:
-        result = await generator.generate(payload.description)
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=502,
-                detail=result.get("error") or "Workflow generation failed",
-            )
-        return {"draft": result["draft"]}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Error generating workflow")
-        raise HTTPException(status_code=500, detail=str(e))
+    result = await generator.generate(payload.description)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("error") or "Workflow generation failed",
+        )
+    return {"draft": result["draft"]}
 
 
 # -----------------------------------------------------------------------------
@@ -314,12 +290,12 @@ def _capabilities(registry: Any) -> Dict[str, Any]:
 # What the run will be charged at, and how confidently. An unpriced model is refused a
 # few calls in, correctly but after the spend, so it is said here instead.
 def _pricing() -> Dict[str, Any]:
-    from core.llm.cost.pricing_router import _priced_as
+    from core.llm.cost.pricing_router import priced_as
     from core.llm.defaults import DEFAULT_MODEL
     from core.llm.providers.registry import get_registry
 
     try:
-        provider, model = _priced_as("bifrost", DEFAULT_MODEL)
+        provider, model = priced_as("bifrost", DEFAULT_MODEL)
         source = get_registry().get_pricing_source(model, provider)
     except Exception as exc:  # noqa: BLE001
         logger.debug("could not read the rate for the default model: %s", exc)
@@ -336,28 +312,22 @@ async def get_workflow(
     """
     Get full details for a specific workflow (custom or file-based).
     """
-    try:
-        workflow = service.get_workflow_dict(workflow_id, include_body=True)
-        if not workflow:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Workflow not found: {workflow_id}",
-            )
-        # Only a hunt has turns to budget or capabilities to be missing. Answered
-        # here so the console says both before the operator spends anything.
-        if _is_hunt(service, workflow_id):
-            workflow["capabilities"] = _capabilities(registry)
-            workflow["pricing"] = _pricing()
-            workflow["budgets"] = {
-                "max_iterations": _hunt_defaults()[0],
-                "max_cost_usd": _hunt_defaults()[1],
-            }
-        return workflow
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting workflow {workflow_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    workflow = service.get_workflow_dict(workflow_id, include_body=True)
+    if not workflow:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workflow not found: {workflow_id}",
+        )
+    # Only a hunt has turns to budget or capabilities to be missing. Answered
+    # here so the console says both before the operator spends anything.
+    if _is_hunt(service, workflow_id):
+        workflow["capabilities"] = _capabilities(registry)
+        workflow["pricing"] = _pricing()
+        workflow["budgets"] = {
+            "max_iterations": _hunt_defaults()[0],
+            "max_cost_usd": _hunt_defaults()[1],
+        }
+    return workflow
 
 
 @router.post("/workflows/{workflow_id}/execute")
@@ -372,45 +342,36 @@ async def execute_workflow(
     Builds a composite prompt from the workflow definition and agent
     methodologies, then executes it via ClaudeService.run_agent_task().
     """
-    try:
-        workflow = service.get_workflow(workflow_id)
-        if not workflow:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Workflow not found: {workflow_id}",
-            )
-
-        parameters = {k: v for k, v in request.model_dump().items() if v is not None}
-
-        if not TARGET_PARAMS & parameters.keys():
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "At least one parameter required: finding_id, case_id, "
-                    "context, or hypothesis"
-                ),
-            )
-
-        # Pass the caller as triggered_by so the workflow_runs row has a
-        # useful audit marker. "api" is a safe default when auth isn't
-        # surfacing a concrete user identity here (DEV_MODE / system
-        # triggers). Daemon invocations can override by calling the
-        # service layer directly.
-        result = await service.execute_workflow(
-            workflow_id, parameters, triggered_by="api"
+    workflow = service.get_workflow(workflow_id)
+    if not workflow:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workflow not found: {workflow_id}",
         )
 
-        if not result.get("success"):
-            error = result.get("error", "Unknown error during workflow execution")
-            raise HTTPException(status_code=500, detail=error)
+    parameters = {k: v for k, v in request.model_dump().items() if v is not None}
 
-        return result
+    if not TARGET_PARAMS & parameters.keys():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "At least one parameter required: finding_id, case_id, "
+                "context, or hypothesis"
+            ),
+        )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error executing workflow {workflow_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Pass the caller as triggered_by so the workflow_runs row has a
+    # useful audit marker. "api" is a safe default when auth isn't
+    # surfacing a concrete user identity here (DEV_MODE / system
+    # triggers). Daemon invocations can override by calling the
+    # service layer directly.
+    result = await service.execute_workflow(workflow_id, parameters, triggered_by="api")
+
+    if not result.get("success"):
+        error = result.get("error", "Unknown error during workflow execution")
+        raise HTTPException(status_code=500, detail=error)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -558,11 +519,36 @@ async def narrate_workflow_run(
 
     if not run_service.get_run(run_id):
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    if run_id in _narrating:
+        raise HTTPException(
+            status_code=409,
+            detail="This run is already being written up. Reopen it when that finishes.",
+        )
+    _narrating.add(run_id)
     try:
-        return {"success": True, "narrative": await write_narrative(run_id)}
+        narrative = await write_narrative(run_id)
     except Exception as exc:  # noqa: BLE001 — the operator is owed the reason
         logger.error("could not write up run %s: %s", run_id, exc)
         raise HTTPException(status_code=502, detail=str(exc)) from None
+    finally:
+        _narrating.discard(run_id)
+
+    await _restate_summary(run_id, run_service)
+    return {"success": True, "narrative": narrative}
+
+
+# result_summary was rendered with the account this rewrite supersedes. The console
+# reads the projection and would show the new one either way, but the row is what an
+# export and the case note the run filed both read, so leaving it makes two accounts
+# of one hunt. Best effort: the account is written and journaled whatever happens here.
+async def _restate_summary(run_id: str, run_service: WorkflowRunService) -> None:
+    try:
+        projection = await read_projection(run_id) or {}
+        restated = projection.get("report_markdown")
+        if restated:
+            run_service.set_result_summary(run_id, restated)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not restate the stored summary of %s: %s", run_id, exc)
 
 
 @router.delete("/workflows/runs/{run_id}")

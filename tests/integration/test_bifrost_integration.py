@@ -1,8 +1,8 @@
 """Bifrost gateway smoke test (GH #88).
 
 Skipped by default. Runs only when BIFROST_URL is set and points at a
-live Bifrost instance. Use this as the end-to-end gate in the
-verification steps in docs/bifrost/README.md.
+live Bifrost instance. Use this as the end-to-end gate for the
+verification steps in the [Bifrost docs](https://vigilsoc.org/docs/bifrost/).
 
 Invoke with::
 

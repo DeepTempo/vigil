@@ -49,7 +49,6 @@ class SOCDaemon:
         self._responder = None
         self._scheduler = None
         self._orchestrator = None
-        self._llm_worker_manager = None
         self._metrics_server = None
         self._mcp_client = None
 
@@ -57,7 +56,7 @@ class SOCDaemon:
 
     def _setup_signal_handlers(self):
         """Setup graceful shutdown handlers."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self._handle_shutdown)
@@ -79,7 +78,6 @@ class SOCDaemon:
         from core.response.approval_service import ApprovalService
         from core.response.autonomous_response_service import AutonomousResponseService
         from services.daemon.kafka_ingestor import KafkaIngestor
-        from services.daemon.llm_worker_manager import LLMWorkerManager
         from services.daemon.metrics import MetricsServer
         from services.daemon.orchestrator import Orchestrator
         from services.daemon.poller import DataPoller
@@ -108,7 +106,6 @@ class SOCDaemon:
             approvals=approvals,
             mcp_client=self._mcp_client,
         )
-        self._llm_worker_manager = LLMWorkerManager()
 
         if self.config.metrics.enabled:
             self._metrics_server = MetricsServer(self.config.metrics)
@@ -181,14 +178,6 @@ class SOCDaemon:
                 logger.info("Autonomous orchestrator started")
             else:
                 logger.info("Autonomous orchestrator loaded (disabled)")
-
-        if self._llm_worker_manager:
-            tasks.append(
-                asyncio.create_task(self._llm_worker_manager.run(self._shutdown_event))
-            )
-            logger.info(
-                "LLM Worker Manager started (controls worker subprocess via DB toggle)"
-            )
 
         if self._metrics_server:
             tasks.append(

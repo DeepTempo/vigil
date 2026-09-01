@@ -1,10 +1,10 @@
 """Service for checking integration compatibility and managing upgrades."""
 
-import re
-import sys
-import logging
-import subprocess
 import importlib.metadata
+import logging
+import re
+import subprocess
+import sys
 from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -149,14 +149,6 @@ class IntegrationCompatibilityService:
                 "min_version": "2.9.9",
                 "display_name": "PostgreSQL",
                 "category": "Data Storage",
-            },
-            # Core
-            "claude-agent-sdk": {
-                "package": "claude-agent-sdk",
-                "min_version": "0.1.0",
-                "display_name": "Claude Agent SDK",
-                "category": "Core",
-                "python_min_version": "3.10",
             },
         }
 

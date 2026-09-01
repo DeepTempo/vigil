@@ -11,15 +11,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from core.agents.agent_ai_generator import AgentAIGenerator
-from core.deps import provide_agent_ai, provide_mcp_registry
-from core.integrations.mcp.registry import MCPRegistry
-from core.llm.system_prompt import validate_system_prompt
 from core.agents.custom_agent_service import (
     CustomAgentAlreadyExists,
     CustomAgentNotFound,
     CustomAgentService,
 )
 from core.agents.manager import CUSTOM_AGENT_ID_PREFIX
+from core.deps import provide_agent_ai, provide_mcp_registry
+from core.integrations.mcp.registry import MCPRegistry
+from core.llm.system_prompt import validate_system_prompt
 from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
@@ -118,12 +118,8 @@ def _with_effective_prompt(row: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.get("/agents/custom")
 async def list_custom_agents() -> Dict[str, Any]:
-    try:
-        agents = service.list_agents()
-        return {"agents": agents}
-    except Exception as e:
-        logger.error(f"Error listing custom agents: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    agents = service.list_agents()
+    return {"agents": agents}
 
 
 @router.get("/agents/custom/_meta/tools")
@@ -199,39 +195,27 @@ async def generate_custom_agent(
     and POSTs to /agents/custom to create. Pass ``current_draft`` + ``feedback``
     to iteratively refine a prior draft.
     """
-    try:
-        result = await generator.generate(
-            description=payload.description,
-            current_draft=payload.current_draft,
-            feedback=payload.feedback,
+    result = await generator.generate(
+        description=payload.description,
+        current_draft=payload.current_draft,
+        feedback=payload.feedback,
+    )
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("error") or "Agent generation failed",
         )
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=502,
-                detail=result.get("error") or "Agent generation failed",
-            )
-        return {"draft": result["draft"]}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Error generating custom agent")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"draft": result["draft"]}
 
 
 @router.get("/agents/custom/{agent_id}")
 async def get_custom_agent(agent_id: str) -> Dict[str, Any]:
-    try:
-        row = service.get_agent(agent_id)
-        if not row:
-            raise HTTPException(
-                status_code=404, detail=f"Custom agent not found: {agent_id}"
-            )
-        return _with_effective_prompt(row)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting custom agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    row = service.get_agent(agent_id)
+    if not row:
+        raise HTTPException(
+            status_code=404, detail=f"Custom agent not found: {agent_id}"
+        )
+    return _with_effective_prompt(row)
 
 
 @router.post("/agents/{source_agent_id}/fork", status_code=201)
@@ -245,7 +229,7 @@ async def fork_agent(
     without affecting the source.
     """
     try:
-        from services.api.routers.agents import agent_manager, _resolve_agent
+        from services.api.routers.agents import _resolve_agent, agent_manager
 
         source = _resolve_agent(source_agent_id)
         if source is None:

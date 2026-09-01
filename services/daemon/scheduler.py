@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
 
 from core.config import get_settings
+from core.storage.connection import get_db_manager
+from core.time import utcnow
 from services.daemon.config import SchedulerConfig
 
 logger = logging.getLogger(__name__)
@@ -165,13 +167,13 @@ class TaskScheduler:
             if task.run_on_start and task.enabled:
                 try:
                     await task.func()
-                    task.last_run = datetime.utcnow()
+                    task.last_run = utcnow()
                 except Exception as e:
                     logger.error(f"Startup task {task.name} failed: {e}")
 
         # Main scheduling loop
         while not shutdown_event.is_set():
-            now = datetime.utcnow()
+            now = utcnow()
 
             for task in self._tasks:
                 if not task.enabled:
@@ -271,7 +273,7 @@ class TaskScheduler:
         cases = self._data_service.get_cases()
 
         # Calculate time range (last week)
-        now = datetime.utcnow()
+        now = utcnow()
         week_ago = now - timedelta(days=7)
 
         # Filter to recent findings
@@ -343,15 +345,25 @@ class TaskScheduler:
         self.stats["cleanups_run"] += 1
 
         # Calculate cutoff date
-        cutoff = datetime.utcnow() - timedelta(days=self.config.cleanup_retention_days)
+        cutoff = utcnow() - timedelta(days=self.config.cleanup_retention_days)
 
-        # For now, just log what would be cleaned
-        # In production, would delete old findings/processed events
+        # Findings/processed events are still only logged, not deleted.
         logger.info(f"Cleanup would remove data older than {cutoff.isoformat()}")
 
         # Dedup sets are pruned by RedisDedupSet itself (TTL + size cap)
 
-        return {"cutoff_date": cutoff.isoformat()}
+        # Approvals nobody will ever answer (#675). Off-thread because each
+        # expiry is its own write and the sweep is unbounded, while this runs on
+        # the daemon's event loop.
+        from core.response.checkpoints import expire_stale
+
+        expired = await asyncio.to_thread(
+            expire_stale, self.config.approval_expiry_days
+        )
+        if expired:
+            logger.info("Cleanup expired %d unanswered approvals", expired)
+
+        return {"cutoff_date": cutoff.isoformat(), "approvals_expired": expired}
 
     async def _run_sandbox_poll(self):
         """Advance pending sandbox submissions to completed reports."""
@@ -384,33 +396,29 @@ class TaskScheduler:
         logger.info("Running health check...")
 
         health = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utcnow().isoformat(),
             "status": "healthy",
             "components": {},
         }
 
-        # Check database
-        try:
-            if self._data_service:
-                findings = self._data_service.get_findings()
-                health["components"]["database"] = {
-                    "status": "healthy",
-                    "findings_count": len(findings) if findings else 0,
-                }
-            else:
-                health["components"]["database"] = {"status": "unavailable"}
-        except Exception as e:
-            health["components"]["database"] = {"status": "error", "error": str(e)}
+        # Probe the connection rather than counting findings: get_findings
+        # returns [] on failure, so a dead database looked like an empty one.
+        if not self._data_service:
+            health["components"]["database"] = {"status": "unavailable"}
+        elif get_db_manager().health_check():
+            findings = self._data_service.get_findings()
+            health["components"]["database"] = {
+                "status": "healthy",
+                "findings_count": len(findings),
+            }
+        else:
+            health["components"]["database"] = {"status": "error"}
             health["status"] = "degraded"
 
-        # Check Claude service
-        try:
-            if self._claude_service:
-                health["components"]["claude"] = {"status": "healthy"}
-            else:
-                health["components"]["claude"] = {"status": "unavailable"}
-        except Exception as e:
-            health["components"]["claude"] = {"status": "error", "error": str(e)}
+        # Presence only — constructing the service is what would have failed.
+        health["components"]["claude"] = {
+            "status": "healthy" if self._claude_service else "unavailable"
+        }
 
         logger.info(f"Health check: {health['status']}")
         return health

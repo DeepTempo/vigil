@@ -82,10 +82,17 @@ class MCPRegistry:
                     continue
                 seen.add(tool_name)
 
+                # Prefix the description with the server so the model sees a
+                # tool's provenance — but leave it empty when the tool has none,
+                # so a downstream "drop tools with no description" guard still
+                # fires (a fabricated "[server] " would read as truthy).
+                raw_desc = (tool.get("description") or "").strip()
+                description = f"[{server_name}] {raw_desc}" if raw_desc else ""
+
                 all_tools.append(
                     {
                         "name": tool_name,
-                        "description": f"[{server_name}] {tool.get('description', '')}",
+                        "description": description,
                         "input_schema": tool.get(
                             "input_schema",
                             tool.get(
@@ -105,29 +112,6 @@ class MCPRegistry:
     def get_tool_names(self) -> List[str]:
         """Get all tool names (server-prefixed) from active servers."""
         return [t["name"] for t in self.get_all_tools()]
-
-    def get_agent_sdk_configs(self) -> List[Dict]:
-        """
-        Get MCP server configurations formatted for Agent SDK's
-        ClaudeAgentOptions.mcp_servers parameter.
-
-        Returns:
-            List of MCP server config dicts with name, command, args, env.
-        """
-        configs = []
-        for name in self.get_active_servers():
-            server_info = self._servers.get(name, {})
-            config = server_info.get("config", {})
-            if config.get("command"):
-                configs.append(
-                    {
-                        "name": name,
-                        "command": config["command"],
-                        "args": config.get("args", []),
-                        "env": config.get("env", {}),
-                    }
-                )
-        return configs
 
     def get_summary(self) -> Dict[str, Any]:
         """Get a summary of the registry state."""
@@ -191,9 +175,11 @@ def _normalised(tool: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-# Whether this deployment dials every configured MCP server at startup. Defined here
-# because populate_from_cache reads it and services/api/main.py enforces it. Off by
-# default under DEV_MODE; an explicit setting wins either way.
+# Whether this deployment dials every configured MCP server at startup. Off by
+# default under DEV_MODE; an explicit ``mcp_auto_connect_on_startup`` wins either
+# way. ``refresh_from_client`` uses it to decide whether live connection state is
+# authoritative enough to prune servers. services/api/main.py makes the same call
+# for its own startup path; core/ cannot import services/, so the rule lives here.
 def eager_connect_enabled() -> bool:
     from core.config import get_settings
 
@@ -239,6 +225,21 @@ def populate_from_cache(registry: MCPRegistry) -> int:
 
     logger.info("MCP registry populated from %d server(s)", registered)
     return registered
+
+
+def safe_tool_names(registry: Optional[MCPRegistry]) -> List[str]:
+    """Tool names from ``registry``, or [] when it cannot be reached.
+
+    Shared by the agent and workflow AI generators, whose prompt-building is
+    best-effort: an unavailable registry means "recommend no tools", never an
+    error. Takes the registry rather than reaching for a global, so callers
+    keep whatever instance they were injected with.
+    """
+    try:
+        return list((registry or MCPRegistry()).get_tool_names() or [])
+    except Exception as e:
+        logger.debug(f"MCP registry unavailable: {e}")
+        return []
 
 
 def refresh_from_client(registry: MCPRegistry) -> int:

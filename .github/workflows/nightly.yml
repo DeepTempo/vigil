@@ -6,9 +6,6 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:  # Allow manual trigger
 
-env:
-  PYTHON_VERSION: '3.10'
-
 jobs:
   # ============================================================================
   # Full Test Suite
@@ -38,17 +35,20 @@ jobs:
     
     steps:
       - uses: actions/checkout@v7
+        with:
+          # requirements.lock installs -e ./mempalace, an empty dir without this.
+          submodules: true
       
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
       
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.lock
       
       - name: Run all tests
         run: |
@@ -73,17 +73,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: true
       
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version-file: .python-version
           cache: 'pip'
       
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.lock
           pip install pytest-benchmark
       
       - name: Run performance tests
@@ -105,25 +107,44 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      
+        with:
+          submodules: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+
       - name: Run pip-audit
         run: |
-          pip install pip-audit
-          pip-audit -r requirements.txt --format json --output pip-audit.json || true
-      
+          # Pinned: a pip-audit that cannot run now fails this job, so an
+          # upstream release is not allowed to decide whether nightly is red.
+          pip install pip-audit==2.10.1
+          # The lock, not requirements.txt: open ranges audit versions nothing installs.
+          # Findings are not a build failure. pip-audit not running is -- and it
+          # writes no report at all when it fails, so an empty file is the tell.
+          pip-audit -r requirements.lock --format json --output pip-audit.json || true
+          test -s pip-audit.json || {
+            echo "::error::pip-audit wrote no report -- it did not run"
+            exit 1
+          }
+
       - name: Upload audit results
         uses: actions/upload-artifact@v7
         with:
           name: security-audit
           path: pip-audit.json
-      
-      - name: Check for critical vulnerabilities
+
+      - name: Summarise findings
         run: |
-          if grep -q '"vulnerabilities": \[\]' pip-audit.json; then
-            echo "No vulnerabilities found"
-          else
-            echo "Vulnerabilities detected - review pip-audit.json"
-          fi
+          python3 -c '
+          import json
+          deps = json.load(open("pip-audit.json")).get("dependencies", [])
+          hits = [(d["name"], d["version"], v["id"]) for d in deps for v in d.get("vulns", [])]
+          print(f"{len(hits)} known vulnerabilities in {len(deps)} dependencies")
+          for name, version, vid in hits:
+              print(f"  {name} {version}: {vid}")
+          '
 
   # ============================================================================
   # Notify on Failure
@@ -133,10 +154,17 @@ jobs:
     runs-on: ubuntu-latest
     needs: [full-test-suite, performance-tests, security-audit]
     if: failure() && github.repository == 'Vigil-SOC/vigil'
+    # `secrets` is not available in `if`, so it comes through env to be tested.
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
       - name: Notify Slack
+        if: env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v4
         with:
+          # v4 wants the webhook as an input; env alone is "Missing input!".
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
             {
               "text": "⚠️ Nightly Tests Failed",
@@ -150,6 +178,4 @@ jobs:
                 }
               ]
             }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 

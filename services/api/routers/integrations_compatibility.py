@@ -9,18 +9,21 @@ All mutating endpoints require an authenticated admin
 (``integrations.write`` permission).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 import logging
 
-from services.api.middleware.auth import get_current_active_user
-from core.auth.auth_service import AuthService
-from core.storage.models import User
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
 from core.deps import provide_integration_compat
 from core.integrations.integration_compatibility_service import (
     IntegrationCompatibilityService,
 )
 from core.routing import Auth, RouterMeta
+from core.storage.models import User
+from services.api.middleware.auth import (
+    get_current_active_user,
+    require_integrations_admin,
+)
 
 router = APIRouter()
 
@@ -38,36 +41,19 @@ class IntegrationActionRequest(BaseModel):
     integration_id: str
 
 
-def _require_integrations_admin(current_user: User) -> None:
-    """Raise 403 unless the user has ``integrations.write``.
-
-    Centralised so all three mutating endpoints share the exact same
-    check.
-    """
-    if not AuthService.check_permission(current_user.user_id, "integrations.write"):
-        raise HTTPException(
-            status_code=403,
-            detail="Permission denied: integrations.write required",
-        )
-
-
 @router.get("/compatibility/status")
 async def get_compatibility_status(
     current_user: User = Depends(get_current_active_user),
     service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Get compatibility status for all integrations."""
-    try:
-        statuses = service.get_all_statuses()
-        system_info = service.get_system_info()
+    statuses = service.get_all_statuses()
+    system_info = service.get_system_info()
 
-        return {
-            "system": system_info,
-            "integrations": statuses,
-        }
-    except Exception as e:
-        logger.error(f"Error getting compatibility status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "system": system_info,
+        "integrations": statuses,
+    }
 
 
 @router.get("/compatibility/status/{integration_id}")
@@ -77,21 +63,15 @@ async def get_integration_compatibility(
     service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Get compatibility status for a specific integration."""
-    try:
-        status = service.get_integration_status(integration_id)
+    status = service.get_integration_status(integration_id)
 
-        if status.get("status") == "unknown":
-            raise HTTPException(
-                status_code=404,
-                detail=f"Integration '{integration_id}' not found",
-            )
+    if status.get("status") == "unknown":
+        raise HTTPException(
+            status_code=404,
+            detail=f"Integration '{integration_id}' not found",
+        )
 
-        return status
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting integration compatibility: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return status
 
 
 @router.post("/compatibility/install")
@@ -107,7 +87,7 @@ async def install_package(
     integration registry. There is no way for the client to specify
     a package name, URL, or version directly.
     """
-    _require_integrations_admin(current_user)
+    require_integrations_admin(current_user)
 
     allowed = service.get_allowed_integration_ids()
     if request.integration_id not in allowed:
@@ -148,7 +128,7 @@ async def upgrade_package(
     service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Upgrade an integration's pinned package."""
-    _require_integrations_admin(current_user)
+    require_integrations_admin(current_user)
 
     if request.integration_id not in service.get_allowed_integration_ids():
         raise HTTPException(
@@ -185,7 +165,7 @@ async def uninstall_package(
     service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Uninstall the package backing a known integration."""
-    _require_integrations_admin(current_user)
+    require_integrations_admin(current_user)
 
     if request.integration_id not in service.get_allowed_integration_ids():
         raise HTTPException(
@@ -221,8 +201,4 @@ async def get_system_info(
     service: IntegrationCompatibilityService = Depends(provide_integration_compat),
 ):
     """Get system information including Python version."""
-    try:
-        return service.get_system_info()
-    except Exception as e:
-        logger.error(f"Error getting system info: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return service.get_system_info()

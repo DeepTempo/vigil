@@ -11,7 +11,7 @@
 # agent-worker/agent-serve are the same arrangement over the agent image: one
 # artifact, two commands, two Deployments that scale independently (#635).
 #
-# Prerequisites (one-time, per RELEASING.md):
+# Prerequisites (one-time, per https://vigilsoc.org/docs/releasing/):
 #   • GitHub App installed with id=vars.RELEASE_PLEASE_APP_ID
 #     and private key at secrets.RELEASE_PLEASE_PRIVATE_KEY
 #   • "Read and write" Packages permission on the repo
@@ -100,6 +100,10 @@ jobs:
             org.opencontainers.image.source=https://github.com/Vigil-SOC/vigil
             org.opencontainers.image.licenses=Apache-2.0
 
+      - name: Read the Python pin
+        id: pin
+        run: echo "version=$(tr -d '[:space:]' < .python-version)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push backend
         uses: docker/build-push-action@v7
         with:
@@ -114,6 +118,7 @@ jobs:
           # Pass the version into the image
           build-args: |
             VIGIL_VERSION=${{ github.ref_name }}
+            PYTHON_VERSION=${{ steps.pin.outputs.version }}
           platforms: linux/amd64,linux/arm64
 
   # ---------------------------------------------------------------------------
@@ -162,6 +167,10 @@ jobs:
             org.opencontainers.image.source=https://github.com/Vigil-SOC/vigil
             org.opencontainers.image.licenses=Apache-2.0
 
+      - name: Read the Python pin
+        id: pin
+        run: echo "version=$(tr -d '[:space:]' < .python-version)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push daemon
         uses: docker/build-push-action@v7
         with:
@@ -174,6 +183,7 @@ jobs:
           cache-to:   type=registry,ref=ghcr.io/vigil-soc/vigil-daemon:buildcache,mode=max
           build-args: |
             VIGIL_VERSION=${{ github.ref_name }}
+            PYTHON_VERSION=${{ steps.pin.outputs.version }}
           platforms: linux/amd64,linux/arm64
 
   # ---------------------------------------------------------------------------

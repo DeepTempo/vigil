@@ -43,8 +43,8 @@ SINGLETON_ALLOWED = {
 # are process-scoped resources (DatabaseManager owns the connection pool,
 # IngestionJobRegistry holds in-flight job state); the rest are config/secrets
 # channels and standalone MCP tool processes, not injectable services. The 13
-# service singletons #459 retired are deliberately absent — see
-# docs/TESTING_GUIDE.md before adding anything here.
+# service singletons #459 retired are deliberately absent — do not add
+# more without a process-scoped resource justification.
 LAZY_SINGLETON_ALLOWED = {
     ("core/storage/connection.py", "get_db_manager"),
     ("core/ingestion/ingestion_jobs.py", "get_job_registry"),
@@ -188,5 +188,5 @@ def test_no_lazy_singleton_accessors():
         "in a test. Construct the service in the services/api/main.py lifespan "
         "(or the daemon's _init_components) and inject it: FastAPI handlers via "
         "a core/deps.py provider, everything else via a constructor keyword "
-        "argument. See docs/TESTING_GUIDE.md.\n" + "\n".join(violations)
+        "argument.\n" + "\n".join(violations)
     )

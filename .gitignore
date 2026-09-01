@@ -258,7 +258,14 @@ claude_analysis_*.txt
 # Local tooling artifacts / personal MCP config
 .mcp.json
 index.scip
+index.scip.stamp
 slop.toml
+.zed/
+
+# Bifrost's local gateway state: 81MB of SQLite at the repo root. Anchored --
+# an unanchored `bifrost/` also swallows core/llm/bifrost/ and
+# infra/docker/bifrost/, both of which are tracked source.
+/bifrost/
 
 # Where a file-ledger hunt writes its output. Real run data: sanitise it before it
 # goes anywhere near the tree -- services/agent/scripts/sanitise-hunt-ledgers.ts.
@@ -285,3 +292,9 @@ index.scip.stamp
 # production importer here -- mcp-servers' four servers are vendored at tools/mcp/.
 /deeptempo-core/
 /mcp-servers/
+
+# Local scratch space -- notes and throwaway files, never committed.
+/.scratch/
+
+# Repo-local uv install, created by scripts/lib.sh when the host has no uv.
+/.uv/

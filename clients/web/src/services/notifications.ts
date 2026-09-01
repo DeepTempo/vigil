@@ -1,8 +1,3 @@
-/**
- * Browser/Desktop Notifications Service
- * Handles requesting permission and showing desktop notifications
- */
-
 export class NotificationService {
   private static instance: NotificationService
   private isEnabled: boolean = true
@@ -19,25 +14,16 @@ export class NotificationService {
     return NotificationService.instance
   }
 
-  /**
-   * Check if browser supports notifications
-   */
   public isSupported(): boolean {
     return 'Notification' in window
   }
 
-  /**
-   * Check current permission status
-   */
   private checkPermission(): void {
     if (this.isSupported()) {
       this.permissionGranted = Notification.permission === 'granted'
     }
   }
 
-  /**
-   * Request notification permission from the user
-   */
   public async requestPermission(): Promise<boolean> {
     if (!this.isSupported()) {
       console.warn('Browser does not support notifications')
@@ -64,16 +50,10 @@ export class NotificationService {
     }
   }
 
-  /**
-   * Enable or disable notifications
-   */
   public setEnabled(enabled: boolean): void {
     this.isEnabled = enabled
   }
 
-  /**
-   * Show a desktop notification
-   */
   public async show(
     title: string,
     options?: {
@@ -120,7 +100,6 @@ export class NotificationService {
         }
       }
 
-      // Auto-close after 10 seconds if not requiring interaction
       if (!options?.requireInteraction) {
         setTimeout(() => notification.close(), 10000)
       }
@@ -129,9 +108,6 @@ export class NotificationService {
     }
   }
 
-  /**
-   * Show notification for new finding
-   */
   public notifyNewFinding(finding: {
     finding_id: string
     title?: string
@@ -146,9 +122,6 @@ export class NotificationService {
     })
   }
 
-  /**
-   * Show notification for case update
-   */
   public notifyCaseUpdate(caseInfo: {
     case_id: string
     title: string
@@ -167,9 +140,6 @@ export class NotificationService {
     })
   }
 
-  /**
-   * Show notification for investigation completion
-   */
   public notifyInvestigationComplete(investigation: {
     finding_id?: string
     case_id?: string
@@ -188,9 +158,6 @@ export class NotificationService {
     })
   }
 
-  /**
-   * Show notification for MCP server status change
-   */
   public notifyMcpServerStatus(server: {
     name: string
     status: string
@@ -205,9 +172,6 @@ export class NotificationService {
     })
   }
 
-  /**
-   * Show a generic notification
-   */
   public notifyGeneric(
     title: string,
     message: string,
@@ -226,6 +190,5 @@ export class NotificationService {
   }
 }
 
-// Export singleton instance
 export const notificationService = NotificationService.getInstance()
 

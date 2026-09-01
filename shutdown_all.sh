@@ -27,14 +27,16 @@ done
 pkill -f "uvicorn services.api.main:app" 2>/dev/null || true
 pkill -f "services/daemon/main.py" 2>/dev/null || true
 pkill -f "services.daemon.main" 2>/dev/null || true
+pkill -f 'services\.worker' 2>/dev/null || true
 pkill -f "vite.*opensoc" 2>/dev/null || true
 pkill -f "mcp_servers.*_server" 2>/dev/null || true
 
-# Kill by port (6989 agent serve, 6990 agent worker health)
+# Kill by port — only 6987/6988, which are unambiguously Vigil's. The agent
+# serve (6989) and worker (6990) are already stopped by their pidfiles above; we
+# deliberately do NOT port-kill those, because a user's Splunk UI can share 6990
+# and a blind `kill -9` would take it down.
 lsof -ti:6987 | xargs kill -9 2>/dev/null || true
 lsof -ti:6988 | xargs kill -9 2>/dev/null || true
-lsof -ti:6989 | xargs kill -9 2>/dev/null || true
-lsof -ti:6990 | xargs kill -9 2>/dev/null || true
 
 # Docker
 if [ "$DOCKER_STOP" -eq 1 ]; then

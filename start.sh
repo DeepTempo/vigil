@@ -38,7 +38,6 @@ done
 [ "$ALL_PROFILES" -eq 1 ] && EXTRA_SERVICES="$EXTRA_SERVICES pgadmin splunk kafka jaeger prometheus grafana otel-collector"
 
 # --- Prerequisites ---
-PYTHON=$(find_python)
 ensure_docker || exit 1
 
 SKIP_FRONTEND=0
@@ -56,10 +55,8 @@ if [ -d ".git" ] && [ ! -f "mempalace/pyproject.toml" ] && [ ! -f "mempalace/set
 fi
 
 # --- Python environment ---
-ensure_venv "$PYTHON"
+ensure_venv
 install_python_deps
-
-command -v uvicorn &>/dev/null || { echo "uvicorn not found after install."; exit 1; }
 
 # --- Environment ---
 _CALLER_BIND_HOST="${BIND_HOST:-}"
@@ -187,6 +184,10 @@ else
     nohup "${PWD}/venv/bin/python" services/daemon/main.py > logs/daemon.log 2>&1 &
     echo $! > logs/daemon.pid
 
+    # Started unconditionally, independent of orchestrator.settings (#581).
+    nohup "${PWD}/venv/bin/python" -m services.worker > logs/llm_worker.log 2>&1 &
+    echo $! > logs/llm_worker.pid
+
     start_agent_layer
 
     if [ "$SKIP_FRONTEND" -eq 0 ] && [ -d "clients/web/node_modules" ]; then
@@ -201,6 +202,6 @@ else
 
     print_ready
     echo ""
-    echo "Logs: tail -f logs/{backend,daemon,frontend,agent-worker,agent-serve}.log"
+    echo "Logs: tail -f logs/{backend,daemon,llm_worker,frontend,agent-worker,agent-serve}.log"
     echo "Stop: ./shutdown_all.sh"
 fi

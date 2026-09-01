@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from core.integrations.mcp.registry import MCPRegistry
+from core.integrations.mcp.registry import MCPRegistry, safe_tool_names
 from core.workflows.workflows_service import WorkflowsService
 
 logger = logging.getLogger(__name__)
@@ -181,15 +181,14 @@ class WorkflowAIGenerator:
     def _get_mcp_tool_names(self) -> List[str]:
         # Refresh from the running client each turn so a server connected since
         # startup is usable without a restart. See registry.refresh_from_client.
-        try:
-            from core.integrations.mcp.registry import refresh_from_client
+        from core.integrations.mcp.registry import refresh_from_client
 
-            registry = self._mcp_registry or MCPRegistry()
+        registry = self._mcp_registry or MCPRegistry()
+        try:
             refresh_from_client(registry)
-            return list(registry.get_tool_names() or [])
         except Exception as e:
-            logger.debug(f"MCP registry unavailable: {e}")
-            return []
+            logger.debug(f"MCP refresh failed: {e}")
+        return safe_tool_names(registry)
 
     def _exemplars_context(self) -> str:
         try:

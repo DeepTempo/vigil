@@ -73,3 +73,39 @@ def withdraw_for_run(run_id: str, reason: str, approvals=None) -> int:
     if open_ones:
         logger.info("withdrew %d unanswered approvals for %s", len(open_ones), run_id)
     return len(open_ones)
+
+
+# The run-less siblings of withdraw_for_run. That function keys on
+# workflow_run_id, so approvals raised without a run behind them are unreachable
+# and nothing else ages them out: the queue only grows and the one question that
+# matters ends up buried (#675). It is also a safety line, not housekeeping —
+# these are containment proposals, and approving a weeks-old "isolate host" out
+# of a cluttered queue acts on a reason that stopped being true. Rejected rather
+# than deleted, and attributed to "system", so the record distinguishes the queue
+# ageing a question out from an analyst declining it.
+def expire_stale(older_than_days: int, approvals=None) -> int:
+    from datetime import timedelta
+
+    from core.response.approval_service import ApprovalService
+    from core.time import utcnow
+
+    if older_than_days < 1:
+        raise ValueError(
+            "older_than_days must be at least 1, got "
+            f"{older_than_days}: a zero or negative window expires approvals "
+            "raised seconds ago, including the one an operator is reading"
+        )
+
+    service = approvals or ApprovalService()
+    cutoff = utcnow() - timedelta(days=older_than_days)
+    reason = f"expired: unanswered for more than {older_than_days} days"
+    stale = service.list_stale_pending(cutoff)
+    for action_id in stale:
+        service.reject_action(action_id, reason, rejected_by="system")
+    if stale:
+        logger.info(
+            "expired %d approvals unanswered since before %s",
+            len(stale),
+            cutoff.isoformat(),
+        )
+    return len(stale)

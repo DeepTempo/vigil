@@ -80,6 +80,7 @@ import {
   type OpenQuestion,
   type WorkerEvidence,
   CALLS_PER_ITERATION,
+  callsPerIteration,
 } from "./types.js";
 
 // A dispatch that never ran because an operator had already halted the hunt.
@@ -524,6 +525,17 @@ export class HuntController {
     return { ...DEFAULT_CHECKPOINTS, ...(this.ledger.projection.hunt.spec.checkpoints ?? {}) };
   }
 
+  // This run's fan-out, as budgetsOf used at start: priced at the shipped constant, an
+  // extension would hand a wide arch a ceiling below the one it is already running under.
+  private get callsPerTurn(): number {
+    const spec = this.ledger.projection.hunt.spec;
+    const workers = spec.dispatch?.max_workers;
+    const turns = spec.runtime?.max_turns;
+    return typeof workers === "number" && typeof turns === "number"
+      ? callsPerIteration(workers, turns)
+      : CALLS_PER_ITERATION;
+  }
+
   private raiseAsk(
     checkpointClass: CheckpointClass,
     raisedIteration: number,
@@ -598,73 +610,73 @@ export class HuntController {
 
     const watch = this.watchForAbort();
     try {
-    while (attempts < MAX_DECISION_ATTEMPTS) {
-      let result: DecisionResult;
-      try {
-        result = await this.provider.decide(presented, watch.signal);
-      } catch (error) {
-        // A dead call has not decided this iteration, so it takes the same bounded
-        // re-ask a schema-invalid emission gets rather than ending the run.
-        // Exhausted budgets are the exception: the next call answers identically.
-        if (error instanceof BudgetRefused || error instanceof GatewayExhausted) throw error;
-        // A park is not a dead call — every re-ask folds the same ledger and refuses
-        // again — so it surfaces as HuntParked and the run stays answerable.
-        if (error instanceof LeadParked) throw new HuntParked(error.message);
-        if (watch.signal.aborted) throw error;
-        attempts += 1;
-        spent += spentBefore(error);
-        rejected.push(error instanceof Error ? error.message : String(error));
-        continue;
-      }
-      rejected.push(...(result.rejected_attempts ?? []));
-      spent += result.cost_usd;
-      attribution = { model_id: result.model_id, prompt_version: result.prompt_version };
-
-      try {
-        validateDecision(result.decision, projection);
-      } catch (error) {
-        if (!(error instanceof InvalidDecision)) throw error;
-        attempts += 1;
-        rejected.push(error.message);
-        presented = withRejection(presented, error.message);
-        continue;
-      }
-
-      // EXPAND is a read, not a move: it buys raw payloads and asks again without
-      // advancing the iteration. Cost still accrues, so it is not free, only
-      if (result.decision.action === "EXPAND") {
-        if (expansions < MAX_EXPANSIONS) {
-          expansions += 1;
-          presented = this.expand(presented, result.decision.evidence_citations ?? []);
+      while (attempts < MAX_DECISION_ATTEMPTS) {
+        let result: DecisionResult;
+        try {
+          result = await this.provider.decide(presented, watch.signal);
+        } catch (error) {
+          // A dead call has not decided this iteration, so it takes the same bounded
+          // re-ask a schema-invalid emission gets rather than ending the run.
+          // Exhausted budgets are the exception: the next call answers identically.
+          if (error instanceof BudgetRefused || error instanceof GatewayExhausted) throw error;
+          // A park is not a dead call — every re-ask folds the same ledger and refuses
+          // again — so it surfaces as HuntParked and the run stays answerable.
+          if (error instanceof LeadParked) throw new HuntParked(error.message);
+          if (watch.signal.aborted) throw error;
+          attempts += 1;
+          spent += spentBefore(error);
+          rejected.push(error instanceof Error ? error.message : String(error));
           continue;
         }
-        attempts += 1;
-        const exhausted = `all ${MAX_EXPANSIONS} expansions are used; decide on what you have`;
-        rejected.push(exhausted);
-        presented = withRejection(presented, exhausted);
-        continue;
+        rejected.push(...(result.rejected_attempts ?? []));
+        spent += result.cost_usd;
+        attribution = { model_id: result.model_id, prompt_version: result.prompt_version };
+
+        try {
+          validateDecision(result.decision, projection);
+        } catch (error) {
+          if (!(error instanceof InvalidDecision)) throw error;
+          attempts += 1;
+          rejected.push(error.message);
+          presented = withRejection(presented, error.message);
+          continue;
+        }
+
+        // EXPAND is a read, not a move: it buys raw payloads and asks again without
+        // advancing the iteration. Cost still accrues, so it is not free, only
+        if (result.decision.action === "EXPAND") {
+          if (expansions < MAX_EXPANSIONS) {
+            expansions += 1;
+            presented = this.expand(presented, result.decision.evidence_citations ?? []);
+            continue;
+          }
+          attempts += 1;
+          const exhausted = `all ${MAX_EXPANSIONS} expansions are used; decide on what you have`;
+          rejected.push(exhausted);
+          presented = withRejection(presented, exhausted);
+          continue;
+        }
+
+        // Left absent rather than empty when nothing was rejected, so a clean
+        // iteration journals exactly what it did before.
+        return {
+          presented,
+          result: {
+            ...result,
+            cost_usd: spent,
+            ...(rejected.length > 0 ? { rejected_attempts: rejected } : {}),
+          },
+        };
       }
 
-      // Left absent rather than empty when nothing was rejected, so a clean
-      // iteration journals exactly what it did before.
-      return {
-        presented,
-        result: {
-          ...result,
-          cost_usd: spent,
-          ...(rejected.length > 0 ? { rejected_attempts: rejected } : {}),
-        },
-      };
-    }
+      // A stalled iteration is a fact about the hunt, not an absence of one: it
+      // presented a digest and was billed for emissions. Journaling it before the
+      this.recordStall(presented, digestSeq, rejected, spent, attribution);
 
-    // A stalled iteration is a fact about the hunt, not an absence of one: it
-    // presented a digest and was billed for emissions. Journaling it before the
-    this.recordStall(presented, digestSeq, rejected, spent, attribution);
-
-    throw new InvalidDecision(
-      `the Hunt Lead emitted nothing valid in ${MAX_DECISION_ATTEMPTS} attempts ` +
-        `($${spent.toFixed(4)} spent): ${rejected.join(" | ")}`,
-    );
+      throw new InvalidDecision(
+        `the Hunt Lead emitted nothing valid in ${MAX_DECISION_ATTEMPTS} attempts ` +
+          `($${spent.toFixed(4)} spent): ${rejected.join(" | ")}`,
+      );
     } finally {
       watch.stop();
     }
@@ -1211,7 +1223,7 @@ export class HuntController {
     // sit parked is not on offer and carries over untouched.
     const asked: Budgets = {
       max_iterations: hunt.budgets.max_iterations + grant.iterations,
-      max_calls: (hunt.budgets.max_iterations + grant.iterations) * CALLS_PER_ITERATION,
+      max_calls: (hunt.budgets.max_iterations + grant.iterations) * this.callsPerTurn,
       max_cost_usd: Number((hunt.budgets.max_cost_usd + grant.cost_usd).toFixed(6)),
       max_wall_ms: hunt.budgets.max_wall_ms + grant.wall_ms,
       max_park_ms: hunt.budgets.max_park_ms,

@@ -19,13 +19,14 @@ _REPO_ROOT = str(Path(__file__).resolve().parents[3])
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from mcp.server.models import InitializationOptions
+import mcp.server.stdio
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
-import mcp.server.stdio
+from mcp.server.models import InitializationOptions
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -46,6 +47,7 @@ def get_elastic_service():
         return _elastic_service
     try:
         from core.integrations.elastic.client import ElasticService
+
         host = os.environ.get("ELASTIC_HOST")
         if not host:
             return None
@@ -68,6 +70,7 @@ def get_elastic_service():
 # ------------------------------------------------------------------
 # Tool listing
 # ------------------------------------------------------------------
+
 
 @server.list_tools()
 async def handle_list_tools():
@@ -143,13 +146,14 @@ async def handle_list_tools():
 # Tool dispatch
 # ------------------------------------------------------------------
 
+
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None):
     svc = get_elastic_service()
     if svc is None:
-        return result({
-            "error": "Elastic service not configured. Set ELASTIC_HOST in .env."
-        })
+        return result(
+            {"error": "Elastic service not configured. Set ELASTIC_HOST in .env."}
+        )
 
     if name == "elastic_search_logs":
         return await _search_logs(svc, arguments or {})
@@ -188,13 +192,14 @@ async def _search_logs(svc, args: dict):
         return result({"error": "Search failed"})
 
     hits = data.get("hits", {})
-    return result({
-        "total": hits.get("total", {}).get("value", 0),
-        "results": [
-            {"_id": h["_id"], **h.get("_source", {})}
-            for h in hits.get("hits", [])
-        ],
-    })
+    return result(
+        {
+            "total": hits.get("total", {}).get("value", 0),
+            "results": [
+                {"_id": h["_id"], **h.get("_source", {})} for h in hits.get("hits", [])
+            ],
+        }
+    )
 
 
 async def _search_by_ioc(svc, args: dict):
@@ -218,15 +223,16 @@ async def _search_by_ioc(svc, args: dict):
         return result({"error": "Search failed"})
 
     hits = data.get("hits", {})
-    return result({
-        "ioc_type": ioc_type,
-        "ioc_value": ioc_value,
-        "total": hits.get("total", {}).get("value", 0),
-        "results": [
-            {"_id": h["_id"], **h.get("_source", {})}
-            for h in hits.get("hits", [])
-        ],
-    })
+    return result(
+        {
+            "ioc_type": ioc_type,
+            "ioc_value": ioc_value,
+            "total": hits.get("total", {}).get("value", 0),
+            "results": [
+                {"_id": h["_id"], **h.get("_source", {})} for h in hits.get("hits", [])
+            ],
+        }
+    )
 
 
 async def _get_indices(svc):
@@ -250,23 +256,26 @@ async def _get_detection_alerts(svc, args: dict):
         return result({"error": "Failed to fetch detection alerts"})
 
     hits = data.get("hits", {})
-    return result({
-        "total": hits.get("total", {}).get("value", 0),
-        "alerts": [
-            {
-                "_id": h["_id"],
-                "rule": h.get("_source", {}).get("kibana.alert.rule.name", ""),
-                "severity": h.get("_source", {}).get("kibana.alert.severity", ""),
-                "timestamp": h.get("_source", {}).get("@timestamp", ""),
-            }
-            for h in hits.get("hits", [])
-        ],
-    })
+    return result(
+        {
+            "total": hits.get("total", {}).get("value", 0),
+            "alerts": [
+                {
+                    "_id": h["_id"],
+                    "rule": h.get("_source", {}).get("kibana.alert.rule.name", ""),
+                    "severity": h.get("_source", {}).get("kibana.alert.severity", ""),
+                    "timestamp": h.get("_source", {}).get("@timestamp", ""),
+                }
+                for h in hits.get("hits", [])
+            ],
+        }
+    )
 
 
 # ------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------
+
 
 async def main():
     async with mcp.server.stdio.stdio_server() as (read, write):

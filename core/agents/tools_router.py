@@ -61,6 +61,11 @@ def _rows(result: Any) -> List[Any]:
     if isinstance(result, list):
         return result
     if isinstance(result, dict):
+        # An envelope reporting a failure is not an empty result: unwrapping it to its
+        # own empty rows list reads as "the query ran and found nothing", which is the
+        # one answer a hunt must not confuse with "the query could not be run".
+        if result.get("error"):
+            return [result]
         for field in _ENVELOPE_ROWS:
             held = result.get(field)
             if isinstance(held, list):

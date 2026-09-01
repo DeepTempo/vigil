@@ -8,6 +8,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+
 from core.routing import Auth, RouterMeta
 from core.skills.schemas import (
     SkillCreate,
@@ -45,30 +46,22 @@ def generate_skill(request: SkillGenerateRequest):
     Supports multi-turn clarification. If Claude asks a question, the client
     re-submits with the prior conversation_history plus user_response.
     """
-    try:
-        conversation_history = request.conversation_history or []
-        if request.user_response:
-            conversation_history.append(
-                {"role": "user", "content": request.user_response}
-            )
+    conversation_history = request.conversation_history or []
+    if request.user_response:
+        conversation_history.append({"role": "user", "content": request.user_response})
 
-        result = _service().generate_skill(
-            description=request.description,
-            category=request.category,
-            conversation_history=conversation_history or None,
+    result = _service().generate_skill(
+        description=request.description,
+        category=request.category,
+        conversation_history=conversation_history or None,
+    )
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=result.get("error", "Failed to generate skill"),
         )
-
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=500,
-                detail=result.get("error", "Failed to generate skill"),
-            )
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error generating skill: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    return result
 
 
 @router.post("/import", response_model=SkillImportResponse, status_code=201)
@@ -116,15 +109,11 @@ async def import_skill(
 )
 async def create_skill(data: SkillCreate):
     """Persist a new skill."""
-    try:
-        created = _service().create_skill(
-            data=data.model_dump(exclude={"created_by"}),
-            created_by=data.created_by,
-        )
-        return created
-    except Exception as e:
-        logger.error("Error creating skill: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    created = _service().create_skill(
+        data=data.model_dump(exclude={"created_by"}),
+        created_by=data.created_by,
+    )
+    return created
 
 
 @router.get("", response_model=list[SkillResponse])
@@ -134,11 +123,7 @@ async def list_skills(
     is_active: Optional[bool] = Query(None),
 ):
     """List skills, optionally filtered by category and is_active."""
-    try:
-        return _service().list_skills(category=category, is_active=is_active)
-    except Exception as e:
-        logger.error("Error listing skills: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    return _service().list_skills(category=category, is_active=is_active)
 
 
 @router.get("/{skill_id}", response_model=SkillResponse)

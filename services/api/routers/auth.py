@@ -7,7 +7,8 @@ Handles login, logout, token refresh, password management, and MFA.
 import logging
 from datetime import datetime
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Header, Request, Response, status
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -19,12 +20,11 @@ from core.auth.auth_cookies import (
     set_auth_cookies,
 )
 from core.auth.auth_service import (
+    PASSWORD_HISTORY_LIMIT,
     AccountLockedError,
     AuthService,
-    PASSWORD_HISTORY_LIMIT,
     password_matches_any,
 )
-from core.platform.email_service import send_email
 from core.auth.password_reset import (
     generate_reset_token,
     verify_reset_token,
@@ -38,12 +38,14 @@ from core.auth.token_blacklist import (
     is_token_revoked,
     revoke_all_for_user,
 )
-from services.api.middleware.auth import get_current_active_user
-from services.api.middleware.rate_limit import limiter
+from core.config import get_settings
+from core.platform.email_service import send_email
+from core.routing import Auth, RouterMeta, UnitOfWorkSession
 from core.storage.models import User
 from core.storage.schemas import UserSchema
-from core.routing import Auth, RouterMeta, UnitOfWorkSession
-from core.config import get_settings
+from core.time import utcnow
+from services.api.middleware.auth import get_current_active_user
+from services.api.middleware.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +177,7 @@ def _apply_new_password(user: User, plaintext: str) -> None:
     # Cap to the configured limit so the JSONB row doesn't grow unbounded.
     user.password_history = previous[:PASSWORD_HISTORY_LIMIT]
     user.password_hash = new_hash
-    user.password_changed_at = datetime.utcnow()
+    user.password_changed_at = utcnow()
 
 
 def _has_any_user(session: Session) -> bool:
@@ -290,9 +292,7 @@ async def login(
             payload.username_or_email, payload.password, session
         )
     except AccountLockedError as exc:
-        retry_after = max(
-            1, int((exc.locked_until - datetime.utcnow()).total_seconds())
-        )
+        retry_after = max(1, int((exc.locked_until - utcnow()).total_seconds()))
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail="Account locked due to repeated failed login attempts",

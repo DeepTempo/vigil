@@ -1,20 +1,20 @@
 """MCP service for managing MCP servers."""
 
-import subprocess
-import platform
-import logging
 import json
-import re
-from pathlib import Path
-from typing import Mapping, Optional, Dict, List
-from datetime import datetime
+import logging
 import os
+import platform
+import re
+import subprocess
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Mapping, Optional
 
-from core.secrets import get_secret
 from core.config import vigil_path
-from core.integrations.mcp.child_env import ca_bundle_env
 from core.detections.detection_rules_service import DetectionRulesService
 from core.integrations.integration_bridge_service import IntegrationBridgeService
+from core.integrations.mcp.child_env import ca_bundle_env
+from core.secrets import get_secret
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,9 @@ _ENV_PLACEHOLDER_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
 _PLACEHOLDER_BLACKLIST = {"workspaceFolder", "HOME", "PYTHONPATH", "VIGIL_DIR"}
 
 
-def extract_required_env_vars(raw_env: Dict[str, str], raw_args: List[str]) -> List[str]:
+def extract_required_env_vars(
+    raw_env: Dict[str, str], raw_args: List[str]
+) -> List[str]:
     """Collect every ``${VAR}`` placeholder referenced by a server config.
 
     Scans the raw (pre-substitution) ``env`` values and ``args`` entries
@@ -80,20 +82,20 @@ class MCPServer:
         # Credential placeholders declared in mcp-config.json for this
         # server. Read by mcp_client.connect_to_server at connect time.
         self.required_env_vars: List[str] = list(required_env_vars or [])
-    
+
     def start(self) -> bool:
         """Start the MCP server."""
         if self.process is not None:
             logger.warning(f"Server {self.name} is already running")
             return False
-        
+
         try:
             # Prepare environment
             env = os.environ.copy()  # noqa: ENV001 - MCP child process env
             # httpx ignores REQUESTS_CA_BUNDLE, so inheriting it is not enough.
             env.update(ca_bundle_env())
             env.update(self.env)
-            
+
             # Start process
             self.process = subprocess.Popen(
                 [self.command] + self.args,
@@ -101,24 +103,24 @@ class MCPServer:
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
             )
-            
+
             self.status = "running"
             self.start_time = datetime.now()
             logger.info(f"Started MCP server: {self.name}")
             return True
-        
+
         except Exception as e:
             logger.error(f"Failed to start MCP server {self.name}: {e}")
             self.status = "error"
             return False
-    
+
     def stop(self) -> bool:
         """Stop the MCP server."""
         if self.process is None:
             return True
-        
+
         try:
             self.process.terminate()
             try:
@@ -126,17 +128,17 @@ class MCPServer:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait()
-            
+
             self.process = None
             self.status = "stopped"
             self.start_time = None
             logger.info(f"Stopped MCP server: {self.name}")
             return True
-        
+
         except Exception as e:
             logger.error(f"Failed to stop MCP server {self.name}: {e}")
             return False
-    
+
     def is_running(self) -> bool:
         """Check if the server is running."""
         # First check if we have a process object and it's still alive
@@ -149,7 +151,7 @@ class MCPServer:
                 self.status = "stopped"
                 self.process = None
                 return False
-        
+
         # If no process object, check if the process is running externally
         # by checking for the process by command line arguments
         try:
@@ -161,7 +163,7 @@ class MCPServer:
                     if len(parts) >= 2:
                         module_name = parts[1]
                     break
-            
+
             if module_name:
                 # On Unix systems (macOS, Linux), use pgrep
                 if platform.system() != "Windows":
@@ -170,7 +172,7 @@ class MCPServer:
                             ["pgrep", "-f", f"tools.*{module_name}"],
                             capture_output=True,
                             text=True,
-                            timeout=2
+                            timeout=2,
                         )
                         if result.returncode == 0 and result.stdout.strip():
                             self.status = "running"
@@ -181,10 +183,16 @@ class MCPServer:
                     # On Windows, use tasklist with findstr
                     try:
                         result = subprocess.run(
-                            ["tasklist", "/FI", f"IMAGENAME eq python.exe", "/FO", "CSV"],
+                            [
+                                "tasklist",
+                                "/FI",
+                                "IMAGENAME eq python.exe",
+                                "/FO",
+                                "CSV",
+                            ],
                             capture_output=True,
                             text=True,
-                            timeout=2
+                            timeout=2,
                         )
                         if result.returncode == 0 and module_name in result.stdout:
                             self.status = "running"
@@ -193,9 +201,9 @@ class MCPServer:
                         pass
         except Exception as e:
             logger.debug(f"Error checking external process status: {e}")
-        
+
         return False
-    
+
     def get_status(self) -> str:
         """Get server status."""
         if self.server_type == "stdio":
@@ -203,7 +211,7 @@ class MCPServer:
         if self.is_running():
             return "running"
         return self.status
-    
+
     def get_log_path(self) -> Path:
         """Get the log file path for this server."""
         # Keep hyphens as servers log to files with hyphens (e.g., deeptempo-findings.log)
@@ -212,12 +220,12 @@ class MCPServer:
 
 class MCPService:
     """Service for managing MCP servers."""
-    
+
     # A filename, not a path: resolving at class-definition time is what crashed
     # the daemon in #695, and would pin the read path while the write path
     # resolves fresh.
     _STATE_FILENAME = "mcp_server_enabled.json"
-    
+
     def __init__(
         self,
         project_root: Optional[Path] = None,
@@ -239,22 +247,22 @@ class MCPService:
         self._detection_rules = detection_rules or DetectionRulesService()
         self.project_root = Path(project_root)
         self.venv_path = self.project_root / "venv"
-        
+
         # Determine Python executable
         if platform.system() == "Windows":
             self.python_exe = self.venv_path / "Scripts" / "python.exe"
         else:
             self.python_exe = self.venv_path / "bin" / "python"
-        
+
         # Load enabled state (servers default to disabled)
         self._enabled_servers: Dict[str, bool] = self._load_enabled_state()
-        
+
         # Initialize servers
         self.servers: Dict[str, MCPServer] = {}
         self._initialize_servers()
-    
+
     # ---- Enabled / Disabled state persistence ----
-    
+
     def _load_enabled_state(self) -> Dict[str, bool]:
         """Load the enabled/disabled state from disk. Returns empty dict if no file."""
         try:
@@ -266,7 +274,7 @@ class MCPService:
         except Exception as e:
             logger.warning(f"Could not load MCP enabled state: {e}")
         return {}
-    
+
     def _save_enabled_state(self) -> None:
         """Persist the enabled/disabled state to disk."""
         try:
@@ -275,9 +283,16 @@ class MCPService:
                 json.dump({"enabled": self._enabled_servers}, f, indent=2)
         except Exception as e:
             logger.error(f"Could not save MCP enabled state: {e}")
-    
+
     # Internal/platform servers that should be on by default
-    _DEFAULT_ENABLED = {"deeptempo-findings", "tempo-flow", "security-detections", "approval", "attack-layer", "mempalace"}
+    _DEFAULT_ENABLED = {
+        "deeptempo-findings",
+        "tempo-flow",
+        "security-detections",
+        "approval",
+        "attack-layer",
+        "mempalace",
+    }
 
     def is_server_enabled(self, server_name: str) -> bool:
         """Check whether a server is enabled. Internal platform servers default to True; all others default to False."""
@@ -285,11 +300,11 @@ class MCPService:
             server_name,
             server_name in self._DEFAULT_ENABLED,
         )
-    
+
     def set_server_enabled(self, server_name: str, enabled: bool) -> bool:
         """
         Enable or disable a server and persist the change.
-        
+
         Returns True if the server exists, False otherwise.
         """
         if server_name not in self.servers:
@@ -298,11 +313,11 @@ class MCPService:
         self._save_enabled_state()
         logger.info(f"Server '{server_name}' {'enabled' if enabled else 'disabled'}")
         return True
-    
+
     def get_all_enabled_states(self) -> Dict[str, bool]:
         """Return a dict of server_name -> enabled for every known server."""
         return {name: self.is_server_enabled(name) for name in self.servers}
-    
+
     def _substitute_env_vars(
         self, value: str, env: Optional[Dict[str, str]] = None
     ) -> str:
@@ -315,7 +330,7 @@ class MCPService:
         import re
 
         source: Mapping[str, str] = os.environ if env is None else env  # noqa: ENV001
-        pattern = r'\$\{([^}:]+)(?::-((?:\$\{[^}]+\}|[^{}])*))?\}'
+        pattern = r"\$\{([^}:]+)(?::-((?:\$\{[^}]+\}|[^{}])*))?\}"
 
         def replace_var(match):
             var_name = match.group(1)
@@ -327,7 +342,7 @@ class MCPService:
                 return env_val
             if default is not None:
                 return self._substitute_env_vars(default, env)
-            return ''
+            return ""
 
         prev = None
         while prev != value:
@@ -335,11 +350,11 @@ class MCPService:
             value = re.sub(pattern, replace_var, value)
 
         return value
-    
+
     def _detect_server_type(self, args: List[str]) -> str:
         """
         Detect if a server is FastMCP or stdio-based by checking the module path.
-        
+
         FastMCP servers: deeptempo_findings
         Stdio servers: All others (designed for advanced MCP integration)
         """
@@ -353,7 +368,7 @@ class MCPService:
                         return "fastmcp"
                 return "stdio"
         return "unknown"
-    
+
     def reload_server_configs(self) -> None:
         """Rebuild server configs so a connectorUrl saved after startup is
         re-substituted into the init-time-cached spawn args."""
@@ -362,7 +377,7 @@ class MCPService:
     def _initialize_servers(self):
         """
         Initialize MCP server configurations from mcp-config.json.
-        
+
         Loads server configurations dynamically from the mcp-config.json file
         to ensure consistency with MCP integration workflows.
         Also includes servers for enabled integrations.
@@ -380,29 +395,31 @@ class MCPService:
         # Load servers from mcp-config.json
         mcp_config_path = self.project_root / "mcp-config.json"
         server_configs = []
-        
+
         if mcp_config_path.exists():
             try:
-                with open(mcp_config_path, 'r') as f:
+                with open(mcp_config_path, "r") as f:
                     mcp_config = json.load(f)
-                    
-                for server_name, server_config in mcp_config.get("mcpServers", {}).items():
+
+                for server_name, server_config in mcp_config.get(
+                    "mcpServers", {}
+                ).items():
                     # Skip comment keys
                     if server_name.startswith("_comment"):
                         continue
-                        
+
                     # Convert config format from mcp-config.json to our internal format
                     command = server_config.get("command", "python")
-                    
+
                     # Use venv python if command is just "python" or "python3"
                     if command in ["python", "python3"]:
                         command = python_exe_str
-                    
+
                     # Get cwd, replace ${workspaceFolder} with actual path
                     cwd = server_config.get("cwd", project_path_str)
                     if "${workspaceFolder}" in cwd:
                         cwd = cwd.replace("${workspaceFolder}", project_path_str)
-                    
+
                     # Get environment variables and substitute ${VAR_NAME} patterns
                     raw_env_strs = {
                         k: str(v)
@@ -443,32 +460,38 @@ class MCPService:
                         raw_env_strs, raw_args
                     )
 
-                    server_configs.append({
-                        "name": server_name,
-                        "command": command,
-                        "args": args,
-                        "cwd": cwd,
-                        "env": env,
-                        "server_type": self._detect_server_type(args),
-                        "required_env_vars": required_env_vars,
-                    })
-                    
-                logger.info(f"Loaded {len(server_configs)} servers from mcp-config.json")
+                    server_configs.append(
+                        {
+                            "name": server_name,
+                            "command": command,
+                            "args": args,
+                            "cwd": cwd,
+                            "env": env,
+                            "server_type": self._detect_server_type(args),
+                            "required_env_vars": required_env_vars,
+                        }
+                    )
+
+                logger.info(
+                    f"Loaded {len(server_configs)} servers from mcp-config.json"
+                )
             except Exception as e:
                 logger.error(f"Error loading mcp-config.json: {e}")
                 # Fall back to default servers if config loading fails
-                server_configs = self._get_default_servers(python_exe_str, project_path_str)
+                server_configs = self._get_default_servers(
+                    python_exe_str, project_path_str
+                )
         else:
             logger.warning("mcp-config.json not found, using default servers")
             server_configs = self._get_default_servers(python_exe_str, project_path_str)
-        
+
         # Dynamically update security-detections server env vars from DetectionRulesService
         for config in server_configs:
             if config["name"] == "security-detections":
                 config = self._enrich_security_detections_env(config)
             server = MCPServer(**config)
             self.servers[config["name"]] = server
-    
+
     def _enrich_security_detections_env(self, config: Dict) -> Dict:
         """
         Enrich the security-detections MCP server config with dynamic env vars
@@ -477,20 +500,26 @@ class MCPService:
         """
         try:
             dynamic_env = self._detection_rules.get_mcp_env_vars()
-            
+
             if dynamic_env:
                 # Override static env vars with dynamic ones
                 config["env"] = config.get("env", {}).copy()
                 config["env"].update(dynamic_env)
-                logger.info(f"Enriched security-detections env with {len(dynamic_env)} dynamic vars: {list(dynamic_env.keys())}")
+                logger.info(
+                    f"Enriched security-detections env with {len(dynamic_env)} dynamic vars: {list(dynamic_env.keys())}"
+                )
             else:
-                logger.info("No dynamic env vars from DetectionRulesService (no ready sources)")
+                logger.info(
+                    "No dynamic env vars from DetectionRulesService (no ready sources)"
+                )
         except Exception as e:
             logger.warning(f"Could not enrich security-detections env vars: {e}")
-        
+
         return config
-    
-    def _get_default_servers(self, python_exe_str: str, project_path_str: str) -> List[Dict]:
+
+    def _get_default_servers(
+        self, python_exe_str: str, project_path_str: str
+    ) -> List[Dict]:
         """Get default server configurations if mcp-config.json is not available."""
         return [
             {
@@ -499,10 +528,10 @@ class MCPService:
                 "args": ["-m", "tools.deeptempo_findings"],
                 "cwd": project_path_str,
                 "env": {"PYTHONPATH": project_path_str},
-                "server_type": "fastmcp"
+                "server_type": "fastmcp",
             }
         ]
-    
+
     # NOTE: the former `start_server` / `start_all` / `stop_all` methods were
     # removed when the MCP enable toggle became the single runtime lever.
     # They were Popen-subprocess monitors that explicitly refused stdio
@@ -524,26 +553,25 @@ class MCPService:
             return False
         return self.servers[server_name].stop()
 
-
     def get_server_status(self, server_name: str) -> Optional[str]:
         """
         Get the status of an MCP server.
-        
+
         Args:
             server_name: Name of the server.
-        
+
         Returns:
             Status string or None if server not found.
         """
         if server_name not in self.servers:
             return None
-        
+
         return self.servers[server_name].get_status()
-    
+
     def get_all_statuses(self) -> Dict[str, str]:
         """
         Get status of all servers.
-        
+
         Returns:
             Dictionary mapping server names to status strings.
         """
@@ -551,57 +579,56 @@ class MCPService:
         for name, server in self.servers.items():
             statuses[name] = server.get_status()
         return statuses
-    
+
     def get_server_log(self, server_name: str, lines: int = 100) -> str:
         """
         Get log content for a server.
-        
+
         Args:
             server_name: Name of the server.
             lines: Number of lines to retrieve (from end).
-        
+
         Returns:
             Log content as string.
         """
         if server_name not in self.servers:
             return ""
-        
+
         log_path = self.servers[server_name].get_log_path()
-        
+
         if not log_path.exists():
             return f"Log file not yet created. Start the server to generate logs.\n\nExpected log path: {log_path}"
-        
+
         try:
-            with open(log_path, 'r') as f:
+            with open(log_path, "r") as f:
                 all_lines = f.readlines()
                 if not all_lines:
                     return f"Log file is empty. Server may not have started yet.\n\nLog path: {log_path}"
-                return ''.join(all_lines[-lines:])
+                return "".join(all_lines[-lines:])
         except Exception as e:
             return f"Error reading log: {e}"
-    
+
     def test_server(self, server_name: str) -> bool:
         """
         Test if a server is responding.
-        
+
         Args:
             server_name: Name of the server to test.
-        
+
         Returns:
             True if server appears to be running, False otherwise.
         """
         if server_name not in self.servers:
             return False
-        
+
         server = self.servers[server_name]
         return server.is_running()
-    
+
     def list_servers(self) -> List[str]:
         """
         List all available servers.
-        
+
         Returns:
             List of server names.
         """
         return list(self.servers.keys())
-

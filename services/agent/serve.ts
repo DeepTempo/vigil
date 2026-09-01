@@ -148,8 +148,13 @@ async function writeNarrative(state: State, runId: string, res: ServerResponse, 
   const opened = events[0];
   if (opened === undefined || opened.run_kind !== "hunt") return refuse(res, 404, `no hunt to write up: ${runId}`);
 
+  // Narrowed on the line that established the kind: the store holds payloads as JSON and
+  // never reads them. archFor() is the typed fix when a second kind wants an account.
+  const hunt = state as unknown as State<HuntKinds>;
+  const written = events as readonly HuntEvent[];
+
   try {
-    const narrative = await narrateRun(state as unknown as State<HuntKinds>, runId, events as readonly HuntEvent[], build);
+    const narrative = await narrateRun(hunt, runId, written, build);
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(narrative));
   } catch (error) {

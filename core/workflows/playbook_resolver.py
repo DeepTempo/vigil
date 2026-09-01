@@ -259,7 +259,6 @@ def resolve(
     registry: Optional["MCPRegistry"] = None,
 ) -> Tuple[str, str]:
     """Return the playbook and config layers for ``workflow_id``, as YAML text."""
-    from core.integrations.mcp.registry import MCPRegistry
     from core.workflows.workflows_service import WorkflowsService
 
     definition = (workflows or WorkflowsService()).get_workflow(workflow_id)
@@ -372,7 +371,6 @@ def resolve_hunt(
     workflows: Optional["WorkflowsService"] = None,
     registry: Optional["MCPRegistry"] = None,
 ) -> Tuple[str, str]:
-    from core.integrations.mcp.registry import MCPRegistry
     from core.workflows.workflows_service import WorkflowsService
 
     definition = (workflows or WorkflowsService()).get_workflow(workflow_id)

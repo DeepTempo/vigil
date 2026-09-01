@@ -224,7 +224,14 @@ Confidence scoring:
         "id": "reporter",
         "decision_id": "reporting",
         "component_category": "reporting",
-        "task_keywords": ["report", "summary", "document", "board brief", "board report", "risk posture"],
+        "task_keywords": [
+            "report",
+            "summary",
+            "document",
+            "board brief",
+            "board report",
+            "risk posture",
+        ],
         "role": "Reporting Agent specializing in clear communication",
         "name": "Reporting Agent",
         "icon": "W",
@@ -251,7 +258,7 @@ Confidence scoring:
    - Tailor to executive audience, minimize technical jargon
 
    BOARD BRIEF (triggered by "board brief", "board report", "risk posture report"):
-   - Follow the board-brief template (docs/templates/board-brief.md)
+   - Follow the board-brief template (core/agents/templates/board-brief.md)
    - Structure: Risk Posture → Key Metrics → Top 3 Actions → Trend
    - Risk Posture: RED (active breach or uncontained critical threats),
      YELLOW (open critical findings with remediation in progress),
@@ -283,7 +290,11 @@ Confidence scoring:
         "color": "#FFD3B6",
         "description": "Attack pattern and technique analysis",
         "specialization": "MITRE ATT&CK Analysis",
-        "recommended_tools": ["get_finding", "get_technique_rollup", "create_attack_layer"],
+        "recommended_tools": [
+            "get_finding",
+            "get_technique_rollup",
+            "create_attack_layer",
+        ],
         "max_tokens": 16384,
         "enable_thinking": True,
         "thinking_budget": 6000,
@@ -497,5 +508,3 @@ Confidence scoring:
 </methodology>""",
     },
 ]
-
-
