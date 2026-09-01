@@ -62,7 +62,14 @@ async def test_enabled_mcp_servers_connect_concurrently():
 
 @pytest.mark.asyncio
 async def test_one_mcp_connect_failure_does_not_block_the_rest():
+    attempted = []
+    gate = asyncio.Event()
+
     async def connect(server_name, persistent=True):
+        attempted.append(server_name)
+        if len(attempted) >= 3:
+            gate.set()
+        await gate.wait()
         if server_name == "bad":
             raise RuntimeError("spawn failed")
         return True
@@ -73,8 +80,9 @@ async def test_one_mcp_connect_failure_does_not_block_the_rest():
         connect,
     )
 
-    count = await _connect_enabled_mcp_servers(client)
+    count = await asyncio.wait_for(_connect_enabled_mcp_servers(client), timeout=1.0)
 
+    assert set(attempted) == {"good", "bad", "also-good"}
     assert count == 2
 
 
