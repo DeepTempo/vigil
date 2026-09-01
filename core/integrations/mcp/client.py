@@ -139,7 +139,7 @@ class PersistentServerSession:
                         content_list.append({"type": "text", "text": str(content_item)})
 
                 return {
-                    "error": result.isError if hasattr(result, "isError") else False,
+                    "error": result.is_error,
                     "content": content_list,
                 }
 
@@ -303,7 +303,7 @@ class MCPClient:
             self.tools_cache[server_name] = []
             for tool in tools_result.tools:
                 # Get input schema - handle both dict and object formats
-                input_schema = tool.inputSchema
+                input_schema = tool.input_schema
                 if hasattr(input_schema, "model_dump"):
                     input_schema = input_schema.model_dump()
                 elif hasattr(input_schema, "dict"):

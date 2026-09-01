@@ -46,7 +46,6 @@ except ImportError:
     pass
 
 logger = logging.getLogger(__name__)
-server = Server("vstrike")
 
 
 def _result(data) -> list[types.TextContent]:
@@ -65,7 +64,6 @@ def _get_service():
         return None
 
 
-@server.list_tools()
 async def handle_list_tools():
     return [
         types.Tool(
@@ -247,7 +245,6 @@ async def handle_list_tools():
     ]
 
 
-@server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None):
     args = arguments or {}
     service = _get_service()
@@ -402,6 +399,28 @@ async def handle_call_tool(name: str, arguments: dict | None):
         return _result({"result": result})
 
     return _result({"error": f"Unknown tool: {name}"})
+
+
+async def _on_list_tools(_ctx, _params):
+    return types.ListToolsResult(tools=await handle_list_tools())
+
+
+async def _on_call_tool(_ctx, params):
+    try:
+        content = await handle_call_tool(params.name, params.arguments)
+    except Exception as exc:
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=str(exc))],
+            is_error=True,
+        )
+    return types.CallToolResult(content=content)
+
+
+server = Server(
+    "vstrike",
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
 
 
 async def main():
