@@ -66,3 +66,30 @@ def entity_keys(entities: object) -> List[str]:
             seen.add(key)
             keys.append(key)
     return keys
+
+
+def normalise_key(key: str) -> str:
+    """Normalise a stored-form ``type:value`` key the way the writer minted it.
+
+    The reader is handed keys as one string, where the writer was handed a type
+    and a value. Splitting on the *first* colon is what keeps a URL or an IPv6
+    address whole: everything after the type belongs to the value.
+    """
+    kind, _, value = (key or "").strip().partition(":")
+    return entity_key(kind, value)
+
+
+def normalise_keys(keys: object) -> List[str]:
+    """Keys for a list of ``type:value`` strings, deduped in order.
+
+    An unusable key is dropped rather than raising: a read naming one bad key
+    among ten is a read of nine, not a failed call.
+    """
+    normalised: List[str] = []
+    seen = set()
+    for key in keys if isinstance(keys, (list, tuple)) else []:
+        normal = normalise_key(str(key))
+        if normal and normal not in seen:
+            seen.add(normal)
+            normalised.append(normal)
+    return normalised

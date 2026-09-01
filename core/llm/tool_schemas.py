@@ -3,6 +3,11 @@ Claude API Tool Schemas
 Defines all tools available to Claude via function calling
 """
 
+# The recall tool's signature is declared with the rest of the recall contract
+# (#729) rather than transcribed here: a schema that drifts from the handler's
+# arguments fails as "no history", which reads as an entity nobody has looked at.
+from core.memory.recall_contract import RECALL_PARAMETERS, RECALL_TOOL
+
 # Security-Detections Tools (Core functionality)
 SECURITY_DETECTION_TOOLS = [
     {
@@ -463,6 +468,29 @@ THREAT_INTEL_TOOLS = [
     }
 ]
 
+# Episodic memory (#732). Reading it is a backend tool rather than an MCP server
+# because the rows are Vigil's own: a deployment that has run a hunt has memory
+# to read, and one that has not gets empty lists.
+MEMORY_TOOLS = [
+    {
+        "name": RECALL_TOOL,
+        "description": (
+            "Recall what past investigations saw and concluded about an entity. "
+            "Returns the Sightings (what was observed, per investigation and "
+            "source), the Verdicts (what was concluded, with the stance of each "
+            "corroborating source) and the Declared Gaps (questions nobody "
+            "gathered evidence for) for each Entity Key given as `type:value`. "
+            "An entity nobody has investigated returns empty lists, which is an "
+            "answer and not an error. Results are capped per key and overall; "
+            "`dropped` says what was left out and `ranking` says on what basis. "
+            "Pass your own role in `caller_kind` and `caller_id`: every read is "
+            "logged for audit, and one that does not say who asked is logged as "
+            "`unknown`."
+        ),
+        "input_schema": RECALL_PARAMETERS,
+    }
+]
+
 # Combine all tools
 ALL_TOOLS = (
     SECURITY_DETECTION_TOOLS
@@ -470,4 +498,5 @@ ALL_TOOLS = (
     + ATTACK_LAYER_TOOLS
     + THREAT_INTEL_TOOLS
     + APPROVAL_TOOLS
+    + MEMORY_TOOLS
 )

@@ -8,6 +8,8 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, Tuple
 
+from core.memory.recall_contract import RECALL_TOOL
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -285,6 +287,14 @@ async def execute_backend_tool(
 
     if tool_name in _INTEL_TOOLS:
         return _INTEL_TOOLS[tool_name](args), True
+
+    # Episodic memory (#732), answering with one mapping and not a list of rows,
+    # so tools_router._rows does not slice the Sightings, Verdicts and Gaps into
+    # rows of their own and lose which list each came from.
+    if tool_name == RECALL_TOOL:
+        from core.memory.recall import recall_entity
+
+        return recall_entity(args), True
 
     if tool_name in _APPROVAL_TOOLS:
         from core.response.approval_service import ApprovalService

@@ -2514,3 +2514,47 @@ class EpisodicDistilMarker(Base):
     __table_args__ = (
         Index("idx_episodic_markers_origin", "origin_run_ids", postgresql_using="gin"),
     )
+
+
+class EpisodicReadLog(Base):
+    """One row per read of episodic memory, for audit rather than replay.
+
+    The harness's Ledger recall event exists for replay and lives on the Ledger.
+    This is the only record a caller with no Ledger leaves behind, which is what
+    makes "we can see what it knew" true of an evaluation harness or a console
+    query. It holds reads and not facts, so it is the one part of the tier that
+    has a retention policy.
+    """
+
+    __tablename__ = "episodic_read_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    # An unattributed read is still worth logging, so these default rather than
+    # bind: a log that refuses the reads it cannot attribute is a log of the
+    # well-behaved callers only.
+    caller_kind: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'unknown'")
+    )
+    caller_id: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'unknown'")
+    )
+    # As queried rather than as asked for: normalised, so a row here compares
+    # against a stored key without re-deriving it.
+    keys: Mapped[List[str]] = mapped_column(ARRAY(Text), nullable=False)
+    # The freshness filter that ran, which is not the time the read happened.
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Counts and not rows: the rows are still in their own tables, and a copy
+    # would freeze what the Distil's delete-then-insert may since have replaced.
+    row_counts: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    dropped: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    ranking: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    __table_args__ = (
+        # The cleanup sweep's only query, and the order an audit reads in.
+        Index("idx_episodic_read_log_ts", "ts"),
+        # "What has anyone asked about this entity", without a scan.
+        Index("idx_episodic_read_log_keys", "keys", postgresql_using="gin"),
+    )

@@ -72,6 +72,9 @@ CAPABILITIES: Dict[str, Tuple[str, ...]] = {
     ),
     "findings_search": ("search_findings",),
     "similar_findings": ("nearest_neighbors",),
+    # One candidate and no fallback: episodic memory is Vigil's own tier, so a
+    # deployment either carries it or has no history to offer.
+    "entity_recall": ("recall_entity",),
 }
 
 
@@ -255,6 +258,9 @@ HUNT_CAPABILITIES = (
     "similar_findings",
     "telemetry_search",
     "indicator_lookup",
+    # Bound on the run rather than granted to every role: `needs` in the arch is
+    # what decides who holds it, and the lead and critic are not granted it.
+    "entity_recall",
 )
 
 # A hunt is bounded by iterations rather than phases, and each one costs a lead

@@ -409,6 +409,7 @@ dbInit:
     - 20_agent_directives.sql
     - 21_agent_run_leases.sql
     - 22_episodic_memory.sql
+    - 23_episodic_read_log.sql
   resources:
     requests:
       cpu: 50m

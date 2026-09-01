@@ -195,6 +195,28 @@ def test_every_granted_role_is_a_role_the_arch_declares():
     )
 
 
+def test_the_arch_asks_for_what_the_grants_declare():
+    # Where the grant takes effect (#732). RECALL_GRANTS says which roles hold
+    # entity_recall; `needs` in threathunt.yaml is the only thing that makes it
+    # so, and bindCapabilities drops an unasked-for capability silently -- the
+    # role runs without the tool and nothing says why.
+    sections = re.split(r"^ {2,4}(\w+):$", ARCH.read_text(), flags=re.M)
+    asked = {}
+    for role, body in zip(sections[1::2], sections[2::2]):
+        needs = re.search(r"needs: \[([^\]]*)\]", body)
+        asked[role] = frozenset(re.findall(r"[\w-]+", needs.group(1))) if needs else frozenset()
+
+    holds = {
+        role: (py.RECALL_CAPABILITY,) if py.RECALL_CAPABILITY in asked.get(role, ()) else ()
+        for role in py.RECALL_GRANTS
+    }
+    assert holds == dict(py.RECALL_GRANTS), (
+        "threathunt.yaml's `needs` disagree with RECALL_GRANTS. A role granted "
+        "recall in the contract and not in the arch runs without the tool, and "
+        "the binding drops it silently rather than failing."
+    )
+
+
 def test_key_normalisation_defers_to_the_extractor():
     match = re.search(r"CASE_SENSITIVE = new Set\(\[([^\]]*)\]\)", ENTITIES.read_text())
     assert match, f"CASE_SENSITIVE not found in {ENTITIES}"
