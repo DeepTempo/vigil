@@ -135,7 +135,6 @@ def _detection_to_finding(detection: Dict[str, Any]) -> Optional[Dict[str, Any]]
         "raw_event": detection,
         "anomaly_score": float(detection.get("max_confidence", 50)) / 100.0,
         "mitre_predictions": mitre_predictions,
-        "embedding": [],
     }
 
 

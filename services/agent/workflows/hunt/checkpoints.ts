@@ -28,9 +28,9 @@ export type Checkpoints = Record<CheckpointClass, CheckpointPolicy>;
 // --scripted, any programmatic startHunt — advances with no TTY and no pending
 export const DEFAULT_CHECKPOINTS: Checkpoints = {
   hypothesis_approval: "auto",
-  scope_extension: "ask",
+  scope_extension: "auto",
   verdict_review: "auto",
-  budget_anomaly: "ask",
+  budget_anomaly: "auto",
 };
 
 // The actor on a resolution nobody was asked for. Named rather than blank so a

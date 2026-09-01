@@ -178,7 +178,9 @@ cython_debug/
 # IDEs
 .vscode/
 .idea/
-.cursor/
+.cursor/*
+!.cursor/environment.json
+!.cursor/Dockerfile
 .claude/
 *.swp
 *.swo
@@ -199,6 +201,13 @@ config.json
 *_config.json
 !mcp-config.json
 !infra/docker/bifrost/config.json
+
+# Bifrost's runtime state, written when the gateway runs outside Docker.
+# config.db is its config store and holds provider API keys -- in plaintext
+# unless the deployment turned on Bifrost's key encryption; logs.db carries
+# request and response bodies. Neither is ever committed.
+bifrost/
+/logs.db
 
 # Node.js / React
 clients/web/node_modules/

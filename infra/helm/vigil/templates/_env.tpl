@@ -46,6 +46,8 @@ write. Include all three together, or none.
 {{- end -}}
 
 {{- define "vigil.env" -}}
+- name: HOME
+  value: "/home/vigil"
 - name: POSTGRES_HOST
   value: {{ include "vigil.postgres.host" . | quote }}
 - name: POSTGRES_PORT

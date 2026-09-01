@@ -148,13 +148,11 @@ httpx==0.28.1
     #   -r requirements.txt
     #   chromadb
     #   huggingface-hub
-    #   mcp
     #   respx
-httpx-sse==0.4.3
-    # via mcp
 httpx2==2.12.0
     # via
     #   anthropic
+    #   mcp
     #   openai
 httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
     # via httpx2
@@ -200,8 +198,10 @@ limits==5.8.0
     # via slowapi
 markdown-it-py==4.2.0
     # via rich
-mcp==1.29.1
+mcp==2.1.1
     # via -r requirements.txt
+mcp-types==2.1.1
+    # via mcp
 mdurl==0.1.2
     # via markdown-it-py
 mmh3==5.2.1
@@ -228,6 +228,7 @@ opentelemetry-api==1.44.0
     # via
     #   -r requirements.txt
     #   chromadb
+    #   mcp
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-exporter-prometheus
@@ -349,6 +350,7 @@ pydantic==2.13.4
     #   chromadb
     #   fastapi
     #   mcp
+    #   mcp-types
     #   openai
     #   pydantic-settings
 pydantic-core==2.46.4
@@ -357,7 +359,6 @@ pydantic-settings==2.15.0
     # via
     #   -r requirements.txt
     #   chromadb
-    #   mcp
 pygments==2.21.0
     # via
     #   pytest
@@ -517,6 +518,7 @@ typing-extensions==4.16.0
     #   huggingface-hub
     #   limits
     #   mcp
+    #   mcp-types
     #   openai
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc

@@ -49,15 +49,65 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # SQL files at /db-init (not in initdb.d directly — see 00_apply.sh).
+      # Path is relative to this compose file (infra/docker/), so ../ points
+      # at infra/, where the schema SQL now lives (infra/database/init/).
+      # Must run here, not just in db-seed: the extensions have to exist before
+      # the backend's create_all (its indexes use pg_trgm's gin_trgm_ops), and
+      # the auth tables have to be created by this SQL — with the DEFAULT
+      # clauses create_all does not emit. 00_apply.sh explains why it isn't
+      # plain *.sql (Postgres initdb uses ON_ERROR_STOP=1 and would abort at 05).
+      - ./initdb:/docker-entrypoint-initdb.d:ro
       - ../database/init:/db-init:ro
-      - ./initdb/00_apply.sh:/docker-entrypoint-initdb.d/00_apply.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U deeptempo -d deeptempo_soc"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - deeptempo-network
+
+  # Second pass over the same files, once the backend's create_all has built the
+  # tables the data-only scripts need. On the default `up` (no profile): a seed
+  # profile would never run — this compose file has no wrapper that `compose
+  # run`s it. /api/health always returns 200, so wait for a table only create_all
+  # creates — its DDL is one transaction, so that sentinel implies the rest.
+  # Re-runs on every `up` so a volume that aborted at 05 still gets the rest of
+  # the files.
+  db-seed:
+    image: postgres:16-alpine
+    container_name: deeptempo-db-seed
+    environment:
+      PGHOST: postgres
+      PGUSER: deeptempo
+      PGDATABASE: deeptempo_soc
+      PGPASSWORD: ${POSTGRES_PASSWORD:-deeptempo_secure_password_change_me}
+    volumes:
+      - ../database/init:/db-init:ro
+      - ./initdb/00_apply.sh:/apply.sh:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        for i in $$(seq 1 60); do
+          [ "$$(psql -tAc "SELECT to_regclass('public.sla_policies') IS NOT NULL")" = t ] && break;
+          sleep 1;
+        done;
+        if [ "$$(psql -tAc "SELECT to_regclass('public.sla_policies') IS NOT NULL")" != t ]; then
+          echo "sla_policies still missing after wait; applying anyway" >&2;
+        fi;
+        exec sh /apply.sh
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # service_started, not service_healthy: /api/health always returns 200
+      # "healthy" (including on error), so compose treating the backend as
+      # ready is not a schema signal. The wait loop above is the real gate.
+      # Started implies postgres/redis/bifrost are already up, which a
+      # postgres-only depends_on would not.
+      backend:
+        condition: service_started
+    restart: "no"
     networks:
       - deeptempo-network
 
@@ -352,8 +402,12 @@ services:
   # calls hit the /anthropic passthrough (preserves extended thinking and
   # prompt caching); OpenAI/Ollama/etc. hit the /v1 OpenAI-format surface.
   # Live config lives in /app/data/config.db (SQLite); config.json is used
-  # as a first-boot seed. Configure Bifrost's own exact-hash / semantic
-  # cache via its UI at http://localhost:8080.
+  # as a first-boot seed. Providers, keys, models and virtual keys are managed
+  # from Vigil's own Settings -> AI Config, which reaches this config store
+  # through the authenticated passthrough in
+  # services/api/routers/bifrost_config.py. Bifrost's own UI at
+  # http://localhost:8080 remains the place for what that passthrough
+  # deliberately does not expose: cache and plugin config.
   bifrost:
     image: maximhq/bifrost:latest
     container_name: deeptempo-bifrost
@@ -500,7 +554,7 @@ services:
       - SPLUNK_PASSWORD=changeme123
       - SPLUNK_HEC_TOKEN=00000000-0000-0000-0000-000000000000
     ports:
-      - "6990:8000"   # Web UI
+      - "8000:8000"   # Web UI (host 6990 is taken by the agent worker health port)
       - "8088:8088"   # HEC (HTTP Event Collector)
       - "8089:8089"   # Management port
       - "9997:9997"   # Forwarder port

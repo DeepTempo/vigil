@@ -6,6 +6,16 @@ IP/domain threat-context lookups. Configured via Settings → Integrations
 result when the integration is disabled.
 """
 
+import sys
+from pathlib import Path
+
+# Spawned as ``python3 core/integrations/<vendor>/tool.py`` with a narrowed env,
+# so the repo root is not on sys.path and PYTHONPATH is not forwarded. Add it
+# here so the ``core.*`` imports below resolve; otherwise they fail at spawn.
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import asyncio
 import json
 import logging
@@ -22,8 +32,6 @@ from core.integrations._base.config import resolve
 from core.integrations.cloudflare.descriptor import CLOUDFLARE
 
 logger = logging.getLogger(__name__)
-server = Server("cloudflare")
-
 CF_API_BASE = "https://api.cloudflare.com/client/v4"
 DEFAULT_TIMEOUT = 30
 
@@ -48,7 +56,6 @@ def _headers(api_token: str) -> Dict[str, str]:
     }
 
 
-@server.list_tools()
 async def handle_list_tools():
     return [
         types.Tool(
@@ -151,7 +158,6 @@ async def handle_list_tools():
     ]
 
 
-@server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None):
     cfg = _config()
     if cfg is None:
@@ -424,6 +430,28 @@ def _lookup_domain_threat(
             "geolocation and threat intel tools for full domain context."
         ),
     }
+
+
+async def _on_list_tools(_ctx, _params):
+    return types.ListToolsResult(tools=await handle_list_tools())
+
+
+async def _on_call_tool(_ctx, params):
+    try:
+        content = await handle_call_tool(params.name, params.arguments)
+    except Exception as exc:
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=str(exc))],
+            is_error=True,
+        )
+    return types.CallToolResult(content=content)
+
+
+server = Server(
+    "cloudflare",
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
 
 
 async def main():

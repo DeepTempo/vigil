@@ -390,7 +390,6 @@ class DataPoller:
             "raw_event": event,
             "anomaly_score": 0.5,  # Default score
             "mitre_predictions": {},
-            "embedding": [],
         }
 
     async def _poll_crowdstrike_loop(self, shutdown_event: asyncio.Event):
@@ -511,7 +510,6 @@ class DataPoller:
             "raw_event": detection,
             "anomaly_score": detection.get("max_confidence", 50) / 100.0,
             "mitre_predictions": mitre_predictions,
-            "embedding": [],
         }
 
     async def _run_webhook_server(self, shutdown_event: asyncio.Event):
