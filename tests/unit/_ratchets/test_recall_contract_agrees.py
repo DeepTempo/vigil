@@ -26,6 +26,7 @@ AGENT = REPO_ROOT / "services" / "agent"
 TYPESCRIPT = AGENT / "contracts" / "memory.ts"
 ARCH = AGENT / "arch" / "threathunt.yaml"
 ENTITIES = AGENT / "workflows" / "hunt" / "entities.ts"
+HUNT_TYPES = AGENT / "workflows" / "hunt" / "types.ts"
 
 pytestmark = pytest.mark.unit
 
@@ -225,6 +226,17 @@ def test_key_normalisation_defers_to_the_extractor():
         "KEY_CASE_SENSITIVE_TYPES has drifted from CASE_SENSITIVE in "
         f"{ENTITIES.relative_to(REPO_ROOT)}, which owns the rule. Folding an ARN "
         "returns rows, just the wrong ones."
+    )
+
+
+def test_the_entity_key_types_follow_the_extractor():
+    # What a key may name is what the harness can extract, and nothing else. A
+    # writer minting outside this list writes keys no reader queries, which
+    # reads as an entity nobody has looked at rather than as a bad write.
+    declared = ts_union(HUNT_TYPES.read_text(), "ENTITY_TYPES")
+    assert declared == py.ENTITY_KEY_TYPES, (
+        "ENTITY_KEY_TYPES has drifted from ENTITY_TYPES in "
+        f"{HUNT_TYPES.relative_to(REPO_ROOT)}, which owns it. " + DRIFT
     )
 
 

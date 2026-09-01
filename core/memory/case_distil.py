@@ -3,8 +3,8 @@
 A Case is a Hypothesis, implicitly. Opening one asserts that the activity is
 real and malicious; closing it answers that. So the case id is the
 ``hypothesis_id``, the title is the statement, and the closure category is the
-outcome. A closure is a conclusion and not an observation — what was *observed*
-were the Case's Findings — so this writes a Verdict and its sources, and never a
+outcome. A closure is a conclusion and not an observation -- what was *observed*
+were the Case's Findings -- so this writes a Verdict and its sources, and never a
 Sighting.
 
 **Why this polls state rather than hooking a close.** There is no single
@@ -18,7 +18,7 @@ re-close or a re-categorised closure a re-derive rather than a duplicate.
 
 The mapping's whole input is the Case: its closure row, its Findings and its
 IOCs. Nothing is asked of a model and nothing is extracted from prose. That is
-deliberate — the entity extractor lives in the harness (TypeScript) and a second
+deliberate -- the entity extractor lives in the harness (TypeScript) and a second
 implementation here would drift while only one is gated, which is the same
 argument ``core/memory/distil.py`` makes about the fold.
 
@@ -35,13 +35,20 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from core.cases.closure import ClosedByKind, ClosureCategory
-from core.memory.distil import clear_investigation, write_marker
+from core.memory.distil import (
+    DEFAULT_BATCH,
+    clear_investigation,
+    write_marker,
+    write_with_retry,
+)
 from core.memory.entity_keys import entity_key
 from core.memory.recall_contract import (
+    ENTITY_KEY_TYPES,
+    VERDICT_SUBJECT_CAP,
     InvestigationKind,
     Stance,
     Trust,
@@ -54,6 +61,7 @@ from core.storage.models import (
     Case,
     CaseClosureInfo,
     CaseIOC,
+    EpisodicDistilMarker,
     EpisodicVerdict,
     EpisodicVerdictSource,
     Finding,
@@ -68,31 +76,31 @@ logger = logging.getLogger(__name__)
 # investigation, and a change to how a Case maps must not re-offer every hunt.
 CASE_DISTIL_MAPPING_VERSION = 1
 
-DEFAULT_BATCH = 25
-
-# One retry, then reported. A write that fails twice is a store that is down or
-# a Case that is wrong, and neither gets better for being hammered inside a tick
-# that comes round again anyway.
-ATTEMPTS = 2
-
 # What each closure category concluded. ``duplicate`` is absent on purpose: a
 # Case closed as a duplicate concluded nothing about the activity, it said this
 # record is the same record as another one. Writing an inconclusive Verdict for
 # it would put a claim in memory that nobody made, and writing a proven one
 # would count one determination twice.
-_OUTCOMES: Mapping[str, VerdictOutcome] = {
-    ClosureCategory.RESOLVED.value: VerdictOutcome.PROVEN,
-    ClosureCategory.FALSE_POSITIVE.value: VerdictOutcome.FALSE_POSITIVE,
-    ClosureCategory.UNABLE_TO_RESOLVE.value: VerdictOutcome.INCONCLUSIVE,
-    ClosureCategory.UNSPECIFIED.value: VerdictOutcome.INCONCLUSIVE,
+_OUTCOMES: Mapping[ClosureCategory, VerdictOutcome] = {
+    ClosureCategory.RESOLVED: VerdictOutcome.PROVEN,
+    ClosureCategory.FALSE_POSITIVE: VerdictOutcome.FALSE_POSITIVE,
+    ClosureCategory.UNABLE_TO_RESOLVE: VerdictOutcome.INCONCLUSIVE,
+    ClosureCategory.UNSPECIFIED: VerdictOutcome.INCONCLUSIVE,
 }
 
-# Closed Cases whose Verdict is missing or older than the close. The version is
-# matched in the join and not in the filter, so a bump re-offers every Case
-# instead of only the ones closed since. ``closed_at`` and ``updated_at`` are
-# naive UTC on these tables and ``concluded_at`` is timestamptz, so the close
-# instant is cast rather than compared across the two -- an implicit cast would
-# read a naive value in the server's zone and silently shift the comparison.
+# Cases whose episodic rows disagree with their current state, in both
+# directions: closed ones whose Verdict is missing, stale, or derived at another
+# version, and reopened ones still holding a Verdict they have retracted.
+#
+# The second direction is why the marker is joined without the version and the
+# version compared in the predicate instead. Matching it in the join would make
+# a marker at any other version invisible, and a reopened Case would keep a
+# Verdict nothing could see to withdraw.
+#
+# ``closed_at`` and ``updated_at`` are naive UTC on these tables and
+# ``concluded_at`` is timestamptz, so the close instant is cast rather than
+# compared across the two -- an implicit cast reads a naive value in the
+# server's zone and silently shifts the comparison.
 _CANDIDATES = text("""
     SELECT c.case_id AS case_id
     FROM cases c
@@ -100,12 +108,15 @@ _CANDIDATES = text("""
     LEFT JOIN episodic_distil_markers m
            ON m.investigation_kind = 'case'
           AND m.investigation_id = c.case_id
-          AND m.distil_version = :version
-    WHERE c.status = 'closed'
-      AND (
-        m.investigation_id IS NULL
-        OR m.concluded_at < (COALESCE(i.closed_at, c.updated_at) AT TIME ZONE 'UTC')
+    WHERE (
+        c.status = 'closed'
+        AND (
+          m.investigation_id IS NULL
+          OR m.distil_version <> :version
+          OR m.concluded_at < (COALESCE(i.closed_at, c.updated_at) AT TIME ZONE 'UTC')
+        )
       )
+      OR (c.status <> 'closed' AND m.investigation_id IS NOT NULL)
     ORDER BY COALESCE(i.closed_at, c.updated_at) DESC, c.case_id
     LIMIT :limit
     """)
@@ -129,19 +140,28 @@ class ClosedCase:
     concluded_at: datetime
 
     @property
-    def category(self) -> str:
-        """The category the closure recorded, or that none was recorded.
+    def category(self) -> Optional[ClosureCategory]:
+        """What the closure determined, or None if it said something else.
 
         A Case closed without a closure row -- a status edit that predates the
-        console recording one, or ``merge_cases`` -- is not a Case with an
-        unknown determination. It is a Case closed with no determination stated,
-        which is exactly what ``unspecified`` says.
+        console recording one, or a direct write to the status column -- is not
+        a Case with an unknown determination. It is a Case closed with no
+        determination stated, which is exactly what ``unspecified`` says.
+
+        None is the other thing: the API states this vocabulary and rejects
+        anything outside it, but the column is free text and rows predating that
+        exist, so a value nobody here can map is representable rather than a
+        crash. The caller writes no Verdict for it and says so.
         """
         if self.closure is None:
-            return ClosureCategory.UNSPECIFIED.value
-        return (
-            self.closure.closure_category or ""
-        ).strip() or ClosureCategory.UNSPECIFIED.value
+            return ClosureCategory.UNSPECIFIED
+        recorded = (self.closure.closure_category or "").strip()
+        if not recorded:
+            return ClosureCategory.UNSPECIFIED
+        try:
+            return ClosureCategory(recorded)
+        except ValueError:
+            return None
 
     @property
     def trust(self) -> Trust:
@@ -199,9 +219,12 @@ def _subjects(session: Session, case_id: str) -> List[str]:
     drifts while only one is gated. A Case has something the harness has to
     infer: IOCs an analyst attached, already carrying their type.
 
-    That also holds ADR 0016's bound better than the alternatives. IOCs are
-    curated, where ``Finding.entity_context`` across a Case's Findings would
-    scoop the shared infrastructure the ADR exists to keep off a Verdict.
+    Two bounds the extractor gets for free and this does not. ``ioc_type`` is
+    free text, so a type outside the Entity Key vocabulary is dropped -- a
+    `mutex` key is one no reader will ever query, and an unqueryable key reads
+    as an entity nobody has looked at rather than as a bad write. And an IOC
+    list has no sentence to bound it, where the extractor works on one, so the
+    cap ADR 0016 assumes is stated here and logged when it bites.
     """
     rows = (
         session.query(CaseIOC.ioc_type, CaseIOC.value)
@@ -212,11 +235,22 @@ def _subjects(session: Session, case_id: str) -> List[str]:
     keys: List[str] = []
     seen = set()
     for ioc_type, value in rows:
-        key = entity_key(str(ioc_type or ""), str(value or ""))
+        kind = str(ioc_type or "").strip().lower()
+        if kind not in ENTITY_KEY_TYPES:
+            continue
+        key = entity_key(kind, str(value or ""))
         if key and key not in seen:
             seen.add(key)
             keys.append(key)
-    return keys
+
+    if len(keys) > VERDICT_SUBJECT_CAP:
+        logger.warning(
+            "Case Distil: %s names %s entities, keeping the first %s (ADR 0016)",
+            case_id,
+            len(keys),
+            VERDICT_SUBJECT_CAP,
+        )
+    return keys[:VERDICT_SUBJECT_CAP]
 
 
 def _window(
@@ -235,13 +269,17 @@ def _window(
         session.query(Finding.timestamp)
         .join(case_findings, case_findings.c.finding_id == Finding.finding_id)
         .filter(case_findings.c.case_id == closed.case.case_id)
+        # Both halves, as the spec states them: a Finding that names no system
+        # did not observe anything this Verdict can claim was observed, and it
+        # contributes no source row either -- so counting its timestamp would
+        # produce an `observed` window with nothing behind it.
+        .filter(Finding.timestamp.isnot(None))
+        .filter(func.trim(Finding.data_source) != "")
         .all()
     )
-    stamps = [stamp for (stamp,) in bounds if stamp is not None]
+    stamps = [_utc(stamp) for (stamp,) in bounds if stamp is not None]
     if stamps:
-        first, last = _utc(min(stamps)), _utc(max(stamps))
-        assert first is not None and last is not None
-        return first, last, WindowSource.OBSERVED
+        return min(stamps), max(stamps), WindowSource.OBSERVED
 
     opened = _utc(closed.case.created_at) or closed.concluded_at
     return min(opened, closed.concluded_at), closed.concluded_at, WindowSource.ASSERTED
@@ -256,11 +294,10 @@ def _sources(session: Session, case_id: str) -> List[Dict[str, str]]:
     sources having been wrong: the calibration signal, arriving from live
     operation rather than from a backfill.
 
-    The tier is stamped here and never joined at read time, so an integration
-    removed or recategorised later cannot retroactively change how a past
-    Verdict was corroborated. A ``not_evidence`` source is written and logged
-    rather than dropped: a silent drop is a Verdict that looks thinner than it
-    is for no recorded reason.
+    Tier stamping follows ``distil._sources_of``: written at write time, never
+    joined at read time, and a ``not_evidence`` source logged rather than
+    dropped. What differs is only where the Stance comes from -- a hunt takes
+    one per source from its fold, and a Case has one answer for all of them.
     """
     rows = (
         session.query(Finding.data_source)
@@ -290,14 +327,9 @@ def _sources(session: Session, case_id: str) -> List[Dict[str, str]]:
     return sources
 
 
-def _accept(session: Session, case_id: str) -> ClosedCase:
-    """The Case, or a refusal saying what it could not be read on."""
-    case = session.get(Case, case_id)
-    if case is None:
-        raise CaseDistilRefused(f"{case_id} is not a case")
-    if (case.status or "").strip() != "closed":
-        raise CaseDistilRefused(f"{case_id} is {case.status!r}, not closed")
-
+def _accept(session: Session, case: Case) -> ClosedCase:
+    """A closed Case with its closure, or a refusal saying what was missing."""
+    case_id = case.case_id
     closure = session.get(CaseClosureInfo, case_id)
     concluded_at = _utc(closure.closed_at if closure is not None else None) or _utc(
         case.updated_at
@@ -309,6 +341,25 @@ def _accept(session: Session, case_id: str) -> ClosedCase:
     return ClosedCase(case, closure, concluded_at)
 
 
+def _withdraw(
+    session: Session, kind: InvestigationKind, case_id: str, status: Optional[str]
+) -> Dict[str, int]:
+    """Take back what a Case concluded, because it is no longer closed.
+
+    A reopened Case has retracted its determination, and memory that keeps
+    asserting it is memory arguing with the analyst who reopened it. The rows
+    are already cleared by the caller; what is left is the marker, and deleting
+    it rather than rewriting it is what stops the Case being offered on every
+    tick for the rest of its life -- a Case that is not closed has nothing to be
+    marked as processed for.
+    """
+    logger.info("Case Distil: %s is %r again, withdrawing its Verdict", case_id, status)
+    session.query(EpisodicDistilMarker).filter_by(
+        investigation_kind=kind.value, investigation_id=case_id
+    ).delete()
+    return {"verdicts": 0, "derived": 0, "withdrawn": 1}
+
+
 def write_case_distil(session: Session, case_id: str) -> Dict[str, int]:
     """Map one closed Case to a Verdict and write it, marker included.
 
@@ -316,21 +367,29 @@ def write_case_distil(session: Session, case_id: str) -> Dict[str, int]:
     nothing written and no marker, so the Case comes back next tick rather than
     being recorded as done.
     """
-    closed = _accept(session, case_id)
     kind = InvestigationKind.CASE
+    case = session.get(Case, case_id)
+    if case is None:
+        raise CaseDistilRefused(f"{case_id} is not a case")
 
-    # Before the outcome is decided, and unconditionally: a Case re-closed under
-    # a different category -- or re-categorised to duplicate, which writes
-    # nothing -- must not leave the earlier Verdict standing beside the new one.
+    # Before anything else, and unconditionally: a Case re-closed under a
+    # different category -- or re-categorised to duplicate, which writes nothing
+    # -- must not leave the earlier Verdict standing beside the new one.
     clear_investigation(session, kind, case_id)
 
-    outcome = _OUTCOMES.get(closed.category)
+    if (case.status or "").strip() != "closed":
+        return _withdraw(session, kind, case_id, case.status)
+
+    closed = _accept(session, case)
+
+    category = closed.category
+    outcome = _OUTCOMES.get(category) if category is not None else None
     if outcome is None:
-        if closed.category != ClosureCategory.DUPLICATE.value:
+        if category is not ClosureCategory.DUPLICATE:
             logger.warning(
                 "Case Distil: %s closed as %r, which this mapping has no outcome for",
                 case_id,
-                closed.category,
+                closed.closure.closure_category if closed.closure else None,
             )
         counts = {"verdicts": 0}
     else:
@@ -370,7 +429,7 @@ def write_case_distil(session: Session, case_id: str) -> Dict[str, int]:
         counts=counts,
         concluded_at=closed.concluded_at,
     )
-    return counts | {"derived": 1}
+    return counts | {"derived": 1, "withdrawn": 0}
 
 
 def pending(session: Session, limit: int = DEFAULT_BATCH) -> List[str]:
@@ -385,58 +444,34 @@ async def case_distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
     """One pass: find closed Cases, write each one's Verdict.
 
     One transaction per Case, so a Case this job refuses costs that Case and not
-    the batch. Nothing is swallowed: a refusal and a failed write are each
-    counted and each logged, because a Distil that goes quiet leaves a store
-    that reads as healthy and a memory that reads as empty -- and empty is also
-    what an entity nobody has looked at reads as. Neither writes a marker, which
-    is what brings the Case back once the reason is fixed.
+    the batch. How a failure is retried, counted and reported is the hunt
+    Distil's ``write_with_retry``: a Distil that goes quiet leaves a store that
+    reads as healthy and a memory that reads as empty, and empty is also what an
+    entity nobody has looked at reads as.
     """
     candidates = await asyncio.to_thread(_pending_in_own_session, limit)
-    written = {"cases": 0, "verdicts": 0, "refused": 0, "failed": 0}
+    written = {
+        "cases": 0,
+        "verdicts": 0,
+        "withdrawn": 0,
+        "refused": 0,
+        "failed": 0,
+    }
 
     for case_id in candidates:
-        counts = await _write_with_retry(case_id, written)
+        counts = await write_with_retry(
+            case_id,
+            lambda: _write_in_own_session(case_id),
+            CaseDistilRefused,
+            written,
+        )
         if counts is None:
             continue
         written["cases"] += counts["derived"]
         written["verdicts"] += counts["verdicts"]
+        written["withdrawn"] += counts["withdrawn"]
 
     return written
-
-
-async def _write_with_retry(
-    case_id: str, written: Dict[str, int]
-) -> Optional[Dict[str, int]]:
-    """One Case's write, retried once. None when it did not land.
-
-    A refusal is not retried: a Case that is not closed will not become closed
-    by being read again, and it stops being a candidate on its own.
-    """
-    for attempt in range(1, ATTEMPTS + 1):
-        try:
-            return await asyncio.to_thread(_write_in_own_session, case_id)
-        except CaseDistilRefused as exc:
-            logger.warning("Case Distil refused %s: %s", case_id, exc)
-            written["refused"] += 1
-            return None
-        except Exception:
-            if attempt < ATTEMPTS:
-                logger.warning(
-                    "Case Distil failed on %s, attempt %s of %s; retrying",
-                    case_id,
-                    attempt,
-                    ATTEMPTS,
-                )
-                continue
-            logger.error(
-                "Case Distil failed on %s after %s attempts, leaving neither rows nor marker",
-                case_id,
-                ATTEMPTS,
-                exc_info=True,
-            )
-            written["failed"] += 1
-            return None
-    return None
 
 
 def _pending_in_own_session(limit: int) -> List[str]:

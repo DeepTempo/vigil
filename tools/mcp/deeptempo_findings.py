@@ -353,7 +353,9 @@ def update_case(
             updates["assignee"] = assignee
         if add_note:
             notes = case.notes or []
-            notes.append({"timestamp": utcnow().isoformat() + "Z", "note": add_note})
+            notes.append(
+                {"timestamp": utcnow().isoformat() + "Z", "note": add_note}
+            )
             updates["notes"] = notes
 
         if db.update_case(case_id, **updates):

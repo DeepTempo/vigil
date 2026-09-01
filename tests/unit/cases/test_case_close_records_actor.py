@@ -25,17 +25,21 @@ ANALYST = SimpleNamespace(username="nestor")
 
 
 class _Session:
-    """Enough session for the router: what it looked up, and what it added."""
+    """Enough session for the router: what it looked up, added, and deleted."""
 
     def __init__(self, existing=None):
         self._existing = existing
         self.added = []
+        self.deleted = []
 
     def get(self, _model, _pk):
         return self._existing
 
     def add(self, row):
         self.added.append(row)
+
+    def delete(self, row):
+        self.deleted.append(row)
 
 
 def _routes(monkeypatch, *, case, updated=True):
@@ -187,3 +191,64 @@ def test_the_close_request_has_no_closed_by_field():
     from services.api.routers.cases import ClosureInfo
 
     assert "closed_by" not in ClosureInfo.model_fields
+
+
+class TestReopening:
+    """A reopened Case is not a closed one, and stops carrying a closure."""
+
+    @pytest.mark.asyncio
+    async def test_reopening_drops_the_closure(self, monkeypatch):
+        from services.api.routers.cases import CaseUpdate
+
+        cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "closed"})
+        recorded = SimpleNamespace(case_id="c1")
+        session = _Session(existing=recorded)
+
+        await cases.update_case(
+            "c1", CaseUpdate(status="investigating"), session, ANALYST
+        )
+
+        # Left behind, the next close finds a row already there and writes
+        # none, so the Case keeps the first close's category and instant --
+        # and memory keeps stating the determination the reopen overturned.
+        assert session.deleted == [recorded]
+
+    @pytest.mark.asyncio
+    async def test_reopening_a_case_that_never_recorded_one_is_fine(self, monkeypatch):
+        from services.api.routers.cases import CaseUpdate
+
+        cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "closed"})
+        session = _Session()
+
+        await cases.update_case("c1", CaseUpdate(status="open"), session, ANALYST)
+
+        assert session.deleted == []
+
+    @pytest.mark.asyncio
+    async def test_an_edit_that_does_not_touch_status_drops_nothing(self, monkeypatch):
+        from services.api.routers.cases import CaseUpdate
+
+        cases, _ = _routes(monkeypatch, case={"case_id": "c1", "status": "closed"})
+        session = _Session(existing=SimpleNamespace(case_id="c1"))
+
+        await cases.update_case("c1", CaseUpdate(title="retitled"), session, ANALYST)
+
+        assert session.deleted == []
+        assert session.added == []
+
+
+def test_the_close_request_states_its_category_vocabulary():
+    from pydantic import ValidationError
+
+    from services.api.routers.cases import ClosureInfo
+
+    # A typo used to close the Case and then reach memory as nothing: the
+    # Distil has no outcome for an unknown category, so it wrote a marker and
+    # no Verdict, and the Case never came back.
+    with pytest.raises(ValidationError):
+        ClosureInfo(closure_category="flase_positive")
+
+    assert (
+        ClosureInfo(closure_category="false_positive").closure_category
+        is ClosureCategory.FALSE_POSITIVE
+    )

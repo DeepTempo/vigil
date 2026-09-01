@@ -30,7 +30,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from sqlalchemy import delete, text
 from sqlalchemy.dialects.postgresql import insert
@@ -593,7 +593,12 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
             written["unreadable"] += 1
             continue
 
-        counts = await _write_with_retry(terminal, payload, written)
+        counts = await write_with_retry(
+            str(terminal.run_id),
+            lambda: _write_in_own_session(terminal, payload),
+            DistilRefused,
+            written,
+        )
         if counts is None:
             continue
 
@@ -604,33 +609,46 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
     return written
 
 
-async def _write_with_retry(
-    terminal: Terminal, payload: Mapping[str, Any], written: Dict[str, int]
+async def write_with_retry(
+    label: str,
+    write: Callable[[], Dict[str, int]],
+    refusal: type,
+    written: Dict[str, int],
 ) -> Optional[Dict[str, int]]:
-    """One investigation's write, retried once. None when it did not land.
+    """One investigation's write, off the loop and retried once. None if it did
+    not land.
 
-    A refusal is not retried: the payload will not become mappable by being read
-    again, and the fix is on the other side of the contract.
+    A refusal is not retried: what this job would not map will not become
+    mappable by being read again, and the fix is on the other side of the
+    contract. Everything else gets one more go and is then reported with a
+    traceback -- a write that fails twice is a store that is down or an input
+    that is wrong, and neither improves for being hammered inside a tick that
+    comes round again anyway. Neither outcome writes a marker, which is what
+    brings the investigation back once the reason is fixed.
+
+    Shared by both Distils rather than written twice, because "how a failed
+    write is counted and reported" is one decision and the daemon reads both
+    sets of counters the same way.
     """
     for attempt in range(1, ATTEMPTS + 1):
         try:
-            return await asyncio.to_thread(_write_in_own_session, terminal, payload)
-        except DistilRefused as exc:
-            logger.warning("Distil refused %s: %s", terminal.run_id, exc)
+            return await asyncio.to_thread(write)
+        except refusal as exc:
+            logger.warning("Distil refused %s: %s", label, exc)
             written["refused"] += 1
             return None
         except Exception:
             if attempt < ATTEMPTS:
                 logger.warning(
                     "Distil failed on %s, attempt %s of %s; retrying",
-                    terminal.run_id,
+                    label,
                     attempt,
                     ATTEMPTS,
                 )
                 continue
             logger.error(
                 "Distil failed on %s after %s attempts, leaving neither rows nor marker",
-                terminal.run_id,
+                label,
                 ATTEMPTS,
                 exc_info=True,
             )
@@ -656,9 +674,12 @@ __all__: Sequence[str] = (
     "DistilRefused",
     "Origin",
     "Terminal",
+    "ATTEMPTS",
+    "DEFAULT_BATCH",
     "clear_investigation",
     "distil_once",
     "pending",
     "write_distil",
     "write_marker",
+    "write_with_retry",
 )

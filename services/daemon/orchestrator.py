@@ -762,9 +762,9 @@ class Orchestrator:
 
     # Its own loop rather than a step of the supervision one: the Distils are not
     # supervising anything, they read terminals and closures the rest of the
-    # system has already left behind. Slower than the others because nothing waits on it — memory is read
-    # at the start of the next run, so a write that lands minutes later is a
-    # write that lands in time.
+    # system has already left behind. Slower than the others because nothing
+    # waits on either — memory is read at the start of the next run, so a write
+    # that lands minutes later is a write that lands in time.
     async def _distil_loop(self, shutdown_event: asyncio.Event):
         """Turn finished hunts and closed cases into episodic memory (#731, #733)."""
         from core.memory.distil import distil_once
@@ -835,6 +835,10 @@ class Orchestrator:
                 "Distilled %s closed case(s): %s verdicts",
                 written["cases"],
                 written["verdicts"],
+            )
+        if written["withdrawn"]:
+            logger.info(
+                "Withdrew %s Verdict(s) from reopened case(s)", written["withdrawn"]
             )
         if written["refused"] or written["failed"]:
             logger.warning(

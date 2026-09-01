@@ -232,6 +232,32 @@ DROPPED_REASONS: Tuple[str, ...] = ("per_key_cap", "overall_cap")
 # key and the join still returns rows, just the wrong ones.
 KEY_CASE_SENSITIVE_TYPES: Tuple[str, ...] = ("arn", "aws_key")
 
+# The entity types a key may name. Owned by ENTITY_TYPES in
+# services/agent/workflows/hunt/types.ts, which is what the harness extracts and
+# therefore what a Sighting can ever hold. A writer that mints outside this list
+# -- a Case IOC typed `mutex`, say -- writes a key no reader will ever query,
+# which reads as an entity nobody has looked at rather than as a bad write.
+ENTITY_KEY_TYPES: Tuple[str, ...] = (
+    "ip",
+    "domain",
+    "host",
+    "url",
+    "email",
+    "hash",
+    "arn",
+    "aws_key",
+    "user",
+    "process",
+)
+
+# How many subjects one Verdict may name. ADR 0016 puts a Hypothesis at
+# "typically one to three" and argues at length against a Verdict naming the
+# seventy entities its evidence touched. The extractor bounds itself by working
+# on one sentence; a Case's IOC list has no such bound, so the bound is stated
+# here. Reached rather than assumed: the writer logs what it dropped, because a
+# silently truncated subject list reads as a Verdict that named fewer entities.
+VERDICT_SUBJECT_CAP = 12
+
 # A LIMIT over a partial order lets Postgres return a different set on identical
 # data, so ties break on the primary key.
 RECALL_ORDER = "concluded_at DESC, id ASC"

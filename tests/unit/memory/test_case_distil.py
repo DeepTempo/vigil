@@ -20,10 +20,12 @@ from core.cases.closure import ClosedByKind, ClosureCategory
 from core.memory.case_distil import (
     CASE_DISTIL_MAPPING_VERSION,
     CaseDistilRefused,
+    case_distil_once,
     pending,
     write_case_distil,
 )
 from core.memory.recall import recall_entity
+from core.memory.recall_contract import VERDICT_SUBJECT_CAP
 from core.storage.connection import get_db_session
 from core.storage.models import (
     Case,
@@ -180,7 +182,7 @@ class TestWhatAClosureWrites:
 
         counts = write_case_distil(session, "case-733")
 
-        assert counts == {"verdicts": 1, "derived": 1}
+        assert counts == {"verdicts": 1, "derived": 1, "withdrawn": 0}
         (row,) = verdicts(session)
         assert row.hypothesis_id == "case-733"
         assert row.statement == "beaconing from 10.1.2.3 to evil.example.com"
@@ -254,7 +256,7 @@ class TestCategoryMapping:
         # A duplicate concluded nothing about the activity; it said this record
         # is that record. The marker records that the Case was processed, not
         # that it was remembered -- without one it comes back on every tick.
-        assert counts == {"verdicts": 0, "derived": 1}
+        assert counts == {"verdicts": 0, "derived": 1, "withdrawn": 0}
         assert verdicts(session) == []
         assert session.get(EpisodicDistilMarker, ("case", "case-733")) is not None
 
@@ -264,7 +266,7 @@ class TestCategoryMapping:
 
         counts = write_case_distil(session, "case-733")
 
-        assert counts == {"verdicts": 0, "derived": 1}
+        assert counts == {"verdicts": 0, "derived": 1, "withdrawn": 0}
         assert verdicts(session) == []
 
     def test_a_close_with_no_closure_row_reads_as_unspecified(self, session):
@@ -428,6 +430,33 @@ class TestSubjects:
 
         assert verdicts(session)[0].subject_entities == ["ip:10.9.9.9"]
 
+    def test_a_type_outside_the_key_vocabulary_is_dropped(self, session):
+        case(session)
+        closure(session)
+        # `ioc_type` is free text and the console offers more kinds than a key
+        # can name. A `mutex` key is one no reader will ever query.
+        ioc(session, "mutex", "Global\\evil")
+        ioc(session, "file_name", "dropper.exe")
+        ioc(session, "hash", "d41d8cd98f00b204e9800998ecf8427e")
+
+        write_case_distil(session, "case-733")
+
+        assert verdicts(session)[0].subject_entities == [
+            "hash:d41d8cd98f00b204e9800998ecf8427e"
+        ]
+
+    def test_a_case_naming_more_entities_than_the_cap_keeps_the_first(self, session):
+        case(session)
+        closure(session)
+        for n in range(VERDICT_SUBJECT_CAP + 5):
+            ioc(session, "ip", f"10.0.0.{n}")
+
+        write_case_distil(session, "case-733")
+
+        subjects = verdicts(session)[0].subject_entities
+        assert len(subjects) == VERDICT_SUBJECT_CAP
+        assert subjects[0] == "ip:10.0.0.0"
+
 
 class TestThePoll:
     def test_a_closed_case_with_no_marker_is_a_candidate(self, session):
@@ -531,23 +560,83 @@ class TestIdempotency:
 
 
 class TestRefusal:
-    def test_a_case_that_is_not_closed_is_refused(self, session):
-        case(session, status="open")
-
-        with pytest.raises(CaseDistilRefused):
-            write_case_distil(session, "case-733")
-
     def test_a_case_that_does_not_exist_is_refused(self, session):
         with pytest.raises(CaseDistilRefused):
             write_case_distil(session, "case-nothing")
 
     def test_a_refusal_leaves_no_marker(self, session):
-        case(session, status="open")
-
         with pytest.raises(CaseDistilRefused):
-            write_case_distil(session, "case-733")
+            write_case_distil(session, "case-nothing")
 
+        assert session.get(EpisodicDistilMarker, ("case", "case-nothing")) is None
+
+
+class TestReopening:
+    """A reopened Case has retracted its determination, and memory follows."""
+
+    def test_reopening_withdraws_the_verdict_and_the_marker(self, session):
+        case(session)
+        closure(session)
+        write_case_distil(session, "case-733")
+        assert verdicts(session)
+
+        session.get(Case, "case-733").status = "investigating"
+        counts = write_case_distil(session, "case-733")
+
+        assert counts == {"verdicts": 0, "derived": 0, "withdrawn": 1}
+        assert verdicts(session) == []
+        # Deleted rather than rewritten: a Case that is not closed has nothing
+        # to be marked as processed for, and a marker left behind would keep it
+        # out of the poll if it were ever closed at the same instant again.
         assert session.get(EpisodicDistilMarker, ("case", "case-733")) is None
+
+    def test_a_reopened_case_holding_a_verdict_is_a_candidate(self, session):
+        case(session)
+        closure(session)
+        write_case_distil(session, "case-733")
+        session.commit()
+
+        session.get(Case, "case-733").status = "investigating"
+        session.commit()
+
+        assert pending(session) == ["case-733"]
+
+    def test_a_reopened_case_holding_nothing_is_not(self, session):
+        case(session, status="investigating")
+
+        assert pending(session) == []
+
+    def test_once_withdrawn_it_is_offered_no_further(self, session):
+        case(session)
+        closure(session)
+        write_case_distil(session, "case-733")
+        session.get(Case, "case-733").status = "investigating"
+        write_case_distil(session, "case-733")
+        session.commit()
+
+        assert pending(session) == []
+
+    def test_re_closing_writes_the_new_determination_and_not_the_old(self, session):
+        case(session)
+        closure(session, category=ClosureCategory.RESOLVED.value)
+        write_case_distil(session, "case-733")
+
+        # A reopen drops the closure with it, which is what makes the re-close
+        # write its own rather than skipping past a row that is no longer true.
+        session.get(Case, "case-733").status = "investigating"
+        session.delete(session.get(CaseClosureInfo, "case-733"))
+        write_case_distil(session, "case-733")
+
+        session.get(Case, "case-733").status = "closed"
+        closure(
+            session,
+            category=ClosureCategory.FALSE_POSITIVE.value,
+            closed_at=CLOSED + timedelta(days=2),
+        )
+        write_case_distil(session, "case-733")
+
+        (row,) = verdicts(session)
+        assert row.outcome == "false_positive"
 
 
 class TestRecall:
@@ -623,3 +712,48 @@ class TestMerge:
         counts = write_case_distil(session, "case-733-dup")
         assert counts["verdicts"] == 0
         assert verdicts(session, "case-733-dup") == []
+
+
+class TestTheTick:
+    """The poll and the write together, which is what the daemon calls."""
+
+    @pytest.mark.asyncio
+    async def test_a_tick_distils_every_closed_case_and_leaves_none_pending(
+        self, session
+    ):
+        case(session, "case-733")
+        closure(session, "case-733")
+        case(session, "case-733-b", title="second one")
+        closure(session, "case-733-b", category=ClosureCategory.RESOLVED.value)
+        session.commit()
+
+        written = await case_distil_once()
+
+        assert written == {
+            "cases": 2,
+            "verdicts": 2,
+            "withdrawn": 0,
+            "refused": 0,
+            "failed": 0,
+        }
+        session.expire_all()
+        assert pending(session) == []
+
+    @pytest.mark.asyncio
+    async def test_a_second_tick_writes_nothing(self, session):
+        case(session)
+        closure(session)
+        session.commit()
+        await case_distil_once()
+
+        written = await case_distil_once()
+
+        assert written == {
+            "cases": 0,
+            "verdicts": 0,
+            "withdrawn": 0,
+            "refused": 0,
+            "failed": 0,
+        }
+        session.expire_all()
+        assert len(verdicts(session)) == 1
