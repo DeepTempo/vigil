@@ -28,7 +28,6 @@ def _memory_section() -> str:
         return ""
 
 
-
 BASE_PROMPT = """You are a SOC {role} in the Vigil SOC platform.
 
 <security_boundaries>
@@ -94,4 +93,3 @@ def render_base_prompt(
 # Backward compatibility aliases
 _MEMORY_PALACE_BLOCK = _MEMORY_BLOCK
 _memory_palace_section = lambda mcp_client=None: _memory_section()  # noqa: E731
-
