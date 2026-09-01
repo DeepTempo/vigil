@@ -51,13 +51,63 @@ services:
       - postgres_data:/var/lib/postgresql/data
       # Path is relative to this compose file (infra/docker/), so ../ points
       # at infra/, where the schema SQL now lives (infra/database/init/).
-      - ../database/init:/docker-entrypoint-initdb.d
+      # Must run here, not just in db-seed: the extensions have to exist before
+      # the backend's create_all (its indexes use pg_trgm's gin_trgm_ops), and
+      # the auth tables have to be created by this SQL — with the DEFAULT
+      # clauses create_all does not emit. 00_apply.sh explains why it isn't
+      # plain *.sql (Postgres initdb uses ON_ERROR_STOP=1 and would abort at 05).
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+      - ../database/init:/db-init:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U deeptempo -d deeptempo_soc"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - deeptempo-network
+
+  # Second pass over the same files, once the backend's create_all has built the
+  # tables the data-only scripts need. On the default `up` (no profile): a seed
+  # profile would never run — this compose file has no wrapper that `compose
+  # run`s it. /api/health always returns 200, so wait for a table only create_all
+  # creates — its DDL is one transaction, so that sentinel implies the rest.
+  # Re-runs on every `up` so a volume that aborted at 05 still gets the rest of
+  # the files.
+  db-seed:
+    image: postgres:16-alpine
+    container_name: deeptempo-db-seed
+    environment:
+      PGHOST: postgres
+      PGUSER: deeptempo
+      PGDATABASE: deeptempo_soc
+      PGPASSWORD: ${POSTGRES_PASSWORD:-deeptempo_secure_password_change_me}
+    volumes:
+      - ../database/init:/db-init:ro
+      - ./initdb/00_apply.sh:/apply.sh:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        for i in $$(seq 1 60); do
+          [ "$$(psql -tAc "SELECT to_regclass('public.sla_policies') IS NOT NULL")" = t ] && break;
+          sleep 1;
+        done;
+        if [ "$$(psql -tAc "SELECT to_regclass('public.sla_policies') IS NOT NULL")" != t ]; then
+          echo "sla_policies still missing after wait; applying anyway" >&2;
+        fi;
+        exec sh /apply.sh
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # service_started, not service_healthy: /api/health always returns 200
+      # "healthy" (including on error), so compose treating the backend as
+      # ready is not a schema signal. The wait loop above is the real gate.
+      # Started implies postgres/redis/bifrost are already up, which a
+      # postgres-only depends_on would not.
+      backend:
+        condition: service_started
+    restart: "no"
     networks:
       - deeptempo-network
 
