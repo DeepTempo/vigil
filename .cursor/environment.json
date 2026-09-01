@@ -1,0 +1,8 @@
+{
+  "name": "Vigil",
+  "user": "ubuntu",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "start": "sudo service docker start"
+}
