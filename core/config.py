@@ -21,6 +21,22 @@ DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_SANDBOX_FILE_TYPES = "exe,dll,doc,docx,xls,xlsx,pdf,js,vbs,ps1,bat,msi"
 
 
+def _safe_home() -> Path:
+    """Return the user's home directory, or a safe writable fallback if home is root (/)."""
+    try:
+        home = Path.home()
+    except Exception:
+        home = Path("/")
+    if home == Path("/") or str(home) == "/":
+        # When running in a container where HOME=/ or unset, Path.home() is Path("/").
+        # Root (/) is never a valid user home directory and writing to /.vigil will fail
+        # with PermissionError (Errno 13).
+        if Path("/home/vigil").is_dir():
+            return Path("/home/vigil")
+        return Path("/tmp")
+    return home
+
+
 # The State Directory: the one per-install directory holding what the metadata
 # DB does not. VIGIL_DIR if exported, else ~/.vigil — nothing else. A write that
 # cannot happen raises; callers that want to degrade catch it themselves.
@@ -34,7 +50,7 @@ def vigil_path(*parts: str, write: bool = False) -> Path:
     if override:
         target = legacy = Path(override)
     else:
-        home = Path.home()  # per call, so tests can patch home
+        home = _safe_home()
         target, legacy = home / _VIGIL_DIRNAME, home / _LEGACY_DIRNAME
     if parts:
         target, legacy = target.joinpath(*parts), legacy.joinpath(*parts)
