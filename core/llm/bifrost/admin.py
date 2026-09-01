@@ -12,7 +12,7 @@ manager under ``llm_provider_<id>_api_key``. Pushing via the API keeps a
 single source of truth in the secrets manager, and is why the seeded
 ``config.json`` key is an empty placeholder rather than a real credential.
 
-Three properties of that API shape the code below, all learned the hard way:
+Four properties of that API shape the code below, all learned the hard way:
 
 * **Keys are a subresource.** They live at ``/api/providers/{name}/keys``,
   *not* on the ``/api/providers/{name}`` document — which returns no ``keys``
@@ -22,6 +22,12 @@ Three properties of that API shape the code below, all learned the hard way:
   are always re-read from the secrets store, never round-tripped.
 * **A key must carry a non-empty value.** There is no models-only update, and
   clearing a credential means deleting the key rather than blanking it.
+* **Custom OpenAI-compatible ``base_url`` lives on the provider document.**
+  Vigil stores the SDK form (often with a trailing ``/v1``). Bifrost stores
+  the API root under ``network_config.base_url`` and appends the versioned
+  path itself, so only that suffix is trimmed. This PUT must not send
+  ``keys``. Anthropic ignores the field; Ollama's stored URL is host-side
+  and would mean the Bifrost container itself.
 """
 
 from __future__ import annotations
@@ -29,10 +35,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import httpx
 
 from core.config import get_settings
+from core.platform.url_safety import DEFAULT_ALLOWED_PROVIDER_HOSTS
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +67,12 @@ def _bifrost_base_url() -> str:
 # allow-list refusing every model. The seeded wildcard in the Bifrost config is it.
 _UNMANAGED_PROVIDER_TYPES = frozenset({"ollama", "vertex"})
 
+# Public OpenAI cloud — Bifrost already points there. Custom OpenAI-compatible
+# hosts (OpenRouter, LiteLLM, vLLM, ...) are the ones we must push.
+_STOCK_OPENAI_HOSTS = frozenset(
+    host for host in DEFAULT_ALLOWED_PROVIDER_HOSTS if "openai" in host
+)
+
 # Read-only/derived fields Bifrost returns but rejects or ignores on write.
 # ``value`` is dropped separately — see the module docstring on masking.
 _KEY_READBACK_ONLY = frozenset({"id", "config_hash", "status", "description"})
@@ -74,6 +88,10 @@ _KEY_STATUS_OK = frozenset({"success", "unknown"})
 def _keys_url(provider_name: str, key_id: Optional[str] = None) -> str:
     base = f"{_bifrost_base_url()}/api/providers/{provider_name}/keys"
     return f"{base}/{key_id}" if key_id else base
+
+
+def _provider_url(provider_name: str) -> str:
+    return f"{_bifrost_base_url()}/api/providers/{provider_name}"
 
 
 def _get_provider_keys(
@@ -348,6 +366,97 @@ def sync_provider_models(
         return ok
 
 
+def _normalize_openai_compat_base_url(base_url: str) -> str:
+    """Strip a trailing ``/v1``; Bifrost appends the versioned path itself.
+
+    Any other path prefix (``/api``, ``/openai``, a tenant slug) is kept.
+    """
+    url = base_url.strip().rstrip("/")
+    if url.lower().endswith("/v1"):
+        url = url[:-3].rstrip("/")
+    return url
+
+
+def _custom_openai_base_url(base_url: Optional[str]) -> Optional[str]:
+    """Normalized Bifrost form, or None when the stock host should stay."""
+    if not base_url or not str(base_url).strip():
+        return None
+    target = _normalize_openai_compat_base_url(str(base_url))
+    if not target:
+        return None
+    host = (urlparse(target).hostname or "").lower()
+    if host in _STOCK_OPENAI_HOSTS:
+        return None
+    return target
+
+
+def _get_provider_document(name: str, client: httpx.Client) -> Optional[Dict[str, Any]]:
+    """Return ``name``'s provider document, or None if it is absent."""
+    try:
+        r = client.get(_provider_url(name), timeout=_DEFAULT_TIMEOUT)
+        if r.status_code == 404:
+            logger.debug("Bifrost: provider %s not configured", name)
+            return None
+        r.raise_for_status()
+        doc = r.json()
+        return doc if isinstance(doc, dict) else None
+    except Exception as e:
+        logger.warning("Bifrost: could not fetch provider %s: %s", name, e)
+        return None
+
+
+def sync_provider_base_url(provider_type: str, base_url: Optional[str]) -> bool:
+    """Write a custom OpenAI-compatible ``base_url`` to Bifrost.
+
+    Only ``openai`` rows with a non-stock host are pushed. Anthropic ignores
+    ``network_config.base_url`` (see ``core.llm.providers.clients``); Ollama's
+    stored URL is host-side and would resolve to the Bifrost container itself.
+
+    GET/PUT ``/api/providers/{name}`` (the provider document, not ``/keys``).
+    Other ``network_config`` fields are preserved; ``keys`` are never sent.
+
+    Returns True on success or when there is nothing to write. Failures are
+    logged and return False so the catalog sync still proceeds.
+    """
+    if not provider_type or provider_type != "openai":
+        return True
+    target = _custom_openai_base_url(base_url)
+    if target is None:
+        return True
+
+    with httpx.Client() as client:
+        doc = _get_provider_document(provider_type, client)
+        if doc is None:
+            return False
+        doc.pop("keys", None)
+        network = dict(doc.get("network_config") or {})
+        current = (network.get("base_url") or "").rstrip("/")
+        if current == target:
+            return True
+        network["base_url"] = target
+        doc["network_config"] = network
+        url = _provider_url(provider_type)
+        try:
+            r = client.put(url, json=doc, timeout=_DEFAULT_TIMEOUT)
+            if r.status_code >= 400:
+                logger.warning(
+                    "Bifrost: PUT %s returned %s: %s",
+                    url,
+                    r.status_code,
+                    r.text[:200],
+                )
+                return False
+            logger.info(
+                "Bifrost: set network_config.base_url for provider %s to %s",
+                provider_type,
+                target,
+            )
+            return True
+        except Exception as e:
+            logger.warning("Bifrost: PUT %s failed: %s", url, e)
+            return False
+
+
 async def sync_all_provider_models() -> Dict[str, Any]:
     """Canonical refresh for every active LLM provider.
 
@@ -362,12 +471,14 @@ async def sync_all_provider_models() -> Dict[str, Any]:
     3. Populates ``_MODEL_LIST_CACHE[provider_id]`` in
        ``core.llm.providers.registry`` so the UI dropdown reads the same
        list the sync just computed.
-    4. Unions per-provider-type across rows and PUTs that to Bifrost's
+    4. For OpenAI-compatible rows, writes ``network_config.base_url`` so
+       the gateway uses the custom host rather than the stock OpenAI cloud.
+    5. Unions per-provider-type across rows and PUTs that to Bifrost's
        allow-list via the admin API, so LLM traffic routes for every
        model the dropdown shows.
 
-    Because all three surfaces (dropdown cache, live-meta cache, Bifrost
-    allow-list) are written in the same pass, they cannot drift.
+    Because all four surfaces (dropdown cache, live-meta cache, Bifrost
+    host, Bifrost allow-list) are written in the same pass, they cannot drift.
 
     Concurrent calls are coalesced — if a sync is already running (e.g.
     the scheduled refresher kicked off at the same time as a dropdown
@@ -375,8 +486,9 @@ async def sync_all_provider_models() -> Dict[str, Any]:
     issuing a duplicate round of upstream fetches.
 
     Best-effort — never raises. Returns a dict with per-provider-type
-    Bifrost sync flags under ``bifrost`` and the computed per-row model
-    lists under ``models_by_provider`` for observability.
+    Bifrost sync flags under ``bifrost``, custom-host flags under
+    ``bifrost_base_url``, and the computed per-row model lists under
+    ``models_by_provider`` for observability.
     """
     global _sync_in_flight
     if _sync_in_flight is not None and not _sync_in_flight.done():
@@ -441,6 +553,7 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
             )
 
     bifrost_results: Dict[str, bool] = {}
+    base_url_results: Dict[str, bool] = {}
     per_row_models: Dict[str, List[str]] = {}
 
     for provider_type, provider_rows in rows_by_type.items():
@@ -513,6 +626,14 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
                 type_seen.add(mid)
                 type_union.append(mid)
 
+        # Host before allow-list: namespaced models are meaningless if the
+        # gateway still talks to the stock OpenAI cloud. One document per
+        # type; the default row already sits first, matching the key we push.
+        if provider_type == "openai":
+            base_url_results[provider_type] = sync_provider_base_url(
+                provider_type, provider_rows[0].get("base_url")
+            )
+
         if not type_union:
             # Preserve bootstrap: don't overwrite Bifrost's allow-list
             # with an empty list if every row failed and there are no
@@ -534,6 +655,7 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
 
     return {
         "bifrost": bifrost_results,
+        "bifrost_base_url": base_url_results,
         "models_by_provider": per_row_models,
     }
 
