@@ -11,6 +11,8 @@ from typing import Dict, List, Optional
 
 import yaml
 
+from core.config import _safe_home
+
 
 class SecurityDetectionsTools:
     """
@@ -30,7 +32,7 @@ class SecurityDetectionsTools:
             paths.get(
                 "sigma",
                 os.getenv(
-                    "SIGMA_PATHS", str(Path.home() / "security-detections/sigma/rules")
+                    "SIGMA_PATHS", str(_safe_home() / "security-detections/sigma/rules")
                 ),
             )
         )
@@ -40,7 +42,7 @@ class SecurityDetectionsTools:
                 os.getenv(
                     "SPLUNK_PATHS",
                     str(
-                        Path.home() / "security-detections/security_content/detections"
+                        _safe_home() / "security-detections/security_content/detections"
                     ),
                 ),
             )
@@ -50,7 +52,7 @@ class SecurityDetectionsTools:
                 "elastic",
                 os.getenv(
                     "ELASTIC_PATHS",
-                    str(Path.home() / "security-detections/detection-rules/rules"),
+                    str(_safe_home() / "security-detections/detection-rules/rules"),
                 ),
             )
         )
@@ -60,7 +62,7 @@ class SecurityDetectionsTools:
                 os.getenv(
                     "KQL_PATHS",
                     str(
-                        Path.home()
+                        _safe_home()
                         / "security-detections/Hunting-Queries-Detection-Rules"
                     ),
                 ),
