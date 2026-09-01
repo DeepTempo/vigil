@@ -142,7 +142,6 @@ def ioc(db, ioc_type, value, *, case_id="case-733"):
 def finding(db, finding_id, *, case_id="case-733", when, source="loglm"):
     row = Finding(
         finding_id=finding_id,
-        embedding=[0.0] * 768,
         mitre_predictions={},
         anomaly_score=0.5,
         timestamp=when,

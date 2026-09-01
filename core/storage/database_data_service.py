@@ -6,8 +6,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
-
 from core.config import is_demo_mode, vigil_path
 from core.exceptions import DatabaseError
 from core.storage.connection import (
@@ -24,18 +22,6 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 FINDINGS_FILE = DATA_DIR / "findings.json"
 CASES_FILE = DATA_DIR / "cases.json"
-
-
-def _cosine_sim(a, b):
-    """Compute cosine similarity between two vectors.
-
-    Returns None if the vectors have incompatible dimensions.
-    """
-    a, b = np.array(a), np.array(b)
-    if a.shape != b.shape:
-        return None
-    norm = np.linalg.norm(a) * np.linalg.norm(b)
-    return float(np.dot(a, b) / norm) if norm > 0 else 0.0
 
 
 class DatabaseDataService:
@@ -181,17 +167,9 @@ class DatabaseDataService:
         search_query: Optional[str] = None,
         sort_by: str = "timestamp",
         sort_order: str = "desc",
-        include_embedding: bool = True,
     ) -> List[Dict]:
-        # Callers that only render/aggregate findings pass include_embedding=False
-        # to drop the 768-float vector they never use.
-        def _strip(items: List[Dict]) -> List[Dict]:
-            if include_embedding:
-                return items
-            return [{k: v for k, v in f.items() if k != "embedding"} for f in items]
-
         if self._demo_mode and self._demo_service:
-            return _strip(self._demo_service.get_findings(limit))
+            return self._demo_service.get_findings(limit)
         if self._db_available:
             try:
                 findings = self._db_service.get_findings(
@@ -206,9 +184,7 @@ class DatabaseDataService:
                     sort_by=sort_by,
                     sort_order=sort_order,
                 )
-                if include_embedding:
-                    return FindingSchema.dump_many(findings)
-                return FindingSchema.dump_many_summary(findings)
+                return FindingSchema.dump_many(findings)
             except Exception as e:
                 logger.error(f"Error getting findings from DB: {e}")
                 return []
@@ -241,7 +217,7 @@ class DatabaseDataService:
                 ]
             reverse = sort_order == "desc"
             findings.sort(key=lambda f: f.get(sort_by, ""), reverse=reverse)
-            return _strip(findings[offset : offset + limit])
+            return findings[offset : offset + limit]
         return []
 
     def get_findings_missing_enrichment(
@@ -330,88 +306,6 @@ class DatabaseDataService:
                     return f
         return None
 
-    def get_nearest_neighbors(self, finding_id: str, limit: int = 10) -> Dict:
-        """Find similar findings using embedding-based cosine similarity.
-
-        Args:
-            finding_id: Reference finding ID to find neighbors for
-            limit: Maximum number of neighbors to return
-
-        Returns:
-            Dict with seed_finding and neighbors list
-        """
-        if self._demo_mode and self._demo_service:
-            return self._demo_service.get_nearest_neighbors(finding_id, limit)
-
-        # Prefer the DB-side ANN query; find_similar_findings returns None only
-        # when it can't run (→ fall back), whereas [] is a valid "no neighbors".
-        # same_source=True keeps the comparison within one embedding space (e.g.
-        # LogLM's 512-padded vectors aren't cosine-comparable to deeptempo's 768),
-        # matching the in-memory fallback which skips mismatched dimensions.
-        if self._db_available:
-            try:
-                neighbors = self._db_service.find_similar_findings(
-                    finding_id, limit=limit, same_source=True
-                )
-            except Exception as e:
-                logger.error(f"Error in DB-side nearest_neighbors: {e}")
-                neighbors = None
-            if neighbors is not None:
-                return {"seed_finding": finding_id, "neighbors": neighbors}
-
-        # In-memory fallback (JSON backend, or pgvector unavailable).
-        return self._nearest_neighbors_in_memory(finding_id, limit)
-
-    def _nearest_neighbors_in_memory(self, finding_id: str, limit: int) -> Dict:
-        """Python cosine-similarity fallback for when the DB-side query can't run.
-        Mismatched-length embeddings are skipped (dimension-safe)."""
-        # Get all findings (from DB or JSON fallback)
-        if self._db_available:
-            try:
-                findings_objs = self._db_service.get_findings(limit=10000)
-                findings = FindingSchema.dump_many(findings_objs)
-            except Exception as e:
-                logger.error(
-                    f"Error getting findings from DB for nearest_neighbors: {e}"
-                )
-                return {"error": str(e)}
-        elif self._use_json_fallback:
-            findings = self._load_findings_json()
-        else:
-            return {"error": "No data backend available"}
-
-        # Find the seed finding
-        seed = next((f for f in findings if f.get("finding_id") == finding_id), None)
-        if not seed or "embedding" not in seed:
-            return {"error": f"Finding {finding_id} not found or has no embedding"}
-
-        # Compute cosine similarity against all other findings with embeddings
-        sims = []
-        skipped = 0
-        for f in findings:
-            if f.get("finding_id") != finding_id and "embedding" in f:
-                sim = _cosine_sim(seed["embedding"], f["embedding"])
-                if sim is None:
-                    skipped += 1
-                    continue
-                sims.append(
-                    {
-                        "finding_id": f["finding_id"],
-                        "similarity": round(sim, 4),
-                        "cluster_id": f.get("cluster_id"),
-                        "severity": f.get("severity"),
-                        "data_source": f.get("data_source"),
-                        "anomaly_score": float(f.get("anomaly_score", 0)),
-                    }
-                )
-        if skipped:
-            logger.warning(
-                f"Skipped {skipped} findings with incompatible embedding dimensions"
-            )
-
-        sims.sort(key=lambda x: x["similarity"], reverse=True)
-        return {"seed_finding": finding_id, "neighbors": sims[:limit]}
-
     def create_finding(self, finding_data: Dict) -> Optional[Dict]:
         if self._demo_mode and self._demo_service:
             return self._demo_service.create_finding(finding_data)
@@ -419,7 +313,6 @@ class DatabaseDataService:
             try:
                 finding = self._db_service.create_finding(
                     finding_id=finding_data.get("finding_id"),
-                    embedding=finding_data.get("embedding", [0.0] * 768),
                     mitre_predictions=finding_data.get("mitre_predictions", {}),
                     anomaly_score=float(finding_data.get("anomaly_score", 0.0)),
                     timestamp=finding_data.get("timestamp", utcnow()),
@@ -817,7 +710,6 @@ class DatabaseDataService:
                                 # Create new finding
                                 self._db_service.create_finding(
                                     finding_id=finding.get("finding_id"),
-                                    embedding=finding.get("embedding", [0.0] * 768),
                                     mitre_predictions=finding.get(
                                         "mitre_predictions", {}
                                     ),

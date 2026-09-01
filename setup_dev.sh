@@ -28,6 +28,17 @@ install_python_deps
 echo "Python dependencies installed."
 install_dev_deps
 
+# uv / uvx — several integration MCP servers (crowdstrike, sentinelone,
+# pagerduty, aws-security, gcp-*, cribl-stream) are launched via `uvx`. Without
+# it those servers can't spawn, so the integrations silently never connect.
+if ! command -v uvx &>/dev/null && ! [ -x "$HOME/.local/bin/uvx" ]; then
+    echo "Installing uv (provides uvx for integration MCP servers)..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh || {
+        echo "Warning: uv install failed; uvx-based integrations won't spawn."
+        WARNINGS=$((WARNINGS+1))
+    }
+fi
+
 # Frontend
 if command -v npm &>/dev/null && [ -d "$REPO_ROOT/clients/web" ]; then
     if [ ! -d "$REPO_ROOT/clients/web/node_modules" ]; then

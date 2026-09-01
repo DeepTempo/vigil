@@ -219,7 +219,12 @@ def _load_connection_string_secret() -> Optional[str]:
 
 class DatabaseConfig:
     def __init__(self, *, connection_string: Optional[str] = None):
-        """Initialize from the connection-string secret, else the environment."""
+        """Initialize from the encrypted-store DSN, else POSTGRES_*.
+
+        DATABASE_URL is not consulted — that is the TypeScript agent's
+        knob, and ``scripts/migrate_schema.py``. Inserting it as a third
+        source would break the ranking this class is built on.
+        """
         dsn = (
             connection_string
             if connection_string is not None
@@ -622,16 +627,6 @@ class DatabaseManager:
         """Create all database tables."""
         if self._engine is None:
             raise RuntimeError("Database not initialized. Call initialize() first.")
-
-        try:
-            # Enable pgvector before create_all(); the findings table uses
-            # VECTOR(768) which requires the extension to exist first.
-            with self._engine.connect() as conn:
-                conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                conn.commit()
-        except Exception as e:
-            # Non-fatal: pgvector may be unavailable in non-embedding deployments.
-            logger.warning(f"Could not enable pgvector extension: {e}")
 
         try:
             Base.metadata.create_all(self._engine)

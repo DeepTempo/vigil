@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Any
 
 import numpy as np
-from mcp.server.fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +27,6 @@ def json_response(data: Any, indent: int = 2) -> str:
 
 def error_response(message: str, **extra) -> str:
     return json_response({"error": message, **extra})
-
-
-def create_server(name: str) -> FastMCP:
-    return FastMCP(name)
 
 
 # There is deliberately no config/credential helper here. These servers talk to

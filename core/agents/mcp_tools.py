@@ -111,9 +111,9 @@ async def execute_mcp_tool(
     if tool_name not in registry.get_tool_names():
         return None, False
 
-    from core.integrations.mcp.client import get_mcp_client
+    from core.integrations.mcp.client import process_mcp_client
 
-    client = get_mcp_client()
+    client = process_mcp_client()
     if client is None:
         raise MCPFailure(
             UNAVAILABLE, f"{server} is configured but no client is running"

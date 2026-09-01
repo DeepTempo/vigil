@@ -8,6 +8,16 @@ import asyncio
 import json
 import logging
 import os
+import sys
+from pathlib import Path
+
+# Spawned as ``python3 core/integrations/elastic/tool.py`` with a narrowed env, so
+# the repo root is not on sys.path and PYTHONPATH is not forwarded. Add it here so
+# the ``core.*`` imports below resolve; otherwise they fail and every query
+# silently reports "not configured".
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 import mcp.server.stdio
 import mcp.types as types
@@ -22,8 +32,6 @@ except ImportError:
     pass
 
 logger = logging.getLogger(__name__)
-server = Server("elastic")
-
 _elastic_service = None
 
 
@@ -62,7 +70,6 @@ def get_elastic_service():
 # ------------------------------------------------------------------
 
 
-@server.list_tools()
 async def handle_list_tools():
     return [
         types.Tool(
@@ -137,7 +144,6 @@ async def handle_list_tools():
 # ------------------------------------------------------------------
 
 
-@server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None):
     svc = get_elastic_service()
     if svc is None:
@@ -265,6 +271,28 @@ async def _get_detection_alerts(svc, args: dict):
 # ------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------
+
+
+async def _on_list_tools(_ctx, _params):
+    return types.ListToolsResult(tools=await handle_list_tools())
+
+
+async def _on_call_tool(_ctx, params):
+    try:
+        content = await handle_call_tool(params.name, params.arguments)
+    except Exception as exc:
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=str(exc))],
+            is_error=True,
+        )
+    return types.CallToolResult(content=content)
+
+
+server = Server(
+    "elastic",
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
 
 
 async def main():

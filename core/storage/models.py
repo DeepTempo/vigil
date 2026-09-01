@@ -8,7 +8,6 @@ import uuid
 from datetime import datetime
 from typing import Any, List, Optional
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
     BigInteger,
@@ -31,10 +30,6 @@ from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from core.time import utcnow
-
-# Fixed width for the findings vector column; sources of other dimensions
-# (LogLM 512) are zero-padded/truncated to this before storage.
-EMBEDDING_DIM = 768
 
 JSONBList = MutableList.as_mutable(JSONB)
 
@@ -96,9 +91,6 @@ class Finding(Base):
     # Primary key
     finding_id: Mapped[str] = mapped_column(String(50), primary_key=True)
 
-    embedding: Mapped[List[float]] = mapped_column(
-        Vector(EMBEDDING_DIM), nullable=False
-    )
     mitre_predictions: Mapped[dict] = mapped_column(JSONB, nullable=False)
     anomaly_score: Mapped[float] = mapped_column(Float, nullable=False)
 
@@ -151,13 +143,6 @@ class Finding(Base):
         Index("idx_finding_data_source", "data_source"),
         Index("idx_finding_cluster_id", "cluster_id"),
         Index("idx_finding_anomaly_score", "anomaly_score"),
-        # HNSW ANN index for embedding cosine similarity (see find_similar_findings).
-        Index(
-            "idx_finding_embedding_hnsw",
-            "embedding",
-            postgresql_using="hnsw",
-            postgresql_ops={"embedding": "vector_cosine_ops"},
-        ),
         Index(
             "idx_finding_description",
             "description",
@@ -1857,6 +1842,8 @@ class WorkflowRun(Base):
         JSONB, nullable=False, default=list, server_default="[]"
     )
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Set when an operator removes the run from History. The row and its ledger stay.
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     __table_args__ = (
         Index("idx_workflow_runs_workflow_id", "workflow_id", "started_at"),
@@ -2316,7 +2303,7 @@ class ChatMessage(Base):
 # unknown state to represent.
 #
 # The domains these columns range over are stated once, in
-# infra/database/init/22_episodic_memory.sql, as every other table in that
+# infra/database/init/24_episodic_memory.sql, as every other table in that
 # directory states them. They are not restated here: `core/memory` owns the
 # vocabularies and `core/storage` is the tier underneath it, so mirroring them
 # would mean the shared-infrastructure tier importing a capability domain
@@ -2562,7 +2549,7 @@ class EpisodicReadLog(Base):
     """One row per read of episodic memory, for audit rather than replay.
 
     Why it exists and why it alone is retained is stated once, in
-    ``infra/database/init/23_episodic_read_log.sql``.
+    ``infra/database/init/25_episodic_read_log.sql``.
     """
 
     __tablename__ = "episodic_read_log"

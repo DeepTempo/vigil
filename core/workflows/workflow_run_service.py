@@ -143,7 +143,9 @@ class WorkflowRunService:
         try:
             db = get_db_manager()
             with db.session_scope() as session:
-                stmt = select(WorkflowRun)
+                # Deleted rows are hidden here rather than dropped from the table:
+                # the ledger behind a run is the only account of what an agent did.
+                stmt = select(WorkflowRun).where(WorkflowRun.deleted_at.is_(None))
                 if workflow_id:
                     stmt = stmt.where(WorkflowRun.workflow_id == workflow_id)
                 if status:
@@ -169,6 +171,39 @@ class WorkflowRunService:
         except SQLAlchemyError as e:
             logger.warning("Error fetching workflow run %s: %s", run_id, e)
             return None
+
+    def delete_run(self, run_id: str) -> bool:
+        """Hide ``run_id`` from the listings. False when there is no such live run."""
+        try:
+            db = get_db_manager()
+            with db.session_scope() as session:
+                row = session.get(WorkflowRun, run_id)
+                if row is None or row.deleted_at is not None:
+                    return False
+                row.deleted_at = utcnow()
+                return True
+        except SQLAlchemyError as e:
+            logger.warning("Error deleting workflow run %s: %s", run_id, e)
+            return False
+
+    def set_result_summary(self, run_id: str, summary: str) -> bool:
+        """Re-render the stored account of a run that has already finished.
+
+        Apart from ``finalize_run`` because the run is not ending again: its
+        status, its cost and when it stopped all stand, and only the write-up
+        is being replaced. Truncated on the same ceiling.
+        """
+        try:
+            db = get_db_manager()
+            with db.session_scope() as session:
+                row = session.get(WorkflowRun, run_id)
+                if row is None:
+                    return False
+                row.result_summary = summary[:50_000]
+                return True
+        except SQLAlchemyError as e:
+            logger.warning("Could not restate the summary of %s: %s", run_id, e)
+            return False
 
     # ------------------------------------------------------------------
     # Phase-level helpers (#128)
