@@ -768,7 +768,8 @@ def test_sync_provider_base_url_skips_empty_and_stock_openai():
             bifrost_admin.sync_provider_base_url("openai", "https://api.openai.com/v1")
             is True
         )
-    assert rec.calls == []
+    assert _provider_puts(rec) == []
+    assert all(c["method"] == "GET" and "/keys" not in c["url"] for c in rec.calls)
 
 
 def test_sync_provider_base_url_returns_false_when_provider_missing():
@@ -781,16 +782,44 @@ def test_sync_provider_base_url_returns_false_when_provider_missing():
     assert _provider_puts(rec) == []
 
 
-def test_base_url_put_drops_legacy_embedded_keys():
+def test_sync_provider_base_url_returns_false_on_put_error():
+    rec = _RecordingClient(provider_payload=_provider_doc(), put_status=500)
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        ok = bifrost_admin.sync_provider_base_url(
+            "openai", "https://openrouter.ai/api/v1"
+        )
+    assert ok is False
+
+
+def test_sync_provider_base_url_clears_stale_custom_host_when_reverting_to_stock():
+    rec = _RecordingClient(
+        provider_payload=_provider_doc(base_url="https://openrouter.ai/api")
+    )
+    with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
+        ok = bifrost_admin.sync_provider_base_url("openai", "https://api.openai.com/v1")
+    assert ok is True
+    network = _provider_puts(rec)[0]["kwargs"]["json"]["network_config"]
+    assert "base_url" not in network
+    assert network["default_request_timeout_in_seconds"] == 30
+
+
+def test_base_url_put_omits_readback_only_fields():
     rec = _RecordingClient(
         provider_payload=_provider_doc(
-            keys=[{"id": "should-not-be-echoed", "models": ["gpt-4o"]}]
+            status="active",
+            config_hash="abc",
+            keys=[{"id": "should-not-be-echoed", "models": ["gpt-4o"]}],
         )
     )
     with patch.object(bifrost_admin.httpx, "Client", lambda: rec):
         bifrost_admin.sync_provider_base_url("openai", "https://openrouter.ai/api/v1")
     body = _provider_puts(rec)[0]["kwargs"]["json"]
     assert "keys" not in body
+    assert "status" not in body
+    assert "config_hash" not in body
+    assert "name" not in body
+    assert "network_config" in body
+    assert "concurrency_and_buffer_size" in body
 
 
 def test_base_url_refresh_keeps_namespaced_model_on_key_allow_list():

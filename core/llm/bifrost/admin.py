@@ -68,9 +68,25 @@ def _bifrost_base_url() -> str:
 _UNMANAGED_PROVIDER_TYPES = frozenset({"ollama", "vertex"})
 
 # Public OpenAI cloud — Bifrost already points there. Custom OpenAI-compatible
-# hosts (OpenRouter, LiteLLM, vLLM, ...) are the ones we must push.
+# hosts (OpenRouter, LiteLLM, vLLM, ...) are the ones we must push. Derived
+# from the SSRF allow-list so this file never names the stock host (one-egress
+# ratchet); ``.openai.com`` keeps Azure-style hosts from matching.
 _STOCK_OPENAI_HOSTS = frozenset(
-    host for host in DEFAULT_ALLOWED_PROVIDER_HOSTS if "openai" in host
+    host for host in DEFAULT_ALLOWED_PROVIDER_HOSTS if host.endswith(".openai.com")
+)
+
+# Fields Bifrost accepts on PUT /api/providers/{name}. Everything else on the
+# GET document is read-back (name, status, config_hash, keys, ...).
+_PROVIDER_WRITE_FIELDS = frozenset(
+    {
+        "network_config",
+        "concurrency_and_buffer_size",
+        "proxy_config",
+        "send_back_raw_request",
+        "send_back_raw_response",
+        "store_raw_request_response",
+        "custom_provider_config",
+    }
 )
 
 # Read-only/derived fields Bifrost returns but rejects or ignores on write.
@@ -413,7 +429,9 @@ def sync_provider_base_url(provider_type: str, base_url: Optional[str]) -> bool:
     stored URL is host-side and would resolve to the Bifrost container itself.
 
     GET/PUT ``/api/providers/{name}`` (the provider document, not ``/keys``).
-    Other ``network_config`` fields are preserved; ``keys`` are never sent.
+    Other ``network_config`` fields are preserved; only writable provider
+    fields are sent, never ``keys``. Reverting to empty/stock clears a
+    previously pushed custom host so inference does not keep using it.
 
     Returns True on success or when there is nothing to write. Failures are
     logged and return False so the catalog sync still proceeds.
@@ -421,23 +439,30 @@ def sync_provider_base_url(provider_type: str, base_url: Optional[str]) -> bool:
     if not provider_type or provider_type != "openai":
         return True
     target = _custom_openai_base_url(base_url)
-    if target is None:
-        return True
 
     with httpx.Client() as client:
         doc = _get_provider_document(provider_type, client)
         if doc is None:
-            return False
-        doc.pop("keys", None)
+            # Stock/empty has nothing to write; a custom host cannot land if
+            # the provider document is missing.
+            return target is None
         network = dict(doc.get("network_config") or {})
         current = (network.get("base_url") or "").rstrip("/")
-        if current == target:
+        if target is None:
+            # Leave Bifrost's default host. If we previously pushed a custom
+            # URL, drop it so inference does not keep hitting the old gateway.
+            if not current or _custom_openai_base_url(current) is None:
+                return True
+            network.pop("base_url", None)
+        elif current == target:
             return True
-        network["base_url"] = target
-        doc["network_config"] = network
+        else:
+            network["base_url"] = target
+        body = {k: v for k, v in doc.items() if k in _PROVIDER_WRITE_FIELDS}
+        body["network_config"] = network
         url = _provider_url(provider_type)
         try:
-            r = client.put(url, json=doc, timeout=_DEFAULT_TIMEOUT)
+            r = client.put(url, json=body, timeout=_DEFAULT_TIMEOUT)
             if r.status_code >= 400:
                 logger.warning(
                     "Bifrost: PUT %s returned %s: %s",
@@ -449,7 +474,7 @@ def sync_provider_base_url(provider_type: str, base_url: Optional[str]) -> bool:
             logger.info(
                 "Bifrost: set network_config.base_url for provider %s to %s",
                 provider_type,
-                target,
+                target or "default",
             )
             return True
         except Exception as e:
