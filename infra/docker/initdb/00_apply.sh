@@ -11,8 +11,9 @@
 #   initdb   — creates extensions and the auth tables (with their DEFAULT
 #              clauses, which create_all does not emit) and seeds roles.
 #   db-seed  — after create_all, picks up the data whose tables only exist by
-#              then. Every file is idempotent, so the second pass is a no-op
-#              where the first already succeeded.
+#              then. Files use IF NOT EXISTS / ON CONFLICT, so a second pass is
+#              a no-op where the first already succeeded; other errors (e.g.
+#              trigger already exists) are tolerated.
 # Connection comes from libpq env: initdb has POSTGRES_* and a local socket,
 # db-seed passes PGHOST/PGUSER/PGDATABASE/PGPASSWORD.
 : "${PGUSER:=${POSTGRES_USER}}"

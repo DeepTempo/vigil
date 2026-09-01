@@ -53,6 +53,9 @@ def test_postgres_does_not_feed_sql_to_initdb_entrypoint() -> None:
     mounts = _volume_targets(_services()["postgres"])
     assert mounts.get("/docker-entrypoint-initdb.d") == "./initdb"
     assert mounts.get("/db-init") == "../database/init"
+    assert not list((REPO / "infra" / "docker" / "initdb").glob("*.sql")), (
+        "SQL under initdb/ would be run by Postgres with ON_ERROR_STOP=1"
+    )
 
 
 def test_apply_script_tolerates_errors_and_runs_every_file() -> None:
@@ -68,9 +71,13 @@ def test_db_seed_runs_on_default_up() -> None:
     assert not spec.get("profiles"), (
         "db-seed is behind a profile, so `docker compose up` will not run it"
     )
+    assert spec.get("restart") == "no", (
+        "db-seed must be one-shot; unless-stopped would replay CREATE TRIGGER forever"
+    )
     text = _entrypoint_text(spec)
     assert "to_regclass('public.sla_policies')" in text
     assert "/api/health" not in text
+    assert "exec sh /apply.sh" in text
     mounts = _volume_targets(spec)
     assert mounts.get("/db-init") == "../database/init"
     assert mounts.get("/apply.sh") == "./initdb/00_apply.sh"

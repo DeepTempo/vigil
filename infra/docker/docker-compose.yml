@@ -70,10 +70,10 @@ services:
   # Second pass over the same files, once the backend's create_all has built the
   # tables the data-only scripts need. On the default `up` (no profile): a seed
   # profile would never run — this compose file has no wrapper that `compose
-  # run`s it. A healthy backend only means /api/health answers and create_all
-  # may still be running, so wait for a table only it creates — its DDL is one
-  # transaction, so that sentinel implies the rest. Re-runs on every `up` so a
-  # volume that aborted at 05 still gets the rest of the files.
+  # run`s it. /api/health always returns 200, so wait for a table only create_all
+  # creates — its DDL is one transaction, so that sentinel implies the rest.
+  # Re-runs on every `up` so a volume that aborted at 05 still gets the rest of
+  # the files.
   db-seed:
     image: postgres:16-alpine
     container_name: deeptempo-db-seed
@@ -93,14 +93,18 @@ services:
           [ "$$(psql -tAc "SELECT to_regclass('public.sla_policies') IS NOT NULL")" = t ] && break;
           sleep 1;
         done;
+        if [ "$$(psql -tAc "SELECT to_regclass('public.sla_policies') IS NOT NULL")" != t ]; then
+          echo "sla_policies still missing after wait; applying anyway" >&2;
+        fi;
         exec sh /apply.sh
     depends_on:
       postgres:
         condition: service_healthy
-      # service_started, not service_healthy: /api/health answers "healthy"
-      # even when create_all is still running (or failed). The wait loop above
-      # is the real gate. Started implies postgres/redis/bifrost are already up,
-      # which a postgres-only depends_on would not.
+      # service_started, not service_healthy: /api/health always returns 200
+      # "healthy" (including on error), so compose treating the backend as
+      # ready is not a schema signal. The wait loop above is the real gate.
+      # Started implies postgres/redis/bifrost are already up, which a
+      # postgres-only depends_on would not.
       backend:
         condition: service_started
     restart: "no"
