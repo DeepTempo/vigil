@@ -1,7 +1,7 @@
 """The Distil (#731): a finished hunt becomes Sightings, Verdicts and Gaps.
 
 Poll rather than push. Nothing tells this job that a run ended; it finds
-terminals with no marker itself, using the ledger's partial index. That buys
+terminals no marker covers itself, using the ledger's partial index. That buys
 three things a trigger does not: no change to the agent layer, a lost signal
 becomes a late write rather than a missing one, and backfill is the same code
 path exercised on every tick. Nothing is waiting on it either — memory is read
@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -57,20 +59,29 @@ from core.storage.unit_of_work import unit_of_work
 
 logger = logging.getLogger(__name__)
 
-# Bumped when the mapping below changes what it writes. Re-deriving is
-# delete-then-insert, so a bump that now yields fewer rows leaves none behind.
-DISTIL_VERSION = 1
+# This side's version: bumped when the mapping below changes what it writes.
+# Re-deriving is delete-then-insert, so a bump that now yields fewer rows leaves
+# none behind. Stamped on the marker, and the poll re-offers everything stamped
+# with any other value.
+DISTIL_MAPPING_VERSION = 1
 
-# The payload schema this understands. A newer one is refused rather than
-# mis-mapped: a field that changed meaning is worse read optimistically than not
-# read at all, and the marker's absence brings the investigation back next tick.
-SUPPORTED_PAYLOAD_VERSION = 1
+# The other side's version: the wire schema of the payload this understands,
+# which `DISTIL_SCHEMA_VERSION` in services/agent/workflows/hunt/distil.ts
+# stamps. A newer one is refused rather than mis-mapped -- a field that changed
+# meaning is worse read optimistically than not read at all, and the marker's
+# absence brings the investigation back next tick.
+SUPPORTED_SCHEMA_VERSION = 1
 
 # Only hunts are distilled today. A Case closure writes its own Verdict from the
 # Case, not from a ledger, and no other run kind concludes anything.
 DISTILLED_RUN_KINDS: Tuple[str, ...] = ("hunt",)
 
 DEFAULT_BATCH = 25
+
+# One retry, and then it is reported. A write that fails twice is a store that is
+# down or a payload that is wrong, and neither gets better by being hammered
+# inside a poll tick that will come round again anyway.
+ATTEMPTS = 2
 
 # A crash is not an outcome. Nothing an aborted run believed at the moment it
 # died is a conclusion, so none of it becomes memory. Running out is different:
@@ -79,28 +90,59 @@ DEFAULT_BATCH = 25
 ABORTED = "aborted"
 BUDGET_TERMINATED = "budget_terminated"
 
-# Terminals whose ledger this job has not folded at this version. `<>` and not
-# `<` because running an older Distil deliberately is a re-derive too.
+# Terminals no marker at this version covers. The join is on the covered-runs
+# array and not on origin_run_id: one investigation can span more than one run,
+# and agent_events carries no investigation id for the poll to key on, so a
+# marker has to say which runs it accounts for. Matching the version in the join
+# rather than the filter is what makes a bump re-offer every covered run instead
+# of only the origin one.
 _CANDIDATES = text(
     """
     SELECT DISTINCT ON (e.run_id) e.run_id AS run_id, e.seq AS seq
     FROM agent_events e
-    LEFT JOIN episodic_distil_markers m ON m.origin_run_id = e.run_id
+    LEFT JOIN episodic_distil_markers m
+           ON m.origin_run_ids @> ARRAY[e.run_id]
+          AND m.distil_version = :version
     WHERE e.kind = 'terminal'
       AND e.run_kind = ANY(:kinds)
-      AND (m.investigation_id IS NULL OR m.distil_version <> :version OR m.origin_seq < e.seq)
+      AND (
+        m.investigation_id IS NULL
+        OR (m.origin_run_id = e.run_id AND m.origin_seq < e.seq)
+      )
     ORDER BY e.run_id, e.seq DESC
     LIMIT :limit
     """
 )
 
 
+@dataclass(frozen=True)
+class Terminal:
+    """One run's terminal event: what the poll finds and the writer works from."""
+
+    run_id: uuid.UUID
+    seq: int
+
+
+@dataclass(frozen=True)
+class Concluded:
+    """A payload the writer has accepted, with what every row built from it needs.
+
+    The investigation id and the conclusion time are read once, refused once if
+    they are absent, and then travel together because no row can be built
+    without all three.
+    """
+
+    payload: Mapping[str, Any]
+    investigation_id: str
+    concluded_at: datetime
+
+
 class DistilRefused(RuntimeError):
     """A payload this job will not map. Raised rather than written around."""
 
 
-def _ts(value: object) -> Optional[datetime]:
-    """Parse a harness timestamp, or None when it is absent or unreadable.
+def _utc(value: object) -> Optional[datetime]:
+    """The UTC instant a harness timestamp names, or None if it names none.
 
     The columns are ``timestamptz``, so a value that arrived without an offset
     is read as UTC rather than as the server's local time — the harness stamps
@@ -159,10 +201,14 @@ def _sources_of(conclusion: Mapping[str, Any], investigation_id: str) -> List[Di
 
     The tier is stamped here and never joined at read time: an integration
     removed or recategorised later must not retroactively change how a past
-    Verdict was corroborated. A ``not_evidence`` source is written and logged
-    rather than dropped — citing a rule catalogue as corroboration is a defect
-    worth being able to see, and a silent drop is a Verdict that looks thinner
-    than it is for no recorded reason.
+    Verdict was corroborated.
+
+    The harness's own records are already gone — the fold drops them before a
+    stance is taken, which is what makes ``not_evidence`` impossible on a Verdict
+    rather than merely visible on one. What survives to be graded here is a real
+    source the tier map regrades, and one that comes back ``not_evidence`` is
+    written and logged rather than dropped: a silent drop is a Verdict that looks
+    thinner than it is for no recorded reason.
     """
     rows: List[Dict[str, str]] = []
     seen = set()
@@ -194,15 +240,14 @@ def _sources_of(conclusion: Mapping[str, Any], investigation_id: str) -> List[Di
     return rows
 
 
-def _sighting_rows(
-    payload: Mapping[str, Any], investigation_id: str, concluded_at: datetime
-) -> List[Dict[str, Any]]:
+def _sighting_rows(concluded: Concluded) -> List[Dict[str, Any]]:
+    payload, investigation_id = concluded.payload, concluded.investigation_id
     rows: List[Dict[str, Any]] = []
     for sighting in payload.get("sightings") or []:
         entity = sighting.get("entity") or {}
         key = entity_key(str(entity.get("type", "")), str(entity.get("value", "")))
-        first = _ts(sighting.get("first_seen"))
-        last = _ts(sighting.get("last_seen"))
+        first = _utc(sighting.get("first_seen"))
+        last = _utc(sighting.get("last_seen"))
         hits = int(sighting.get("hit_count") or 0)
         # A row missing any of these cannot be joined, ordered or counted, and
         # writing a guessed one puts an entity in history it was never in.
@@ -222,16 +267,15 @@ def _sighting_rows(
                 # take the whole investigation down with it.
                 "first_seen": min(first, last),
                 "last_seen": max(first, last),
-                "concluded_at": concluded_at,
+                "concluded_at": concluded.concluded_at,
             }
         )
     return rows
 
 
-def _conclusion_rows(
-    payload: Mapping[str, Any], investigation_id: str, concluded_at: datetime
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def _conclusion_rows(concluded: Concluded) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Split the hunt's conclusions into Verdict rows and Gap rows."""
+    payload, investigation_id = concluded.payload, concluded.investigation_id
     run_outcome = str(payload.get("outcome") or "")
     verdicts: List[Dict[str, Any]] = []
     gaps: List[Dict[str, Any]] = []
@@ -264,13 +308,13 @@ def _conclusion_rows(
                     "disposition": disposition.value,
                     "reason": rationale or _GAP_REASONS[disposition],
                     "subject_entities": subjects,
-                    "concluded_at": concluded_at,
+                    "concluded_at": concluded.concluded_at,
                 }
             )
             continue
 
-        first = _ts(conclusion.get("first_seen")) or concluded_at
-        last = _ts(conclusion.get("last_seen")) or concluded_at
+        first = _utc(conclusion.get("first_seen")) or concluded.concluded_at
+        last = _utc(conclusion.get("last_seen")) or concluded.concluded_at
         verdicts.append(
             {
                 "row": {
@@ -294,7 +338,7 @@ def _conclusion_rows(
                         if conclusion.get("window_observed")
                         else WindowSource.ASSERTED.value
                     ),
-                    "concluded_at": concluded_at,
+                    "concluded_at": concluded.concluded_at,
                 },
                 "sources": _sources_of(conclusion, investigation_id),
             }
@@ -319,50 +363,79 @@ def _clear(session: Session, kind: InvestigationKind, investigation_id: str) -> 
         )
 
 
-def write_distil(session: Session, run_id: str, seq: int, payload: Mapping[str, Any]) -> Dict[str, int]:
+def _accept(terminal: Terminal, payload: Mapping[str, Any]) -> Concluded:
+    """The payload, or a refusal saying which field it could not be read on."""
+    version = payload.get("distil_schema_version")
+    # An absent version is refused rather than read as 0: a payload that does not
+    # say what it is could be any shape, and mapping it optimistically writes
+    # rows nobody can trust more quietly than writing none.
+    if not isinstance(version, int) or version > SUPPORTED_SCHEMA_VERSION:
+        raise DistilRefused(
+            f"{terminal.run_id} answered distil schema {version!r}; "
+            f"this Distil understands {SUPPORTED_SCHEMA_VERSION}"
+        )
+
+    investigation_id = str(payload.get("investigation_id", "")).strip()
+    if not investigation_id:
+        raise DistilRefused(
+            f"{terminal.run_id} answered a distil payload with no investigation id"
+        )
+
+    concluded_at = _utc(payload.get("concluded_at"))
+    if concluded_at is None:
+        raise DistilRefused(f"{terminal.run_id} has not concluded, so there is nothing to distil")
+
+    return Concluded(payload, investigation_id, concluded_at)
+
+
+def _superseded_by(marker: Optional[EpisodicDistilMarker], concluded: Concluded, terminal: Terminal) -> bool:
+    """Whether this investigation already holds rows from a later terminal.
+
+    One investigation can reach a terminal in more than one run, and the poll
+    offers each run separately because it has nothing but run ids to go on. Two
+    runs both re-deriving the same investigation would leave whichever ran last
+    on the record, and they would take turns forever. The later terminal wins,
+    and the earlier one is recorded as covered without touching the rows.
+    """
+    return (
+        marker is not None
+        and marker.distil_version == DISTIL_MAPPING_VERSION
+        and marker.origin_run_id != terminal.run_id
+        and marker.concluded_at >= concluded.concluded_at
+    )
+
+
+def write_distil(session: Session, terminal: Terminal, payload: Mapping[str, Any]) -> Dict[str, int]:
     """Map one payload to rows and write them, marker included.
 
     Everything here is one transaction the caller owns. A failure raises with
     nothing written and no marker, so the investigation comes back next tick
     rather than being recorded as done.
     """
-    version = payload.get("distil_schema_version")
-    # An absent version is refused rather than read as 0: a payload that does not
-    # say what it is could be any shape, and mapping it optimistically writes
-    # rows nobody can trust more quietly than writing none.
-    if not isinstance(version, int) or version > SUPPORTED_PAYLOAD_VERSION:
-        raise DistilRefused(
-            f"{run_id} answered distil schema {version!r}; "
-            f"this Distil understands {SUPPORTED_PAYLOAD_VERSION}"
-        )
+    concluded = _accept(terminal, payload)
+    kind = InvestigationKind.HUNT
 
-    investigation_id = str(payload.get("investigation_id", "")).strip()
-    if not investigation_id:
-        raise DistilRefused(f"{run_id} answered a distil payload with no investigation id")
+    marker = session.get(EpisodicDistilMarker, (kind.value, concluded.investigation_id))
+    # origin_run_id included, so the covered set is what the poll needs on its own.
+    covered = sorted({*(marker.origin_run_ids if marker is not None else []), terminal.run_id})
 
-    concluded_at = _ts(payload.get("concluded_at"))
-    if concluded_at is None:
-        raise DistilRefused(f"{run_id} has not concluded, so there is nothing to distil")
+    if _superseded_by(marker, concluded, terminal):
+        marker.origin_run_ids = covered  # type: ignore[union-attr]
+        return {"sightings": 0, "verdicts": 0, "gaps": 0, "derived": 0}
 
-    outcome = str(payload.get("outcome") or "")
-
-    # Before the outcome is read, because a re-derive replaces this
-    # investigation's rows as a set and an abort is a re-derive that yields none.
-    # An outcome is never downgraded once on the record and `aborted` outranks
-    # every other, so a hunt that concluded and was later aborted is an
-    # investigation whose conclusions are withdrawn — the clear is what withdraws
-    # them, and skipping it would leave the old rows reading as current.
-    _clear(session, InvestigationKind.HUNT, investigation_id)
-
-    # A crash is not an outcome, so an aborted run contributes no memory. It
-    # still takes a marker: the marker records that the investigation was
-    # processed, not that it was remembered, and without one this run comes back
-    # on every tick forever.
-    if outcome == ABORTED:
+    # A crash is not an outcome, so an aborted run contributes no memory — and
+    # withdraws none either. What an earlier terminal of this investigation
+    # concluded was concluded; a later run dying does not unsay it, so the clear
+    # belongs to the re-derive and not to the abort. The abort still takes a
+    # marker: a marker records that the investigation was processed, not that it
+    # was remembered, and without one this run comes back on every tick forever.
+    if str(payload.get("outcome") or "") == ABORTED:
         counts = {"sightings": 0, "verdicts": 0, "gaps": 0}
     else:
-        sightings = _sighting_rows(payload, investigation_id, concluded_at)
-        verdicts, gaps = _conclusion_rows(payload, investigation_id, concluded_at)
+        _clear(session, kind, concluded.investigation_id)
+
+        sightings = _sighting_rows(concluded)
+        verdicts, gaps = _conclusion_rows(concluded)
 
         session.bulk_insert_mappings(EpisodicSighting, sightings)
         session.bulk_insert_mappings(EpisodicGap, gaps)
@@ -378,91 +451,135 @@ def write_distil(session: Session, run_id: str, seq: int, payload: Mapping[str, 
 
         counts = {"sightings": len(sightings), "verdicts": len(verdicts), "gaps": len(gaps)}
 
-    marker = {
-        "investigation_kind": InvestigationKind.HUNT.value,
-        "investigation_id": investigation_id,
-        "origin_run_id": run_id,
-        "origin_seq": seq,
-        "distil_version": DISTIL_VERSION,
+    row = {
+        "investigation_kind": kind.value,
+        "investigation_id": concluded.investigation_id,
+        "origin_run_id": terminal.run_id,
+        "origin_seq": terminal.seq,
+        "origin_run_ids": covered,
+        "distil_version": DISTIL_MAPPING_VERSION,
         "sightings_written": counts["sightings"],
         "verdicts_written": counts["verdicts"],
         "gaps_written": counts["gaps"],
-        "concluded_at": concluded_at,
+        "concluded_at": concluded.concluded_at,
     }
     # The one upsert here, and the only row it is right for: a marker is one row
     # keyed by the investigation, so there is no set of stale rows to leave behind.
     # Counts are set from what was just written, never incremented.
     session.execute(
         insert(EpisodicDistilMarker)
-        .values(**marker)
+        .values(**row)
         .on_conflict_do_update(
             index_elements=["investigation_kind", "investigation_id"],
-            set_={key: marker[key] for key in marker if key not in ("investigation_kind", "investigation_id")}
+            set_={key: row[key] for key in row if key not in ("investigation_kind", "investigation_id")}
             | {"distilled_at": text("now()")},
         )
     )
-    return counts
+    return counts | {"derived": 1}
 
 
-def pending(session: Session, limit: int = DEFAULT_BATCH) -> List[Tuple[str, int]]:
-    """Terminals with no marker at this version, newest terminal per run."""
+def pending(session: Session, limit: int = DEFAULT_BATCH) -> List[Terminal]:
+    """Terminals no marker at this version covers, newest terminal per run."""
     rows = session.execute(
         _CANDIDATES,
-        {"kinds": list(DISTILLED_RUN_KINDS), "version": DISTIL_VERSION, "limit": limit},
+        {"kinds": list(DISTILLED_RUN_KINDS), "version": DISTIL_MAPPING_VERSION, "limit": limit},
     ).all()
-    return [(str(row.run_id), int(row.seq)) for row in rows]
+    return [Terminal(uuid.UUID(str(row.run_id)), int(row.seq)) for row in rows]
 
 
 async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
     """One pass: find terminals, read each fold, write each investigation.
 
     One transaction per investigation, so a payload this job refuses costs that
-    investigation and not the batch. A refusal writes no marker, which is what
-    brings it back once the reason is fixed.
+    investigation and not the batch. Nothing here is swallowed: a refusal, an
+    unreadable fold and a failed write are each counted and each logged at a
+    level that says which, because a Distil that goes quiet leaves a store that
+    reads as healthy and a memory that reads as empty — and empty is also what an
+    entity nobody has looked at reads as. None of the three writes a marker,
+    which is what brings the investigation back once the reason is fixed.
     """
     candidates = await asyncio.to_thread(_pending_in_own_session, limit)
-    written = {"investigations": 0, "sightings": 0, "verdicts": 0, "gaps": 0, "refused": 0}
+    written = {
+        "investigations": 0,
+        "sightings": 0,
+        "verdicts": 0,
+        "gaps": 0,
+        "refused": 0,
+        "unreadable": 0,
+        "failed": 0,
+    }
 
-    for run_id, seq in candidates:
-        payload = await read_distil(run_id)
+    for terminal in candidates:
+        payload = await read_distil(str(terminal.run_id))
         if payload is None:
-            # Not an error and not a skip-forever: the agent layer may simply be
-            # unreachable, and this run is a candidate again next tick.
-            logger.debug("Distil: %s had no readable fold", run_id)
-            continue
-        try:
-            counts = await asyncio.to_thread(_write_in_own_session, run_id, seq, payload)
-        except DistilRefused as exc:
-            logger.warning("Distil refused %s: %s", run_id, exc)
-            written["refused"] += 1
-            continue
-        except Exception:
-            # Raised, not swallowed: a write path that swallows is what makes a
-            # dead store read as healthy to every surface that reads it.
-            logger.exception("Distil failed on %s, leaving neither rows nor marker", run_id)
-            written["refused"] += 1
+            # Not terminal and not a skip-forever: the agent layer may simply be
+            # unreachable, and this run is a candidate again next tick. Said out
+            # loud all the same, because an agent layer that is never reachable
+            # is a memory that silently never fills.
+            logger.warning("Distil: %s had no readable fold", terminal.run_id)
+            written["unreadable"] += 1
             continue
 
-        written["investigations"] += 1
-        for kind in ("sightings", "verdicts", "gaps"):
-            written[kind] += counts[kind]
+        counts = await _write_with_retry(terminal, payload, written)
+        if counts is None:
+            continue
+
+        written["investigations"] += counts["derived"]
+        for name in ("sightings", "verdicts", "gaps"):
+            written[name] += counts[name]
 
     return written
 
 
-def _pending_in_own_session(limit: int) -> List[Tuple[str, int]]:
+async def _write_with_retry(
+    terminal: Terminal, payload: Mapping[str, Any], written: Dict[str, int]
+) -> Optional[Dict[str, int]]:
+    """One investigation's write, retried once. None when it did not land.
+
+    A refusal is not retried: the payload will not become mappable by being read
+    again, and the fix is on the other side of the contract.
+    """
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            return await asyncio.to_thread(_write_in_own_session, terminal, payload)
+        except DistilRefused as exc:
+            logger.warning("Distil refused %s: %s", terminal.run_id, exc)
+            written["refused"] += 1
+            return None
+        except Exception:
+            if attempt < ATTEMPTS:
+                logger.warning(
+                    "Distil failed on %s, attempt %s of %s; retrying",
+                    terminal.run_id,
+                    attempt,
+                    ATTEMPTS,
+                )
+                continue
+            logger.error(
+                "Distil failed on %s after %s attempts, leaving neither rows nor marker",
+                terminal.run_id,
+                ATTEMPTS,
+                exc_info=True,
+            )
+            written["failed"] += 1
+            return None
+    return None
+
+
+def _pending_in_own_session(limit: int) -> List[Terminal]:
     with unit_of_work() as session:
         return pending(session, limit)
 
 
-def _write_in_own_session(run_id: str, seq: int, payload: Mapping[str, Any]) -> Dict[str, int]:
+def _write_in_own_session(terminal: Terminal, payload: Mapping[str, Any]) -> Dict[str, int]:
     with unit_of_work() as session:
-        return write_distil(session, run_id, seq, payload)
+        return write_distil(session, terminal, payload)
 
 
 __all__: Sequence[str] = (
-    "DISTIL_VERSION",
+    "DISTIL_MAPPING_VERSION",
     "DistilRefused",
+    "Terminal",
     "distil_once",
     "pending",
     "write_distil",

@@ -784,6 +784,19 @@ class Orchestrator:
                         written["verdicts"],
                         written["gaps"],
                     )
+                # Surfaced here and not only where they happened: one refusal in
+                # a log is a line nobody reads, and a tick that wrote nothing
+                # because everything failed must not look like a tick with
+                # nothing to do.
+                if written["refused"] or written["unreadable"] or written["failed"]:
+                    logger.warning(
+                        "Distil left %s investigation(s) undistilled: "
+                        "%s refused, %s unreadable, %s failed",
+                        written["refused"] + written["unreadable"] + written["failed"],
+                        written["refused"],
+                        written["unreadable"],
+                        written["failed"],
+                    )
 
             except asyncio.CancelledError:
                 break

@@ -35,6 +35,7 @@ forbidden_modules =
     core.ingestion
     core.integrations
     core.llm
+    core.memory
     core.reporting
     core.response
     core.skills

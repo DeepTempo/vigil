@@ -6,14 +6,13 @@ Defines the database schema for cases, findings, and related entities.
 
 import uuid
 from datetime import datetime
-from typing import Any, Iterable, List, Optional
+from typing import Any, List, Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
     BigInteger,
     Boolean,
-    CheckConstraint,
     Column,
     DateTime,
     Float,
@@ -2301,45 +2300,21 @@ class ChatMessage(Base):
 
 # --- Episodic memory (#731) ------------------------------------------------
 #
-# The vocabularies below are imported, not restated: `core/memory/recall_contract.py`
-# declares them and `services/agent/contracts/memory.ts` mirrors it under a ratchet,
-# so a value added there reaches these constraints without a second edit.
-from core.memory.recall_contract import (  # noqa: E402
-    GapDisposition,
-    InvestigationKind,
-    Stance,
-    Trust,
-    VerdictOutcome,
-    WindowSource,
-)
-from core.memory.source_tier import SourceTier  # noqa: E402
-
-#
 # What investigations saw and what they concluded, joined on entity keys.
 # Everything is keyed by investigation_kind + investigation_id and never by
 # run_id: a run-keyed schema cannot represent the Case-authored Verdicts that
 # follow, which have a Case behind them and no run at all.
 #
 # No column is nullable. An empty list means known-to-be-none, and there is no
-# unknown state to represent. The DDL these mirror is
-# infra/database/init/22_episodic_memory.sql.
-
-def _one_of(column: str, values: Iterable[str], name: str) -> CheckConstraint:
-    """A CHECK spelling out a vocabulary the contract already declares.
-
-    Built from the enum rather than restated, so a value added to the contract
-    cannot be enforced here in an older spelling.
-    """
-    allowed = ", ".join(f"'{value}'" for value in values)
-    return CheckConstraint(f"{column} IN ({allowed})", name=name)
-
-
-def _kind_check(name: str) -> CheckConstraint:
-    return _one_of("investigation_kind", _values(InvestigationKind), name)
-
-
-def _values(enum: type) -> List[str]:
-    return [member.value for member in enum]
+# unknown state to represent.
+#
+# The domains these columns range over are stated once, in
+# infra/database/init/22_episodic_memory.sql, as every other table in that
+# directory states them. They are not restated here: `core/memory` owns the
+# vocabularies and `core/storage` is the tier underneath it, so mirroring them
+# would mean the shared-infrastructure tier importing a capability domain
+# (CONTEXT.md, and the `tiers` contract in .importlinter). These models carry
+# the uniqueness and the indexes, which is what the rest of this file carries.
 
 
 class EpisodicSighting(Base):
@@ -2377,9 +2352,6 @@ class EpisodicSighting(Base):
             "source_system",
             name="episodic_sightings_unique",
         ),
-        _kind_check("episodic_sightings_kind"),
-        CheckConstraint("hit_count > 0", name="episodic_sightings_hits"),
-        CheckConstraint("first_seen <= last_seen", name="episodic_sightings_window"),
         # The recall join and the order it reads in. Ties break on the primary
         # key: a LIMIT over a partial order lets Postgres return a different set
         # on identical data, which surfaces as a replay diff rather than an error.
@@ -2426,11 +2398,6 @@ class EpisodicVerdict(Base):
             "hypothesis_id",
             name="episodic_verdicts_unique",
         ),
-        _kind_check("episodic_verdicts_kind"),
-        _one_of("outcome", _values(VerdictOutcome), "episodic_verdicts_outcome"),
-        _one_of("trust", _values(Trust), "episodic_verdicts_trust"),
-        _one_of("window_source", _values(WindowSource), "episodic_verdicts_window_source"),
-        CheckConstraint("first_seen <= last_seen", name="episodic_verdicts_window"),
         # Recall joins Verdicts on the subject array rather than a key column.
         Index(
             "idx_episodic_verdicts_subjects",
@@ -2467,8 +2434,6 @@ class EpisodicVerdictSource(Base):
 
     __table_args__ = (
         UniqueConstraint("verdict_id", "source_system", name="episodic_verdict_sources_unique"),
-        _one_of("stance", _values(Stance), "episodic_verdict_sources_stance"),
-        _one_of("source_tier", _values(SourceTier), "episodic_verdict_sources_tier"),
     )
 
 
@@ -2500,8 +2465,6 @@ class EpisodicGap(Base):
             "hypothesis_id",
             name="episodic_gaps_unique",
         ),
-        _kind_check("episodic_gaps_kind"),
-        _one_of("disposition", _values(GapDisposition), "episodic_gaps_disposition"),
         Index("idx_episodic_gaps_subjects", "subject_entities", postgresql_using="gin"),
         Index("idx_episodic_gaps_recall", text("concluded_at DESC"), "id"),
         Index("idx_episodic_gaps_investigation", "investigation_kind", "investigation_id"),
@@ -2520,13 +2483,21 @@ class EpisodicDistilMarker(Base):
 
     investigation_kind: Mapped[str] = mapped_column(String(16), primary_key=True)
     investigation_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    # Where it came from, so a marker can be traced back to a ledger.
+    # The terminal these rows were derived from, so a marker can be traced back
+    # to a ledger.
     origin_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    # The seq of the terminal this was derived from. A hunt that resumed past its
-    # own terminal appends a second one to the same run, and comparing seq is what
-    # makes the later conclusions re-derive instead of being skipped as a run
-    # already seen.
+    # The seq of that terminal. A hunt that resumed past its own terminal appends
+    # a second one to the same run, and comparing seq is what makes the later
+    # conclusions re-derive instead of being skipped as a run already seen.
     origin_seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Every run this investigation has been distilled from, origin_run_id
+    # included. One investigation can span more than one run, and the poll has
+    # only run ids to work with because agent_events carries no investigation id;
+    # without this, each run of one investigation misses the other's marker and
+    # both re-distil on every tick forever.
+    origin_run_ids: Mapped[List[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, server_default=text("ARRAY[]::uuid[]")
+    )
     # Bumped when the mapping changes. Re-deriving is delete-then-insert, so a
     # bump that now yields fewer rows leaves none of the old ones behind.
     distil_version: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -2541,9 +2512,5 @@ class EpisodicDistilMarker(Base):
     )
 
     __table_args__ = (
-        _kind_check("episodic_distil_markers_kind"),
-        CheckConstraint("sightings_written >= 0", name="episodic_markers_sightings"),
-        CheckConstraint("verdicts_written >= 0", name="episodic_markers_verdicts"),
-        CheckConstraint("gaps_written >= 0", name="episodic_markers_gaps"),
-        Index("idx_episodic_markers_origin", "origin_run_id"),
+        Index("idx_episodic_markers_origin", "origin_run_ids", postgresql_using="gin"),
     )

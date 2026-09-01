@@ -1,7 +1,7 @@
 import { fromText } from "./entities.js";
 import { fold, type HuntEvent, type Projection } from "./ledger.js";
 import { evidenceStrength, isGap, NULL_CHECK_PROVENANCE } from "./strength.js";
-import type { Entity, EvidenceRecord, HuntOutcome, HuntStatus, HypothesisStatus, LinkRelation } from "./types.js";
+import type { Entity, EvidenceRecord, HuntOutcome, HypothesisStatus, LinkRelation } from "./types.js";
 
 // What the Distil (#731) is told about a finished hunt, folded here because the
 // fold is this side's. The projection cannot serve it: a supervisor is told how
@@ -73,8 +73,6 @@ export interface DistilConclusion {
   // False when the window fell back to the hunt's own dates because nothing was
   // linked. Ranking discounts an asserted window against an observed one.
   window_observed: boolean;
-  // Empty rather than null: a hypothesis nobody escalated is known-to-be-none.
-  handed_off_case_id: string;
 }
 
 export interface DistilPayload {
@@ -82,8 +80,6 @@ export interface DistilPayload {
   // The hunt, not the run. A run-keyed schema cannot represent the Case-authored
   // Verdicts that follow, and a resumed hunt is one investigation across two runs.
   investigation_id: string;
-  run_id: string;
-  status: HuntStatus;
   // The hunt's own outcome, which the terminal event does not carry: `outcomeOf`
   // narrows it to the domain-free RunOutcome set on the way out, so `aborted`,
   // `budget_terminated` and `data_starved` are distinguishable only here.
@@ -149,24 +145,25 @@ function conclusionsIn(projection: Projection): DistilConclusion[] {
         return record === undefined ? [] : [{ relation: link.relation, record }];
       });
 
+    // Over what was gathered, and nothing else. A dispatcher's failed query, an
+    // operator's declared blind spot and the critic's benign case are the harness
+    // talking, and citing one as corroboration is the rulebook-as-observation
+    // defect the Source Tier map exists to catch. Filtered here rather than
+    // graded `not_evidence` downstream, so it cannot reach a Verdict at all.
+    const gathered = linked.filter(({ record }) => observed(record));
+
     const stances = new Map<string, LinkRelation>();
-    for (const { relation, record } of linked) {
+    for (const { relation, record } of gathered) {
       const held = stances.get(record.source_system);
       if (held === undefined || PRECEDENCE[relation] > PRECEDENCE[held]) {
         stances.set(record.source_system, relation);
       }
     }
 
-    // Over what was gathered, so a gap record's capture time never stands in for
-    // having seen something.
-    const times = linked
-      .filter(({ record }) => observed(record))
-      .map(({ record }) => record.captured_at)
-      .sort();
+    // A gap record's capture time never stands in for having seen something.
+    const times = gathered.map(({ record }) => record.captured_at).sort();
     const first = times[0];
     const last = times[times.length - 1];
-    const handoff = projection.handoffs.find((each) => each.hypothesis_id === hypothesis.hypothesis_id);
-
     return {
       hypothesis_id: hypothesis.hypothesis_id,
       statement: hypothesis.statement,
@@ -181,19 +178,16 @@ function conclusionsIn(projection: Projection): DistilConclusion[] {
       first_seen: first ?? hunt.created_at,
       last_seen: last ?? hunt.terminated_at ?? hunt.created_at,
       window_observed: first !== undefined,
-      handed_off_case_id: handoff?.case_id ?? "",
     };
   });
 }
 
-export function huntDistil(runId: string, events: readonly HuntEvent[]): DistilPayload {
+export function huntDistil(_runId: string, events: readonly HuntEvent[]): DistilPayload {
   const projection = fold(events);
 
   return {
     investigation_kind: "hunt",
     investigation_id: projection.hunt.hunt_id,
-    run_id: runId,
-    status: projection.hunt.status,
     outcome: projection.hunt.outcome,
     concluded_at: projection.hunt.terminated_at ?? "",
     distil_schema_version: DISTIL_SCHEMA_VERSION,

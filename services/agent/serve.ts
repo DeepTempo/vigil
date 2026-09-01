@@ -131,10 +131,6 @@ async function foldedBy(state: State, runId: string, view: "projection" | "disti
   return project === undefined ? null : project(runId, events);
 }
 
-export async function projectionOf(state: State, runId: string): Promise<unknown | null> {
-  return foldedBy(state, runId, "projection");
-}
-
 async function readFold(state: State, runId: string, view: "projection" | "distil", res: ServerResponse): Promise<void> {
   const folded = await foldedBy(state, runId, view);
   if (folded === null) return refuse(res, 404, `no readable run: ${runId}`);

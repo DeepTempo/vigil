@@ -11,9 +11,9 @@
 
 -- The vocabularies are spelled as CHECK constraints rather than as enum types:
 -- altering an enum takes a lock this schema does not need, and every other table
--- in this directory states its domains the same way. They are declared in
--- core/memory/recall_contract.py, which the models build these same constraints
--- from -- a value added there must be added here too.
+-- in this directory states its domains the same way. This file is where they are
+-- enforced; core/memory/recall_contract.py is where they are declared for the
+-- code that writes them, and a value added there must be added here too.
 
 -- What an investigation observed. One row per entity, investigation and source,
 -- so growth tracks investigations and not telemetry volume: a hunt that saw one
@@ -115,8 +115,10 @@ CREATE TABLE IF NOT EXISTS episodic_verdict_sources (
     stance        text      NOT NULL CHECK (stance IN ('supports', 'weakens', 'neither')),
     -- Stamped at write time and never joined at read time: an integration
     -- removed or recategorised later must not retroactively change how a past
-    -- Verdict was corroborated. `not_evidence` here is a defect rather than a
-    -- weak row, and is representable so that it is visible.
+    -- Verdict was corroborated. The harness's own records never reach here --
+    -- the fold drops them before a stance is taken -- so `not_evidence` is a
+    -- fail-closed guard against a source the tier map regrades later, and is
+    -- representable so that such a row is visible rather than silently absent.
     source_tier   text      NOT NULL CHECK (source_tier IN ('telemetry', 'feed', 'not_evidence')),
 
     CONSTRAINT episodic_verdict_sources_unique UNIQUE (verdict_id, source_system)
@@ -162,13 +164,20 @@ COMMENT ON TABLE episodic_gaps IS
 CREATE TABLE IF NOT EXISTS episodic_distil_markers (
     investigation_kind text        NOT NULL CHECK (investigation_kind IN ('hunt', 'case', 'analyst')),
     investigation_id   text        NOT NULL,
-    -- Where it came from, so a marker can be traced back to a ledger.
+    -- The terminal these rows were derived from, so a marker can be traced back
+    -- to a ledger.
     origin_run_id      uuid        NOT NULL,
-    -- The seq of the terminal this was derived from. A hunt that resumed past
-    -- its own terminal appends a second one to the same run, and comparing seq
-    -- is what makes the later conclusions re-derive instead of being skipped as
-    -- a run already seen.
+    -- The seq of that terminal. A hunt that resumed past its own terminal
+    -- appends a second one to the same run, and comparing seq is what makes the
+    -- later conclusions re-derive instead of being skipped as a run already seen.
     origin_seq         integer     NOT NULL,
+    -- Every run this investigation has been distilled from, origin_run_id
+    -- included. One investigation can span more than one run -- a resumed hunt
+    -- is the case the rest of this schema is keyed for -- and the poll has only
+    -- run ids to work with, because agent_events carries no investigation id.
+    -- Without this, each run of one investigation misses the other's marker and
+    -- both re-distil on every tick forever.
+    origin_run_ids     uuid[]      NOT NULL DEFAULT ARRAY[]::uuid[],
     -- Bumped when the mapping changes. Re-deriving is delete-then-insert, so a
     -- bump that now yields fewer rows leaves none of the old ones behind.
     distil_version     integer     NOT NULL,
@@ -183,9 +192,9 @@ CREATE TABLE IF NOT EXISTS episodic_distil_markers (
     PRIMARY KEY (investigation_kind, investigation_id)
 );
 
--- The Distil's poll: which terminals have no marker at the current version.
+-- The Distil's poll: which terminals no marker at the current version covers.
 CREATE INDEX IF NOT EXISTS idx_episodic_markers_origin
-    ON episodic_distil_markers (origin_run_id);
+    ON episodic_distil_markers USING GIN (origin_run_ids);
 
 COMMENT ON TABLE episodic_distil_markers IS
     'One row per distilled investigation, written in the same transaction as its rows.';
