@@ -35,22 +35,34 @@ def _headers() -> Dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-# None means "nothing to report yet" and is not an error: a run enqueued a moment
-# ago has no ledger, and a supervisor must read that as still starting.
-async def read_projection(run_id: str) -> Optional[Dict[str, Any]]:
+async def _read_fold(run_id: str, view: str) -> Optional[Dict[str, Any]]:
     import httpx
 
-    url = agent_route(f"/runs/{run_id}/projection")
+    url = agent_route(f"/runs/{run_id}/{view}")
     try:
         async with httpx.AsyncClient(timeout=READ_TIMEOUT_S) as client:
             response = await client.get(url, headers=_headers())
     except Exception as exc:  # noqa: BLE001 — unreachable is not terminal
-        logger.debug("could not read the projection for %s: %s", run_id, exc)
+        logger.debug("could not read the %s for %s: %s", view, run_id, exc)
         return None
 
     if response.status_code == 404:
         return None
     if response.status_code != 200:
-        logger.warning("projection for %s answered %s", run_id, response.status_code)
+        logger.warning("%s for %s answered %s", view, run_id, response.status_code)
         return None
     return response.json()
+
+
+# None means "nothing to report yet" and is not an error: a run enqueued a moment
+# ago has no ledger, and a supervisor must read that as still starting.
+async def read_projection(run_id: str) -> Optional[Dict[str, Any]]:
+    return await _read_fold(run_id, "projection")
+
+
+# What episodic memory reads once a run has ended, folded on the side that owns
+# the events; see services/agent/workflows/hunt/distil.ts for why it is not the
+# projection. None reads as "nothing to distil yet", never as "this run saw
+# nothing" — the difference matters, because the second would be a fact.
+async def read_distil(run_id: str) -> Optional[Dict[str, Any]]:
+    return await _read_fold(run_id, "distil")

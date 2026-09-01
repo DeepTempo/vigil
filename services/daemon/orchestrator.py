@@ -187,6 +187,7 @@ class Orchestrator:
                 asyncio.create_task(self._intake_loop(shutdown_event)),
                 asyncio.create_task(self._supervision_loop(shutdown_event)),
                 asyncio.create_task(self._review_loop(shutdown_event)),
+                asyncio.create_task(self._distil_loop(shutdown_event)),
             ]
 
             while not shutdown_event.is_set() and self._enabled:
@@ -756,6 +757,55 @@ class Orchestrator:
                 break
             except Exception as e:
                 logger.error(f"Review loop error: {e}", exc_info=True)
+
+            await self._sleep(shutdown_event, self.config.loop_interval)
+
+    # Its own loop rather than a step of the supervision one: the Distil is not
+    # supervising anything, it reads terminals the supervisor has already left
+    # behind. Slower than the others because nothing waits on it — memory is read
+    # at the start of the next run, so a write that lands minutes later is a
+    # write that lands in time.
+    async def _distil_loop(self, shutdown_event: asyncio.Event):
+        """Turn finished hunts into episodic memory (#731)."""
+        from core.memory.distil import distil_once
+
+        while not shutdown_event.is_set():
+            try:
+                if not self._enabled:
+                    await self._sleep(shutdown_event, 10)
+                    continue
+
+                written = await distil_once()
+                if written["investigations"]:
+                    logger.info(
+                        "Distilled %s investigation(s): %s sightings, %s verdicts, %s gaps",
+                        written["investigations"],
+                        written["sightings"],
+                        written["verdicts"],
+                        written["gaps"],
+                    )
+                # Surfaced here and not only where they happened: one refusal in
+                # a log is a line nobody reads, and a tick that wrote nothing
+                # because everything failed must not look like a tick with
+                # nothing to do.
+                if written["refused"] or written["unreadable"] or written["failed"]:
+                    logger.warning(
+                        "Distil left %s investigation(s) undistilled: "
+                        "%s refused, %s unreadable, %s failed",
+                        written["refused"] + written["unreadable"] + written["failed"],
+                        written["refused"],
+                        written["unreadable"],
+                        written["failed"],
+                    )
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                # Logged and retried rather than swallowed into a quiet stop: a
+                # Distil that dies silently is a memory that reads as empty
+                # rather than as broken, and empty is what an entity nobody has
+                # looked at also reads as.
+                logger.error(f"Distil loop error: {e}", exc_info=True)
 
             await self._sleep(shutdown_event, self.config.loop_interval)
 

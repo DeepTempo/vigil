@@ -3,6 +3,7 @@ import type { AgentEvent, RunKind } from "../contracts/events.js";
 import type { Notes } from "../core/memory.js";
 import type { State } from "../core/seams.js";
 import { SpecError, type Owned } from "../core/spec.js";
+import { huntDistil } from "../workflows/hunt/distil.js";
 import type { HuntKinds } from "../workflows/hunt/ledger.js";
 import { huntProjection } from "../workflows/hunt/projection.js";
 import { huntNotes } from "../workflows/hunt/recall.js";
@@ -27,6 +28,10 @@ export interface ArchEntry {
   // What a reader outside this process is told about a run of this kind. Absent
   // means there is nothing to report but the terminal the ledger already carries.
   projection?: (runId: string, events: readonly AgentEvent<Record<never, never>>[]) => unknown;
+  // What episodic memory is told about a finished run of this kind; the fold
+  // itself says why it is not the projection. Absent means a run of this kind is
+  // not distilled, which is the honest default rather than empty rows.
+  distil?: (runId: string, events: readonly AgentEvent<Record<never, never>>[]) => unknown;
 }
 
 const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
@@ -40,6 +45,7 @@ const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
     // kind, the same trade the worker makes when it hands a ledger to a workflow.
     notes: (state, runId) => huntNotes(state as unknown as State<HuntKinds>, runId),
     projection: (runId, events) => huntProjection(runId, events as readonly AgentEvent<HuntKinds>[]),
+    distil: (runId, events) => huntDistil(runId, events as readonly AgentEvent<HuntKinds>[]),
   },
   investigate: {
     arch: packaged("investigate.yaml"),
