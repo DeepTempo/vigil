@@ -322,6 +322,7 @@ class Orchestrator:
         finding_ids = item.get("finding_ids", [])
         case_id = item.get("case_id")
         hypothesis = item.get("hypothesis")
+        hypothesis_subjects = item.get("hypothesis_subjects")
 
         findings = []
         if self._data_service and finding_ids:
@@ -338,6 +339,7 @@ class Orchestrator:
             priority=item.get("priority", "medium"),
             case_id=case_id,
             hypothesis=hypothesis,
+            hypothesis_subjects=hypothesis_subjects,
             shutdown_event=shutdown_event,
         )
 
@@ -349,6 +351,7 @@ class Orchestrator:
         priority: str,
         case_id: Optional[str] = None,
         hypothesis: Optional[str] = None,
+        hypothesis_subjects: Optional[Dict[str, List[str]]] = None,
         shutdown_event: Optional[asyncio.Event] = None,
     ):
         """Core investigation creation logic."""
@@ -376,6 +379,15 @@ class Orchestrator:
         # opened to test reaches its board as a hypothesis, not as prose in the brief.
         if hypothesis:
             self.workdir.write_file(inv_id, "hypotheses.txt", hypothesis)
+        # What each of those claims is about, keyed by the claim. Stated by the
+        # caller or absent: nothing here reads a finding and guesses, because a
+        # guessed subject and a stated one are the same bytes downstream, and a
+        # Verdict recalled under an entity that was never in the claim is worse
+        # than one recalled under nothing.
+        if hypothesis and hypothesis_subjects:
+            self.workdir.write_file(
+                inv_id, "hypothesis_subjects.json", json.dumps(hypothesis_subjects)
+            )
 
         can_start_now = (
             not self.config.dry_run
@@ -627,24 +639,51 @@ class Orchestrator:
                         "Orchestrator stopped while the run was in flight",
                     )
 
+    # Absent, unreadable and empty all mean the same thing here: nobody said what
+    # the claims were about. An empty map rather than None, because a JSON null
+    # reaches the agent layer as a value where a missing key reads as unset.
+    def _hypothesis_subjects(
+        self, inv_id: str, stated: List[str]
+    ) -> Dict[str, List[str]]:
+        held = self.workdir.read_file(inv_id, "hypothesis_subjects.json")
+        if not held:
+            return {}
+        try:
+            declared = json.loads(held)
+        except ValueError:
+            logger.warning("%s has an unreadable hypothesis_subjects.json", inv_id)
+            return {}
+        if not isinstance(declared, dict):
+            return {}
+        # Only the claims actually going on the board: a subject keyed to a
+        # statement that is not being put up belongs to no belief.
+        asked = set(stated)
+        return {
+            str(statement): [str(key) for key in keys]
+            for statement, keys in declared.items()
+            if statement in asked and isinstance(keys, list) and keys
+        }
+
     async def _enqueue_investigation(self, inv_record: Dict) -> None:
         inv_id = inv_record["investigation_id"]
         run_id = inv_record.get("run_id") or run_id_for(inv_id)
+        # One per line, as the console's run modal sends them. Empty for a workflow
+        # that walks phases and has no board to put them on.
+        hypotheses = [
+            line.strip()
+            for line in (
+                self.workdir.read_file(inv_id, "hypotheses.txt") or ""
+            ).splitlines()
+            if line.strip()
+        ]
         request = {
             # The workflow resolves both layers, so no config path travels beside it.
             "playbook": f"workflow:{inv_record['workflow_id']}",
             "config": "",
             "arch": "",
             "prompt": self.workdir.read_file(inv_id, "context.md") or "",
-            # One per line, as the console's run modal sends them. Empty for a workflow
-            # that walks phases and has no board to put them on.
-            "hypotheses": [
-                line.strip()
-                for line in (
-                    self.workdir.read_file(inv_id, "hypotheses.txt") or ""
-                ).splitlines()
-                if line.strip()
-            ],
+            "hypotheses": hypotheses,
+            "hypothesis_subjects": self._hypothesis_subjects(inv_id, hypotheses),
             # ORCHESTRATOR_MAX_COST and ORCHESTRATOR_MAX_RUNTIME keep their meaning
             # as the ceilings the budget seam refuses the next call at.
             "overrides": {

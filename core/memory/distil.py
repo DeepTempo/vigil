@@ -49,6 +49,7 @@ from sqlalchemy.orm import Session
 from core.agents.projections import read_distil
 from core.memory.entity_keys import entity_key, entity_keys
 from core.memory.recall_contract import (
+    VERDICT_SUBJECT_CAP,
     GapDisposition,
     InvestigationKind,
     Stance,
@@ -202,6 +203,21 @@ _GAP_REASONS: Mapping[GapDisposition, str] = {
 }
 
 
+# The hunt's subjects are declared by whoever put the claim up, so nothing upstream
+# bounds them. ADR 0016's rule is memory's, and this is where it is applied on this
+# side, as it is for a Case.
+def _capped(keys: List[str], investigation_id: str, hypothesis_id: str) -> List[str]:
+    if len(keys) > VERDICT_SUBJECT_CAP:
+        logger.warning(
+            "Distil: %s/%s names %s entities, keeping the first %s (ADR 0016)",
+            investigation_id,
+            hypothesis_id,
+            len(keys),
+            VERDICT_SUBJECT_CAP,
+        )
+    return keys[:VERDICT_SUBJECT_CAP]
+
+
 def _outcome_of(status: str) -> Optional[VerdictOutcome]:
     """The Verdict a Hypothesis status becomes, or None when it becomes a Gap.
 
@@ -316,7 +332,11 @@ def _conclusion_rows(
             continue
 
         status = str(conclusion.get("status", ""))
-        subjects = entity_keys(conclusion.get("subject_entities"))
+        subjects = _capped(
+            entity_keys(conclusion.get("subject_entities")),
+            investigation_id,
+            hypothesis_id,
+        )
         statement = str(conclusion.get("statement", ""))
         rationale = str(conclusion.get("rationale", ""))
         outcome = _outcome_of(status)

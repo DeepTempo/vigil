@@ -211,6 +211,13 @@ export interface Hypothesis {
   attack_technique: string | null;
   provenance: string;
   resolution_reason: string | null;
+  // What this claim is about, as the caller stated it when they put it up. A
+  // hypothesis touches forty to seventy entities and is about one to three of
+  // them (ADR 0016), and no extractor can tell which from a sentence: `host`,
+  // `user` and `process` have no free-text shape at all. So it is declared or
+  // it is absent, never guessed. Absent on a playbook's own hypotheses and on
+  // the null, which name nobody by design.
+  subjects?: Entity[];
   // What the numbers were at verdict time. Absent while the hypothesis is
   // active; a verdict that cannot be re-read is not auditable.
   evidence_strength?: EvidenceStrength | null;

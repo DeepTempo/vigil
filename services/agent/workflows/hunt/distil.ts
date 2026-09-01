@@ -60,8 +60,10 @@ export interface DistilConclusion {
   // The harness's own words for why it landed here. Reaches no ranking function
   // (ADR 0015); carried for a human reading the run back.
   rationale: string;
-  // Drawn from the statement, not from the evidence: a hypothesis touches forty
-  // to seventy entities and is about one to three of them (ADR 0016).
+  // What the claim is about, not what it touched: a hypothesis touches forty to
+  // seventy entities and is about one to three of them (ADR 0016). Declared by the
+  // caller who put the claim up; the statement is read only when they declared
+  // nothing, and it answers for the seven types that have a free-text shape.
   subject_entities: Entity[];
   // Linked observations. The status map reads it as "was evidence gathered",
   // which separates an inconclusive that looked from one that never did.
@@ -169,7 +171,7 @@ function conclusionsIn(projection: Projection): DistilConclusion[] {
       statement: hypothesis.statement,
       status: hypothesis.status,
       rationale: hypothesis.resolution_reason ?? "",
-      subject_entities: dedupe(fromText(hypothesis.statement)),
+      subject_entities: dedupe(hypothesis.subjects ?? fromText(hypothesis.statement)),
       evidence_count: times.length,
       attacker_influenceable_only: evidenceStrength(projection, hypothesis.hypothesis_id).attacker_influenceable_only,
       sources: [...stances].map(([source_system, stance]) => ({ source_system, stance })),

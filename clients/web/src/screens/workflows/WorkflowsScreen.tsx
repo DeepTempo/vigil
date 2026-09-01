@@ -418,7 +418,49 @@ function looksUnfinished(line: string): boolean {
   return line.endsWith(':') || /^[a-z]/.test(line)
 }
 
-function HypothesisPreview({ text }: { text: string }) {
+/** The ten kinds a key can carry, held to the hunt's own closed set by the spec
+ *  loader, which refuses anything else rather than coercing it. */
+const ENTITY_TYPES = ['ip', 'domain', 'host', 'url', 'email', 'hash', 'arn', 'aws_key', 'user', 'process']
+
+/** `type:value`, comma separated — the form the hunt already writes an entity in.
+ *  Split on the first colon, because a url value carries its own. */
+function parsedSubjects(raw: string): { keys: string[]; bad: string[] } {
+  const keys: string[] = []
+  const bad: string[] = []
+  for (const piece of raw.split(',').map((one) => one.trim()).filter((one) => one !== '')) {
+    const at = piece.indexOf(':')
+    const kind = at < 1 ? '' : piece.slice(0, at).trim().toLowerCase()
+    const value = at < 1 ? '' : piece.slice(at + 1).trim()
+    if (value !== '' && ENTITY_TYPES.includes(kind)) keys.push(`${kind}:${value}`)
+    else bad.push(piece)
+  }
+  return { keys, bad }
+}
+
+/** What each belief is about, keyed by the belief itself. Editing a statement drops
+ *  its subjects, which is the honest outcome: they were about the older claim. */
+function subjectsAsked(text: string, held: Record<string, string>): Record<string, string[]> {
+  const asked: Record<string, string[]> = {}
+  for (const belief of parsedHypotheses(text)) {
+    const { keys } = parsedSubjects(held[belief] ?? '')
+    if (keys.length > 0) asked[belief] = keys
+  }
+  return asked
+}
+
+function malformedSubjects(text: string, held: Record<string, string>): string[] {
+  return parsedHypotheses(text).flatMap((belief) => parsedSubjects(held[belief] ?? '').bad)
+}
+
+function HypothesisPreview({
+  text,
+  subjects,
+  onSubject,
+}: {
+  text: string
+  subjects: Record<string, string>
+  onSubject: (belief: string, raw: string) => void
+}) {
   const beliefs = parsedHypotheses(text)
   if (beliefs.length === 0) return null
   const suspect = beliefs.filter(looksUnfinished).length
@@ -430,12 +472,30 @@ function HypothesisPreview({ text }: { text: string }) {
         account as the claim to beat.
       </div>
       <ol className="hyp-preview-list">
-        {beliefs.map((belief, at) => (
-          <li key={at} className={looksUnfinished(belief) ? 'suspect' : undefined}>
-            <span className="hyp-preview-n">H{at + 1}</span>
-            <span>{belief}</span>
-          </li>
-        ))}
+        {beliefs.map((belief, at) => {
+          const raw = subjects[belief] ?? ''
+          const { bad } = parsedSubjects(raw)
+          return (
+            <li key={at} className={looksUnfinished(belief) ? 'suspect' : undefined}>
+              <span className="hyp-preview-n">H{at + 1}</span>
+              <span className="hyp-preview-belief">
+                <span>{belief}</span>
+                <input
+                  className={bad.length > 0 ? 'hyp-preview-subject bad' : 'hyp-preview-subject'}
+                  value={raw}
+                  onChange={(e) => onSubject(belief, e.target.value)}
+                  placeholder="About — host:dev-830, ip:45.77.53.176"
+                  aria-label={`What H${at + 1} is about`}
+                />
+                {bad.length > 0 && (
+                  <span className="hyp-preview-bad">
+                    {bad.join(', ')} — each subject is type:value, where type is one of {ENTITY_TYPES.join(', ')}.
+                  </span>
+                )}
+              </span>
+            </li>
+          )
+        })}
       </ol>
       {suspect > 0 && (
         <div className="hyp-preview-warn">
@@ -468,6 +528,7 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
   const [caseId, setCaseId] = useState('')
   const [context, setContext] = useState('')
   const [hypothesis, setHypothesis] = useState('')
+  const [subjects, setSubjects] = useState<Record<string, string>>({})
   const [approve, setApprove] = useState(false)
   const [iterations, setIterations] = useState('')
   const [maxCost, setMaxCost] = useState('')
@@ -508,9 +569,12 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
     ...(context.trim() && { context: context.trim() }),
     ...(hypothesis.trim() && { hypothesis: hypothesis.trim() }),
   }
+  const asked = subjectsAsked(hypothesis, subjects)
+  const malformed = malformedSubjects(hypothesis, subjects)
   // A turn count says how long to run, never what to run on, so it is not a target.
   const withTurns = {
     ...params,
+    ...(isHunt && Object.keys(asked).length > 0 && { hypothesis_subjects: asked }),
     ...(isHunt && !turnsBad && iterations.trim() && { iterations: turns }),
     ...(isHunt && !costBad && maxCost.trim() && { max_cost_usd: cost }),
     ...(isHunt && approve && { approve_hypotheses: true }),
@@ -522,6 +586,12 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
   const run = async () => {
     if (needsHypothesis) {
       setError('A hunt tests a claim you state. Put at least one in Hypothesis — the benign account is added for you.')
+      return
+    }
+    // Refused rather than dropped: a subject that does not reach the run is a
+    // verdict nobody can recall later, and silence about it is the worst outcome.
+    if (malformed.length > 0) {
+      setError(`Not an entity key: ${malformed.join(', ')}. Each subject is type:value — host:dev-830, ip:45.77.53.176.`)
       return
     }
     setStarting(true)
@@ -563,10 +633,16 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
           placeholder="Credentials taken from HOST-42 were reused on another host…"
           textarea
           hint={isHunt
-            ? 'One belief per line, each a claim the hunt can argue against. The benign account is added for you as the claim to beat.'
+            ? 'One belief per line, each a claim the hunt can argue against. The benign account is added for you as the claim to beat. Say what each one is about below, so its verdict can be found again by that host or address.'
             : undefined}
         />
-        {isHunt && <HypothesisPreview text={hypothesis} />}
+        {isHunt && (
+          <HypothesisPreview
+            text={hypothesis}
+            subjects={subjects}
+            onSubject={(belief, raw) => setSubjects((held) => ({ ...held, [belief]: raw }))}
+          />
+        )}
         {isHunt && (
           <Field
             label="Iterations"

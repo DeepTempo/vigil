@@ -43,6 +43,7 @@ export async function resolveSpec(job: StartJob, resolve: PlaybookResolver = def
   const arch = job.request.arch === "" ? entry.arch : job.request.arch;
   // Carried on the job, not the reference, which names a definition many runs share.
   const asked = job.request.hypotheses ?? [];
+  const subjects = job.request.hypothesis_subjects ?? {};
   const turns = job.request.iterations;
   // Only ever tightens: a caller may ask to be asked, never to skip a declared gate.
   const gate = job.request.approve_hypotheses === true ? { hypothesis_approval: "ask" } : {};
@@ -53,6 +54,7 @@ export async function resolveSpec(job: StartJob, resolve: PlaybookResolver = def
         sections: {
           ...spec.sections,
           ...(asked.length === 0 ? {} : { operator_hypotheses: asked }),
+          ...(Object.keys(subjects).length === 0 ? {} : { operator_hypothesis_subjects: subjects }),
           ...(Object.keys(gate).length === 0
             ? {}
             : { checkpoints: { ...((spec.sections?.["checkpoints"] as object) ?? {}), ...gate } }),
