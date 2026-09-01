@@ -32,8 +32,6 @@ except ImportError:
     pass
 
 logger = logging.getLogger(__name__)
-server = Server("elastic")
-
 _elastic_service = None
 
 
@@ -72,7 +70,6 @@ def get_elastic_service():
 # ------------------------------------------------------------------
 
 
-@server.list_tools()
 async def handle_list_tools():
     return [
         types.Tool(
@@ -147,7 +144,6 @@ async def handle_list_tools():
 # ------------------------------------------------------------------
 
 
-@server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None):
     svc = get_elastic_service()
     if svc is None:
@@ -275,6 +271,23 @@ async def _get_detection_alerts(svc, args: dict):
 # ------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------
+
+
+async def _on_list_tools(_ctx, _params):
+    return types.ListToolsResult(tools=await handle_list_tools())
+
+
+async def _on_call_tool(_ctx, params):
+    return types.CallToolResult(
+        content=await handle_call_tool(params.name, params.arguments)
+    )
+
+
+server = Server(
+    "elastic",
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
 
 
 async def main():

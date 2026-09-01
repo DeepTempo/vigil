@@ -308,9 +308,6 @@ def get_config():
         logger.error(f"Error loading config: {{e}}")
         return {{}}
 
-server = Server("integration-id-server")
-
-@server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
     \"\"\"List available tools.\"\"\"
     return [
@@ -330,7 +327,6 @@ async def handle_list_tools() -> list[types.Tool]:
         )
     ]
 
-@server.call_tool()
 async def handle_call_tool(
     name: str, arguments: dict | None
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
@@ -367,6 +363,20 @@ async def handle_call_tool(
                 "tool": name
             }}, indent=2)
         )]
+
+async def _on_list_tools(_ctx, _params):
+    return types.ListToolsResult(tools=await handle_list_tools())
+
+async def _on_call_tool(_ctx, params):
+    return types.CallToolResult(
+        content=await handle_call_tool(params.name, params.arguments)
+    )
+
+server = Server(
+    "integration-id-server",
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
 
 async def main():
     \"\"\"Run the MCP server.\"\"\"
@@ -620,8 +630,8 @@ Only generate the JSON response when you have enough information to create a com
 
             # Check for required components
             has_server_init = "Server(" in code
-            has_list_tools = "@server.list_tools()" in code
-            has_call_tool = "@server.call_tool()" in code
+            has_list_tools = "on_list_tools" in code
+            has_call_tool = "on_call_tool" in code
             has_main = "async def main():" in code
 
             validation_checks = {

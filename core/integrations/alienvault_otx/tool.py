@@ -22,7 +22,6 @@ from core.integrations._base.config import resolve
 from core.integrations.alienvault_otx.descriptor import ALIENVAULT_OTX
 
 logger = logging.getLogger(__name__)
-server = Server("alienvault-otx")
 
 
 def result(data):
@@ -33,7 +32,6 @@ def get_config():
     return resolve(ALIENVAULT_OTX)
 
 
-@server.list_tools()
 async def handle_list_tools():
     return [
         types.Tool(
@@ -66,7 +64,6 @@ async def handle_list_tools():
     ]
 
 
-@server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None):
     config = get_config()
     api_key = config.get("api_key")
@@ -145,6 +142,23 @@ async def handle_call_tool(name: str, arguments: dict | None):
         )
     except Exception as e:
         return result({"error": str(e)})
+
+
+async def _on_list_tools(_ctx, _params):
+    return types.ListToolsResult(tools=await handle_list_tools())
+
+
+async def _on_call_tool(_ctx, params):
+    return types.CallToolResult(
+        content=await handle_call_tool(params.name, params.arguments)
+    )
+
+
+server = Server(
+    "alienvault-otx",
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
 
 
 async def main():

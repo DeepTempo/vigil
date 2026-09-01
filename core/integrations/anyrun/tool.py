@@ -22,14 +22,12 @@ from core.integrations._base.config import resolve
 from core.integrations.anyrun.descriptor import ANYRUN
 
 logger = logging.getLogger(__name__)
-server = Server("anyrun")
 
 
 def result(data):
     return [types.TextContent(type="text", text=json.dumps(data, indent=2))]
 
 
-@server.list_tools()
 async def handle_list_tools():
     return [
         types.Tool(
@@ -53,7 +51,6 @@ async def handle_list_tools():
     ]
 
 
-@server.call_tool()
 async def handle_call_tool(name: str, arguments: dict | None):
     config = resolve(ANYRUN)
     api_key = config.get("api_key")
@@ -99,6 +96,23 @@ async def handle_call_tool(name: str, arguments: dict | None):
         return result({"error": f"Unknown tool: {name}"})
     except Exception as e:
         return result({"error": str(e)})
+
+
+async def _on_list_tools(_ctx, _params):
+    return types.ListToolsResult(tools=await handle_list_tools())
+
+
+async def _on_call_tool(_ctx, params):
+    return types.CallToolResult(
+        content=await handle_call_tool(params.name, params.arguments)
+    )
+
+
+server = Server(
+    "anyrun",
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
 
 
 async def main():
