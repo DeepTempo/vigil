@@ -49,9 +49,9 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Path is relative to this compose file (infra/docker/), so ../ points
-      # at infra/, where the schema SQL now lives (infra/database/init/).
-      - ../database/init:/docker-entrypoint-initdb.d
+      # SQL files at /db-init (not in initdb.d directly — see 00_apply.sh).
+      - ../database/init:/db-init:ro
+      - ./initdb/00_apply.sh:/docker-entrypoint-initdb.d/00_apply.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U deeptempo -d deeptempo_soc"]
       interval: 10s
@@ -118,6 +118,37 @@ services:
       bifrost:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - deeptempo-network
+
+  # Second pass: replay init SQL after the backend's create_all has built
+  # ORM-managed tables. Mirrors clients/desktop/standalone/docker-compose.yml
+  # db-seed. /api/health answers while create_all may still be running, so
+  # the sentinel is an ORM-only table (sla_policies), not the health endpoint.
+  db-seed:
+    image: pgvector/pgvector:pg16
+    container_name: deeptempo-db-seed
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: deeptempo
+      PGDATABASE: deeptempo_soc
+      PGPASSWORD: ${POSTGRES_PASSWORD:-deeptempo_secure_password_change_me}
+    volumes:
+      - ../database/init:/db-init:ro
+      - ./initdb/00_apply.sh:/apply.sh:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        for i in $$(seq 1 60); do
+          [ "$$(psql -tAc "SELECT to_regclass('public.sla_policies') IS NOT NULL")" = t ] && break;
+          sleep 1;
+        done;
+        exec sh /apply.sh
+    restart: "no"
     networks:
       - deeptempo-network
 
