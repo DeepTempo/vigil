@@ -18,9 +18,14 @@ jobs:
     # Skipping (not failing) keeps forks quiet.
     if: github.repository == 'Vigil-SOC/vigil'
     runs-on: ubuntu-latest
+    # Same services, job env, extensions, init_database(), and agent-layer SQL
+    # as ci-cd.yml test-integration (and the DB pieces of test-unit-backend-db).
+    # DatabaseConfig does not read DATABASE_URL (#752); POSTGRES_* on the job
+    # is what Python actually uses. DATABASE_URL stays for the TypeScript
+    # walking-skeleton test, which shells out to npx tsx and reads it itself.
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: deeptempo_test
           POSTGRES_USER: test
@@ -32,7 +37,29 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-    
+      # The walking-skeleton test enqueues onto BullMQ and spawns the TypeScript
+      # worker, so this job needs Redis and Node as well as Postgres.
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    env:
+      TESTING: "true"
+      DEV_MODE: "true"
+      SECRET_KEY: "test-secret-key"
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: deeptempo_test
+      DATABASE_URL: postgresql://test:test@localhost:5432/deeptempo_test
+      REDIS_URL: redis://localhost:6379/0
+
     steps:
       - uses: actions/checkout@v7
         with:
@@ -44,18 +71,51 @@ jobs:
         with:
           python-version-file: .python-version
           cache: 'pip'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/agent/package-lock.json
+
+      - name: Install agent-layer dependencies
+        working-directory: services/agent
+        run: npm ci
       
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.lock
+
+      - name: Enable Postgres extensions
+        run: |
+          PGPASSWORD=test psql -h localhost -p 5432 -U test -d deeptempo_test \
+            -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+
+      - name: Initialize schema
+        # Strict here, and only here: CI provisions from empty, so a schema that
+        # cannot serve the models at this point is a provisioning bug rather
+        # than a stale deployment (#562). Scoped to the step rather than the job
+        # so it does not change how every test in the job behaves.
+        env:
+          DB_STRICT_SCHEMA: "true"
+        run: |
+          python -c "from core.storage.connection import init_database; init_database()"
+
+      # The agent layer's tables are raw SQL with no ORM model, deliberately:
+      # Python makes two reads against the ledger and a model invites writes.
+      # init_database() builds from the models, so it creates none of them.
+      - name: Apply agent-layer schema
+        run: |
+          PGPASSWORD=test psql -h localhost -p 5432 -U test -d deeptempo_test \
+            -f infra/database/init/19_agent_ledger.sql \
+            -f infra/database/init/20_agent_directives.sql \
+            -f infra/database/init/21_agent_run_leases.sql
       
       - name: Run all tests
         run: |
           pytest tests/ -v --cov --cov-report=xml --cov-report=term
-        env:
-          TESTING: true
-          DATABASE_URL: postgresql://test:test@localhost:5432/deeptempo_test
       
       - name: Upload coverage
         uses: codecov/codecov-action@v7
