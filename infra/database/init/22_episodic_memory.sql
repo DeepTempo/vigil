@@ -5,9 +5,12 @@
 -- run_id: a run-keyed schema cannot represent the Case-authored Verdicts that
 -- follow, which have a Case behind them and no run at all.
 --
--- No column is nullable. An empty list means known-to-be-none, and there is no
--- unknown state to represent -- a row nobody can read as "we did not record
--- this" is a row nobody has to guess about.
+-- No column is nullable, with one stated exception. An empty list means
+-- known-to-be-none, and there is no unknown state to represent -- a row nobody
+-- can read as "we did not record this" is a row nobody has to guess about. The
+-- exception is the marker's origin pair, which a Case has no value for because
+-- a Case is closed and never run; a CHECK ties its absence to the kind, so it
+-- still names one thing rather than leaving a reader to guess.
 
 -- The vocabularies are spelled as CHECK constraints rather than as enum types:
 -- altering an enum takes a lock this schema does not need, and every other table
@@ -165,12 +168,12 @@ CREATE TABLE IF NOT EXISTS episodic_distil_markers (
     investigation_kind text        NOT NULL CHECK (investigation_kind IN ('hunt', 'case', 'analyst')),
     investigation_id   text        NOT NULL,
     -- The terminal these rows were derived from, so a marker can be traced back
-    -- to a ledger.
-    origin_run_id      uuid        NOT NULL,
+    -- to a ledger. Null on a Case, which was closed rather than run.
+    origin_run_id      uuid,
     -- The seq of that terminal. A hunt that resumed past its own terminal
     -- appends a second one to the same run, and comparing seq is what makes the
     -- later conclusions re-derive instead of being skipped as a run already seen.
-    origin_seq         integer     NOT NULL,
+    origin_seq         integer,
     -- Every run this investigation has been distilled from, origin_run_id
     -- included. One investigation can span more than one run -- a resumed hunt
     -- is the case the rest of this schema is keyed for -- and the poll has only
@@ -189,8 +192,32 @@ CREATE TABLE IF NOT EXISTS episodic_distil_markers (
     concluded_at       timestamptz NOT NULL,
     distilled_at       timestamptz NOT NULL DEFAULT now(),
 
-    PRIMARY KEY (investigation_kind, investigation_id)
+    PRIMARY KEY (investigation_kind, investigation_id),
+
+    -- The one place this schema admits a NULL, and it is not an unknown state:
+    -- which of the two shapes a marker has follows entirely from its kind, and
+    -- this says so. A hunt marker names the terminal it was derived from; a
+    -- Case marker cannot, because a Case is closed and never run. Stated as a
+    -- CHECK rather than left to the writer so that neither shape can be
+    -- half-written -- a hunt marker with no origin is a marker nothing can be
+    -- traced back to, and a Case marker carrying one is a lie about a run.
+    CONSTRAINT episodic_distil_markers_origin_matches_kind CHECK (
+        (investigation_kind = 'hunt') = (origin_run_id IS NOT NULL)
+        AND (origin_run_id IS NULL) = (origin_seq IS NULL)
+    )
 );
+
+-- Existing databases predate the Case writer, which needs the origin columns to
+-- be absent on a kind that has no run.
+ALTER TABLE episodic_distil_markers ALTER COLUMN origin_run_id DROP NOT NULL;
+ALTER TABLE episodic_distil_markers ALTER COLUMN origin_seq    DROP NOT NULL;
+ALTER TABLE episodic_distil_markers
+    DROP CONSTRAINT IF EXISTS episodic_distil_markers_origin_matches_kind;
+ALTER TABLE episodic_distil_markers
+    ADD CONSTRAINT episodic_distil_markers_origin_matches_kind CHECK (
+        (investigation_kind = 'hunt') = (origin_run_id IS NOT NULL)
+        AND (origin_run_id IS NULL) = (origin_seq IS NULL)
+    );
 
 -- The Distil's poll: which terminals no marker at the current version covers.
 CREATE INDEX IF NOT EXISTS idx_episodic_markers_origin

@@ -96,8 +96,7 @@ BUDGET_TERMINATED = "budget_terminated"
 # marker has to say which runs it accounts for. Matching the version in the join
 # rather than the filter is what makes a bump re-offer every covered run instead
 # of only the origin one.
-_CANDIDATES = text(
-    """
+_CANDIDATES = text("""
     SELECT DISTINCT ON (e.run_id) e.run_id AS run_id, e.seq AS seq
     FROM agent_events e
     LEFT JOIN episodic_distil_markers m
@@ -111,8 +110,7 @@ _CANDIDATES = text(
       )
     ORDER BY e.run_id, e.seq DESC
     LIMIT :limit
-    """
-)
+    """)
 
 
 @dataclass(frozen=True)
@@ -121,6 +119,19 @@ class Terminal:
 
     run_id: uuid.UUID
     seq: int
+
+
+@dataclass(frozen=True)
+class Origin:
+    """The terminal a marker's rows were derived from, and the runs it covers.
+
+    Absent on a Case, which is closed rather than run — the marker's origin
+    columns are null there, and the schema's CHECK ties that to the kind.
+    """
+
+    run_id: uuid.UUID
+    seq: int
+    covered: Sequence[uuid.UUID]
 
 
 @dataclass(frozen=True)
@@ -196,7 +207,9 @@ def _outcome_of(status: str) -> Optional[VerdictOutcome]:
     return None
 
 
-def _sources_of(conclusion: Mapping[str, Any], investigation_id: str) -> List[Dict[str, str]]:
+def _sources_of(
+    conclusion: Mapping[str, Any], investigation_id: str
+) -> List[Dict[str, str]]:
     """Per-source Stance and stamped Source Tier.
 
     The tier is stamped here and never joined at read time: an integration
@@ -252,7 +265,9 @@ def _sighting_rows(concluded: Concluded) -> List[Dict[str, Any]]:
         # A row missing any of these cannot be joined, ordered or counted, and
         # writing a guessed one puts an entity in history it was never in.
         if not key or first is None or last is None or hits <= 0:
-            logger.warning("Distil: %s dropped an unusable sighting %r", investigation_id, sighting)
+            logger.warning(
+                "Distil: %s dropped an unusable sighting %r", investigation_id, sighting
+            )
             continue
         rows.append(
             {
@@ -273,7 +288,9 @@ def _sighting_rows(concluded: Concluded) -> List[Dict[str, Any]]:
     return rows
 
 
-def _conclusion_rows(concluded: Concluded) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def _conclusion_rows(
+    concluded: Concluded,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Split the hunt's conclusions into Verdict rows and Gap rows."""
     payload, investigation_id = concluded.payload, concluded.investigation_id
     run_outcome = str(payload.get("outcome") or "")
@@ -283,7 +300,9 @@ def _conclusion_rows(concluded: Concluded) -> Tuple[List[Dict[str, Any]], List[D
     for conclusion in payload.get("conclusions") or []:
         hypothesis_id = str(conclusion.get("hypothesis_id", "")).strip()
         if not hypothesis_id:
-            logger.warning("Distil: %s has a conclusion with no hypothesis id", investigation_id)
+            logger.warning(
+                "Distil: %s has a conclusion with no hypothesis id", investigation_id
+            )
             continue
 
         status = str(conclusion.get("status", ""))
@@ -347,12 +366,18 @@ def _conclusion_rows(concluded: Concluded) -> Tuple[List[Dict[str, Any]], List[D
     return verdicts, gaps
 
 
-def _clear(session: Session, kind: InvestigationKind, investigation_id: str) -> None:
+def clear_investigation(
+    session: Session, kind: InvestigationKind, investigation_id: str
+) -> None:
     """Everything this investigation wrote, scoped to it and to nothing else.
 
     Verdict sources go with their Verdicts through the foreign key, which is why
     they are not deleted here: deleting them separately would leave a window in
     which a Verdict has none.
+
+    Shared with the Case Distil rather than written twice: re-deriving is
+    delete-then-insert, and two implementations of the delete half is two
+    definitions of what an investigation owns.
     """
     for model in (EpisodicSighting, EpisodicVerdict, EpisodicGap):
         session.execute(
@@ -383,12 +408,16 @@ def _accept(terminal: Terminal, payload: Mapping[str, Any]) -> Concluded:
 
     concluded_at = _utc(payload.get("concluded_at"))
     if concluded_at is None:
-        raise DistilRefused(f"{terminal.run_id} has not concluded, so there is nothing to distil")
+        raise DistilRefused(
+            f"{terminal.run_id} has not concluded, so there is nothing to distil"
+        )
 
     return Concluded(payload, investigation_id, concluded_at)
 
 
-def _superseded_by(marker: Optional[EpisodicDistilMarker], concluded: Concluded, terminal: Terminal) -> bool:
+def _superseded_by(
+    marker: Optional[EpisodicDistilMarker], concluded: Concluded, terminal: Terminal
+) -> bool:
     """Whether this investigation already holds rows from a later terminal.
 
     One investigation can reach a terminal in more than one run, and the poll
@@ -405,7 +434,9 @@ def _superseded_by(marker: Optional[EpisodicDistilMarker], concluded: Concluded,
     )
 
 
-def write_distil(session: Session, terminal: Terminal, payload: Mapping[str, Any]) -> Dict[str, int]:
+def write_distil(
+    session: Session, terminal: Terminal, payload: Mapping[str, Any]
+) -> Dict[str, int]:
     """Map one payload to rows and write them, marker included.
 
     Everything here is one transaction the caller owns. A failure raises with
@@ -417,7 +448,9 @@ def write_distil(session: Session, terminal: Terminal, payload: Mapping[str, Any
 
     marker = session.get(EpisodicDistilMarker, (kind.value, concluded.investigation_id))
     # origin_run_id included, so the covered set is what the poll needs on its own.
-    covered = sorted({*(marker.origin_run_ids if marker is not None else []), terminal.run_id})
+    covered = sorted(
+        {*(marker.origin_run_ids if marker is not None else []), terminal.run_id}
+    )
 
     if _superseded_by(marker, concluded, terminal):
         marker.origin_run_ids = covered  # type: ignore[union-attr]
@@ -432,7 +465,7 @@ def write_distil(session: Session, terminal: Terminal, payload: Mapping[str, Any
     if str(payload.get("outcome") or "") == ABORTED:
         counts = {"sightings": 0, "verdicts": 0, "gaps": 0}
     else:
-        _clear(session, kind, concluded.investigation_id)
+        clear_investigation(session, kind, concluded.investigation_id)
 
         sightings = _sighting_rows(concluded)
         verdicts, gaps = _conclusion_rows(concluded)
@@ -449,40 +482,80 @@ def write_distil(session: Session, terminal: Terminal, payload: Mapping[str, Any
             for source in verdict["sources"]:
                 session.add(EpisodicVerdictSource(verdict_id=row.id, **source))
 
-        counts = {"sightings": len(sightings), "verdicts": len(verdicts), "gaps": len(gaps)}
+        counts = {
+            "sightings": len(sightings),
+            "verdicts": len(verdicts),
+            "gaps": len(gaps),
+        }
 
-    row = {
+    write_marker(
+        session,
+        kind=kind,
+        investigation_id=concluded.investigation_id,
+        version=DISTIL_MAPPING_VERSION,
+        counts=counts,
+        concluded_at=concluded.concluded_at,
+        origin=Origin(terminal.run_id, terminal.seq, covered),
+    )
+    return counts | {"derived": 1}
+
+
+def write_marker(
+    session: Session,
+    *,
+    kind: InvestigationKind,
+    investigation_id: str,
+    version: int,
+    counts: Mapping[str, int],
+    concluded_at: datetime,
+    origin: Optional[Origin] = None,
+) -> None:
+    """Record that this investigation was processed, at this version.
+
+    The one upsert in either Distil, and the only row it is right for: a marker
+    is one row keyed by the investigation, so there is no set of stale rows to
+    leave behind. Counts are set from what was just written, never incremented.
+
+    Each kind versions its own mapping, so the version is passed rather than
+    read from a module constant — a change to how a Case maps must not re-offer
+    every hunt.
+    """
+    row: Dict[str, Any] = {
         "investigation_kind": kind.value,
-        "investigation_id": concluded.investigation_id,
-        "origin_run_id": terminal.run_id,
-        "origin_seq": terminal.seq,
-        "origin_run_ids": covered,
-        "distil_version": DISTIL_MAPPING_VERSION,
-        "sightings_written": counts["sightings"],
-        "verdicts_written": counts["verdicts"],
-        "gaps_written": counts["gaps"],
-        "concluded_at": concluded.concluded_at,
+        "investigation_id": investigation_id,
+        "origin_run_id": origin.run_id if origin is not None else None,
+        "origin_seq": origin.seq if origin is not None else None,
+        "origin_run_ids": list(origin.covered) if origin is not None else [],
+        "distil_version": version,
+        "sightings_written": counts.get("sightings", 0),
+        "verdicts_written": counts.get("verdicts", 0),
+        "gaps_written": counts.get("gaps", 0),
+        "concluded_at": concluded_at,
     }
-    # The one upsert here, and the only row it is right for: a marker is one row
-    # keyed by the investigation, so there is no set of stale rows to leave behind.
-    # Counts are set from what was just written, never incremented.
     session.execute(
         insert(EpisodicDistilMarker)
         .values(**row)
         .on_conflict_do_update(
             index_elements=["investigation_kind", "investigation_id"],
-            set_={key: row[key] for key in row if key not in ("investigation_kind", "investigation_id")}
+            set_={
+                key: row[key]
+                for key in row
+                if key not in ("investigation_kind", "investigation_id")
+            }
             | {"distilled_at": text("now()")},
         )
     )
-    return counts | {"derived": 1}
 
 
 def pending(session: Session, limit: int = DEFAULT_BATCH) -> List[Terminal]:
     """Terminals no marker at this version covers, newest terminal per run."""
     rows = session.execute(
         _CANDIDATES,
-        {"kinds": list(DISTILLED_RUN_KINDS), "version": DISTIL_MAPPING_VERSION, "limit": limit},
+        {
+            "kinds": list(DISTILLED_RUN_KINDS),
+            "version": DISTIL_MAPPING_VERSION,
+            "limit": limit,
+        },
     ).all()
     return [Terminal(uuid.UUID(str(row.run_id)), int(row.seq)) for row in rows]
 
@@ -571,7 +644,9 @@ def _pending_in_own_session(limit: int) -> List[Terminal]:
         return pending(session, limit)
 
 
-def _write_in_own_session(terminal: Terminal, payload: Mapping[str, Any]) -> Dict[str, int]:
+def _write_in_own_session(
+    terminal: Terminal, payload: Mapping[str, Any]
+) -> Dict[str, int]:
     with unit_of_work() as session:
         return write_distil(session, terminal, payload)
 
@@ -579,8 +654,11 @@ def _write_in_own_session(terminal: Terminal, payload: Mapping[str, Any]) -> Dic
 __all__: Sequence[str] = (
     "DISTIL_MAPPING_VERSION",
     "DistilRefused",
+    "Origin",
     "Terminal",
+    "clear_investigation",
     "distil_once",
     "pending",
     "write_distil",
+    "write_marker",
 )

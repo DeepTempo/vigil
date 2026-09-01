@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from core.cases.closure import ClosedByKind, ClosureCategory
 from core.exceptions import NotFoundError, default_on_error
 from core.storage.models import Case, CaseTask, CaseTemplate
 from core.storage.unit_of_work import unit_of_work
@@ -384,15 +385,26 @@ class CaseWorkflowService:
         *,
         closure_category: str,
         closed_by: str,
+        closed_by_kind: ClosedByKind = ClosedByKind.AGENT,
         root_cause: Optional[str] = None,
         lessons_learned: Optional[str] = None,
         recommendations: Optional[str] = None,
         executive_summary: Optional[str] = None,
+        false_positive_reason: Optional[str] = None,
+        closure_notes: Optional[str] = None,
     ):
         """Mark a case closed and record its closure metadata.
 
         Returns the ``CaseClosureInfo`` row, or None if the case is unknown.
         Also completes the SLA resolution clock.
+
+        The one place a Case's closure is written. Episodic memory reads these
+        rows as Verdicts (#733), so a second writer that set some of them is a
+        second definition of what a closure is.
+
+        ``closed_by_kind`` defaults to ``agent`` rather than being inferred:
+        ``analyst`` is the highest-trust record the system produces, and only a
+        caller with an authenticated person behind it can honestly claim it.
         """
         from core.cases.case_sla_service import CaseSLAService
         from core.storage.models import CaseClosureInfo
@@ -403,16 +415,24 @@ class CaseWorkflowService:
             return None
 
         case.status = "closed"
-        closure = CaseClosureInfo(
-            case_id=case_id,
-            closure_category=closure_category,
-            closed_by=closed_by,
-            root_cause=root_cause,
-            lessons_learned=lessons_learned,
-            recommendations=recommendations,
-            executive_summary=executive_summary,
+        # Merged, not added: a Case re-opened and closed again keeps one closure
+        # row, and the second close is what it now says. Adding would violate the
+        # one-to-one primary key and fail the whole close on a re-close.
+        closure = session.merge(
+            CaseClosureInfo(
+                case_id=case_id,
+                closure_category=closure_category,
+                closed_by=closed_by,
+                closed_by_kind=ClosedByKind(closed_by_kind).value,
+                root_cause=root_cause,
+                lessons_learned=lessons_learned,
+                recommendations=recommendations,
+                executive_summary=executive_summary,
+                false_positive_reason=false_positive_reason,
+                closure_notes=closure_notes,
+                closed_at=utcnow(),
+            )
         )
-        session.add(closure)
         CaseSLAService().mark_resolution_complete(case_id, session)
         session.flush()
         index_case_iocs_on_close(session, case_id)
@@ -431,6 +451,7 @@ class CaseWorkflowService:
         Runs in its own transaction — the whole merge must land or none of it.
         """
         from core.storage.models import (
+            CaseClosureInfo,
             CaseComment,
             CaseEvidence,
             CaseIOC,
@@ -501,6 +522,23 @@ class CaseWorkflowService:
                     relationship_type="merged_into",
                     created_by=merged_by,
                     notes=f"Case merged into {target_case_id}",
+                )
+            )
+
+            # A merge closes the source, and what it concluded is that this
+            # record is the same record as another one -- which is the
+            # `duplicate` category, and the category that writes no Verdict.
+            # Left unrecorded, the close reads to episodic memory as one with no
+            # stated reason and mints an inconclusive Verdict for a Case that
+            # concluded nothing, counting the target's determination twice.
+            session.merge(
+                CaseClosureInfo(
+                    case_id=source_case_id,
+                    closure_category=ClosureCategory.DUPLICATE.value,
+                    closed_by=merged_by,
+                    closed_by_kind=ClosedByKind.AGENT.value,
+                    closure_notes=f"Merged into {target_case_id}",
+                    closed_at=now,
                 )
             )
 

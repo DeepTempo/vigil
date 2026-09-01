@@ -297,11 +297,16 @@ export const casesApi = {
     api.post(`/cases/${id}/links`, { related_case_id: relatedCaseId, relationship_type: relationshipType }),
   getLinkedCases: (id: string) => api.get(`/cases/${id}/links`),
   
+  // No closed_by: the server takes it from the authenticated principal, because
+  // episodic memory reads it as who concluded.
   closeCase: (id: string, data: {
-    resolution_summary: string
+    closure_category: 'resolved' | 'false_positive' | 'duplicate' | 'unable_to_resolve'
     root_cause?: string
     lessons_learned?: string
     recommendations?: string
+    executive_summary?: string
+    false_positive_reason?: string
+    closure_notes?: string
   }) => api.post(`/cases/${id}/close`, data),
   
   escalate: (id: string, data: {

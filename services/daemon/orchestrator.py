@@ -760,13 +760,13 @@ class Orchestrator:
 
             await self._sleep(shutdown_event, self.config.loop_interval)
 
-    # Its own loop rather than a step of the supervision one: the Distil is not
-    # supervising anything, it reads terminals the supervisor has already left
-    # behind. Slower than the others because nothing waits on it — memory is read
+    # Its own loop rather than a step of the supervision one: the Distils are not
+    # supervising anything, they read terminals and closures the rest of the
+    # system has already left behind. Slower than the others because nothing waits on it — memory is read
     # at the start of the next run, so a write that lands minutes later is a
     # write that lands in time.
     async def _distil_loop(self, shutdown_event: asyncio.Event):
-        """Turn finished hunts into episodic memory (#731)."""
+        """Turn finished hunts and closed cases into episodic memory (#731, #733)."""
         from core.memory.distil import distil_once
 
         while not shutdown_event.is_set():
@@ -774,6 +774,11 @@ class Orchestrator:
                 if not self._enabled:
                     await self._sleep(shutdown_event, 10)
                     continue
+
+                # Both on this tick rather than in a loop of its own: neither is
+                # supervising anything, both poll for work already finished, and
+                # a second loop would be a second interval to keep in step.
+                await self._case_distil_tick()
 
                 written = await distil_once()
                 if written["investigations"]:
@@ -808,6 +813,36 @@ class Orchestrator:
                 logger.error(f"Distil loop error: {e}", exc_info=True)
 
             await self._sleep(shutdown_event, self.config.loop_interval)
+
+    async def _case_distil_tick(self):
+        """Turn closed Cases into Verdicts (#733).
+
+        Its own method so that a failure here costs the Case Distil and not the
+        hunt one: they write different rows from different sources, and a
+        closure this job cannot map must not stop a finished hunt reaching
+        memory.
+        """
+        from core.memory.case_distil import case_distil_once
+
+        try:
+            written = await case_distil_once()
+        except Exception as e:
+            logger.error(f"Case Distil error: {e}", exc_info=True)
+            return
+
+        if written["cases"]:
+            logger.info(
+                "Distilled %s closed case(s): %s verdicts",
+                written["cases"],
+                written["verdicts"],
+            )
+        if written["refused"] or written["failed"]:
+            logger.warning(
+                "Case Distil left %s case(s) undistilled: %s refused, %s failed",
+                written["refused"] + written["failed"],
+                written["refused"],
+                written["failed"],
+            )
 
     async def _review_investigation(self, inv_id: str):
         """Review a completed investigation's results."""

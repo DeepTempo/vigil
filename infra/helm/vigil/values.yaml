@@ -410,6 +410,7 @@ dbInit:
     - 21_agent_run_leases.sql
     - 22_episodic_memory.sql
     - 23_episodic_read_log.sql
+    - 24_case_closure_actor.sql
   resources:
     requests:
       cpu: 50m

@@ -353,9 +353,7 @@ def update_case(
             updates["assignee"] = assignee
         if add_note:
             notes = case.notes or []
-            notes.append(
-                {"timestamp": utcnow().isoformat() + "Z", "note": add_note}
-            )
+            notes.append({"timestamp": utcnow().isoformat() + "Z", "note": add_note})
             updates["notes"] = notes
 
         if db.update_case(case_id, **updates):
@@ -1348,6 +1346,8 @@ def close_case(
     lessons_learned: Optional[str] = None,
     recommendations: Optional[str] = None,
     executive_summary: Optional[str] = None,
+    false_positive_reason: Optional[str] = None,
+    closure_notes: Optional[str] = None,
     **kwargs,
 ) -> str:
     """
@@ -1361,6 +1361,8 @@ def close_case(
         lessons_learned: Optional lessons learned
         recommendations: Optional recommendations
         executive_summary: Optional executive summary
+        false_positive_reason: Optional reason a false-positive closure was one
+        closure_notes: Optional free-text notes on the closure
 
     Example:
         close_case("case-123", "resolved", "analyst1",
@@ -1370,33 +1372,37 @@ def close_case(
                   executive_summary="Lateral movement attack contained and remediated")
     """
     try:
+        from core.cases.case_workflow_service import CaseWorkflowService
+        from core.cases.closure import ClosedByKind
         from core.storage.connection import get_db_session
-        from core.storage.models import Case, CaseClosureInfo
-        from core.storage.shared_ioc_repository import index_case_iocs_on_close
 
         session = get_db_session()
         try:
-            # Update case status
-            case = session.query(Case).filter(Case.case_id == case_id).first()
-            if not case:
-                return jdump({"error": f"Case {case_id} not found"})
-
-            case.status = "closed"
-
-            # Add closure info
-            closure = CaseClosureInfo(
-                case_id=case_id,
+            # Through the service rather than writing the rows here. This tool
+            # had its own copy of the close, so the SLA clock, the IOC index and
+            # anything added to a close later were the service's alone -- and a
+            # case closed by an agent was a different shape of closed from one
+            # closed through the API.
+            closure = CaseWorkflowService().close_case(
+                session,
+                case_id,
                 closure_category=closure_category,
                 closed_by=closed_by,
+                # No authenticated person behind an MCP call. Episodic memory
+                # reads this as Trust, and `analyst` is the one record this
+                # system will not let an agent claim on its own behalf.
+                closed_by_kind=ClosedByKind.AGENT,
                 root_cause=root_cause,
                 lessons_learned=lessons_learned,
                 recommendations=recommendations,
                 executive_summary=executive_summary,
+                false_positive_reason=false_positive_reason,
+                closure_notes=closure_notes,
             )
-            session.add(closure)
+            if closure is None:
+                return jdump({"error": f"Case {case_id} not found"})
 
-            index_case_iocs_on_close(session, case_id)
-
+            payload = closure.to_dict()
             session.commit()
 
             # Add final activity
@@ -1411,7 +1417,7 @@ def close_case(
                 {
                     "success": True,
                     "message": f"Closed {case_id} as {closure_category}",
-                    "closure": closure.to_dict(),
+                    "closure": payload,
                 }
             )
         finally:
