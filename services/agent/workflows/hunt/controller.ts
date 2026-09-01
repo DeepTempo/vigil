@@ -393,8 +393,11 @@ export async function startHunt(
     });
   }
 
-  // The caller's own claim, on the board as a peer of the definition's.
+  // The caller's own claim, on the board as a peer of the definition's, carrying
+  // whatever they said it was about. Absent when they said nothing, which is not
+  // the same as a claim about nobody.
   for (const statement of spec.operator_hypotheses) {
+    const subjects = spec.operator_hypothesis_subjects[statement];
     ledger.append({
       kind: "hypothesis",
       payload: {
@@ -405,6 +408,7 @@ export async function startHunt(
         provenance: OPERATOR_HYPOTHESIS_PROVENANCE,
         resolution_reason: null,
         evidence_strength: null,
+        ...(subjects === undefined ? {} : { subjects }),
       },
     });
   }

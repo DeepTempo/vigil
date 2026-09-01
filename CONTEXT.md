@@ -142,10 +142,25 @@ investigations, never being one.
 _Avoid_: visibility gap (that is a tool that could not answer), unknown, null result
 
 **Episodic Memory** (`memory`):
-What earlier investigations saw and concluded, derived from a **Ledger** after a
-run reaches its terminal so a later run stops re-deriving a settled answer.
-Reorders the frontier and never decides (ADR 0015).
+What earlier investigations saw and concluded, so a later run stops re-deriving
+a settled answer. A hunt's is derived from its **Ledger** at the terminal; a
+**Case**'s is derived from the Case itself when it closes, and has no Ledger
+behind it at all. Reorders the frontier and never decides (ADR 0015).
 _Avoid_: MemPalace (the component this replaces), cache, RAG
+
+**Distil** (`memory`):
+The job that turns a finished investigation into Episodic Memory rows. One per
+kind of investigation -- a hunt's reads the Ledger, a Case's reads the closed
+Case -- and both poll rather than being told, so a lost signal is a late write
+and not a missing one.
+_Avoid_: ETL, sync, ingest (those move data; this concludes about it)
+
+**Closure Category** (`cases`):
+What closing a **Case** determined: `resolved`, `false_positive`, `duplicate`,
+`unable_to_resolve`, or `unspecified` for a close that stated none. All but
+`duplicate` map to a **Verdict** outcome; `duplicate` writes none. `unspecified`
+is a recorded absence, not a determination.
+_Avoid_: resolution, disposition, reason
 
 **Recall**:
 One read of **Episodic Memory** on exact entity keys. A run performs one at start
@@ -312,9 +327,11 @@ _Avoid_: page, tab, view
 ## Relationships
 
 - A **Case** groups one or more **Findings**
-- **Episodic Memory** derives **Verdicts** from a **Ledger** after an
-  investigation terminates; it never writes during a run, and a run reads it
-  once at start (ADR 0015)
+- **Episodic Memory** derives **Verdicts** from a **Ledger** after a hunt
+  terminates, and from a **Case** when it closes; it never writes during a run,
+  and a run reads it once at start (ADR 0015)
+- Closing a **Case** writes one **Verdict**, whose Trust is `analyst` when a
+  person closed it and `agent` otherwise; reopening the Case withdraws it
 - A **Verdict**'s sources each carry a **Source Tier** and the Verdict carries
   one **Trust**. The two are independent axes: **Trust** is who concluded, and
   a `feed`-tier source can be cited by an `analyst`

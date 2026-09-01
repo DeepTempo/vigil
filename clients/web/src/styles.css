@@ -5987,6 +5987,37 @@
       color: var(--high);
    }
 
+   /* Stacked under the claim rather than beside it: a subject belongs to one belief,
+      and a column of inputs down the right reads as a table of unrelated fields. */
+   .hyp-preview-belief {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      flex: 1 1 auto;
+      min-width: 0;
+   }
+
+   .hyp-preview-subject {
+      width: 100%;
+      padding: 4px 7px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg-0);
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--tx-2);
+   }
+
+   .hyp-preview-subject.bad {
+      border-color: var(--high);
+   }
+
+   .hyp-preview-bad {
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--high);
+   }
+
    .hyp-preview-n {
       flex: 0 0 20px;
       font-family: var(--mono);

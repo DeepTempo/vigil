@@ -413,6 +413,7 @@ dbInit:
     - 23_drop_finding_embedding.sql
     - 24_episodic_memory.sql
     - 25_episodic_read_log.sql
+    - 26_case_closure_actor.sql
   resources:
     requests:
       cpu: 50m

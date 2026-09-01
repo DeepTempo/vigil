@@ -8,7 +8,7 @@ investigations.
 import io
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -53,6 +53,9 @@ class InvestigationCreateRequest(BaseModel):
     finding_ids: list = []
     case_id: Optional[str] = None
     hypothesis: Optional[str] = None
+    # What each stated claim is about, keyed by the claim. Declared or absent: a
+    # subject is what makes a Verdict findable later, and nothing infers one here.
+    hypothesis_subjects: Optional[Dict[str, List[str]]] = None
     priority: str = "medium"
 
 
@@ -444,6 +447,7 @@ async def create_investigation(request: InvestigationCreateRequest):
                 "finding_ids": request.finding_ids,
                 "case_id": request.case_id,
                 "hypothesis": request.hypothesis,
+                "hypothesis_subjects": request.hypothesis_subjects,
                 "priority": request.priority,
             }
         )
@@ -564,6 +568,7 @@ _COC_WORKDIR_FILES = [
     "iocs.json",
     "timeline.json",
     "hypotheses.json",
+    "hypothesis_subjects.json",
     "review.md",
 ]
 

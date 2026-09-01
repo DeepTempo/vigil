@@ -30,7 +30,17 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+)
 
 from sqlalchemy import delete, text
 from sqlalchemy.dialects.postgresql import insert
@@ -39,6 +49,7 @@ from sqlalchemy.orm import Session
 from core.agents.projections import read_distil
 from core.memory.entity_keys import entity_key, entity_keys
 from core.memory.recall_contract import (
+    VERDICT_SUBJECT_CAP,
     GapDisposition,
     InvestigationKind,
     Stance,
@@ -122,6 +133,19 @@ class Terminal:
 
 
 @dataclass(frozen=True)
+class Origin:
+    """The terminal a marker's rows were derived from, and the runs it covers.
+
+    Absent on a Case, which is closed rather than run — the marker's origin
+    columns are null there, and the schema's CHECK ties that to the kind.
+    """
+
+    run_id: uuid.UUID
+    seq: int
+    covered: Sequence[uuid.UUID]
+
+
+@dataclass(frozen=True)
 class Concluded:
     """A payload the writer has accepted, with what every row built from it needs.
 
@@ -177,6 +201,21 @@ _GAP_REASONS: Mapping[GapDisposition, str] = {
     GapDisposition.BUDGET_EXHAUSTED: "the hunt ran out of budget before gathering evidence for it",
     GapDisposition.NO_EVIDENCE_GATHERED: "the hunt ended with no evidence gathered for it",
 }
+
+
+# The hunt's subjects are declared by whoever put the claim up, so nothing upstream
+# bounds them. ADR 0016's rule is memory's, and this is where it is applied on this
+# side, as it is for a Case.
+def _capped(keys: List[str], investigation_id: str, hypothesis_id: str) -> List[str]:
+    if len(keys) > VERDICT_SUBJECT_CAP:
+        logger.warning(
+            "Distil: %s/%s names %s entities, keeping the first %s (ADR 0016)",
+            investigation_id,
+            hypothesis_id,
+            len(keys),
+            VERDICT_SUBJECT_CAP,
+        )
+    return keys[:VERDICT_SUBJECT_CAP]
 
 
 def _outcome_of(status: str) -> Optional[VerdictOutcome]:
@@ -293,7 +332,11 @@ def _conclusion_rows(
             continue
 
         status = str(conclusion.get("status", ""))
-        subjects = entity_keys(conclusion.get("subject_entities"))
+        subjects = _capped(
+            entity_keys(conclusion.get("subject_entities")),
+            investigation_id,
+            hypothesis_id,
+        )
         statement = str(conclusion.get("statement", ""))
         rationale = str(conclusion.get("rationale", ""))
         outcome = _outcome_of(status)
@@ -353,12 +396,18 @@ def _conclusion_rows(
     return verdicts, gaps
 
 
-def _clear(session: Session, kind: InvestigationKind, investigation_id: str) -> None:
+def clear_investigation(
+    session: Session, kind: InvestigationKind, investigation_id: str
+) -> None:
     """Everything this investigation wrote, scoped to it and to nothing else.
 
     Verdict sources go with their Verdicts through the foreign key, which is why
     they are not deleted here: deleting them separately would leave a window in
     which a Verdict has none.
+
+    Shared with the Case Distil rather than written twice: re-deriving is
+    delete-then-insert, and two implementations of the delete half is two
+    definitions of what an investigation owns.
     """
     for model in (EpisodicSighting, EpisodicVerdict, EpisodicGap):
         session.execute(
@@ -446,7 +495,7 @@ def write_distil(
     if str(payload.get("outcome") or "") == ABORTED:
         counts = {"sightings": 0, "verdicts": 0, "gaps": 0}
     else:
-        _clear(session, kind, concluded.investigation_id)
+        clear_investigation(session, kind, concluded.investigation_id)
 
         sightings = _sighting_rows(concluded)
         verdicts, gaps = _conclusion_rows(concluded)
@@ -469,21 +518,50 @@ def write_distil(
             "gaps": len(gaps),
         }
 
-    row = {
+    write_marker(
+        session,
+        kind=kind,
+        investigation_id=concluded.investigation_id,
+        version=DISTIL_MAPPING_VERSION,
+        counts=counts,
+        concluded_at=concluded.concluded_at,
+        origin=Origin(terminal.run_id, terminal.seq, covered),
+    )
+    return counts | {"derived": 1}
+
+
+def write_marker(
+    session: Session,
+    *,
+    kind: InvestigationKind,
+    investigation_id: str,
+    version: int,
+    counts: Mapping[str, int],
+    concluded_at: datetime,
+    origin: Optional[Origin] = None,
+) -> None:
+    """Record that this investigation was processed, at this version.
+
+    The one upsert in either Distil, and the only row it is right for: a marker
+    is one row keyed by the investigation, so there is no set of stale rows to
+    leave behind. Counts are set from what was just written, never incremented.
+
+    Each kind versions its own mapping, so the version is passed rather than
+    read from a module constant — a change to how a Case maps must not re-offer
+    every hunt.
+    """
+    row: Dict[str, Any] = {
         "investigation_kind": kind.value,
-        "investigation_id": concluded.investigation_id,
-        "origin_run_id": terminal.run_id,
-        "origin_seq": terminal.seq,
-        "origin_run_ids": covered,
-        "distil_version": DISTIL_MAPPING_VERSION,
-        "sightings_written": counts["sightings"],
-        "verdicts_written": counts["verdicts"],
-        "gaps_written": counts["gaps"],
-        "concluded_at": concluded.concluded_at,
+        "investigation_id": investigation_id,
+        "origin_run_id": origin.run_id if origin is not None else None,
+        "origin_seq": origin.seq if origin is not None else None,
+        "origin_run_ids": list(origin.covered) if origin is not None else [],
+        "distil_version": version,
+        "sightings_written": counts.get("sightings", 0),
+        "verdicts_written": counts.get("verdicts", 0),
+        "gaps_written": counts.get("gaps", 0),
+        "concluded_at": concluded_at,
     }
-    # The one upsert here, and the only row it is right for: a marker is one row
-    # keyed by the investigation, so there is no set of stale rows to leave behind.
-    # Counts are set from what was just written, never incremented.
     session.execute(
         insert(EpisodicDistilMarker)
         .values(**row)
@@ -497,7 +575,6 @@ def write_distil(
             | {"distilled_at": text("now()")},
         )
     )
-    return counts | {"derived": 1}
 
 
 def pending(session: Session, limit: int = DEFAULT_BATCH) -> List[Terminal]:
@@ -546,7 +623,13 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
             written["unreadable"] += 1
             continue
 
-        counts = await _write_with_retry(terminal, payload, written)
+        counts = await write_with_retry(
+            InvestigationKind.HUNT,
+            str(terminal.run_id),
+            lambda: _write_in_own_session(terminal, payload),
+            DistilRefused,
+            written,
+        )
         if counts is None:
             continue
 
@@ -557,33 +640,50 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
     return written
 
 
-async def _write_with_retry(
-    terminal: Terminal, payload: Mapping[str, Any], written: Dict[str, int]
+async def write_with_retry(
+    kind: InvestigationKind,
+    label: str,
+    write: Callable[[], Dict[str, int]],
+    refusal: Type[Exception],
+    written: Dict[str, int],
 ) -> Optional[Dict[str, int]]:
-    """One investigation's write, retried once. None when it did not land.
+    """One investigation's write, off the loop and retried once. None if it did
+    not land.
 
-    A refusal is not retried: the payload will not become mappable by being read
-    again, and the fix is on the other side of the contract.
+    A refusal is not retried: what this job would not map will not become
+    mappable by being read again, and the fix is on the other side of the
+    contract. Everything else gets one more go and is then reported with a
+    traceback -- a write that fails twice is a store that is down or an input
+    that is wrong, and neither improves for being hammered inside a tick that
+    comes round again anyway. Neither outcome writes a marker, which is what
+    brings the investigation back once the reason is fixed.
+
+    Shared by both Distils rather than written twice, because "how a failed
+    write is counted and reported" is one decision and the daemon reads both
+    sets of counters the same way.
     """
     for attempt in range(1, ATTEMPTS + 1):
         try:
-            return await asyncio.to_thread(_write_in_own_session, terminal, payload)
-        except DistilRefused as exc:
-            logger.warning("Distil refused %s: %s", terminal.run_id, exc)
+            return await asyncio.to_thread(write)
+        except refusal as exc:
+            logger.warning("%s Distil refused %s: %s", kind.value, label, exc)
             written["refused"] += 1
             return None
         except Exception:
             if attempt < ATTEMPTS:
                 logger.warning(
-                    "Distil failed on %s, attempt %s of %s; retrying",
-                    terminal.run_id,
+                    "%s Distil failed on %s, attempt %s of %s; retrying",
+                    kind.value,
+                    label,
                     attempt,
                     ATTEMPTS,
                 )
                 continue
             logger.error(
-                "Distil failed on %s after %s attempts, leaving neither rows nor marker",
-                terminal.run_id,
+                "%s Distil failed on %s after %s attempts, leaving neither rows "
+                "nor marker",
+                kind.value,
+                label,
                 ATTEMPTS,
                 exc_info=True,
             )
@@ -607,8 +707,14 @@ def _write_in_own_session(
 __all__: Sequence[str] = (
     "DISTIL_MAPPING_VERSION",
     "DistilRefused",
+    "Origin",
     "Terminal",
+    "ATTEMPTS",
+    "DEFAULT_BATCH",
+    "clear_investigation",
     "distil_once",
     "pending",
     "write_distil",
+    "write_marker",
+    "write_with_retry",
 )
