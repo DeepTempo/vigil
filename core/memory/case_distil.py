@@ -101,6 +101,13 @@ _OUTCOMES: Mapping[ClosureCategory, VerdictOutcome] = {
 # ``concluded_at`` is timestamptz, so the close instant is cast rather than
 # compared across the two -- an implicit cast reads a naive value in the
 # server's zone and silently shifts the comparison.
+#
+# The later of the two, not the closure's alone: what a Verdict says about a
+# Case is drawn from the Case's Findings as much as from its closure, and a
+# merge moves Findings across without touching either closure. Keyed on
+# ``closed_at`` where one exists, that edit is unreachable and both Cases keep
+# a window their Findings no longer support. ``GREATEST`` ignores nulls here,
+# so a Case with no closure row still falls back to ``updated_at``.
 _CANDIDATES = text("""
     SELECT c.case_id AS case_id
     FROM cases c
@@ -113,11 +120,11 @@ _CANDIDATES = text("""
         AND (
           m.investigation_id IS NULL
           OR m.distil_version <> :version
-          OR m.concluded_at < (COALESCE(i.closed_at, c.updated_at) AT TIME ZONE 'UTC')
+          OR m.concluded_at < (GREATEST(i.closed_at, c.updated_at) AT TIME ZONE 'UTC')
         )
       )
       OR (c.status <> 'closed' AND m.investigation_id IS NOT NULL)
-    ORDER BY COALESCE(i.closed_at, c.updated_at) DESC, c.case_id
+    ORDER BY GREATEST(i.closed_at, c.updated_at) DESC, c.case_id
     LIMIT :limit
     """)
 
@@ -130,9 +137,12 @@ class CaseDistilRefused(RuntimeError):
 class ClosedCase:
     """One closed Case and everything a Verdict built from it needs.
 
-    Read once, refused once if the Case is not closed, and then carried whole:
-    no row can be built from a subset of these, and passing them separately
-    invites a caller to build one from the wrong Case's closure.
+    Read once, refused once if the Case records no instant it closed at, and
+    then carried whole: no row can be built from a subset of these, and passing
+    them separately invites a caller to build one from the wrong Case's closure.
+
+    That the Case is closed at all is the caller's question, settled before this
+    is built -- a Case that is not closed is withdrawn rather than mapped.
     """
 
     case: Case
@@ -339,7 +349,11 @@ def _sources(session: Session, case_id: str) -> List[Dict[str, str]]:
 
 
 def _accept(session: Session, case: Case) -> ClosedCase:
-    """A closed Case with its closure, or a refusal saying what was missing."""
+    """A closed Case with its closure, or a refusal if nothing dates the close.
+
+    Only the instant is required: a Case closed without a closure row is a Case
+    closed with no determination stated, which ``ClosedCase.category`` maps.
+    """
     case_id = case.case_id
     closure = session.get(CaseClosureInfo, case_id)
     concluded_at = _utc(closure.closed_at if closure is not None else None) or _utc(
@@ -352,9 +366,7 @@ def _accept(session: Session, case: Case) -> ClosedCase:
     return ClosedCase(case, closure, concluded_at)
 
 
-def _withdraw(
-    session: Session, kind: InvestigationKind, case_id: str, status: Optional[str]
-) -> Dict[str, int]:
+def _withdraw(session: Session, case_id: str, status: Optional[str]) -> Dict[str, int]:
     """Take back what a Case concluded, because it is no longer closed.
 
     A reopened Case has retracted its determination, and memory that keeps
@@ -366,7 +378,7 @@ def _withdraw(
     """
     logger.info("Case Distil: %s is %r again, withdrawing its Verdict", case_id, status)
     session.query(EpisodicDistilMarker).filter_by(
-        investigation_kind=kind.value, investigation_id=case_id
+        investigation_kind=InvestigationKind.CASE.value, investigation_id=case_id
     ).delete()
     return {"verdicts": 0, "derived": 0, "withdrawn": 1}
 
@@ -389,7 +401,7 @@ def write_case_distil(session: Session, case_id: str) -> Dict[str, int]:
     clear_investigation(session, kind, case_id)
 
     if (case.status or "").strip() != "closed":
-        return _withdraw(session, kind, case_id, case.status)
+        return _withdraw(session, case_id, case.status)
 
     closed = _accept(session, case)
 

@@ -62,6 +62,7 @@ from core.agents.queue import build_start_job, enqueue_run
 from core.integrations.mcp.client import process_mcp_client
 from core.response.approval_service import ApprovalService
 from core.response.checkpoints import raise_for_checkpoint
+from core.workflows.hypothesis_subjects import kept_subjects
 from services.daemon.plan_generator import (
     count_steps,
     generate_case_review_context,
@@ -639,9 +640,8 @@ class Orchestrator:
                         "Orchestrator stopped while the run was in flight",
                     )
 
-    # Absent, unreadable and empty all mean the same thing here: nobody said what
-    # the claims were about. An empty map rather than None, because a JSON null
-    # reaches the agent layer as a value where a missing key reads as unset.
+    # An empty map rather than None, because a JSON null reaches the agent layer
+    # as a value where a missing key reads as unset.
     def _hypothesis_subjects(
         self, inv_id: str, stated: List[str]
     ) -> Dict[str, List[str]]:
@@ -653,16 +653,7 @@ class Orchestrator:
         except ValueError:
             logger.warning("%s has an unreadable hypothesis_subjects.json", inv_id)
             return {}
-        if not isinstance(declared, dict):
-            return {}
-        # Only the claims actually going on the board: a subject keyed to a
-        # statement that is not being put up belongs to no belief.
-        asked = set(stated)
-        return {
-            str(statement): [str(key) for key in keys]
-            for statement, keys in declared.items()
-            if statement in asked and isinstance(keys, list) and keys
-        }
+        return kept_subjects(declared, stated)
 
     async def _enqueue_investigation(self, inv_record: Dict) -> None:
         inv_id = inv_record["investigation_id"]

@@ -157,9 +157,9 @@ _Avoid_: ETL, sync, ingest (those move data; this concludes about it)
 
 **Closure Category** (`cases`):
 What closing a **Case** determined: `resolved`, `false_positive`, `duplicate`,
-`unable_to_resolve`, or `unspecified` for a close that stated none. The first
-four map to a **Verdict** outcome; `duplicate` writes none. `unspecified` is a
-recorded absence, not a determination.
+`unable_to_resolve`, or `unspecified` for a close that stated none. All but
+`duplicate` map to a **Verdict** outcome; `duplicate` writes none. `unspecified`
+is a recorded absence, not a determination.
 _Avoid_: resolution, disposition, reason
 
 **Recall**:

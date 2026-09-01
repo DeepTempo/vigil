@@ -2,14 +2,18 @@ import json
 import logging
 import os
 import uuid
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Iterator, Optional
 
 import numpy as np
 from mcp.server.mcpserver import MCPServer
 
 from core.time import utcnow
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 mcp = MCPServer("deeptempo-findings")
@@ -323,24 +327,36 @@ def create_case(
         return jdump({"error": str(e)})
 
 
-def _close_through_the_service(case_id: str, **kwargs) -> None:
-    """Close a Case the one way a Case is closed.
+@contextmanager
+def _service_session() -> Iterator["Session"]:
+    """A session of this tool's own, committed if the work returns.
 
-    Its own session, because this tool reaches the database directly rather
-    than through the API. Going through the service is what makes an agent's
-    close the same shape as everyone else's -- the SLA resolution clock stops
-    and the Case's IOCs are indexed, neither of which happens when a caller
-    writes the closure row itself.
+    This tool reaches the database directly rather than through the API, so
+    every call into a service here has to own its transaction. One definition of
+    that, because a second would be a second answer to when the work commits.
     """
-    from core.cases.case_workflow_service import CaseWorkflowService
     from core.storage.connection import get_db_session
 
     session = get_db_session()
     try:
-        CaseWorkflowService().close_case(session, case_id, **kwargs)
+        yield session
         session.commit()
     finally:
         session.close()
+
+
+def _close_through_the_service(case_id: str, **kwargs) -> None:
+    """Close a Case the one way a Case is closed.
+
+    Going through the service is what makes an agent's close the same shape as
+    everyone else's -- the SLA resolution clock stops and the Case's IOCs are
+    indexed, neither of which happens when a caller writes the closure row
+    itself.
+    """
+    from core.cases.case_workflow_service import CaseWorkflowService
+
+    with _service_session() as session:
+        CaseWorkflowService().close_case(session, case_id, **kwargs)
 
 
 def _record_agent_close(case_id: str) -> None:
@@ -375,14 +391,9 @@ def _record_reopen(case_id: str) -> None:
     the reopen retracted.
     """
     from core.cases.case_workflow_service import CaseWorkflowService
-    from core.storage.connection import get_db_session
 
-    session = get_db_session()
-    try:
+    with _service_session() as session:
         CaseWorkflowService().reopen_case(session, case_id)
-        session.commit()
-    finally:
-        session.close()
 
 
 @mcp.tool()

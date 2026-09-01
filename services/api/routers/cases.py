@@ -281,13 +281,6 @@ def _record_status_close(session, case_id: str, closed_by: str) -> None:
     )
 
 
-def _record_reopen(session, case_id: str) -> None:
-    """Retract what closing the Case determined, keeping what it wrote."""
-    from core.cases.case_workflow_service import CaseWorkflowService
-
-    CaseWorkflowService().reopen_case(session, case_id)
-
-
 @router.patch("/{case_id}")
 async def update_case(
     case_id: str,
@@ -341,7 +334,9 @@ async def update_case(
     if updates.get("status") == "closed" and not was_closed:
         _record_status_close(session, case_id, current_user.username)
     elif was_closed and updates.get("status") not in (None, "closed"):
-        _record_reopen(session, case_id)
+        from core.cases.case_workflow_service import CaseWorkflowService
+
+        CaseWorkflowService().reopen_case(session, case_id)
 
     # Fire upstream SIEM status sync when status changes
     if case_data.status is not None:

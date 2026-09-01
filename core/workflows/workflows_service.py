@@ -10,6 +10,7 @@ import yaml
 
 from core.agents.queue import new_run_id
 from core.workflows.custom_workflow_service import CustomWorkflowService
+from core.workflows.hypothesis_subjects import kept_subjects
 from core.workflows.workflow_run_service import WorkflowRunService
 
 logger = logging.getLogger(__name__)
@@ -57,25 +58,13 @@ def _asked_hypotheses(parameters: Optional[Dict[str, Any]]) -> List[str]:
     return [line.strip() for line in str(stated).splitlines() if line.strip()]
 
 
-# Only for the claims actually being put up: a subject keyed to a statement the
-# caller then edited away belongs to no belief, and carrying it would name a
-# Verdict's subject from a claim that was never made. The keys are passed through
-# rather than parsed -- the agent layer owns the entity vocabulary and refuses a
-# key it cannot read, which is one validator rather than two that drift.
+# None rather than an empty map, because this one goes through `_omit_unset`:
+# a key carrying nothing would reach the harness as a statement that the claims
+# are about nothing.
 def _asked_hypothesis_subjects(
     parameters: Optional[Dict[str, Any]], asked: List[str]
 ) -> Optional[Dict[str, List[str]]]:
-    declared = (parameters or {}).get("hypothesis_subjects") or {}
-    if not isinstance(declared, dict):
-        return None
-
-    stated = set(asked)
-    kept = {
-        statement: [str(key).strip() for key in keys if str(key).strip()]
-        for statement, keys in declared.items()
-        if statement in stated and isinstance(keys, list)
-    }
-    return {statement: keys for statement, keys in kept.items() if keys} or None
+    return kept_subjects((parameters or {}).get("hypothesis_subjects"), asked) or None
 
 
 # A hunt argues the null against a claim, and neither "idk" nor "credential access"

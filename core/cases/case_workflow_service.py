@@ -409,12 +409,19 @@ class CaseWorkflowService:
         ``analyst`` is the highest-trust record the system produces, and only a
         caller with an authenticated person behind it can honestly claim it.
 
-        **An unstated close never overwrites a stated one.** A status edit
-        closes with ``unspecified``, which is not a determination, so it fills
-        an empty closure and otherwise leaves the category, the closer and the
-        write-up alone. Anything else and a console status edit after a
-        considered close would erase the analyst's determination, and an agent's
-        would silently downgrade its Trust from ``analyst`` to ``agent``.
+        **An unstated close never overwrites a standing determination.** A
+        status edit closes with ``unspecified``, which is not a determination,
+        so where one is standing it leaves the category, the closer and the
+        write-up alone: otherwise a console status edit after a considered close
+        would erase the analyst's determination, and an agent's would silently
+        downgrade its Trust from ``analyst`` to ``agent``.
+
+        Where none is standing -- a Case closing for the first time, or one
+        whose reopen retracted what it had determined -- this close owns the
+        row, closer included. Holding the closer back there records the
+        *previous* closer: an agent's status edit after an analyst's reopened
+        close would inherit Trust ``analyst``, and memory would carry a
+        determination no person made.
         """
         from core.cases.case_sla_service import CaseSLAService
         from core.storage.models import CaseClosureInfo
@@ -423,6 +430,9 @@ class CaseWorkflowService:
         case = session.query(Case).filter(Case.case_id == case_id).first()
         if not case:
             return None
+
+        category = ClosureCategory(closure_category)
+        kind = ClosedByKind(closed_by_kind)
 
         case.status = "closed"
 
@@ -433,24 +443,27 @@ class CaseWorkflowService:
         if closure is None:
             closure = CaseClosureInfo(
                 case_id=case_id,
-                closure_category=ClosureCategory(closure_category).value,
+                closure_category=category.value,
                 closed_by=closed_by,
-                closed_by_kind=ClosedByKind(closed_by_kind).value,
+                closed_by_kind=kind.value,
             )
             session.add(closure)
-        elif ClosureCategory(closure_category) is not ClosureCategory.UNSPECIFIED:
+        elif (
+            category is not ClosureCategory.UNSPECIFIED
+            or closure.closure_category == ClosureCategory.UNSPECIFIED.value
+        ):
             if closure.closed_by_kind == ClosedByKind.ANALYST.value and (
-                ClosedByKind(closed_by_kind) is ClosedByKind.AGENT
+                kind is ClosedByKind.AGENT
             ):
                 logger.info(
                     "Case %s was closed by an analyst and is being re-closed by "
                     "an agent as %s; its Verdict's Trust drops to agent",
                     case_id,
-                    ClosureCategory(closure_category).value,
+                    category.value,
                 )
-            closure.closure_category = ClosureCategory(closure_category).value
+            closure.closure_category = category.value
             closure.closed_by = closed_by
-            closure.closed_by_kind = ClosedByKind(closed_by_kind).value
+            closure.closed_by_kind = kind.value
 
         closure.closed_at = utcnow()
         # Stated fields only. None means this call had nothing to say about the
@@ -503,6 +516,7 @@ class CaseWorkflowService:
         Runs in its own transaction — the whole merge must land or none of it.
         """
         from core.storage.models import (
+            CaseClosureInfo,
             CaseComment,
             CaseEvidence,
             CaseIOC,
@@ -582,14 +596,31 @@ class CaseWorkflowService:
             # Left unrecorded, the close reads to episodic memory as one with no
             # stated reason and mints an inconclusive Verdict for a Case that
             # concluded nothing, counting the target's determination twice.
-            self.close_case(
-                session,
-                source_case_id,
-                closure_category=ClosureCategory.DUPLICATE,
-                closed_by=merged_by,
-                closed_by_kind=ClosedByKind.AGENT,
-                closure_notes=f"Merged into {target_case_id}",
-            )
+            #
+            # A source that already determined something keeps it. `duplicate`
+            # is a stated category, so `close_case` would let it overwrite an
+            # analyst's `false_positive` -- and being the category that writes
+            # no Verdict, it would withdraw the one already written. A merge
+            # relates two records; it does not overturn what one of them found.
+            standing = session.get(CaseClosureInfo, source_case_id)
+            stated = (standing.closure_category or "").strip() if standing else ""
+            if stated not in ("", ClosureCategory.UNSPECIFIED.value):
+                logger.info(
+                    "Case %s closed as %s is being merged into %s; the merge "
+                    "records the relationship and leaves the determination",
+                    source_case_id,
+                    stated,
+                    target_case_id,
+                )
+            else:
+                self.close_case(
+                    session,
+                    source_case_id,
+                    closure_category=ClosureCategory.DUPLICATE,
+                    closed_by=merged_by,
+                    closed_by_kind=ClosedByKind.AGENT,
+                    closure_notes=f"Merged into {target_case_id}",
+                )
 
             source.description = (source.description or "") + (
                 f"\n\n[MERGED] This case was merged into {target_case_id} "

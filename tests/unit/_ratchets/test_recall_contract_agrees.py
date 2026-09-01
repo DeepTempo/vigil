@@ -27,6 +27,8 @@ TYPESCRIPT = AGENT / "contracts" / "memory.ts"
 ARCH = AGENT / "arch" / "threathunt.yaml"
 ENTITIES = AGENT / "workflows" / "hunt" / "entities.ts"
 HUNT_TYPES = AGENT / "workflows" / "hunt" / "types.ts"
+SCREENS = REPO_ROOT / "clients" / "web" / "src" / "screens"
+CONSOLE = SCREENS / "workflows" / "WorkflowsScreen.tsx"
 
 pytestmark = pytest.mark.unit
 
@@ -237,6 +239,21 @@ def test_the_entity_key_types_follow_the_extractor():
     assert declared == py.ENTITY_KEY_TYPES, (
         "ENTITY_KEY_TYPES has drifted from ENTITY_TYPES in "
         f"{HUNT_TYPES.relative_to(REPO_ROOT)}, which owns it. " + DRIFT
+    )
+
+
+def test_the_console_offers_the_entity_types_the_extractor_reads():
+    # The console spells this vocabulary a third time, because it refuses a
+    # subject key while the operator can still fix it. Left unratcheted, it goes
+    # on offering a type the extractor has dropped -- and the one place that
+    # could have said so is the place that said the key was fine.
+    match = re.search(r"const ENTITY_TYPES = \[([^\]]*)\]", CONSOLE.read_text())
+    assert match, f"ENTITY_TYPES not found in {CONSOLE.relative_to(REPO_ROOT)}"
+    declared = tuple(re.findall(r"'([^']+)'", match.group(1)))
+    assert declared == py.ENTITY_KEY_TYPES, (
+        f"the entity types offered by {CONSOLE.relative_to(REPO_ROOT)} have "
+        f"drifted from ENTITY_TYPES in {HUNT_TYPES.relative_to(REPO_ROOT)}, "
+        "which owns them. " + DRIFT
     )
 
 
