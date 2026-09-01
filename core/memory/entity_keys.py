@@ -14,7 +14,7 @@ just the wrong ones.
 from __future__ import annotations
 
 import re
-from typing import List, Tuple
+from typing import Iterable, List, Tuple
 
 from core.memory.recall_contract import KEY_CASE_SENSITIVE_TYPES
 
@@ -50,19 +50,46 @@ def entity_key(entity_type: str, value: str) -> str:
     return f"{kind}:{text}"
 
 
-def entity_keys(entities: object) -> List[str]:
-    """Keys for a list of ``{"type", "value"}`` candidates, deduped in order.
+def _deduped(minted: Iterable[str]) -> List[str]:
+    """Keys in the order they were minted, without repeats or empties.
 
-    Order is kept because a Verdict's subjects read back to a human, and an
-    unusable candidate is skipped rather than stored as a partial key.
+    Order is kept because a Verdict's subjects read back to a human. An unusable
+    candidate is dropped rather than raising: one bad key among ten is a read of
+    nine, and one unusable candidate in a payload must not fail the investigation
+    it arrived in.
     """
     keys: List[str] = []
     seen = set()
-    for entity in entities if isinstance(entities, list) else []:
-        if not isinstance(entity, dict):
-            continue
-        key = entity_key(str(entity.get("type", "")), str(entity.get("value", "")))
+    for key in minted:
         if key and key not in seen:
             seen.add(key)
             keys.append(key)
     return keys
+
+
+def entity_keys(entities: object) -> List[str]:
+    """Keys for a list of ``{"type", "value"}`` candidates, deduped in order."""
+    return _deduped(
+        entity_key(str(entity.get("type", "")), str(entity.get("value", "")))
+        for entity in (entities if isinstance(entities, list) else [])
+        if isinstance(entity, dict)
+    )
+
+
+def normalise_key(key: str) -> str:
+    """Normalise a stored-form ``type:value`` key the way the writer minted it.
+
+    The reader is handed keys as one string, where the writer was handed a type
+    and a value. Splitting on the *first* colon is what keeps a URL or an IPv6
+    address whole: everything after the type belongs to the value.
+    """
+    kind, _, value = (key or "").strip().partition(":")
+    return entity_key(kind, value)
+
+
+def normalise_keys(keys: object) -> List[str]:
+    """Keys for a list of ``type:value`` strings, deduped in order."""
+    return _deduped(
+        normalise_key(str(key))
+        for key in (keys if isinstance(keys, (list, tuple)) else [])
+    )

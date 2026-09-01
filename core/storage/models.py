@@ -2514,3 +2514,34 @@ class EpisodicDistilMarker(Base):
     __table_args__ = (
         Index("idx_episodic_markers_origin", "origin_run_ids", postgresql_using="gin"),
     )
+
+
+class EpisodicReadLog(Base):
+    """One row per read of episodic memory, for audit rather than replay.
+
+    Why it exists and why it alone is retained is stated once, in
+    ``infra/database/init/23_episodic_read_log.sql``.
+    """
+
+    __tablename__ = "episodic_read_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    caller_kind: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'unknown'")
+    )
+    caller_id: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'unknown'")
+    )
+    keys: Mapped[List[str]] = mapped_column(ARRAY(Text), nullable=False)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    row_counts: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    dropped: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    ranking: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    __table_args__ = (
+        Index("idx_episodic_read_log_ts", "ts"),
+        Index("idx_episodic_read_log_keys", "keys", postgresql_using="gin"),
+    )
