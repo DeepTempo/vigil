@@ -203,6 +203,54 @@ def _mcp_auto_connect_enabled() -> bool:
     return eager_connect_enabled()
 
 
+async def _connect_enabled_mcp_servers(mcp_client) -> int:
+    """Connect enabled MCP servers concurrently. Returns how many succeeded."""
+    import asyncio
+
+    mcp_service = mcp_client.mcp_service
+    servers = mcp_service.list_servers()
+
+    async def _connect_one(server_name: str) -> bool:
+        try:
+            success = await mcp_client.connect_to_server(server_name, persistent=True)
+            if success:
+                logger.info(f"✓ Persistent connection established: {server_name}")
+                return True
+            missing = mcp_client.get_missing_credentials(server_name)
+            if missing:
+                logger.info(
+                    "MCP server %s dormant — awaiting env vars: %s",
+                    server_name,
+                    ", ".join(missing),
+                )
+            else:
+                logger.warning(f"Failed to connect to MCP server: {server_name}")
+            return False
+        except Exception as e:
+            logger.error(f"Error connecting to {server_name}: {e}")
+            return False
+
+    to_connect = []
+    for server_name in servers:
+        # A disabled server is intentionally off, not a failure — don't
+        # dial it or log it as one (the old code tried every server and
+        # reported each disabled one as "Failed to connect", which read
+        # as dozens of errors on a normal boot).
+        if not mcp_service.is_server_enabled(server_name):
+            logger.debug("MCP server %s disabled, skipping", server_name)
+            continue
+        to_connect.append(server_name)
+
+    if not to_connect:
+        return 0
+
+    results = await asyncio.gather(
+        *(_connect_one(name) for name in to_connect),
+        return_exceptions=True,
+    )
+    return sum(1 for r in results if r is True)
+
+
 async def _connect_external_services(mcp_client, registry):
     """Connect external startup integrations (skipped under TESTING)."""
     import asyncio
@@ -270,38 +318,7 @@ async def _connect_external_services(mcp_client, registry):
             mcp_service = mcp_client.mcp_service
             servers = mcp_service.list_servers()
 
-            connected_count = 0
-            for server_name in servers:
-                # A disabled server is intentionally off, not a failure — don't
-                # dial it or log it as one (the old code tried every server and
-                # reported each disabled one as "Failed to connect", which read
-                # as dozens of errors on a normal boot).
-                if not mcp_service.is_server_enabled(server_name):
-                    logger.debug("MCP server %s disabled, skipping", server_name)
-                    continue
-                try:
-                    success = await mcp_client.connect_to_server(
-                        server_name, persistent=True
-                    )
-                    if success:
-                        connected_count += 1
-                        logger.info(
-                            f"✓ Persistent connection established: {server_name}"
-                        )
-                    else:
-                        missing = mcp_client.get_missing_credentials(server_name)
-                        if missing:
-                            logger.info(
-                                "MCP server %s dormant — awaiting env vars: %s",
-                                server_name,
-                                ", ".join(missing),
-                            )
-                        else:
-                            logger.warning(
-                                f"Failed to connect to MCP server: {server_name}"
-                            )
-                except Exception as e:
-                    logger.error(f"Error connecting to {server_name}: {e}")
+            connected_count = await _connect_enabled_mcp_servers(mcp_client)
 
             logger.info(
                 f"MCP initialization complete: {connected_count}/{len(servers)} persistent connections"
