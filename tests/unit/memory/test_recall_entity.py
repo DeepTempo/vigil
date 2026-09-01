@@ -284,6 +284,42 @@ def test_a_broad_read_stays_inside_the_overall_budget_and_names_what_it_dropped(
     assert result["dropped"]["sightings"]["per_key_cap"] == 0
 
 
+def test_the_overall_cap_sorts_on_the_order_it_reports_rather_than_a_copy(
+    session, monkeypatch
+):
+    """Flip RECALL_ORDER's direction and the budget must keep the other rows.
+
+    The laterals derive their ORDER BY from the constant, so a budget that
+    restated the directions would go on keeping the newest rows while the result
+    reported the constant as the basis for a set chosen some other way. That is
+    the one failure the derivation exists to prevent, and only reversing the
+    constant can show it is prevented.
+    """
+    from core.memory import recall as module
+
+    key = "ip:10.12.0.1"
+    for index in range(3):
+        sighting(
+            session,
+            key,
+            investigation=f"hunt-{index}",
+            concluded=EPOCH - timedelta(days=index),
+        )
+    session.commit()
+
+    newest_first = [row["investigation_id"] for row in recall([key])["sightings"]]
+    assert newest_first == ["hunt-0", "hunt-1", "hunt-2"]
+
+    # Only the budget's terms are flipped; the SQL keeps its own order, so what
+    # changes below can only be the step under test.
+    monkeypatch.setattr(module, "_ORDER_TERMS", (("concluded_at", False), ("id", True)))
+    monkeypatch.setattr(module, "RECALL_OVERALL_CAP", 1)
+
+    kept = recall([key])["sightings"]
+
+    assert [row["investigation_id"] for row in kept] == ["hunt-2"]
+
+
 def test_two_identical_reads_over_unchanged_data_return_the_same_rows_in_order(session):
     # Every row shares a concluded_at, so nothing but the primary-key tiebreak
     # decides the order or which rows the cap keeps.
@@ -435,20 +471,25 @@ def test_the_row_bound_the_router_injects_is_ignored(session):
     assert len(recall_entity({"entity_key": key, "limit": 1})["sightings"]) == 5
 
 
-def test_a_call_naming_no_key_is_invalid_arguments(session):
+@pytest.mark.parametrize(
+    "args",
+    [
+        {"caller_kind": "worker"},
+        {"entity_key": "ip:10.9.0.1", "as_of": "last tuesday"},
+    ],
+    ids=["no key named", "unreadable as_of"],
+)
+def test_a_caller_mistake_is_invalid_args_however_it_is_spelled(session, args):
+    # Both are the caller's to fix, so both must come back the same way. The
+    # router answers invalid_args only for Python's own wording for a call that
+    # did not fit its signature; anything else is a backend_error, which tells
+    # the model the tool broke rather than that it should call again.
     from core.agents.tools_router import _is_bad_arguments
 
     with pytest.raises(TypeError) as raised:
-        recall_entity({"caller_kind": "worker"})
+        recall_entity(args)
 
-    # The router reads Python's own wording for a call that did not fit its
-    # signature, and answers invalid_args so the model can call again.
     assert _is_bad_arguments(raised.value)
-
-
-def test_an_unreadable_as_of_is_refused_rather_than_silently_defaulted(session):
-    with pytest.raises(ValueError):
-        recall_entity({"entity_key": "ip:10.9.0.1", "as_of": "last tuesday"})
 
 
 def test_the_bridge_resolves_recall_entity_without_reaching_mcp(

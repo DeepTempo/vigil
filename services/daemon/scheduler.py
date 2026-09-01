@@ -421,10 +421,8 @@ class TaskScheduler:
         if expired:
             logger.info("Cleanup expired %d unanswered approvals", expired)
 
-        # The episodic read log (#732), which holds reads rather than facts and
-        # is the one part of the memory tier with a retention policy. The rows a
-        # read returned live in their own tables, so an expired log row loses the
-        # fact that somebody asked and never the answer they were given.
+        # The episodic read log (#732), the one part of the memory tier with a
+        # retention policy. Off-thread for the same reason the sweep above is.
         from core.memory.recall import expire_read_log
 
         reads = await asyncio.to_thread(expire_read_log, cutoff)

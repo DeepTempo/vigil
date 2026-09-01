@@ -30,16 +30,25 @@ column that carries it.
 
 The log is written here, inside the query, rather than at either call site, so a
 read through ``/internal/tools/invoke`` and a direct ``execute_backend_tool``
-leave the same record. It holds reads and not facts, which is why it is the one
-part of the tier with a retention policy: the daemon's cleanup sweep deletes rows
-older than ``scheduler.cleanup_retention_days``.
+leave the same record. What it is for, and why it alone is retained, is stated on
+the table in ``infra/database/init/23_episodic_read_log.sql``.
 """
 
 from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 from sqlalchemy import Text as SAText
 from sqlalchemy import bindparam, text
@@ -70,6 +79,25 @@ Row = Dict[str, Any]
 KINDS: Tuple[str, ...] = DROPPED_KINDS
 
 
+# RECALL_ORDER as (field, descending) pairs. Both the SQL below and the overall
+# cap in Python sort on these, because the result and the read log report
+# RECALL_ORDER as the basis the rows were chosen on -- and a step that restated
+# the order instead of deriving it would go on keeping the old rows while the
+# result reported the new constant, which is the drift this exists to prevent.
+_ORDER_TERMS: Tuple[Tuple[str, bool], ...] = tuple(
+    (term.split()[0], term.split()[-1].upper() == "DESC")
+    for term in RECALL_ORDER.split(",")
+)
+
+# The term the kind has to outrank; see _apply_overall_cap.
+_PRIMARY_KEY = "id"
+
+
+def _order_by(alias: str) -> str:
+    """RECALL_ORDER as a clause on one alias."""
+    return ", ".join(f"{alias}.{term.strip()}" for term in RECALL_ORDER.split(","))
+
+
 # One statement per kind, and two laterals in it: how many distinct rows matched
 # at all, and the per-key capped page of them. Two statements would read two
 # snapshots under READ COMMITTED, and the dropped count would then describe a set
@@ -80,18 +108,8 @@ KINDS: Tuple[str, ...] = DROPPED_KINDS
 # sum would report ten rows withheld where five distinct conclusions were.
 #
 # The outer ORDER BY is not decoration. Without it the join order is Postgres's
-# to choose, and the dedup below -- that same Verdict, arriving twice -- would
+# to choose, and the dedup in _page -- that same Verdict, arriving twice -- would
 # keep whichever copy came first.
-def _order_by(alias: str) -> str:
-    """RECALL_ORDER as a clause on one alias.
-
-    Derived rather than transcribed: the result and the read log report
-    RECALL_ORDER as the basis the rows were chosen on, and a hardcoded ORDER BY
-    would let that claim go on being true after the query stopped honouring it.
-    """
-    return ", ".join(f"{alias}.{term.strip()}" for term in RECALL_ORDER.split(","))
-
-
 def _statement(table: str, predicate: str, matches_any: str, columns: str) -> Any:
     return text(
         f"""
@@ -186,12 +204,23 @@ def _iso(value: Any) -> Any:
     return value
 
 
+# What tools_router._is_bad_arguments matches on, so a mistake the caller can fix
+# comes back as invalid_args and not backend_error -- the contract keeps "the call
+# was wrong" apart from "the tool could not answer", and only the first tells the
+# model to try again. Coupling to the router's wording is fragile in both
+# directions; it is the router's contract, and stating it once here is better than
+# two error classes for two spellings of the same caller mistake.
+def _refuse(detail: str) -> TypeError:
+    return TypeError(f"{RECALL_TOOL}: {detail} (required keyword-only argument)")
+
+
 def _as_of(raw: Any) -> datetime:
     """The freshness filter, defaulting to now.
 
     A naive value is read as UTC rather than refused: every timestamp this tier
     stores is offset-aware, so a caller that dropped the offset meant UTC, and
-    failing the read would tell it nothing it could act on.
+    failing the read would tell it nothing it could act on. An unreadable one is
+    the caller's mistake and is refused as such, the same as a call naming no key.
     """
     if isinstance(raw, datetime):
         moment = raw
@@ -202,9 +231,8 @@ def _as_of(raw: Any) -> datetime:
         try:
             moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
         except ValueError:
-            raise ValueError(
-                f"{RECALL_TOOL} could not read as_of {stamp!r}; "
-                "it takes ISO-8601 with an offset"
+            raise _refuse(
+                f"as_of {stamp!r} is not ISO-8601 with an offset"
             ) from None
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
@@ -263,10 +291,19 @@ def _gap(row: Mapping[str, Any]) -> Row:
 _SHAPES = {"sightings": _sighting, "verdicts": _verdict, "gaps": _gap}
 
 
-# A row and the two numbers the caps are decided on, kept beside it rather than
-# inside it: `id` is per-table and would collide across kinds in the result, and
-# `concluded_at` is already there as a string.
-_Selected = Tuple[datetime, int, Row]
+class _Selected(NamedTuple):
+    """A chosen row, beside the two values the total order sorts it on.
+
+    They sit alongside the row rather than in it because neither belongs in the
+    result: ``id`` is per-table and would collide across kinds, and
+    ``concluded_at`` is already on the row as a string. Named rather than a bare
+    tuple so :func:`_apply_overall_cap` can reach the field RECALL_ORDER
+    nominates by name instead of by position.
+    """
+
+    concluded_at: datetime
+    id: int
+    row: Row
 
 
 def _page(
@@ -290,11 +327,14 @@ def _page(
     matched = 0
 
     for row in session.execute(_QUERIES[kind], dict(params)).mappings():
+        # Constant across every row -- the lateral that computes it joins on the
+        # whole key list and is uncorrelated -- so this reads the same value each
+        # time rather than accumulating one.
         matched = int(row["matched_total"])
         if row["id"] in seen:
             continue
         seen.add(row["id"])
-        selected.append((row["concluded_at"], int(row["id"]), shape(row)))
+        selected.append(_Selected(row["concluded_at"], int(row["id"]), shape(row)))
 
     return selected, max(0, matched - len(selected))
 
@@ -305,25 +345,37 @@ def _apply_overall_cap(
     """Spend the overall cap across all kinds and keys, newest first.
 
     One budget rather than one per kind, which is what the contract's
-    ``overall_cap`` says. Ordering across kinds needs one term more than
-    :data:`RECALL_ORDER` has: ids are per-table, so a Sighting and a Gap sharing a
-    ``concluded_at`` and an ``id`` are a tie it cannot break, and an unbroken tie
-    is exactly the nondeterminism the total order exists to prevent. The kind
-    breaks it.
+    ``overall_cap`` says. This is the step that decides which rows a caller
+    actually sees, so it sorts on :data:`_ORDER_TERMS` -- RECALL_ORDER parsed --
+    and not on directions written out here. Restating them would leave the
+    laterals following the constant while the budget kept the opposite rows, and
+    the result would go on reporting the constant as the basis for a set chosen
+    some other way.
+
+    Ordering across kinds needs one term more than RECALL_ORDER has. Ids are
+    per-table, so a Sighting and a Gap sharing a ``concluded_at`` and an ``id``
+    are a tie it cannot break, and an unbroken tie is the nondeterminism the
+    total order exists to prevent. The kind breaks it, and it is applied directly
+    above the primary key -- the term it exists to make meaningful -- rather than
+    appended, which would leave it below the tie it is there to settle.
 
     That extra term decides *which* rows the budget keeps and never the order
     they are presented in: each returned list is one kind, and within a kind the
     order is RECALL_ORDER exactly as the result and the log report it.
 
-    Sorted in two passes rather than on a negated key: ``concluded_at`` carries
-    microseconds and a float epoch does not, so negating it to reverse one field
-    of a tuple would make two rows a millionth of a second apart into a tie.
+    One stable sort per term, applied least-significant first, rather than one
+    key over the whole tuple: the terms differ in direction, and reversing just
+    one of them by negating it would need a number -- which for ``concluded_at``
+    means a float epoch, turning two rows a microsecond apart into a tie.
     """
-    ordered = sorted(
-        ((kind, selected) for kind in KINDS for selected in pages[kind]),
-        key=lambda entry: (entry[0], entry[1][1]),
-    )
-    ordered.sort(key=lambda entry: entry[1][0], reverse=True)
+    ordered = [(kind, selected) for kind in KINDS for selected in pages[kind]]
+
+    for field, descending in reversed(_ORDER_TERMS):
+        ordered.sort(
+            key=lambda entry, f=field: getattr(entry[1], f), reverse=descending
+        )
+        if field == _PRIMARY_KEY:
+            ordered.sort(key=lambda entry: entry[0])
 
     kept: Dict[str, List[_Selected]] = {kind: [] for kind in KINDS}
     for kind, selected in ordered[:RECALL_OVERALL_CAP]:
@@ -335,7 +387,7 @@ def _apply_overall_cap(
 
 def _attach_sources(session: Session, verdicts: Sequence[_Selected]) -> None:
     """Give each surviving Verdict its per-source Stance and stamped Source Tier."""
-    by_id = {verdict_id: row for _, verdict_id, row in verdicts}
+    by_id = {selected.id: selected.row for selected in verdicts}
     if not by_id:
         return
     for row in session.execute(
@@ -392,6 +444,11 @@ def recall(
     Unknown keys are empty lists and zeros rather than an error: an entity nobody
     has investigated and an entity that does not exist are the same answer, and
     there is nothing a caller could do differently about either.
+
+    Passing ``session`` joins the caller's transaction, and ``unit_of_work`` then
+    neither commits nor closes it. The log row is written into that transaction,
+    so committing it becomes the caller's obligation -- a caller that rolls back
+    has un-logged the read it performed. Only the tests pass one today.
     """
     normalised = normalise_keys(list(keys))
     moment = _as_of(as_of)
@@ -419,7 +476,7 @@ def recall(
 
             kept, spent = _apply_overall_cap(pages)
             for kind in KINDS:
-                result[kind] = [row for _, _, row in kept[kind]]
+                result[kind] = [selected.row for selected in kept[kind]]
                 result["dropped"][kind]["overall_cap"] = spent[kind]
 
             _attach_sources(db, kept["verdicts"])
@@ -448,13 +505,7 @@ def recall_entity(args: Args) -> Dict[str, Any]:
         single = supplied.get("entity_key")
         keys = [single] if single else []
     if not keys:
-        # Worded so tools_router reads it as invalid_args rather than a backend
-        # failure: the model can fix this by calling again, and the contract
-        # keeps "the call was wrong" apart from "the tool could not answer".
-        raise TypeError(
-            f"{RECALL_TOOL} is missing a required keyword-only argument: "
-            + " or ".join(RECALL_KEY_ARGS)
-        )
+        raise _refuse("a call needs " + " or ".join(RECALL_KEY_ARGS))
 
     return recall(
         keys,
