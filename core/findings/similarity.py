@@ -73,8 +73,7 @@ def similar_findings(data, finding_id: str, limit: int = 10) -> Dict[str, Any]:
         neighbors = provider.neighbors(seed, limit)
     except Exception as e:
         logger.error(
-            f"Similarity provider for source '{source}' failed on "
-            f"{finding_id}: {e}"
+            f"Similarity provider for source '{source}' failed on " f"{finding_id}: {e}"
         )
         return {"seed_finding": finding_id, "neighbors": [], "error": str(e)}
 

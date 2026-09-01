@@ -59,7 +59,6 @@ ZeroFloat = Annotated[float, BeforeValidator(_none_to_zero)]
 CoercedBool = Annotated[bool, BeforeValidator(bool)]
 
 
-
 class ORMSchema(BaseModel):
     """Read model over a SQLAlchemy instance.
 
