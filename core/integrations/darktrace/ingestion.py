@@ -22,7 +22,6 @@ from core.ingestion.siem_ingestion_service import SIEMIngestionService
 logger = logging.getLogger(__name__)
 
 DATA_SOURCE = "darktrace"
-DEFAULT_EMBEDDING_DIM = 768
 
 
 def _finding_id(prefix: str, stable_key: str, ts: datetime) -> str:
@@ -165,7 +164,6 @@ class DarktraceIngestionService(SIEMIngestionService):
 
         return {
             "finding_id": _finding_id("dt-mb", str(pbid), ts),
-            "embedding": [0.0] * DEFAULT_EMBEDDING_DIM,
             "mitre_predictions": _extract_mitre(model.get("tags")),
             "anomaly_score": score,
             "timestamp": ts.isoformat(),
@@ -217,7 +215,6 @@ class DarktraceIngestionService(SIEMIngestionService):
 
         return {
             "finding_id": _finding_id("dt-ai", str(uuid), ts),
-            "embedding": [0.0] * DEFAULT_EMBEDDING_DIM,
             "mitre_predictions": _extract_mitre(
                 alert.get("mitreTactics") or alert.get("tags")
             ),
@@ -253,7 +250,6 @@ class DarktraceIngestionService(SIEMIngestionService):
 
         return {
             "finding_id": _finding_id("dt-sys", str(key), ts),
-            "embedding": [0.0] * DEFAULT_EMBEDDING_DIM,
             "mitre_predictions": {},
             "anomaly_score": score,
             "timestamp": ts.isoformat(),

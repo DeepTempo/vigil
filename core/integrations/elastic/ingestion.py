@@ -184,7 +184,6 @@ class ElasticIngestion(SIEMIngestionService):
                 "raw_event": alert,
                 "anomaly_score": 0.5,
                 "mitre_predictions": mitre_predictions,
-                "embedding": [],
                 "metadata": {
                     "elastic_alert_id": alert_id,
                     "rule_id": (

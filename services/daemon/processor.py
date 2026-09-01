@@ -64,8 +64,7 @@ class FindingProcessor:
             "sanitization_flagged": 0,
         }
 
-    @staticmethod
-    def _sanitize_finding(finding: Dict[str, Any], source: Optional[str]) -> None:
+    def _sanitize_finding(self, finding: Dict[str, Any], source: Optional[str]) -> None:
         """Issue #87: scan finding text for prompt-injection patterns before
         the content is rendered into a triage prompt.
 
@@ -99,6 +98,7 @@ class FindingProcessor:
         if not patterns:
             return
 
+        self.stats["sanitization_flagged"] += 1
         logger.warning(
             "finding sanitization flagged",
             extra={
@@ -249,23 +249,10 @@ class FindingProcessor:
 
         try:
             # Issue #87: scan ingested finding for prompt-injection patterns
-            # before any of its content reaches the LLM. Detect-only in v1.
+            # before any of its content reaches the LLM. Detect-only in v1;
+            # _sanitize_finding scans once and owns the count + log.
             try:
-                from core.llm.security import scan_for_injection
-
-                desc_patterns = scan_for_injection(
-                    finding.get("description") or ""
-                ).patterns
-                ec = finding.get("entity_context") or {}
-                ec_blob = (
-                    " ".join(str(v) for v in ec.values() if v is not None)
-                    if isinstance(ec, dict)
-                    else str(ec)
-                )
-                ec_patterns = scan_for_injection(ec_blob).patterns
-                if desc_patterns or ec_patterns:
-                    self.stats["sanitization_flagged"] += 1
-                    self._sanitize_finding(finding, source)
+                self._sanitize_finding(finding, source)
             except Exception as e:  # noqa: BLE001
                 logger.debug(f"Sanitization hook error (non-fatal): {e}")
 
@@ -432,10 +419,10 @@ class FindingProcessor:
 
     async def _update_finding(self, finding: Dict[str, Any]):
         """Persist only what triage/enrich produced — severity, status, and the
-        cached AI analysis. Never write the whole finding back: the in-memory copy
-        still carries the raw, un-normalized embedding, and re-sending it to the
-        vector(768) column fails for non-768 sources (e.g. LogLM's 512), which
-        would silently drop the triage result."""
+        cached AI analysis. This is a targeted partial update: the in-memory copy
+        carries transient, source-derived keys (raw_event, entity context, etc.)
+        that shouldn't be written back over the stored row, so only the
+        whitelisted fields are sent."""
         finding_id = finding.get("finding_id")
         if not finding_id or not self._data_service:
             return

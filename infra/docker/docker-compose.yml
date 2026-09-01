@@ -321,8 +321,12 @@ services:
   # calls hit the /anthropic passthrough (preserves extended thinking and
   # prompt caching); OpenAI/Ollama/etc. hit the /v1 OpenAI-format surface.
   # Live config lives in /app/data/config.db (SQLite); config.json is used
-  # as a first-boot seed. Configure Bifrost's own exact-hash / semantic
-  # cache via its UI at http://localhost:8080.
+  # as a first-boot seed. Providers, keys, models and virtual keys are managed
+  # from Vigil's own Settings -> AI Config, which reaches this config store
+  # through the authenticated passthrough in
+  # services/api/routers/bifrost_config.py. Bifrost's own UI at
+  # http://localhost:8080 remains the place for what that passthrough
+  # deliberately does not expose: cache and plugin config.
   bifrost:
     image: maximhq/bifrost:latest
     container_name: deeptempo-bifrost
@@ -469,7 +473,7 @@ services:
       - SPLUNK_PASSWORD=changeme123
       - SPLUNK_HEC_TOKEN=00000000-0000-0000-0000-000000000000
     ports:
-      - "6990:8000"   # Web UI
+      - "8000:8000"   # Web UI (host 6990 is taken by the agent worker health port)
       - "8088:8088"   # HEC (HTTP Event Collector)
       - "8089:8089"   # Management port
       - "9997:9997"   # Forwarder port

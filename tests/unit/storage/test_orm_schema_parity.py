@@ -100,16 +100,7 @@ def _variant(model, cases):
 
 # model name -> {golden case key: callable(instance) -> dict}
 SCHEMA_REGISTRY: dict[str, dict] = {
-    # Core models, whose serialized shape is gated by a flag.
-    "Finding": _variant(
-        models.Finding,
-        {
-            "populated.to_dict.with_embedding": FindingSchema.dump,
-            "populated.to_dict.without_embedding": FindingSchema.dump_summary,
-            "empty.to_dict.with_embedding": FindingSchema.dump,
-            "empty.to_dict.without_embedding": FindingSchema.dump_summary,
-        },
-    ),
+    "Finding": _standard(models.Finding, FindingSchema),
     "Case": _variant(
         models.Case,
         {

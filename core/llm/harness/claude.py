@@ -749,8 +749,8 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
             "threat assessment, recommended actions, and context."
         )
 
-        # Build a clean copy: drop embedding and strip None values for a cleaner prompt
-        clean = {k: v for k, v in finding.items() if v is not None and k != "embedding"}
+        # Build a clean copy: strip None values for a cleaner prompt
+        clean = {k: v for k, v in finding.items() if v is not None}
         finding_text = json.dumps(clean, indent=2, default=str)
 
         message = f"Analyze this security finding:\n\n{finding_text}\n\nProvide a detailed analysis."
