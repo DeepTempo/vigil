@@ -1009,6 +1009,14 @@ async def close_case(
     )
     if not closure:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    # The PATCH route has always told the upstream SIEM when a status changed, and
+    # this one never did: a Case closed here, by either MCP tool or by a merge,
+    # stayed open in the SIEM that raised it. Best-effort and fire-and-forget, as
+    # it is there -- the close is recorded either way.
+    import asyncio
+
+    asyncio.ensure_future(_sync_upstream_status(case_id, "closed"))
     return {"success": True, "closure": CaseClosureInfoSchema.dump(closure)}
 
 
