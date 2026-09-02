@@ -176,9 +176,7 @@ def write_autostart(
         raise HTTPException(status_code=400, detail=str(e))
     except OSError:
         logger.exception("Could not persist autostart list")
-        raise HTTPException(
-            status_code=500, detail="Could not persist autostart list"
-        )
+        raise HTTPException(status_code=500, detail="Could not persist autostart list")
 
 
 # --- Generic routes ---

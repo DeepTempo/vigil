@@ -26,9 +26,9 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from fastapi import HTTPException  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
-from services.api.routers import findings as findings_api  # noqa: E402
 from core.findings.enrichment import (  # noqa: E402
     EmptyProviderResponse,
     FindingNotFound,
@@ -36,6 +36,8 @@ from core.findings.enrichment import (  # noqa: E402
     ProviderUnavailable,
 )
 from core.findings.enrichment import service as enrichment_service  # noqa: E402
+from services.api.errors import register_exception_handlers  # noqa: E402
+from services.api.routers import findings as findings_api  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -232,6 +234,23 @@ async def test_unexpected_failure_propagates(stub_data_service, monkeypatch):
 
     with pytest.raises(RuntimeError, match="gateway exploded"):
         await findings_api.get_or_generate_enrichment(FINDING_ID, False)
+
+
+def test_unexpected_failure_does_not_leak_to_the_client(stub_data_service, monkeypatch):
+    _stub_enrich(monkeypatch, raises=RuntimeError("gateway exploded"))
+
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.add_api_route(
+        "/enrich/{finding_id}",
+        findings_api.get_or_generate_enrichment,
+        methods=["POST"],
+    )
+    response = TestClient(app).post(f"/enrich/{FINDING_ID}")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+    assert "gateway exploded" not in response.text
 
 
 # ---------------------------------------------------------------------------
