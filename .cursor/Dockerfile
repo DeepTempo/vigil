@@ -44,6 +44,24 @@ RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 
 ########################################################
+# HELM
+########################################################
+
+# Pin matches .github/workflows/helm-chart.yml so `helm template` matches CI.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && HELM_VERSION=v3.15.2 \
+    && cd /tmp \
+    && curl --retry 3 --retry-delay 5 -fsSL -O "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" \
+    && curl --retry 3 --retry-delay 5 -fsSL -O "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" \
+    && sha256sum -c "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" \
+    && tar -xzf "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" \
+    && mv "linux-${ARCH}/helm" /usr/local/bin/helm \
+    && rm -rf "/tmp/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" \
+              "/tmp/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" \
+              "/tmp/linux-${ARCH}" \
+    && helm version --short
+
+########################################################
 # CONFIG UBUNTU USER
 ########################################################
 
