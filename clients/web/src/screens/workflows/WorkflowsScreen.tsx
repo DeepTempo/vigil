@@ -2435,7 +2435,7 @@ function AgentEditModal({ agentId, onClose, onSaved }: { agentId: string | null;
 
           {/* Prompt fragments */}
           <div className="pt-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase text-tx-3">Prompt fragments</div>
-          <p className="text-[11.5px] text-tx-3 -mt-2">Rendered into the Vigil base prompt (preserves mempalace + entity-recognition directives).</p>
+          <p className="text-[11.5px] text-tx-3 -mt-2">Rendered into the Vigil base prompt (preserves entity-recognition directives; adds read-only memory when recall_entity is granted).</p>
           <Field label="Role *" value={form.role} onChange={(v) => set('role', v)} hint={'Renders as: "You are a SOC {role} in the Vigil SOC platform."'} />
           <Field label="Extra principles" value={form.extra_principles} onChange={(v) => set('extra_principles', v)} textarea />
           <Field label="Methodology" value={form.methodology} onChange={(v) => set('methodology', v)} textarea />

@@ -166,8 +166,8 @@ def _candidate_names(capability: str) -> Tuple[str, ...]:
     )
 
 
-# An agent's prompt is rendered now rather than read from a file: the memory-palace
-# block depends on what is connected, so a stored copy would describe another run.
+# An agent's prompt is rendered now rather than read from a file: the memory block
+# depends on the agent's own grant, so a stored copy would describe another agent.
 def _prompt_for(agent_id: str) -> str:
     from core.agents.manager import SOCAgentLibrary
 
