@@ -37,7 +37,7 @@ function resultOf(body: unknown): ToolResult {
 export interface Deadline {
   signal: AbortSignal;
   timedOut: () => boolean;
-  release(): void;
+  release: () => void;
 }
 
 export function deadline(timeoutMs: number, signal?: AbortSignal): Deadline {

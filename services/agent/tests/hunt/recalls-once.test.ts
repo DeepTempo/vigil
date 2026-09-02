@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { join } from "node:path";
 import { archFor } from "../../arch/registry.js";
-import { budgetOf, FRESH, unmeteredQuota } from "../../core/budget.js";
-import { localDispatch } from "../../core/dispatch.js";
-import type { Harness } from "../../core/loop.js";
-import { registryOf } from "../../core/registry.js";
-import { buildSpec, type RunSpec } from "../../core/spec.js";
 import { InProcessState } from "../../core/state.js";
 import { recalledNotes, type RecallResult } from "../../contracts/memory.js";
 import { InProcessDirectiveQueue } from "../../workflows/hunt/directives.js";
@@ -14,36 +8,10 @@ import { fold } from "../../workflows/hunt/ledger.js";
 import { runHunt } from "../../workflows/hunt/workflow.js";
 import { isLead, respondingProvider } from "../support/responding-provider.js";
 import { countingMemory, recalledFixture } from "../support/recalled.js";
+import { recallHarness, recallHuntSpec, SUBJECT, type Asked } from "../support/recall-hunt.js";
 
-const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 const RUN = "run-recalls-once";
-const ASKED = "192.0.2.10 is beaconing to attacker-controlled infrastructure";
-const SUBJECT = "ip:192.0.2.10";
 const RECALLED = recalledFixture();
-
-interface Asked {
-  operator?: readonly string[];
-  hypotheses?: readonly string[];
-}
-
-function huntSpec(asked: Asked = {}): RunSpec {
-  const entry = archFor("hunt");
-  const spec = buildSpec(
-    { arch: entry.arch, playbook: join(FIXTURES, "hunt.playbook.yaml"), config: join(FIXTURES, "hunt.config.yaml") },
-    entry.actions,
-  );
-  // Where a start job puts them: the hunt spec reads its own vocabulary off the
-  // sections, and subjects arrive as keys the spec parses.
-  return {
-    ...spec,
-    sections: {
-      ...spec.sections,
-      hypotheses: [...(asked.hypotheses ?? [])],
-      operator_hypotheses: [...(asked.operator ?? [ASKED])],
-      operator_hypothesis_subjects: { [ASKED]: [SUBJECT] },
-    },
-  };
-}
 
 // Concludes on the first decision it is asked for, so the run reaches a terminal
 // and the ledger holds every turn the lead took to get there.
@@ -55,17 +23,9 @@ const provider = respondingProvider({
 
 async function hunt(asked: Asked = {}) {
   const state = new InProcessState<HuntKinds>();
-  const spec = huntSpec(asked);
+  const spec = recallHuntSpec(asked);
   const memory = countingMemory(RECALLED);
-  const harness: Harness<HuntKinds> = {
-    provider,
-    registry: registryOf([], {}),
-    dispatch: localDispatch,
-    budget: budgetOf(spec.budgets, unmeteredQuota, Date.now, FRESH),
-    memory,
-    state,
-  };
-  const report = await runHunt(harness, {
+  const report = await runHunt(recallHarness(spec, provider, memory, state), {
     run_id: RUN,
     spec,
     actions: archFor("hunt").actions,
@@ -94,8 +54,6 @@ describe("a hunt reads episodic memory once, on the keys the operator named", ()
     expect(memory.reads()).toHaveLength(1);
   });
 
-  // No fold reads episodic: the projection is one run's own account of itself, and
-  // a recalled row is an input to a decision rather than a belief the hunt holds.
   // A scheduled hunt declares no subjects -- the scheduler queues a hypothesis and
   // nothing else -- so the autonomous path would recall nothing at all.
   it("falls back to the entities its hypotheses name", async () => {

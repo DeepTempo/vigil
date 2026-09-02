@@ -87,7 +87,7 @@ export function httpRecall(base: Memory, options: RecallOptions): Memory {
           // it was let go of.
           if (signal?.aborted === true) throw refuse(reasonOf(signal.reason));
           if (held.timedOut()) throw refuse(`nothing arrived inside ${timeoutMs}ms`);
-          throw refuse(error instanceof Error ? error.message : String(error));
+          throw refuse(reasonOf(error));
         }
 
         if (!response.ok) throw refuse(`the endpoint answered ${response.status}`);

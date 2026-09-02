@@ -2,11 +2,6 @@ import { gzipSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { archFor } from "../arch/registry.js";
-import { budgetOf, FRESH, unmeteredQuota } from "../core/budget.js";
-import { localDispatch } from "../core/dispatch.js";
-import type { Harness } from "../core/loop.js";
-import { registryOf } from "../core/registry.js";
-import { buildSpec, type RunSpec } from "../core/spec.js";
 import { InProcessState } from "../core/state.js";
 import type { Memory } from "../core/seams.js";
 import { InProcessDirectiveQueue } from "../workflows/hunt/directives.js";
@@ -14,6 +9,7 @@ import type { HuntKinds } from "../workflows/hunt/journal.js";
 import { runHunt } from "../workflows/hunt/workflow.js";
 import { isLead, respondingProvider } from "../tests/support/responding-provider.js";
 import { recalledFixture } from "../tests/support/recalled.js";
+import { recallHarness, recallHuntSpec } from "../tests/support/recall-hunt.js";
 
 // Records the fixture the replay gate reads: one hunt, run by current code, whose
 // prefix carries recalled rows and whose read is journaled (#737).
@@ -29,35 +25,16 @@ import { recalledFixture } from "../tests/support/recalled.js";
 const OUT = join(import.meta.dirname, "..", "tests", "fixtures", "replay");
 const NAME = "hunt-recall";
 const RUN = "hunt-recall-0001";
-const ASKED = "192.0.2.10 is beaconing to attacker-controlled infrastructure";
-const SUBJECT = "ip:192.0.2.10";
+
+// The fixture config's call meter is set for a unit test; a whole hunt with a
+// write-up needs room to reach its terminal rather than parking on the ceiling.
+const MAX_CALLS = 40;
 
 const memory: Memory = {
   recall: async () => [],
   entities: async () => recalledFixture(),
   remember: async () => {},
 };
-
-function specFor(): RunSpec {
-  const entry = archFor("hunt");
-  const fixtures = join(import.meta.dirname, "..", "tests", "fixtures");
-  const spec = buildSpec(
-    { arch: entry.arch, playbook: join(fixtures, "hunt.playbook.yaml"), config: join(fixtures, "hunt.config.yaml") },
-    entry.actions,
-  );
-  return {
-    ...spec,
-    // The fixture config's call meter is set for a unit test; a whole hunt with a
-    // write-up needs room to reach its terminal rather than parking on the ceiling.
-    budgets: { ...spec.budgets, max_calls: 40 },
-    sections: {
-      ...spec.sections,
-      hypotheses: [],
-      operator_hypotheses: [ASKED],
-      operator_hypothesis_subjects: { [ASKED]: [SUBJECT] },
-    },
-  };
-}
 
 // Recommends CONCLUDE every iteration and answers the write-up when asked. The run
 // still parks on its iteration ceiling: CONCLUDE is a recommendation and the
@@ -81,34 +58,30 @@ const provider = respondingProvider({
   ticks: 0,
 });
 
-const state = new InProcessState<HuntKinds>();
-const spec = specFor();
-const harness: Harness<HuntKinds> = {
-  provider,
-  registry: registryOf([], {}),
-  dispatch: localDispatch,
-  budget: budgetOf(spec.budgets, unmeteredQuota, Date.now, FRESH),
-  memory,
-  state,
+const main = async (): Promise<void> => {
+  const state = new InProcessState<HuntKinds>();
+  const spec = recallHuntSpec({ hypotheses: [], maxCalls: MAX_CALLS });
+
+  const report = await runHunt(recallHarness(spec, provider, memory, state), {
+    run_id: RUN,
+    spec,
+    actions: archFor("hunt").actions,
+    queue: new InProcessDirectiveQueue(),
+  });
+
+  const events = await state.read(RUN, { snapshots: true });
+  const recalls = events.filter((event) => event.kind === "recall");
+  if (recalls.length !== 1) throw new Error(`the run journaled ${recalls.length} recall events, not one`);
+  // What the fixture is for. The outcome is whatever the run actually reached.
+  const decisions = events.filter((event) => event.kind === "decision");
+  if (decisions.length === 0) throw new Error("the run made no decision, so nothing read the recalled rows");
+
+  mkdirSync(OUT, { recursive: true });
+  const jsonl = events.map((event) => JSON.stringify(event)).join("\n");
+  writeFileSync(join(OUT, `${NAME}.jsonl.gz`), gzipSync(Buffer.from(`${jsonl}\n`, "utf8")));
+  console.log(
+    `${NAME}: ${events.length} events, ${decisions.length} decision(s), ${report.iterations} iteration(s), ${report.status}`,
+  );
 };
 
-const report = await runHunt(harness, {
-  run_id: RUN,
-  spec,
-  actions: archFor("hunt").actions,
-  queue: new InProcessDirectiveQueue(),
-});
-
-const events = await state.read(RUN, { snapshots: true });
-const recalls = events.filter((event) => event.kind === "recall");
-if (recalls.length !== 1) throw new Error(`the run journaled ${recalls.length} recall events, not one`);
-// What the fixture is for. The outcome is whatever the run actually reached.
-const decisions = events.filter((event) => event.kind === "decision");
-if (decisions.length === 0) throw new Error("the run made no decision, so nothing read the recalled rows");
-
-mkdirSync(OUT, { recursive: true });
-const jsonl = events.map((event) => JSON.stringify(event)).join("\n");
-writeFileSync(join(OUT, `${NAME}.jsonl.gz`), gzipSync(Buffer.from(`${jsonl}\n`, "utf8")));
-console.log(
-  `${NAME}: ${events.length} events, ${decisions.length} decision(s), ${report.iterations} iteration(s), ${report.status}`,
-);
+await main();

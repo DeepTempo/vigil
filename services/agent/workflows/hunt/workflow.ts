@@ -6,8 +6,7 @@ import type { RunSpec } from "../../core/spec.js";
 import { BudgetRefused, disconfirmationCritic, decisionProvider, narrativeWriter, workerDispatcher } from "./adapters.js";
 import { narrativeInput, type Narrative } from "./narrative.js";
 import type { Narrator } from "./ports.js";
-import { huntSpec, verdictsOf, type HuntSpec } from "./config.js";
-import { fromText, key } from "./entities.js";
+import { huntSpec, recallKeysOf, verdictsOf } from "./config.js";
 import { pendingCheckpoints } from "./checkpoints.js";
 import { HuntAlreadyTerminal, HuntController, HuntParked, resumeHunt, startHunt } from "./controller.js";
 import { createEnricher, type Tool } from "./enrich.js";
@@ -37,28 +36,6 @@ export interface HuntReport {
   status: RunOutcome | "waiting_approval";
   reason: string;
   iterations: number;
-}
-
-// What the run's episodic read is keyed on, deduped and sorted so the same hunt
-// asks the same question in the same order.
-//
-// Declared subjects first, and only for statements actually being put up: a
-// subject keyed to a statement the caller then edited away is not what this hunt
-// is about, which is the same rule core/workflows/hypothesis_subjects.py applies
-// on the other side.
-//
-// Extraction is the fallback rather than the rule, because a declared key was
-// typed by a person and parsed where an unusable one is still refused. It is not
-// no fallback at all: a scheduled hunt declares no subjects -- the scheduler
-// queues a hypothesis and nothing else -- so the autonomous path would otherwise
-// never read memory. A key read out of a statement can be beside the point rather
-// than wrong, which spends prefix budget and, because recall only reorders what to
-// look at, can never move a verdict.
-function recallKeys(spec: HuntSpec): readonly string[] {
-  const declared = spec.operator_hypotheses.flatMap((statement) => spec.operator_hypothesis_subjects[statement] ?? []);
-  const named = () => [...spec.operator_hypotheses, ...spec.hypotheses].flatMap((statement) => fromText(statement));
-  const held = declared.length > 0 ? declared : named();
-  return [...new Set(held.map(key))].sort();
 }
 
 // The hunt on the harness. The controller owns every decision this makes; what
@@ -104,7 +81,7 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
     spec: options.spec,
     run_id,
     actions: options.actions,
-    recall_keys: recallKeys(spec),
+    recall_keys: recallKeysOf(spec),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
   const narrator = narrativeWriter(ports);

@@ -3,7 +3,7 @@ import { gunzipSync } from "node:zlib";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { prefixBytes, prefixMessages, prefixOf } from "../../core/context.js";
-import { recalledNotesOf, recalledRowsOf, type RecallResult } from "../../contracts/memory.js";
+import { recalledNotes, recalledRowsOf, type RecallResult } from "../../contracts/memory.js";
 import { fold, type HuntEvent } from "../../workflows/hunt/ledger.js";
 import { replay } from "../../workflows/hunt/replay.js";
 
@@ -32,14 +32,20 @@ const events = (): HuntEvent[] =>
 
 const LOG = events();
 
+// Everything below reads the rebuild through replay(), not through the renderer
+// beside it: the check is that a Replay presents the recalled rows, so a replay
+// that stopped rebuilding them has to fail here rather than pass next to a
+// separate call that still does.
+const recalledBy = (log: readonly HuntEvent[]): readonly string[] => replay(log).recalled;
+
 // The lead's opening turn, rebuilt. Tools are left out because prefixMessages
 // never reads them: recall reaches the opening user turn and nowhere else.
 const openingFrom = (log: readonly HuntEvent[]): string | undefined =>
-  prefixMessages(prefixOf("the lead's prompt", [], recalledNotesOf(log)), "the task")[1]?.content;
+  prefixMessages(prefixOf("the lead's prompt", [], recalledBy(log)), "the task")[1]?.content;
 
 // What the prompt cache is keyed on, which is what a rebuild has to reproduce.
 const bytesFrom = (log: readonly HuntEvent[]): string =>
-  prefixBytes(prefixOf("the lead's prompt", [], recalledNotesOf(log)));
+  prefixBytes(prefixOf("the lead's prompt", [], recalledBy(log)));
 
 describe("the recorded run carries what it recalled", () => {
   it("journals one recall event for the whole run", () => {
@@ -97,12 +103,12 @@ describe("a rebuild reads the journaled rows", () => {
   it("presents nothing for a payload it cannot read, rather than a prefix of holes", () => {
     const { keys: _gone, ...missing } = recalledRowsOf(LOG) as RecallResult;
     const drifted = LOG.map((event) => (event.kind === "recall" ? { ...event, payload: missing } : event)) as HuntEvent[];
-    expect(recalledNotesOf(drifted)).toEqual([]);
+    expect(recalledBy(drifted)).toEqual([]);
   });
 
   it("has nothing to present when the event is missing, rather than reading memory for it", () => {
     const without = LOG.filter((event) => event.kind !== "recall");
-    expect(recalledNotesOf(without)).toEqual([]);
+    expect(recalledBy(without)).toEqual([]);
   });
 });
 
@@ -124,5 +130,14 @@ describe("the fold and the replay are unmoved by it", () => {
 
   it("rebuilds each digest exactly, with no inferred prefix", () => {
     expect(replay(LOG).inexact).toBe(0);
+  });
+
+  // The other half of what a decision was shown. A Replay that rebuilt only the
+  // digest would reproduce every decision in this run and still be blind to the
+  // rows the lead actually opened on.
+  it("rebuilds the recalled rows alongside the digests", () => {
+    const report = replay(LOG);
+    expect(report.recalled.join("\n")).toContain("192.0.2.10 is a scheduled backup target");
+    expect(report.recalled).toEqual(recalledNotes(recalledRowsOf(LOG) as RecallResult));
   });
 });

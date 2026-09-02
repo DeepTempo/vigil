@@ -1,17 +1,22 @@
 // The recall contract (#729): what a read of episodic memory returns, and the
 // signature of the tool that performs one.
 //
-// One shape, carried two ways. The run-start read journals it verbatim as the
-// recall event payload; a mid-run recall_entity call carries the same object as
-// the single row of a ToolResult. A parallel payload would be a second contract,
-// and the second one drifts.
+// One result shape, carried two ways. The run-start read journals it verbatim as
+// the recall event payload; a mid-run recall_entity call carries the same object
+// as the single row of a ToolResult. A second copy of the result would be a second
+// contract, and the second one drifts.
+//
+// RecallUnavailable is not that second copy. It is the account of a read that did
+// not happen, which is a different fact from a read that found nothing, and only
+// the harness ever writes one -- Python answers reads and has no way to report
+// that it was never asked.
 //
 // A mismatch between the halves fails as "no history", indistinguishable from an
 // entity nobody has looked at. The Python half is core/memory/recall_contract.py
 // and tests/unit/_ratchets/test_recall_contract_agrees.py fails when they
-// disagree. Nothing imports either half yet -- #731 writes the rows, #732 lands
-// the tool, the harness lands the event -- which is why a static check is the
-// only one available.
+// disagree. It is a static check because neither side runs the other's code:
+// Python answers the read and never journals it, the harness journals it and
+// never runs the query.
 
 import type { ToolResult } from "./tool.js";
 
@@ -374,9 +379,9 @@ export function recalledRowsOf(log: readonly LedgerRecord[]): RecallResult | nul
   if (event === undefined) return null;
   const payload = event.payload;
   if (typeof payload !== "object" || payload === null) return null;
-  // Validated rather than cast, for the reason recallOf gives below: a drifted
-  // payload cast to a RecallResult renders as an entity nobody has looked at,
-  // which is true of every entity, so nothing looks wrong.
+  // Validated rather than cast: a drifted payload cast to a RecallResult renders
+  // as an entity nobody has looked at -- see RecallUnavailable for why that
+  // particular wrong answer is the one that hides.
   return RECALL_RESULT_KEYS.every((key) => key in payload) ? (payload as RecallResult) : null;
 }
 
@@ -390,9 +395,8 @@ export function recalledNotesOf(log: readonly LedgerRecord[]): readonly string[]
 }
 
 // One row holding the whole mapping. It validates rather than casting, because a
-// cast would let a drifted payload through as a RecallResult of undefined fields,
-// which renders as an entity nobody has looked at -- true of every entity, so
-// nothing looks wrong.
+// cast would let a drifted payload through as a RecallResult of undefined fields
+// -- see RecallUnavailable for why that renders as the wrong answer nobody spots.
 export const recallOf = (result: ToolResult): RecallResult | null => {
   if (!result.ok || result.rowCount !== 1 || result.rows.length !== 1) return null;
   const row = result.rows[0];

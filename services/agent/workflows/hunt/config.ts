@@ -1,5 +1,5 @@
 import { callsPerIteration, DEFAULT_BUDGETS, type Budgets, type Entity } from "./types.js";
-import { parseKey } from "./entities.js";
+import { fromText, key, parseKey } from "./entities.js";
 import { SpecError, type Counts, type RunSpec } from "../../core/spec.js";
 import { DEFAULT_CHECKPOINTS, type Checkpoints } from "./checkpoints.js";
 
@@ -213,4 +213,26 @@ export function huntSpec(spec: RunSpec): HuntSpec {
     checkpoints: { ...DEFAULT_CHECKPOINTS, ...(held["checkpoints"] as object | undefined) },
     termination: terminationOf(spec),
   };
+}
+
+// What the run's episodic read is keyed on, deduped and sorted so the same hunt
+// asks the same question in the same order.
+//
+// Declared subjects first, and only for statements actually being put up: a
+// subject keyed to a statement the caller then edited away is not what this hunt
+// is about, which is the same rule core/workflows/hypothesis_subjects.py applies
+// on the other side.
+//
+// Extraction is the fallback rather than the rule, because a declared key was
+// typed by a person and parsed where an unusable one is still refused. It is not
+// no fallback at all: a scheduled hunt declares no subjects -- the scheduler
+// queues a hypothesis and nothing else -- so the autonomous path would otherwise
+// never read memory. A key read out of a statement can be beside the point rather
+// than wrong, which spends prefix budget and, because recall only reorders what to
+// look at, can never move a verdict.
+export function recallKeysOf(spec: HuntSpec): readonly string[] {
+  const declared = spec.operator_hypotheses.flatMap((statement) => spec.operator_hypothesis_subjects[statement] ?? []);
+  const named = () => [...spec.operator_hypotheses, ...spec.hypotheses].flatMap((statement) => fromText(statement));
+  const held = declared.length > 0 ? declared : named();
+  return [...new Set(held.map(key))].sort();
 }

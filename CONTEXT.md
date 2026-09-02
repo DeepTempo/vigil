@@ -191,9 +191,11 @@ recall only reorders, can never move a **Verdict**.
 _Avoid_: search, retrieval, lookup (unqualified), context
 
 **Recall Event**:
-The **Ledger** record of one run-start **Recall**: the keys queried, the rows
-returned with their provenance, what was dropped and why, and the selection
-parameters in force. It carries rows and not an order — the order they were
+The **Ledger** record of one run-start **Recall**. A read that was served carries
+the keys queried, the rows returned with their provenance, what was dropped and
+why, and the selection parameters in force; a read that could not be served is an
+**Unavailable Read**, which carries the keys and the reason and none of the rest.
+It carries rows and not an order — the order they were
 presented in is a fold, so ranking may change without invalidating a historical
 Ledger. The parameters are copied in rather than referenced, because a **RunSpec**
 records the arch by name and not by version.
@@ -394,8 +396,10 @@ _Avoid_: page, tab, view
 - A **Recall** returns **Sightings**, **Verdicts** and **Declared Gaps** in one
   shape, carried two ways: journaled verbatim as the **Recall Event** at run
   start, and returned as the single row of a `recall_entity` tool result mid-run.
-  One shape and not two — a parallel payload is a second contract, and the second
-  one drifts. Declared in `core/memory/recall_contract.py` and
+  One result shape and not two — a second copy of it is a second contract, and the
+  second one drifts. An **Unavailable Read** is not that second copy: it is the
+  account of a read that did not happen, which only the harness ever writes.
+  Declared in `core/memory/recall_contract.py` and
   `services/agent/contracts/memory.ts`, with a ratchet that fails when they
   disagree
 - **Ingestion** produces **Findings** and depends on **Storage** (never the reverse)

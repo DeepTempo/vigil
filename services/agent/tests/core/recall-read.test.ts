@@ -33,6 +33,13 @@ function answering(reply: () => Response): { fetch: typeof globalThis.fetch; sen
 
 const ok = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200 });
 
+// Answers only when the request is aborted, which is what a far side that has
+// stopped answering looks like from here.
+const hanging = ((_url: string, init: RequestInit) =>
+  new Promise<Response>((_keep, fail) => {
+    init.signal?.addEventListener("abort", () => fail(new Error("aborted")), { once: true });
+  })) as unknown as typeof globalThis.fetch;
+
 const carried = (result = RECALLED): Response => ok({ ok: true, rows: [result], rowCount: 1, capped: false, sourceSystem: "memory" });
 
 describe("the keyed read over the tool bridge", () => {
@@ -128,11 +135,6 @@ describe("the keyed read over the tool bridge", () => {
   // A run that lost its lease must not wait out a memory read, which is the reason
   // remote.ts composes the two signals rather than trusting the timeout alone.
   it("lets go when the run does, without waiting for its own deadline", async () => {
-    const hanging = ((_url: string, init: RequestInit) =>
-      new Promise<Response>((_keep, fail) => {
-        init.signal?.addEventListener("abort", () => fail(new Error("aborted")), { once: true });
-      })) as unknown as typeof globalThis.fetch;
-
     const lease = new AbortController();
     const memory = httpRecall(nullMemory, { url: URL, token: "t", fetch: hanging, timeoutMs: 600_000 });
     const read = memory.entities({ keys: RECALL_KEYS, asOf: AS_OF, runId: "run-1", signal: lease.signal });
@@ -142,13 +144,6 @@ describe("the keyed read over the tool bridge", () => {
   });
 
   it("gives up rather than holding a run's opening turn open", async () => {
-    // Answers only when the request is aborted, which is what a far side that has
-    // stopped answering looks like from here.
-    const hanging = ((_url: string, init: RequestInit) =>
-      new Promise<Response>((_keep, fail) => {
-        init.signal?.addEventListener("abort", () => fail(new Error("aborted")), { once: true });
-      })) as unknown as typeof globalThis.fetch;
-
     const memory = httpRecall(nullMemory, { url: URL, token: "t", fetch: hanging, timeoutMs: 5 });
     await expect(memory.entities({ keys: RECALL_KEYS, asOf: AS_OF, runId: "run-1" })).rejects.toThrow(/5ms/);
   });

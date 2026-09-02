@@ -29,12 +29,9 @@ export interface Memory {
   // string, and a rebuild has to present what the run was actually given.
   //
   // Not optional: an implementation that quietly answered nothing would read as an
-  // entity nobody has looked at, which is true of every entity, so nothing would
-  // look wrong.
-  //
-  // The run asking is part of the read rather than something the implementation was
-  // built with: the far side logs every read, and an unattributed one tells whoever
-  // is auditing less than nothing.
+  // entity nobody has looked at -- see RecallUnavailable for why that is the wrong
+  // answer that hides. An implementation with no memory behind it throws, so the
+  // caller journals the read as one that did not happen.
   entities(read: KeyedRead): Promise<RecallResult>;
   remember(note: string): Promise<void>;
 }
