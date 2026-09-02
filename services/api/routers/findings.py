@@ -389,11 +389,6 @@ async def get_or_generate_enrichment(
         raise HTTPException(status_code=503, detail=NO_PROVIDER_DETAIL)
     except ProviderUnavailable as e:
         raise HTTPException(status_code=503, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error generating enrichment for {finding_id}: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to generate enrichment: {str(e)}"
-        )
 
     return {"finding_id": finding_id, "cached": False, "enrichment": enrichment}
 
