@@ -29,7 +29,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import (
     Any,
     Callable,
@@ -50,6 +50,7 @@ from core.agents.projections import read_distil
 from core.memory.entity_keys import entity_key, entity_keys
 from core.memory.recall_contract import (
     VERDICT_SUBJECT_CAP,
+    DistilFailureReason,
     GapDisposition,
     InvestigationKind,
     Stance,
@@ -60,6 +61,7 @@ from core.memory.recall_contract import (
 from core.memory.source_tier import InvestigationKind as TierKind
 from core.memory.source_tier import SourceTier, resolve_source_tier
 from core.storage.models import (
+    EpisodicDistilFailure,
     EpisodicDistilMarker,
     EpisodicGap,
     EpisodicSighting,
@@ -94,6 +96,30 @@ DEFAULT_BATCH = 25
 # inside a poll tick that will come round again anyway.
 ATTEMPTS = 2
 
+# How long a failed subject waits before the poll offers it again, indexed by how
+# many ticks it has now failed on. Widening rather than fixed: a store down for a
+# minute should not cost an hour, and one down for a day should not be asked a
+# thousand times about it. The last entry is the ceiling, and is where a subject
+# that will never write settles.
+#
+# There is no attempt count that gives up. A count cannot tell a store that will
+# come back from one that will not, so a ceiling would have to choose between
+# abandoning the first and hammering the second. The row is what makes either
+# findable (#734); the interval is only what stops it being hammered.
+RETRY_INTERVALS: Tuple[timedelta, ...] = (
+    timedelta(minutes=1),
+    timedelta(minutes=5),
+    timedelta(minutes=15),
+    timedelta(hours=1),
+)
+
+# A refusal's next attempt, which is to say never. What this job would not map
+# will not become mappable by being read again -- the fix is on the other side of
+# the contract -- so a refusal is the far end of the same column rather than a
+# second rule, and the poll compares one thing. A version bump still re-offers
+# it, because the failure join matches on version the way the marker join does.
+NEVER = datetime(9999, 12, 31, tzinfo=timezone.utc)
+
 # A crash is not an outcome. Nothing an aborted run believed at the moment it
 # died is a conclusion, so none of it becomes memory. Running out is different:
 # a hunt that spent its budget or found no data still concluded what it
@@ -107,14 +133,26 @@ BUDGET_TERMINATED = "budget_terminated"
 # marker has to say which runs it accounts for. Matching the version in the join
 # rather than the filter is what makes a bump re-offer every covered run instead
 # of only the origin one.
+#
+# The failure join is the second half of the same idea (#734). A failure writes
+# no marker, so without it a run that cannot be written comes back on every tick
+# forever; joined here, the run is offered again when its interval is up and not
+# before. Matched on version for the same reason the marker is: a mapping change
+# is the fix for most of what fails, and a bump has to re-offer everything that
+# failed under the old one.
 _CANDIDATES = text("""
     SELECT DISTINCT ON (e.run_id) e.run_id AS run_id, e.seq AS seq
     FROM agent_events e
     LEFT JOIN episodic_distil_markers m
            ON m.origin_run_ids @> ARRAY[e.run_id]
           AND m.distil_version = :version
+    LEFT JOIN episodic_distil_failures f
+           ON f.investigation_kind = 'hunt'
+          AND f.subject_key = e.run_id::text
+          AND f.distil_version = :version
     WHERE e.kind = 'terminal'
       AND e.run_kind = ANY(:kinds)
+      AND (f.subject_key IS NULL OR f.next_attempt_at <= now())
       AND (
         m.investigation_id IS NULL
         OR (m.origin_run_id = e.run_id AND m.origin_seq < e.seq)
@@ -143,6 +181,41 @@ class Origin:
     run_id: uuid.UUID
     seq: int
     covered: Sequence[uuid.UUID]
+
+
+@dataclass(frozen=True)
+class Subject:
+    """What a failure is recorded against: what the poll held before it failed.
+
+    Not the investigation, which is what a marker is keyed by and what a failure
+    frequently never learns — an unreadable fold has only a run id, and a refused
+    payload is often refused *because* it carries no investigation id. So a hunt
+    is its terminal and a Case is its case id, and one table holds both.
+    """
+
+    kind: InvestigationKind
+    key: str
+    seq: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        """A hunt names its terminal and nothing else does.
+
+        Checked here rather than left to the schema's CHECK, because the only
+        caller is inside a failure path that swallows what it cannot record: a
+        hunt subject built without its seq would be rejected by the database,
+        logged, and dropped, and the subject would come back unpaced — which is
+        the behaviour this table exists to end, arriving silently.
+        """
+        if (self.kind is InvestigationKind.HUNT) != (self.seq is not None):
+            raise ValueError(
+                f"a {self.kind.value} subject cannot carry seq={self.seq!r}: "
+                "a hunt names the terminal it failed on and a Case has none"
+            )
+
+    @classmethod
+    def of(cls, terminal: Terminal) -> "Subject":
+        """The hunt subject one terminal stands for."""
+        return cls(InvestigationKind.HUNT, str(terminal.run_id), terminal.seq)
 
 
 @dataclass(frozen=True)
@@ -464,6 +537,87 @@ def _superseded_by(
     )
 
 
+def record_failure(
+    session: Session,
+    *,
+    subject: Subject,
+    reason: DistilFailureReason,
+    error: str,
+    version: int,
+    now: Optional[datetime] = None,
+) -> None:
+    """Record that this subject could not be written, and when to try again.
+
+    Its own transaction, always: the write this is recording has just rolled
+    back, so anything added to that session goes down with it.
+
+    The interval is read off ``RETRY_INTERVALS`` by the new attempt count and a
+    refusal takes ``NEVER``, which is the same column and not a special case. The
+    count is the one that survives the tick — ``ATTEMPTS`` bounds the retry
+    inside a tick and is not what this counts.
+
+    The count is read and then written rather than incremented in the statement,
+    which is safe only because the daemon is a singleton: its StatefulSet is
+    pinned to one replica and deliberately does not expose the count, because
+    its loops are not safe to share. A second Distil ticking concurrently would
+    pin this at 1 and the interval would never widen.
+    """
+    at = now or datetime.now(timezone.utc)
+    existing = session.get(EpisodicDistilFailure, (subject.kind.value, subject.key))
+    attempts = (existing.attempts if existing is not None else 0) + 1
+
+    if reason is DistilFailureReason.REFUSED:
+        next_attempt = NEVER
+    else:
+        next_attempt = at + RETRY_INTERVALS[min(attempts, len(RETRY_INTERVALS)) - 1]
+
+    row: Dict[str, Any] = {
+        "investigation_kind": subject.kind.value,
+        "subject_key": subject.key,
+        "origin_seq": subject.seq,
+        "reason": reason.value,
+        "attempts": attempts,
+        "last_error": error,
+        "first_failed_at": existing.first_failed_at if existing is not None else at,
+        "last_failed_at": at,
+        "next_attempt_at": next_attempt,
+        "distil_version": version,
+    }
+    session.execute(
+        insert(EpisodicDistilFailure)
+        .values(**row)
+        .on_conflict_do_update(
+            index_elements=["investigation_kind", "subject_key"],
+            set_={
+                key: row[key]
+                for key in row
+                if key not in ("investigation_kind", "subject_key", "first_failed_at")
+            },
+        )
+    )
+    # Expired rather than returned: the row read at the top is still in the
+    # identity map and the upsert went round it, so a caller that reads it back
+    # through this session would be handed the count from before the increment.
+    if existing is not None:
+        session.expire(existing)
+
+
+def clear_failure(session: Session, subject: Subject) -> None:
+    """Forget that this subject ever failed, in the transaction that wrote it.
+
+    In that transaction and not after it, so a write that lands and a row that
+    says it did not cannot both be true. Not scoped to the version: what failed
+    under an older mapping has now been written under this one, and a row left
+    behind at another version is a subject reading as stuck when it is done.
+    """
+    session.execute(
+        delete(EpisodicDistilFailure).where(
+            EpisodicDistilFailure.investigation_kind == subject.kind.value,
+            EpisodicDistilFailure.subject_key == subject.key,
+        )
+    )
+
+
 def write_distil(
     session: Session, terminal: Terminal, payload: Mapping[str, Any]
 ) -> Dict[str, int]:
@@ -473,6 +627,11 @@ def write_distil(
     nothing written and no marker, so the investigation comes back next tick
     rather than being recorded as done.
     """
+    # First, so that every path that returns rather than raises clears it, and
+    # harmless if this transaction then rolls back -- the delete goes with it,
+    # which is the point of doing it here rather than after the write.
+    clear_failure(session, Subject.of(terminal))
+
     concluded = _accept(terminal, payload)
     kind = InvestigationKind.HUNT
 
@@ -613,22 +772,29 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
     }
 
     for terminal in candidates:
+        subject = Subject.of(terminal)
         payload = await read_distil(str(terminal.run_id))
         if payload is None:
             # Not terminal and not a skip-forever: the agent layer may simply be
-            # unreachable, and this run is a candidate again next tick. Said out
-            # loud all the same, because an agent layer that is never reachable
-            # is a memory that silently never fills.
+            # unreachable, and this run is a candidate again once its interval is
+            # up. Said out loud all the same, because an agent layer that is
+            # never reachable is a memory that silently never fills.
             logger.warning("Distil: %s had no readable fold", terminal.run_id)
+            await _note_failure(
+                subject,
+                DistilFailureReason.UNREADABLE,
+                "no readable fold",
+                DISTIL_MAPPING_VERSION,
+            )
             written["unreadable"] += 1
             continue
 
         counts = await write_with_retry(
-            InvestigationKind.HUNT,
-            str(terminal.run_id),
+            subject,
             lambda: _write_in_own_session(terminal, payload),
             DistilRefused,
             written,
+            version=DISTIL_MAPPING_VERSION,
         )
         if counts is None:
             continue
@@ -641,11 +807,12 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
 
 
 async def write_with_retry(
-    kind: InvestigationKind,
-    label: str,
+    subject: Subject,
     write: Callable[[], Dict[str, int]],
     refusal: Type[Exception],
     written: Dict[str, int],
+    *,
+    version: int,
 ) -> Optional[Dict[str, int]]:
     """One investigation's write, off the loop and retried once. None if it did
     not land.
@@ -655,26 +822,34 @@ async def write_with_retry(
     contract. Everything else gets one more go and is then reported with a
     traceback -- a write that fails twice is a store that is down or an input
     that is wrong, and neither improves for being hammered inside a tick that
-    comes round again anyway. Neither outcome writes a marker, which is what
-    brings the investigation back once the reason is fixed.
+    comes round again anyway.
+
+    Neither outcome writes a marker. Both now write a failure row (#734): the
+    marker's absence is what brings the subject back, and the failure row is
+    what says the absence is a failure and not a subject nothing has reached
+    yet. It is also what paces the return, so a subject that will never write
+    stops arriving on every tick.
 
     Shared by both Distils rather than written twice, because "how a failed
-    write is counted and reported" is one decision and the daemon reads both
-    sets of counters the same way.
+    write is counted, reported and paced" is one decision and the daemon reads
+    both sets of counters the same way.
     """
     for attempt in range(1, ATTEMPTS + 1):
         try:
             return await asyncio.to_thread(write)
         except refusal as exc:
-            logger.warning("%s Distil refused %s: %s", kind.value, label, exc)
+            logger.warning(
+                "%s Distil refused %s: %s", subject.kind.value, subject.key, exc
+            )
+            await _note_failure(subject, DistilFailureReason.REFUSED, str(exc), version)
             written["refused"] += 1
             return None
-        except Exception:
+        except Exception as exc:
             if attempt < ATTEMPTS:
                 logger.warning(
                     "%s Distil failed on %s, attempt %s of %s; retrying",
-                    kind.value,
-                    label,
+                    subject.kind.value,
+                    subject.key,
                     attempt,
                     ATTEMPTS,
                 )
@@ -682,14 +857,56 @@ async def write_with_retry(
             logger.error(
                 "%s Distil failed on %s after %s attempts, leaving neither rows "
                 "nor marker",
-                kind.value,
-                label,
+                subject.kind.value,
+                subject.key,
                 ATTEMPTS,
                 exc_info=True,
             )
+            await _note_failure(subject, DistilFailureReason.FAILED, repr(exc), version)
             written["failed"] += 1
             return None
     return None
+
+
+async def _note_failure(
+    subject: Subject,
+    reason: DistilFailureReason,
+    error: str,
+    version: int,
+) -> None:
+    """Record the failure, and do not fail the tick if that fails too.
+
+    The store that just refused a write is the store this row goes to, so it can
+    be down for both -- and the caller is already in a failure path, so raising
+    here would cost the rest of the batch to report something about one subject.
+
+    Said at ERROR rather than counted, because what is lost is the pacing and
+    not the report: the subject comes back next tick as it did before #734, and
+    the write's own ERROR is already saying it failed.
+    """
+    try:
+        await asyncio.to_thread(_record_in_own_session, subject, reason, error, version)
+    except Exception:
+        logger.error(
+            "%s Distil could not record the failure on %s; it will be re-offered "
+            "on the next tick unpaced",
+            subject.kind.value,
+            subject.key,
+            exc_info=True,
+        )
+
+
+def _record_in_own_session(
+    subject: Subject, reason: DistilFailureReason, error: str, version: int
+) -> None:
+    with unit_of_work() as session:
+        record_failure(
+            session,
+            subject=subject,
+            reason=reason,
+            error=error,
+            version=version,
+        )
 
 
 def _pending_in_own_session(limit: int) -> List[Terminal]:
@@ -708,12 +925,17 @@ __all__: Sequence[str] = (
     "DISTIL_MAPPING_VERSION",
     "DistilRefused",
     "Origin",
+    "Subject",
     "Terminal",
     "ATTEMPTS",
+    "RETRY_INTERVALS",
     "DEFAULT_BATCH",
+    "NEVER",
+    "clear_failure",
     "clear_investigation",
     "distil_once",
     "pending",
+    "record_failure",
     "write_distil",
     "write_marker",
     "write_with_retry",

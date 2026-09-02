@@ -414,6 +414,7 @@ dbInit:
     - 24_episodic_memory.sql
     - 25_episodic_read_log.sql
     - 26_case_closure_actor.sql
+    - 27_episodic_distil_failures.sql
   resources:
     requests:
       cpu: 50m

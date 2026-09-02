@@ -2545,6 +2545,38 @@ class EpisodicDistilMarker(Base):
     )
 
 
+class EpisodicDistilFailure(Base):
+    """One subject a Distil could not write, and when it may be tried again.
+
+    Why it is keyed by run and case rather than by investigation is stated once,
+    in ``infra/database/init/27_episodic_distil_failures.sql``; what the retry
+    schedule is and why it paces rather than gives up belongs to the code that
+    decides it, ``core/memory/distil.py``. A successful write deletes the row in
+    the transaction that writes the marker.
+    """
+
+    __tablename__ = "episodic_distil_failures"
+
+    investigation_kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    # A run id for a hunt, a case id for a Case: what the poll holds before it
+    # has an investigation id, which the two commonest failures never reach.
+    subject_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    origin_seq: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    last_error: Mapped[str] = mapped_column(Text, nullable=False)
+    first_failed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_failed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    distil_version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class EpisodicReadLog(Base):
     """One row per read of episodic memory, for audit rather than replay.
 

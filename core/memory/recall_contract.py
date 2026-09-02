@@ -96,6 +96,27 @@ class GapDisposition(str, Enum):
     BUDGET_EXHAUSTED = "budget_exhausted"
 
 
+class DistilFailureReason(str, Enum):
+    """Why a Distil did not write an investigation it was offered (#734).
+
+    The three the Distils already count separately, because they are not the
+    same problem and do not wait the same way. ``REFUSED`` is a payload this
+    side will not map, and re-reading it will not change that — the fix is on
+    the other side of the contract, so it waits forever rather than on a
+    schedule. ``UNREADABLE`` is a fold that could not be fetched at all, which
+    is usually an agent layer that is down and back shortly. ``FAILED`` is the
+    write itself, which is usually the store.
+
+    Recorded rather than only logged: a marker's absence means "not yet
+    reached", and without a row saying otherwise a run that will never write is
+    indistinguishable from one nothing has looked at yet.
+    """
+
+    REFUSED = "refused"
+    UNREADABLE = "unreadable"
+    FAILED = "failed"
+
+
 RECALL_TOOL = "recall_entity"
 
 # What the arch asks for; a ToolSpec binds it to the tool id via `provides`.
