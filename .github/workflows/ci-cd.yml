@@ -143,7 +143,9 @@ jobs:
         run: python scripts/generate_frontend_types.py
 
       - name: Types match the spec
-        run: git diff --exit-code -- clients/web/src/services/generated
+        run: |
+          git add -A -- clients/web/src/services/generated
+          git diff --cached --exit-code -- clients/web/src/services/generated
 
   lint-docker:
     name: Lint Dockerfiles

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { WatchersCard, SLACard } from './CaseSections'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { WatchersCard, SLACard, TasksCard } from './CaseSections'
 import { casesApi } from '../../services/api'
 
 /**
@@ -23,6 +23,9 @@ vi.mock('../../services/api', () => ({
     getSLA: vi.fn(),
     pauseSLA: vi.fn(),
     resumeSLA: vi.fn(),
+    getTasks: vi.fn(),
+    updateTask: vi.fn(),
+    addTask: vi.fn(),
   },
 }))
 
@@ -54,6 +57,14 @@ const SLA_STATUS = {
   health_status: 'healthy',
 }
 
+/** The shape `CaseTaskSchema` dumps — `task_id`, not `id`. */
+const TASK_ROW = {
+  task_id: 42,
+  title: 'Collect packet capture',
+  status: 'pending',
+  priority: 'high',
+}
+
 beforeEach(() => {
   vi.mocked(casesApi.getWatchers).mockResolvedValue({
     data: { watchers: [WATCHER_ROW] },
@@ -61,6 +72,10 @@ beforeEach(() => {
   vi.mocked(casesApi.getSLA).mockResolvedValue({
     data: SLA_STATUS,
   } as never)
+  vi.mocked(casesApi.getTasks).mockResolvedValue({
+    data: { tasks: [TASK_ROW] },
+  } as never)
+  vi.mocked(casesApi.updateTask).mockResolvedValue({ data: TASK_ROW } as never)
 })
 
 describe('WatchersCard', () => {
@@ -122,6 +137,24 @@ describe('SLACard', () => {
 
     await waitFor(() =>
       expect(screen.getByText('No SLA policy attached')).toBeInTheDocument(),
+    )
+  })
+})
+
+describe('TasksCard', () => {
+  it('toggles a task by task_id via PUT, not a hand-written id', async () => {
+    render(<TasksCard caseId="case-2026-0142" />)
+
+    await waitFor(() =>
+      expect(screen.getByText('Collect packet capture')).toBeInTheDocument(),
+    )
+
+    fireEvent.click(screen.getByTitle('Toggle'))
+    await waitFor(() =>
+      expect(casesApi.updateTask).toHaveBeenCalledWith('case-2026-0142', 42, {
+        status: 'completed',
+        completed_at: expect.any(String),
+      }),
     )
   })
 })

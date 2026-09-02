@@ -322,7 +322,8 @@ export function SLACard({ caseId }: { caseId: string }) {
       throw e
     }),
   )
-  const ticking = Boolean(data && !data.is_paused && !data.is_breached && !data.resolution_completed)
+  const met = Boolean(data?.response_completed && data?.resolution_completed)
+  const ticking = Boolean(data && !data.is_paused && !data.is_breached && !met)
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!ticking) return
@@ -341,11 +342,17 @@ export function SLACard({ caseId }: { caseId: string }) {
   if (data) {
     pct = Math.max(data.response_percent_elapsed, data.resolution_percent_elapsed)
     if (data.is_breached) { remainingTxt = 'SLA breached'; pct = 100; barColor = 'bg-crit' }
-    else if (data.response_completed && data.resolution_completed) { remainingTxt = 'SLA met'; pct = 100; barColor = 'bg-ok' }
+    else if (met) { remainingTxt = 'SLA met'; pct = 100; barColor = 'bg-ok' }
     else if (data.is_paused) { remainingTxt = 'SLA paused'; barColor = 'bg-high' }
     else {
-      const dueRaw = !data.resolution_completed ? data.resolution_due : data.response_due
-      const due = dueRaw ? new Date(dueRaw).getTime() : NaN
+      const dues = [
+        !data.response_completed ? data.response_due : null,
+        !data.resolution_completed ? data.resolution_due : null,
+      ]
+        .filter((d): d is string => Boolean(d))
+        .map((d) => new Date(d).getTime())
+        .filter((t) => !Number.isNaN(t))
+      const due = dues.length ? Math.min(...dues) : NaN
       if (pct > 80) barColor = 'bg-crit'
       else if (pct > 60) barColor = 'bg-high'
       remainingTxt = Number.isNaN(due) ? '—' : fmtCountdown(due - now)
@@ -373,7 +380,7 @@ export function SLACard({ caseId }: { caseId: string }) {
               {data.breach_type && <div className="row"><span className="k">Breach</span><span className="val text-crit">{data.breach_type}</span></div>}
             </div>
             <div className="flex gap-2 mt-3">
-              {!data.is_paused && !data.is_breached && <button className="btn ghost" onClick={() => act(() => casesApi.pauseSLA(caseId))}><Icon name="pause" size={13} /> Pause</button>}
+              {!data.is_paused && !data.is_breached && !met && <button className="btn ghost" onClick={() => act(() => casesApi.pauseSLA(caseId))}><Icon name="pause" size={13} /> Pause</button>}
               {data.is_paused && <button className="btn ghost" onClick={() => act(() => casesApi.resumeSLA(caseId))}><Icon name="play" size={13} /> Resume</button>}
             </div>
           </>
@@ -573,7 +580,8 @@ function threatLevel(i: CaseIOC) {
   const t = (i.threat_level || '').toLowerCase()
   if (t === 'high' || t === 'critical') return { label: 'High Risk', cls: 'sev critical' }
   if (t === 'medium') return { label: 'Medium Risk', cls: 'sev medium' }
-  return { label: 'Low Risk', cls: 'sev low' }
+  if (t === 'low') return { label: 'Low Risk', cls: 'sev low' }
+  return { label: 'Unknown', cls: 'status open' }
 }
 export function IOCsCard({ caseId }: { caseId: string }) {
   const { data, phase, reload } = useResource<CaseIOC[]>(caseId, () =>
