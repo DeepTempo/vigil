@@ -4,7 +4,7 @@ import logging
 from typing import Dict, List, Optional
 
 from core.agents.builtins import BUILTIN_AGENTS, DEFAULT_AGENT_ID, AgentProfile
-from core.agents.prompts import render_base_prompt
+from core.agents.prompts import prompt_for_row
 
 logger = logging.getLogger(__name__)
 
@@ -24,16 +24,7 @@ class SOCAgentLibrary:
         when set; otherwise renders BASE_PROMPT with the row's
         role/extra_principles/methodology fragments.
         """
-        override = row.get("system_prompt_override")
-        if override:
-            prompt = override
-        else:
-            prompt = render_base_prompt(
-                role=row.get("role", ""),
-                extra_principles=row.get("extra_principles", ""),
-                methodology=row.get("methodology", ""),
-                tools=row.get("recommended_tools") or (),
-            )
+        prompt = prompt_for_row(row)
         return AgentProfile(
             id=row["id"],
             name=row.get("name") or row["id"],

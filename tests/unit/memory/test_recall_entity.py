@@ -37,28 +37,11 @@ pytestmark = [pytest.mark.unit, pytest.mark.database, pytest.mark.external_servi
 EPOCH = datetime(2026, 8, 1, tzinfo=timezone.utc)
 
 
+# The clean-table fixture lives in tests/unit/conftest.py: #735's grant test
+# seeds the same rows, and two copies drift.
 @pytest.fixture
-def session():
-    """A session on the throwaway database, emptied of episodic rows first.
-
-    Ordering between tests is arbitrary and every one of these reads the whole
-    table, so each starts from nothing rather than filtering its own rows out.
-    """
-    db = get_db_session()
-    try:
-        for model in (
-            EpisodicVerdictSource,
-            EpisodicVerdict,
-            EpisodicSighting,
-            EpisodicGap,
-            EpisodicReadLog,
-        ):
-            db.query(model).delete()
-        db.commit()
-        yield db
-    finally:
-        db.rollback()
-        db.close()
+def session(episodic_session):
+    return episodic_session
 
 
 def sighting(db, key: str, *, investigation: str, concluded: datetime, source="splunk"):

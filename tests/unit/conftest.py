@@ -135,3 +135,34 @@ def _isolate_database(request):
     """
     if any(request.node.get_closest_marker(m) for m in _DB_MARKERS):
         request.getfixturevalue("throwaway_database")
+
+
+# Episodic rows, shared because two suites seed them: #732's read tests and
+# #735's grant test. Every one of them reads the whole table, so ordering
+# between tests would otherwise decide what they see.
+@pytest.fixture
+def episodic_session():
+    from core.storage.connection import get_db_session
+    from core.storage.models import (
+        EpisodicGap,
+        EpisodicReadLog,
+        EpisodicSighting,
+        EpisodicVerdict,
+        EpisodicVerdictSource,
+    )
+
+    db = get_db_session()
+    try:
+        for model in (
+            EpisodicVerdictSource,
+            EpisodicVerdict,
+            EpisodicSighting,
+            EpisodicGap,
+            EpisodicReadLog,
+        ):
+            db.query(model).delete()
+        db.commit()
+        yield db
+    finally:
+        db.rollback()
+        db.close()

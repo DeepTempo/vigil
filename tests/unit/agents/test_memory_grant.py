@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 import pytest
@@ -133,9 +134,15 @@ def test_builtin_principles_memory_lines_are_read_only():
         assert (
             "Memory: recall_entity" in principles
         ), f"Agent {agent['id']} missing 'Memory: recall_entity' in extra_principles"
+        # Carries ADR 0015 where the model looks closest, not just the write ban:
+        # "recall_entity ... before attributing" reads as memory feeding the
+        # conclusion, which is the one thing recall may never do.
         assert (
-            "do not write to memory" in principles
-        ), f"Agent {agent['id']} missing 'do not write to memory' in extra_principles"
+            "read-only" in principles
+        ), f"Agent {agent['id']} does not say memory is read-only"
+        assert (
+            "orients your search rather than deciding its outcome" in principles
+        ), f"Agent {agent['id']} does not carry the ADR 0015 constraint"
 
 
 @pytest.mark.parametrize(
@@ -170,17 +177,33 @@ def test_recall_entity_is_registered_in_the_real_tool_registry():
     assert any(tool.get("name") == "recall_entity" for tool in ALL_TOOLS)
 
 
-def test_the_prompt_names_only_arguments_the_tool_accepts():
-    """The #129 defect in its smaller form: a prompt naming a parameter that
-    does not exist fails the same way a prompt naming a missing tool does, and
-    is harder to see. The block tells agents to pass caller_kind and caller_id,
-    so the schema has to carry them.
-    """
-    from core.memory.recall_contract import RECALL_ARGS
+def test_the_prompt_names_only_things_the_tool_accepts():
+    """The #129 defect in its smaller form, and it landed twice.
 
-    named = {word.strip("`.,") for word in _MEMORY_BLOCK.split()}
-    assert named & set(RECALL_ARGS), "the block names no argument at all"
-    assert not {n for n in named if n.startswith("caller_")} - set(RECALL_ARGS)
+    A prompt naming a parameter or a key type that does not exist fails the way
+    a prompt naming a missing tool does, but quieter: a bad key type is not an
+    error, it is zero rows, which reads as an entity nobody has looked at
+    (ADR 0016). The first draft of this block taught `sha256:`, which is not in
+    ENTITY_KEY_TYPES, so every hash recall would have come back empty.
+    """
+    from core.memory.recall_contract import (
+        ENTITY_KEY_TYPES,
+        RECALL_ARGS,
+        RECALL_KEY_ARGS,
+    )
+
+    words = {word.strip("`.,—") for word in _MEMORY_BLOCK.split()}
+
+    assert words & set(RECALL_KEY_ARGS), "the block names no key argument"
+    assert not {w for w in words if w.startswith("caller_")} - set(RECALL_ARGS)
+
+    # The worked examples only. Backticked spans are the `type:value` shape
+    # itself and the `sha256:` the block warns against, neither a real key.
+    prose = re.sub(r"`[^`]*`", " ", _MEMORY_BLOCK)
+    taught = set(re.findall(r"\b([a-z0-9_]+):\S", prose))
+    unknown = taught - set(ENTITY_KEY_TYPES)
+    assert not unknown, f"block teaches key types memory does not know: {unknown}"
+    assert "hash" in taught, "the hash form is what the first draft got wrong"
 
 
 def test_every_agents_recall_grant_survives_the_chat_declaration():
@@ -229,34 +252,6 @@ def test_chat_cannot_reach_a_memory_palace_write_tool():
 # containment and a fake would agree with whatever this module happened to do.
 # Rows are seeded the way a Case closure writes them (#733) rather than by
 # closing a Case, since what is under test here is the grant and the read.
-@pytest.fixture
-def episodic_session():
-    from core.storage.connection import get_db_session
-    from core.storage.models import (
-        EpisodicGap,
-        EpisodicReadLog,
-        EpisodicSighting,
-        EpisodicVerdict,
-        EpisodicVerdictSource,
-    )
-
-    db = get_db_session()
-    try:
-        for model in (
-            EpisodicVerdictSource,
-            EpisodicVerdict,
-            EpisodicSighting,
-            EpisodicGap,
-            EpisodicReadLog,
-        ):
-            db.query(model).delete()
-        db.commit()
-        yield db
-    finally:
-        db.rollback()
-        db.close()
-
-
 @pytest.mark.database
 @pytest.mark.external_service
 @pytest.mark.asyncio

@@ -5,7 +5,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from core.agents.manager import CUSTOM_AGENT_ID_PREFIX
-from core.agents.prompts import render_base_prompt
+from core.agents.prompts import prompt_for_row
 from core.storage.connection import get_db_manager
 from core.storage.models import CustomAgent
 from core.storage.schemas import CustomAgentSchema
@@ -77,15 +77,7 @@ class CustomAgentService:
 
     def get_effective_prompt(self, agent_row: Dict[str, Any]) -> str:
         """Return the system prompt that will actually be sent to Claude."""
-        override = agent_row.get("system_prompt_override")
-        if override:
-            return override
-        return render_base_prompt(
-            role=agent_row.get("role", ""),
-            extra_principles=agent_row.get("extra_principles", ""),
-            methodology=agent_row.get("methodology", ""),
-            tools=agent_row.get("recommended_tools") or (),
-        )
+        return prompt_for_row(agent_row)
 
     def create_agent(
         self,

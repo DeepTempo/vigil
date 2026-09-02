@@ -4,7 +4,7 @@
 records so the record data stays free of prompt-template text.
 """
 
-from typing import Iterable, Optional
+from typing import Any, Iterable, Mapping, Optional
 
 from core.memory.recall_contract import RECALL_TOOL
 
@@ -15,9 +15,11 @@ from core.memory.recall_contract import RECALL_TOOL
 # says plainly what recall may and may not change (#735, #732).
 _MEMORY_BLOCK = """<memory_operations>
 Call recall_entity to read what past investigations saw and concluded about an
-entity: its Sightings, its Verdicts and its Declared Gaps. Keys are `type:value`
-— ip:10.2.3.4, sha256:abc..., domain:evil.com, user:jdoe. Every read is logged,
-so pass your own caller_kind and caller_id.
+entity: its Sightings, its Verdicts and its Declared Gaps. Pass entity_keys, a
+list of `type:value` strings — ip:10.2.3.4, hash:5d41402abc4b..., domain:evil.com,
+user:jdoe, host:web-01. The type must be one memory knows; a hash is `hash:`,
+never `sha256:` or `md5:`. Every read is logged, so pass your own caller_kind and
+caller_id.
 
 What comes back is what earlier runs concluded from the evidence they had, not a
 standing judgement about the entity. A prior verdict of benign is not a reason
@@ -111,4 +113,20 @@ def render_base_prompt(
         extra_principles=extra_principles or "",
         methodology=methodology or "",
         memory_operations=_memory_section(tools),
+    )
+
+
+# Both callers hold an agent record and were making the same four-field call, so
+# a fifth input meant editing both. They differ only in returning a profile or
+# the prompt alone, which is not a difference in how a row becomes a prompt.
+def prompt_for_row(row: Mapping[str, Any]) -> str:
+    """Render a built-in or custom agent record's prompt, override winning."""
+    override = row.get("system_prompt_override")
+    if override:
+        return str(override)
+    return render_base_prompt(
+        role=row.get("role", ""),
+        extra_principles=row.get("extra_principles", ""),
+        methodology=row.get("methodology", ""),
+        tools=row.get("recommended_tools") or (),
     )
