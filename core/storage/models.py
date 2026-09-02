@@ -2560,7 +2560,7 @@ class EpisodicDistilFailure(Base):
     investigation_kind: Mapped[str] = mapped_column(String(16), primary_key=True)
     # A run id for a hunt, a case id for a Case: what the poll holds before it
     # has an investigation id, which the two commonest failures never reach.
-    subject_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    failure_key: Mapped[str] = mapped_column(Text, primary_key=True)
     origin_seq: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False)

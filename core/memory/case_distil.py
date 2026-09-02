@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 from core.cases.closure import ClosedByKind, ClosureCategory
 from core.memory.distil import (
     DEFAULT_BATCH,
-    Subject,
+    FailureKey,
     clear_failure,
     clear_investigation,
     write_marker,
@@ -122,7 +122,7 @@ _OUTCOMES: Mapping[ClosureCategory, VerdictOutcome] = {
 # by being read again" holds and a refusal there waits forever. A Case's input
 # is live rows, and this module polls state precisely so that a re-close or a
 # re-categorisation is a re-derive. Without this clause a Case that failed --
-# refused, and so parked at ``NEVER`` -- would stay unwritten through every
+# refused, and so parked at ``RETRY_NEVER`` -- would stay unwritten through every
 # later edit that fixed it, and the staleness test above would be unreachable
 # behind the failure predicate. Cast for the same reason that test is: these
 # columns are naive UTC and ``last_failed_at`` is timestamptz.
@@ -135,10 +135,10 @@ _CANDIDATES = text("""
           AND m.investigation_id = c.case_id
     LEFT JOIN episodic_distil_failures f
            ON f.investigation_kind = 'case'
-          AND f.subject_key = c.case_id
+          AND f.failure_key = c.case_id
           AND f.distil_version = :version
           AND f.last_failed_at >= (GREATEST(i.closed_at, c.updated_at) AT TIME ZONE 'UTC')
-    WHERE (f.subject_key IS NULL OR f.next_attempt_at <= now())
+    WHERE (f.failure_key IS NULL OR f.next_attempt_at <= now())
       AND (
         (
           c.status = 'closed'
@@ -419,7 +419,7 @@ def write_case_distil(session: Session, case_id: str) -> Dict[str, int]:
     kind = InvestigationKind.CASE
     # First, as the hunt writer does and for the same reason, the withdrawal
     # included: a Case that is no longer failing must not keep a row saying it is.
-    clear_failure(session, Subject(kind, case_id))
+    clear_failure(session, FailureKey(kind, case_id))
 
     case = session.get(Case, case_id)
     if case is None:
@@ -517,7 +517,7 @@ async def case_distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
 
     for case_id in candidates:
         counts = await write_with_retry(
-            Subject(InvestigationKind.CASE, case_id),
+            FailureKey(InvestigationKind.CASE, case_id),
             lambda: _write_in_own_session(case_id),
             CaseDistilRefused,
             written,

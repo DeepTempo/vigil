@@ -37,9 +37,9 @@ from core.memory.case_distil import (
 from core.memory.case_distil import pending as case_pending
 from core.memory.distil import (
     DISTIL_MAPPING_VERSION,
-    NEVER,
     RETRY_INTERVALS,
-    Subject,
+    RETRY_NEVER,
+    FailureKey,
     clear_failure,
     record_failure,
     write_with_retry,
@@ -115,7 +115,7 @@ def closed_case(db, case_id="case-734"):
 
 def failure(
     db,
-    subject,
+    key,
     *,
     reason=DistilFailureReason.FAILED,
     error="connection refused",
@@ -127,11 +127,9 @@ def failure(
     Reads the row back the way anyone asking "what is stuck" would, rather than
     being handed it: ``record_failure`` writes and returns nothing.
     """
-    record_failure(
-        db, subject=subject, reason=reason, error=error, version=version, now=now
-    )
+    record_failure(db, key=key, reason=reason, error=error, version=version, now=now)
     db.flush()
-    return db.get(EpisodicDistilFailure, (subject.kind.value, subject.key))
+    return db.get(EpisodicDistilFailure, (key.kind.value, key.value))
 
 
 class TestAFailureIsOnTheRecord:
@@ -139,13 +137,13 @@ class TestAFailureIsOnTheRecord:
 
     @pytest.mark.asyncio
     async def test_a_failed_write_leaves_a_row_saying_so_and_no_marker(self, session):
-        subject = Subject(InvestigationKind.CASE, "case-734")
+        key = FailureKey(InvestigationKind.CASE, "case-734")
 
         def boom():
             raise RuntimeError("the store is down")
 
         counts = await write_with_retry(
-            subject,
+            key,
             boom,
             CaseDistilRefused,
             {"refused": 0, "failed": 0},
@@ -165,13 +163,13 @@ class TestAFailureIsOnTheRecord:
 
     @pytest.mark.asyncio
     async def test_a_refusal_is_recorded_as_a_refusal(self, session):
-        subject = Subject(InvestigationKind.CASE, "case-734")
+        key = FailureKey(InvestigationKind.CASE, "case-734")
 
         def refuse():
             raise CaseDistilRefused("case-734 is not a case")
 
         await write_with_retry(
-            subject,
+            key,
             refuse,
             CaseDistilRefused,
             {"refused": 0, "failed": 0},
@@ -185,16 +183,16 @@ class TestAFailureIsOnTheRecord:
 
     def test_a_hunt_failure_names_the_terminal_it_failed_on(self, session):
         run_id = uuid.uuid4()
-        row = failure(session, Subject(InvestigationKind.HUNT, str(run_id), 7))
+        row = failure(session, FailureKey(InvestigationKind.HUNT, str(run_id), 7))
         session.commit()
 
-        assert row.subject_key == str(run_id)
+        assert row.failure_key == str(run_id)
         # A Case has none, and the schema's CHECK ties which shape a row has to
         # its kind rather than leaving a reader to guess.
         assert row.origin_seq == 7
 
     def test_a_case_failure_carries_no_terminal(self, session):
-        row = failure(session, Subject(InvestigationKind.CASE, "case-734"))
+        row = failure(session, FailureKey(InvestigationKind.CASE, "case-734"))
         session.commit()
         assert row.origin_seq is None
 
@@ -203,12 +201,12 @@ class TestTheIntervalWidens:
     """Retried, but not on every tick, and never given up on."""
 
     def test_each_further_failure_counts_and_waits_longer(self, session):
-        subject = Subject(InvestigationKind.CASE, "case-734")
+        key = FailureKey(InvestigationKind.CASE, "case-734")
         at = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
 
         waits = []
         for _ in range(len(RETRY_INTERVALS) + 2):
-            row = failure(session, subject, now=at)
+            row = failure(session, key, now=at)
             waits.append(row.next_attempt_at - at)
 
         session.commit()
@@ -223,12 +221,12 @@ class TestTheIntervalWidens:
         ]
 
     def test_the_first_failure_is_kept_and_the_last_error_is_replaced(self, session):
-        subject = Subject(InvestigationKind.CASE, "case-734")
+        key = FailureKey(InvestigationKind.CASE, "case-734")
         first = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
         later = first + timedelta(hours=3)
 
-        failure(session, subject, now=first, error="connection refused")
-        row = failure(session, subject, now=later, error="deadlock detected")
+        failure(session, key, now=first, error="connection refused")
+        row = failure(session, key, now=later, error="deadlock detected")
         session.commit()
 
         assert row.first_failed_at == first
@@ -238,11 +236,11 @@ class TestTheIntervalWidens:
     def test_a_refusal_waits_forever_rather_than_on_a_schedule(self, session):
         row = failure(
             session,
-            Subject(InvestigationKind.CASE, "case-734"),
+            FailureKey(InvestigationKind.CASE, "case-734"),
             reason=DistilFailureReason.REFUSED,
         )
         session.commit()
-        assert row.next_attempt_at == NEVER
+        assert row.next_attempt_at == RETRY_NEVER
 
 
 class TestThePollHonoursIt:
@@ -252,7 +250,7 @@ class TestThePollHonoursIt:
         case_id = closed_case(session)
         assert case_pending(session) == [case_id]
 
-        failure(session, Subject(InvestigationKind.CASE, case_id))
+        failure(session, FailureKey(InvestigationKind.CASE, case_id))
         session.commit()
 
         assert case_pending(session) == []
@@ -261,7 +259,7 @@ class TestThePollHonoursIt:
         case_id = closed_case(session)
         failure(
             session,
-            Subject(InvestigationKind.CASE, case_id),
+            FailureKey(InvestigationKind.CASE, case_id),
             now=datetime.now(timezone.utc) - timedelta(days=1),
         )
         session.commit()
@@ -274,7 +272,7 @@ class TestThePollHonoursIt:
         case_id = closed_case(session)
         failure(
             session,
-            Subject(InvestigationKind.CASE, case_id),
+            FailureKey(InvestigationKind.CASE, case_id),
             reason=DistilFailureReason.REFUSED,
             now=datetime.now(timezone.utc),
         )
@@ -288,7 +286,7 @@ class TestThePollHonoursIt:
         case_id = closed_case(session)
         failure(
             session,
-            Subject(InvestigationKind.CASE, case_id),
+            FailureKey(InvestigationKind.CASE, case_id),
             reason=DistilFailureReason.REFUSED,
             now=datetime.now(timezone.utc),
         )
@@ -311,7 +309,7 @@ class TestAVersionBumpReOffers:
         case_id = closed_case(session)
         failure(
             session,
-            Subject(InvestigationKind.CASE, case_id),
+            FailureKey(InvestigationKind.CASE, case_id),
             reason=DistilFailureReason.REFUSED,
             version=CASE_DISTIL_MAPPING_VERSION + 1,
         )
@@ -330,7 +328,7 @@ class TestSuccessForgetsIt:
         case_id = closed_case(session)
         failure(
             session,
-            Subject(InvestigationKind.CASE, case_id),
+            FailureKey(InvestigationKind.CASE, case_id),
             now=datetime.now(timezone.utc) - timedelta(days=1),
         )
         session.commit()
@@ -349,7 +347,7 @@ class TestSuccessForgetsIt:
         case_id = closed_case(session)
         failure(
             session,
-            Subject(InvestigationKind.CASE, case_id),
+            FailureKey(InvestigationKind.CASE, case_id),
             version=CASE_DISTIL_MAPPING_VERSION + 1,
         )
         session.commit()
@@ -360,7 +358,7 @@ class TestSuccessForgetsIt:
         assert session.get(EpisodicDistilFailure, ("case", case_id)) is None
 
     def test_clearing_a_subject_that_never_failed_is_not_an_error(self, session):
-        clear_failure(session, Subject(InvestigationKind.CASE, "case-734"))
+        clear_failure(session, FailureKey(InvestigationKind.CASE, "case-734"))
         session.commit()
 
 
@@ -368,24 +366,24 @@ class TestBothDistilsRecordTheSameWay:
     @pytest.mark.asyncio
     async def test_a_hunt_and_a_case_failure_land_in_one_table(self, session):
         run_id = uuid.uuid4()
-        failure(session, Subject(InvestigationKind.HUNT, str(run_id), 1))
-        failure(session, Subject(InvestigationKind.CASE, "case-734"))
+        failure(session, FailureKey(InvestigationKind.HUNT, str(run_id), 1))
+        failure(session, FailureKey(InvestigationKind.CASE, "case-734"))
         session.commit()
 
         rows = session.query(EpisodicDistilFailure).all()
         assert {row.investigation_kind for row in rows} == {"hunt", "case"}
         assert all(row.attempts == 1 for row in rows)
 
-    def test_a_hunt_subject_must_name_its_terminal(self):
+    def test_a_hunt_key_must_name_its_terminal(self):
         """The one shape the table rejects, refused before it can reach it.
 
         `_note_failure` swallows what it cannot record, so a subject the schema
         would reject is pacing lost silently -- which is the failure mode this
         table exists to end.
         """
-        with pytest.raises(ValueError, match="names the terminal"):
-            Subject(InvestigationKind.HUNT, str(uuid.uuid4()))
+        with pytest.raises(ValueError, match="must name the terminal"):
+            FailureKey(InvestigationKind.HUNT, str(uuid.uuid4()))
 
-    def test_a_case_subject_must_not_name_one(self):
+    def test_a_case_key_must_not_name_one(self):
         with pytest.raises(ValueError, match="cannot carry seq"):
-            Subject(InvestigationKind.CASE, "case-734", 1)
+            FailureKey(InvestigationKind.CASE, "case-734", 1)

@@ -118,7 +118,7 @@ RETRY_INTERVALS: Tuple[timedelta, ...] = (
 # the contract -- so a refusal is the far end of the same column rather than a
 # second rule, and the poll compares one thing. A version bump still re-offers
 # it, because the failure join matches on version the way the marker join does.
-NEVER = datetime(9999, 12, 31, tzinfo=timezone.utc)
+RETRY_NEVER = datetime(9999, 12, 31, tzinfo=timezone.utc)
 
 # A crash is not an outcome. Nothing an aborted run believed at the moment it
 # died is a conclusion, so none of it becomes memory. Running out is different:
@@ -137,9 +137,17 @@ BUDGET_TERMINATED = "budget_terminated"
 # The failure join is the second half of the same idea (#734). A failure writes
 # no marker, so without it a run that cannot be written comes back on every tick
 # forever; joined here, the run is offered again when its interval is up and not
-# before. Matched on version for the same reason the marker is: a mapping change
-# is the fix for most of what fails, and a bump has to re-offer everything that
-# failed under the old one.
+# before. Matched on version so that a bump re-offers everything that failed
+# under the old mapping -- a mapping change is the fix for most of what fails.
+#
+# And matched on seq, for the reason the marker clause below exists: a hunt that
+# resumed past its own terminal appends a second one to the same run, and a
+# failure keyed on the run alone would speak for terminals it never saw. A
+# refusal parks at RETRY_NEVER, so without this a run refused at seq N would be
+# invisible for the rest of its life and the later terminal that answers the
+# refusal could never be read. Comparing what the failure recorded is what makes
+# the later conclusions re-derive -- the same comparison, against the same
+# column, that the marker makes.
 _CANDIDATES = text("""
     SELECT DISTINCT ON (e.run_id) e.run_id AS run_id, e.seq AS seq
     FROM agent_events e
@@ -148,11 +156,12 @@ _CANDIDATES = text("""
           AND m.distil_version = :version
     LEFT JOIN episodic_distil_failures f
            ON f.investigation_kind = 'hunt'
-          AND f.subject_key = e.run_id::text
+          AND f.failure_key = e.run_id::text
           AND f.distil_version = :version
+          AND f.origin_seq >= e.seq
     WHERE e.kind = 'terminal'
       AND e.run_kind = ANY(:kinds)
-      AND (f.subject_key IS NULL OR f.next_attempt_at <= now())
+      AND (f.failure_key IS NULL OR f.next_attempt_at <= now())
       AND (
         m.investigation_id IS NULL
         OR (m.origin_run_id = e.run_id AND m.origin_seq < e.seq)
@@ -184,7 +193,7 @@ class Origin:
 
 
 @dataclass(frozen=True)
-class Subject:
+class FailureKey:
     """What a failure is recorded against: what the poll held before it failed.
 
     Not the investigation, which is what a marker is keyed by and what a failure
@@ -194,27 +203,36 @@ class Subject:
     """
 
     kind: InvestigationKind
-    key: str
+    value: str
     seq: Optional[int] = None
 
     def __post_init__(self) -> None:
-        """A hunt names its terminal and nothing else does.
+        """A hunt names the terminal it failed on and nothing else does.
 
         Checked here rather than left to the schema's CHECK, because the only
         caller is inside a failure path that swallows what it cannot record: a
-        hunt subject built without its seq would be rejected by the database,
-        logged, and dropped, and the subject would come back unpaced — which is
-        the behaviour this table exists to end, arriving silently.
+        hunt key built without its seq would be rejected by the database,
+        logged, and dropped, and the run would come back unpaced — which is the
+        behaviour this table exists to end, arriving silently.
+
+        The seq is not a breadcrumb. The poll compares it to decide whether a
+        later terminal supersedes the failure, so a hunt missing one is a run
+        that could never be rescued by concluding again.
         """
-        if (self.kind is InvestigationKind.HUNT) != (self.seq is not None):
+        if self.kind is InvestigationKind.HUNT and self.seq is None:
             raise ValueError(
-                f"a {self.kind.value} subject cannot carry seq={self.seq!r}: "
-                "a hunt names the terminal it failed on and a Case has none"
+                "a hunt failure key must name the terminal it failed on, "
+                "because the poll compares it against later terminals"
+            )
+        if self.kind is not InvestigationKind.HUNT and self.seq is not None:
+            raise ValueError(
+                f"a {self.kind.value} failure key cannot carry seq={self.seq!r}: "
+                "only a hunt has a terminal to name"
             )
 
     @classmethod
-    def of(cls, terminal: Terminal) -> "Subject":
-        """The hunt subject one terminal stands for."""
+    def of(cls, terminal: Terminal) -> "FailureKey":
+        """The key one terminal is recorded under."""
         return cls(InvestigationKind.HUNT, str(terminal.run_id), terminal.seq)
 
 
@@ -540,7 +558,7 @@ def _superseded_by(
 def record_failure(
     session: Session,
     *,
-    subject: Subject,
+    key: FailureKey,
     reason: DistilFailureReason,
     error: str,
     version: int,
@@ -552,7 +570,7 @@ def record_failure(
     back, so anything added to that session goes down with it.
 
     The interval is read off ``RETRY_INTERVALS`` by the new attempt count and a
-    refusal takes ``NEVER``, which is the same column and not a special case. The
+    refusal takes ``RETRY_NEVER``, which is the same column and not a special case. The
     count is the one that survives the tick — ``ATTEMPTS`` bounds the retry
     inside a tick and is not what this counts.
 
@@ -563,18 +581,18 @@ def record_failure(
     pin this at 1 and the interval would never widen.
     """
     at = now or datetime.now(timezone.utc)
-    existing = session.get(EpisodicDistilFailure, (subject.kind.value, subject.key))
+    existing = session.get(EpisodicDistilFailure, (key.kind.value, key.value))
     attempts = (existing.attempts if existing is not None else 0) + 1
 
     if reason is DistilFailureReason.REFUSED:
-        next_attempt = NEVER
+        next_attempt = RETRY_NEVER
     else:
         next_attempt = at + RETRY_INTERVALS[min(attempts, len(RETRY_INTERVALS)) - 1]
 
     row: Dict[str, Any] = {
-        "investigation_kind": subject.kind.value,
-        "subject_key": subject.key,
-        "origin_seq": subject.seq,
+        "investigation_kind": key.kind.value,
+        "failure_key": key.value,
+        "origin_seq": key.seq,
         "reason": reason.value,
         "attempts": attempts,
         "last_error": error,
@@ -587,11 +605,11 @@ def record_failure(
         insert(EpisodicDistilFailure)
         .values(**row)
         .on_conflict_do_update(
-            index_elements=["investigation_kind", "subject_key"],
+            index_elements=["investigation_kind", "failure_key"],
             set_={
                 key: row[key]
                 for key in row
-                if key not in ("investigation_kind", "subject_key", "first_failed_at")
+                if key not in ("investigation_kind", "failure_key", "first_failed_at")
             },
         )
     )
@@ -602,7 +620,7 @@ def record_failure(
         session.expire(existing)
 
 
-def clear_failure(session: Session, subject: Subject) -> None:
+def clear_failure(session: Session, key: FailureKey) -> None:
     """Forget that this subject ever failed, in the transaction that wrote it.
 
     In that transaction and not after it, so a write that lands and a row that
@@ -612,8 +630,8 @@ def clear_failure(session: Session, subject: Subject) -> None:
     """
     session.execute(
         delete(EpisodicDistilFailure).where(
-            EpisodicDistilFailure.investigation_kind == subject.kind.value,
-            EpisodicDistilFailure.subject_key == subject.key,
+            EpisodicDistilFailure.investigation_kind == key.kind.value,
+            EpisodicDistilFailure.failure_key == key.value,
         )
     )
 
@@ -630,7 +648,7 @@ def write_distil(
     # First, so that every path that returns rather than raises clears it, and
     # harmless if this transaction then rolls back -- the delete goes with it,
     # which is the point of doing it here rather than after the write.
-    clear_failure(session, Subject.of(terminal))
+    clear_failure(session, FailureKey.of(terminal))
 
     concluded = _accept(terminal, payload)
     kind = InvestigationKind.HUNT
@@ -772,7 +790,7 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
     }
 
     for terminal in candidates:
-        subject = Subject.of(terminal)
+        key = FailureKey.of(terminal)
         payload = await read_distil(str(terminal.run_id))
         if payload is None:
             # Not terminal and not a skip-forever: the agent layer may simply be
@@ -781,7 +799,7 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
             # never reachable is a memory that silently never fills.
             logger.warning("Distil: %s had no readable fold", terminal.run_id)
             await _note_failure(
-                subject,
+                key,
                 DistilFailureReason.UNREADABLE,
                 "no readable fold",
                 DISTIL_MAPPING_VERSION,
@@ -790,7 +808,7 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
             continue
 
         counts = await write_with_retry(
-            subject,
+            key,
             lambda: _write_in_own_session(terminal, payload),
             DistilRefused,
             written,
@@ -807,7 +825,7 @@ async def distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
 
 
 async def write_with_retry(
-    subject: Subject,
+    key: FailureKey,
     write: Callable[[], Dict[str, int]],
     refusal: Type[Exception],
     written: Dict[str, int],
@@ -838,18 +856,16 @@ async def write_with_retry(
         try:
             return await asyncio.to_thread(write)
         except refusal as exc:
-            logger.warning(
-                "%s Distil refused %s: %s", subject.kind.value, subject.key, exc
-            )
-            await _note_failure(subject, DistilFailureReason.REFUSED, str(exc), version)
+            logger.warning("%s Distil refused %s: %s", key.kind.value, key.value, exc)
+            await _note_failure(key, DistilFailureReason.REFUSED, repr(exc), version)
             written["refused"] += 1
             return None
         except Exception as exc:
             if attempt < ATTEMPTS:
                 logger.warning(
                     "%s Distil failed on %s, attempt %s of %s; retrying",
-                    subject.kind.value,
-                    subject.key,
+                    key.kind.value,
+                    key.value,
                     attempt,
                     ATTEMPTS,
                 )
@@ -857,19 +873,19 @@ async def write_with_retry(
             logger.error(
                 "%s Distil failed on %s after %s attempts, leaving neither rows "
                 "nor marker",
-                subject.kind.value,
-                subject.key,
+                key.kind.value,
+                key.value,
                 ATTEMPTS,
                 exc_info=True,
             )
-            await _note_failure(subject, DistilFailureReason.FAILED, repr(exc), version)
+            await _note_failure(key, DistilFailureReason.FAILED, repr(exc), version)
             written["failed"] += 1
             return None
     return None
 
 
 async def _note_failure(
-    subject: Subject,
+    key: FailureKey,
     reason: DistilFailureReason,
     error: str,
     version: int,
@@ -885,24 +901,24 @@ async def _note_failure(
     the write's own ERROR is already saying it failed.
     """
     try:
-        await asyncio.to_thread(_record_in_own_session, subject, reason, error, version)
+        await asyncio.to_thread(_record_in_own_session, key, reason, error, version)
     except Exception:
         logger.error(
             "%s Distil could not record the failure on %s; it will be re-offered "
             "on the next tick unpaced",
-            subject.kind.value,
-            subject.key,
+            key.kind.value,
+            key.value,
             exc_info=True,
         )
 
 
 def _record_in_own_session(
-    subject: Subject, reason: DistilFailureReason, error: str, version: int
+    key: FailureKey, reason: DistilFailureReason, error: str, version: int
 ) -> None:
     with unit_of_work() as session:
         record_failure(
             session,
-            subject=subject,
+            key=key,
             reason=reason,
             error=error,
             version=version,
@@ -925,12 +941,12 @@ __all__: Sequence[str] = (
     "DISTIL_MAPPING_VERSION",
     "DistilRefused",
     "Origin",
-    "Subject",
+    "FailureKey",
     "Terminal",
     "ATTEMPTS",
     "RETRY_INTERVALS",
     "DEFAULT_BATCH",
-    "NEVER",
+    "RETRY_NEVER",
     "clear_failure",
     "clear_investigation",
     "distil_once",

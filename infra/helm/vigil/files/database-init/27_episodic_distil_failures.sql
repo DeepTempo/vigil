@@ -23,10 +23,14 @@
 CREATE TABLE IF NOT EXISTS episodic_distil_failures (
     investigation_kind text        NOT NULL CHECK (investigation_kind IN ('hunt', 'case', 'analyst')),
     -- A run id for a hunt, a case id for a Case. Text rather than uuid because
-    -- one column carries both, and the poll casts the run id to match.
-    subject_key        text        NOT NULL,
-    -- The seq of the terminal this failed on, so a failure can be traced back to
-    -- the ledger event that offered it. Absent on a Case, which was closed and
+    -- one column carries both, and the poll casts the run id to match. Not
+    -- called a subject: a subject is an entity a Verdict names (ADR 0016), and
+    -- this is the key the poll held when the write failed.
+    failure_key        text        NOT NULL,
+    -- The seq of the terminal this failed on. Not a breadcrumb: the hunt poll
+    -- compares it against later terminals on the same run, which is what lets a
+    -- run that concluded again be re-offered rather than staying behind a
+    -- refusal recorded at an earlier one. Absent on a Case, which was closed and
     -- never run; the CHECK below ties its absence to the kind rather than
     -- leaving a reader to guess, exactly as the marker's origin pair does.
     origin_seq         integer,
@@ -52,7 +56,7 @@ CREATE TABLE IF NOT EXISTS episodic_distil_failures (
     -- fix for most of what lands here.
     distil_version     integer     NOT NULL,
 
-    PRIMARY KEY (investigation_kind, subject_key),
+    PRIMARY KEY (investigation_kind, failure_key),
 
     CONSTRAINT episodic_distil_failures_seq_matches_kind CHECK (
         (investigation_kind = 'hunt') = (origin_seq IS NOT NULL)
