@@ -41,6 +41,8 @@ from sqlalchemy.orm import Session
 from core.cases.closure import ClosedByKind, ClosureCategory
 from core.memory.distil import (
     DEFAULT_BATCH,
+    FailureKey,
+    clear_failure,
     clear_investigation,
     write_marker,
     write_with_retry,
@@ -108,6 +110,22 @@ _OUTCOMES: Mapping[ClosureCategory, VerdictOutcome] = {
 # ``closed_at`` where one exists, that edit is unreachable and both Cases keep
 # a window their Findings no longer support. ``GREATEST`` ignores nulls here,
 # so a Case with no closure row still falls back to ``updated_at``.
+#
+# The failure join is the hunt poll's, against this table -- see
+# ``core/memory/distil.py`` for what it is for. Two things are this poll's own.
+#
+# The predicate is ANDed over both directions: a withdrawal that keeps failing
+# is as much a subject to stop hammering as a closure that does.
+#
+# And the failure only counts while the Case has not moved since it was
+# recorded. A hunt's input is a frozen fold, so "this will not become mappable
+# by being read again" holds and a refusal there waits forever. A Case's input
+# is live rows, and this module polls state precisely so that a re-close or a
+# re-categorisation is a re-derive. Without this clause a Case that failed --
+# refused, and so parked at ``RETRY_NEVER`` -- would stay unwritten through every
+# later edit that fixed it, and the staleness test above would be unreachable
+# behind the failure predicate. Cast for the same reason that test is: these
+# columns are naive UTC and ``last_failed_at`` is timestamptz.
 _CANDIDATES = text("""
     SELECT c.case_id AS case_id
     FROM cases c
@@ -115,15 +133,23 @@ _CANDIDATES = text("""
     LEFT JOIN episodic_distil_markers m
            ON m.investigation_kind = 'case'
           AND m.investigation_id = c.case_id
-    WHERE (
-        c.status = 'closed'
-        AND (
-          m.investigation_id IS NULL
-          OR m.distil_version <> :version
-          OR m.concluded_at < (GREATEST(i.closed_at, c.updated_at) AT TIME ZONE 'UTC')
+    LEFT JOIN episodic_distil_failures f
+           ON f.investigation_kind = 'case'
+          AND f.failure_key = c.case_id
+          AND f.distil_version = :version
+          AND f.last_failed_at >= (GREATEST(i.closed_at, c.updated_at) AT TIME ZONE 'UTC')
+    WHERE (f.failure_key IS NULL OR f.next_attempt_at <= now())
+      AND (
+        (
+          c.status = 'closed'
+          AND (
+            m.investigation_id IS NULL
+            OR m.distil_version <> :version
+            OR m.concluded_at < (GREATEST(i.closed_at, c.updated_at) AT TIME ZONE 'UTC')
+          )
         )
+        OR (c.status <> 'closed' AND m.investigation_id IS NOT NULL)
       )
-      OR (c.status <> 'closed' AND m.investigation_id IS NOT NULL)
     ORDER BY GREATEST(i.closed_at, c.updated_at) DESC, c.case_id
     LIMIT :limit
     """)
@@ -391,6 +417,10 @@ def write_case_distil(session: Session, case_id: str) -> Dict[str, int]:
     being recorded as done.
     """
     kind = InvestigationKind.CASE
+    # First, as the hunt writer does and for the same reason, the withdrawal
+    # included: a Case that is no longer failing must not keep a row saying it is.
+    clear_failure(session, FailureKey(kind, case_id))
+
     case = session.get(Case, case_id)
     if case is None:
         raise CaseDistilRefused(f"{case_id} is not a case")
@@ -487,11 +517,11 @@ async def case_distil_once(limit: int = DEFAULT_BATCH) -> Dict[str, int]:
 
     for case_id in candidates:
         counts = await write_with_retry(
-            InvestigationKind.CASE,
-            case_id,
+            FailureKey(InvestigationKind.CASE, case_id),
             lambda: _write_in_own_session(case_id),
             CaseDistilRefused,
             written,
+            version=CASE_DISTIL_MAPPING_VERSION,
         )
         if counts is None:
             continue
