@@ -315,7 +315,22 @@ expected output)
 
 **Fold Equivalence**:
 The property the gate asserts — every Fold over a historical Ledger reproduces
-its Golden byte-for-byte, projection and derivations alike.
+its Golden byte-for-byte, projection and derivations alike. Its inputs are the
+pre-harness Ledgers under `tests/fixtures/runs/`; a run recorded by current code
+is **Replay**'s fixture and not one of these.
+
+**Replay**:
+Rebuilding what a decision was shown from the Ledger alone, and checking it
+against what was journaled at the time: the **Digest** from the events before the
+decision, and the recalled rows from the **Recall Event**. Distinct from **Fold
+Equivalence** — that check compares this implementation against the one it
+replaced, over a fixture population closed to old-format Ledgers, while a Replay
+reads a run this code recorded (`tests/fixtures/replay/`). A Replay that
+re-queried **Episodic Memory** rather than reading the journaled rows would read a
+neighbourhood that has moved since the run, and pass while showing a decision
+something it never saw.
+_Avoid_: fold, re-run, regression test (a regression snapshot is the fixture; the
+Replay is the check)
 
 ### Console (web client)
 

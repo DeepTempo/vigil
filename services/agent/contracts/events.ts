@@ -2,6 +2,7 @@
 // the hunt workflow, the checkpoint mirror, and Python's two permitted reads.
 
 import type { BudgetLimits, SpendPayload } from "./budget.js";
+import type { RecallPayload } from "./memory.js";
 
 // Adding a kind is never a migration: kind is text in the table and validated here
 // against a closed union. Changing an existing kind's payload bumps this.
@@ -17,6 +18,7 @@ export type RunKind = (typeof RUN_KINDS)[number];
 export const RUN_EVENT_KINDS = [
   "run",
   "spend",
+  "recall",
   "dispatch",
   "checkpoint",
   "resolution",
@@ -148,6 +150,10 @@ export interface TerminalHandoff {
 export interface RunEventPayloads {
   run: RunPayload;
   spend: SpendPayload;
+  // The read of episodic memory the run opened on, verbatim. Journaled because
+  // the prefix carries the rows but nothing else records them, and a rebuild that
+  // re-reads memory reads a neighbourhood that has moved since (ADR 0015).
+  recall: RecallPayload;
   dispatch: DispatchPayload;
   checkpoint: CheckpointPayload;
   resolution: ResolutionPayload;

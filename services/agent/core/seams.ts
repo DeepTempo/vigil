@@ -1,4 +1,5 @@
 import type { AgentEvent, NewEvent, TerminalPayload } from "../contracts/events.js";
+import type { RecallResult } from "../contracts/memory.js";
 import type { RegisteredTool, ToolResult } from "../contracts/tool.js";
 
 // The four seams as ports the harness receives rather than builds. Budget is
@@ -9,6 +10,15 @@ export type { Budget, BudgetLimits, Quota, Refusal, Spend, SpendPayload, TokenCo
 // contract, so recall returns nothing until something real lands.
 export interface Memory {
   recall(cue: string, limit: number): Promise<readonly string[]>;
+  // Episodic recall, on exact entity keys. Typed rather than prose because the
+  // result is journaled verbatim as the run's recall event and the notes the model
+  // reads are rendered from it -- provenance, trust and window do not survive a
+  // string, and a rebuild has to present what the run was actually given.
+  //
+  // Not optional: an implementation that quietly answered nothing would read as an
+  // entity nobody has looked at, which is true of every entity, so nothing would
+  // look wrong.
+  entities(keys: readonly string[], asOf: string): Promise<RecallResult>;
   remember(note: string): Promise<void>;
 }
 

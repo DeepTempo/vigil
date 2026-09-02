@@ -225,6 +225,139 @@ export interface RecallArgs {
 // rather than per key. Both fixes add a key; the ranking is the harness's, so the
 // choice is the harness's.
 
+// Known-to-be-none rather than an error: an entity nobody has looked at is empty
+// lists and zeros, and every caller reads the same shape.
+//
+// The ranking is the read's own account of what chose the set. Nothing chose
+// anything here, so the caps are zero and the order is named for that.
+export const emptyRecall = (keys: readonly string[], asOf: string): RecallResult => {
+  const none = { per_key_cap: 0, overall_cap: 0 };
+  return {
+    keys,
+    as_of: asOf,
+    sightings: [],
+    verdicts: [],
+    gaps: [],
+    dropped: { sightings: none, verdicts: none, gaps: none },
+    ranking: { order: "none", per_key_cap: 0, overall_cap: 0 },
+  };
+};
+
+// The one renderer, used by the run that recalls and by the rebuild that replays
+// it. Two renderers would agree until one of them was edited.
+//
+// A pure function of the journaled rows: `ranking` is read by nothing here. The
+// parameters chose the set when the read ran, and the set is what was journaled --
+// a renderer that re-capped or re-sorted under today's parameters would present a
+// decision with something other than what it was made against (ADR 0015).
+
+const windowOf = ({ first_seen, last_seen }: { first_seen: string; last_seen: string }): string =>
+  first_seen === last_seen ? first_seen : `${first_seen} to ${last_seen}`;
+
+// Kind and id rather than run id: one read returns rows from many investigations,
+// and a Case is not a hunt.
+const provenanceOf = (row: RecalledProvenance): string =>
+  `${row.investigation_kind} ${row.investigation_id}, concluded ${row.concluded_at}`;
+
+const verdictNote = (verdict: RecalledVerdict): string => {
+  const held = [
+    `${verdict.outcome}: ${verdict.statement}`,
+    `subjects ${verdict.subject_entities.join(", ")}`,
+    `activity ${windowOf(verdict.window)}${verdict.window_source === "asserted" ? " (asserted)" : ""}`,
+    `${verdict.trust}, from ${provenanceOf(verdict)}`,
+  ];
+  // The one thing a reader must not miss: a conclusion resting only on fields an
+  // adversary could have written is not a conclusion to lean on.
+  if (verdict.attacker_influenceable_only) held.push("rests only on attacker-influenceable evidence");
+  if (verdict.rationale !== "") held.push(`because ${verdict.rationale}`);
+  return held.join(" — ");
+};
+
+const gapNote = (gap: RecalledGap): string =>
+  [
+    `unanswered: ${gap.statement}`,
+    `subjects ${gap.subject_entities.join(", ")}`,
+    `${gap.disposition}: ${gap.reason}`,
+    `from ${provenanceOf(gap)}`,
+  ].join(" — ");
+
+const sightingNote = (sighting: RecalledSighting): string => {
+  const held = [
+    `${sighting.entity_key} seen ${sighting.hit_count}x on ${sighting.source_system}`,
+    windowOf(sighting.window),
+    `from ${provenanceOf(sighting)}`,
+  ];
+  if (sighting.attacker_influenceable) held.push("attacker-influenceable");
+  return held.join(" — ");
+};
+
+// Per kind and per reason, because the two reasons mean different things to a
+// reader: a per-key cap says one entity had more history than its share, and an
+// overall cap says the read was simply broad. Summing them keeps the number and
+// discards the half a reader would act on.
+const DROPPED_KINDS = ["sightings", "verdicts", "gaps"] as const;
+
+const droppedNote = (result: RecallResult): string | null => {
+  const held: string[] = [];
+  for (const kind of DROPPED_KINDS) {
+    const { per_key_cap, overall_cap } = result.dropped[kind];
+    if (per_key_cap > 0) held.push(`${per_key_cap} ${kind} past one entity's share`);
+    if (overall_cap > 0) held.push(`${overall_cap} ${kind} past the read's own limit`);
+  }
+  return held.length === 0 ? null : `Some history was not carried: ${held.join(", ")}.`;
+};
+
+// What an earlier investigation concluded before where an entity was seen: a
+// settled claim bears on the run's own question and a sighting is a lead. A fixed
+// presentation fold, not a parameter -- see the note at the top of this file.
+export function recalledNotes(result: RecallResult): readonly string[] {
+  const notes = [
+    ...result.verdicts.map(verdictNote),
+    ...result.gaps.map(gapNote),
+    ...result.sightings.map(sightingNote),
+  ];
+  if (notes.length === 0) return [];
+  const dropped = droppedNote(result);
+  return dropped === null ? notes : [...notes, dropped];
+}
+
+// Only what the two functions below read off an event: the kind that selects it
+// and the payload they render. Narrower than an AgentEvent on purpose -- this
+// contract is consumed by the harness and by Python, and neither needs the
+// envelope to render a row.
+export interface LedgerRecord {
+  kind: string;
+  payload: unknown;
+}
+
+// The read a run opened on, off its own ledger. The first recall event, because a
+// run recalls once at start; a second one is a later read and not what the opening
+// prefix carried.
+//
+// Separate from the rendering because a read that found nothing renders to no
+// notes, and a caller that reads presence off the notes cannot tell an entity
+// nobody has looked at from a run that has not read memory yet.
+export function recallEventOf(log: readonly LedgerRecord[]): RecallResult | null {
+  const event = log.find((one) => one.kind === "recall");
+  if (event === undefined) return null;
+  const payload = event.payload;
+  if (typeof payload !== "object" || payload === null) return null;
+  // Validated rather than cast, for the reason recallOf gives below: a drifted
+  // payload cast to a RecallResult renders as an entity nobody has looked at,
+  // which is true of every entity, so nothing looks wrong. An event this cannot
+  // read is one no rebuild can present, and the caller is told rather than shown
+  // a prefix of undefined fields.
+  return RECALL_RESULT_KEYS.every((key) => key in payload) ? (payload as RecallResult) : null;
+}
+
+// The rebuild. Pure over the log and reaching no Memory: a replay that re-reads
+// memory reads a neighbourhood that has moved since the run, which looks like a
+// passing test until it looks like a wrong answer.
+export function recalledFromLedger(log: readonly LedgerRecord[]): readonly string[] {
+  const held = recallEventOf(log);
+  return held === null ? [] : recalledNotes(held);
+}
+
 // One row holding the whole mapping. It validates rather than casting, because a
 // cast would let a drifted payload through as a RecallResult of undefined fields,
 // which renders as an entity nobody has looked at -- true of every entity, so

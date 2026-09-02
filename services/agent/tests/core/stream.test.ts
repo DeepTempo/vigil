@@ -8,6 +8,7 @@ import { InProcessState } from "../../core/state.js";
 import { GatewayExhausted } from "../../core/limiter.js";
 import { ZERO_TOKENS } from "../../contracts/budget.js";
 import { nullMemory } from "../../core/memory.js";
+import { emptyRecall } from "../../contracts/memory.js";
 import { localDispatch } from "../../core/dispatch.js";
 import { defineTool, type RegisteredTool, type ToolResult } from "../../contracts/tool.js";
 import type { Memory, State, ToolDispatch } from "../../core/seams.js";
@@ -150,6 +151,7 @@ describe("the tool loop", () => {
         recalls += 1;
         return ["the count was two yesterday"];
       },
+      entities: async (keys, asOf) => emptyRecall(keys, asOf),
       remember: async () => {},
     };
     const harness = harnessOf([{ calls: [{ tool: "bump", args: "{}" }] }, { calls: [] }, HALT], { memory });

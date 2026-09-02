@@ -7,6 +7,7 @@ import { budgetOf, unmeteredQuota } from "../../core/budget.js";
 import { registryOf } from "../../core/registry.js";
 import { InProcessState } from "../../core/state.js";
 import { nullMemory } from "../../core/memory.js";
+import { emptyRecall } from "../../contracts/memory.js";
 import { localDispatch } from "../../core/dispatch.js";
 import type { AgentEvent, NewEvent } from "../../contracts/events.js";
 import type { Budget } from "../../contracts/budget.js";
@@ -185,6 +186,7 @@ function recording(): Memory {
   const notes: string[] = ["the count was two yesterday"];
   return {
     recall: async () => notes,
+    entities: async (keys, asOf) => emptyRecall(keys, asOf),
     remember: async (note) => void notes.push(note),
   };
 }

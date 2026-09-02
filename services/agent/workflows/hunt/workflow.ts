@@ -6,7 +6,8 @@ import type { RunSpec } from "../../core/spec.js";
 import { BudgetRefused, disconfirmationCritic, decisionProvider, narrativeWriter, workerDispatcher } from "./adapters.js";
 import { narrativeInput, type Narrative } from "./narrative.js";
 import type { Narrator } from "./ports.js";
-import { huntSpec, verdictsOf } from "./config.js";
+import { huntSpec, verdictsOf, type HuntSpec } from "./config.js";
+import { key } from "./entities.js";
 import { pendingCheckpoints } from "./checkpoints.js";
 import { HuntAlreadyTerminal, HuntController, HuntParked, resumeHunt, startHunt } from "./controller.js";
 import { createEnricher, type Tool } from "./enrich.js";
@@ -36,6 +37,18 @@ export interface HuntReport {
   status: RunOutcome | "waiting_approval";
   reason: string;
   iterations: number;
+}
+
+// What the run's episodic read is keyed on: the subjects the operator named,
+// deduped and sorted so the same hunt asks the same question in the same order.
+//
+// Declared subjects only. The seed prose names things too, but a key invented from
+// prose is a join that returns rows about something else -- the spec parses these
+// where an unusable one can still be refused, and an operator who named nothing
+// gets no keyed read rather than a guessed one.
+function recallKeys(spec: HuntSpec): readonly string[] {
+  const held = Object.values(spec.operator_hypothesis_subjects).flat().map(key);
+  return [...new Set(held)].sort();
 }
 
 // The hunt on the harness. The controller owns every decision this makes; what
@@ -76,7 +89,14 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
   const granted = ledger.projection.hunt.budgets;
   harness.budget.raise({ max_cost_usd: granted.max_cost_usd, max_wall_ms: granted.max_wall_ms });
 
-  const ports = { harness: scoped, spec: options.spec, run_id, actions: options.actions, ...(options.signal === undefined ? {} : { signal: options.signal }) };
+  const ports = {
+    harness: scoped,
+    spec: options.spec,
+    run_id,
+    actions: options.actions,
+    recall_keys: recallKeys(spec),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  };
   const narrator = narrativeWriter(ports);
   const controller = new HuntController(
     ledger,
@@ -149,7 +169,9 @@ export async function narrateRun(
   const projection = fold(events);
   const spec = projection.hunt.spec;
   const harness = build<HuntKinds>("hunt", spec, state);
-  const narrative = await narrativeWriter({ harness, spec, run_id: runId, actions: [] }).narrate(
+  // Empty: the write-up recalls nothing. It runs after the terminal, over a
+  // projection, and a keyed read there would be a read no decision was made on.
+  const narrative = await narrativeWriter({ harness, spec, run_id: runId, actions: [], recall_keys: [] }).narrate(
     narrativeInput(projection, buildReport(projection)),
   );
   await state.append(runId, [
