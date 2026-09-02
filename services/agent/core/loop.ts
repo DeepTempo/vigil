@@ -47,6 +47,10 @@ export interface TurnConfig {
   verbs: readonly string[];
   result_cap: number;
   recall_limit: number;
+  // The entity keys the run opens on, for the episodic read. Empty is the default
+  // and means a run that recalls nothing: which keys a run is about is the
+  // workflow's answer, and a harness that guessed would query on prose.
+  recall_keys?: readonly string[];
   // Lets this turn run against a ledger that already holds a terminal. Only for a turn
   // that describes a run rather than continues one -- never one that can reach a tool.
   after_terminal?: boolean;

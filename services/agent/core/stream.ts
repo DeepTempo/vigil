@@ -5,6 +5,7 @@ import { Ajv, type ValidateFunction } from "ajv";
 import { GatewayExhausted } from "./limiter.js";
 import { ZERO_TOKENS, type Refusal, type SpendPayload, type TokenCounts } from "../contracts/budget.js";
 import type { CheckpointPayload, DispatchPayload, NewEvent, ResolutionPayload, TerminalPayload } from "../contracts/events.js";
+import { hasRecall, isRecalled, recalledNotesOf, recalledNotes, type RecallPayload } from "../contracts/memory.js";
 import { ToolBoundsViolation, type RegisteredTool, type ToolResult } from "../contracts/tool.js";
 import {
   approvalId,
@@ -97,8 +98,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
 
     // Recalled once and rendered into the opening turn, never re-recalled per
     // tool turn: a prefix that changes mid-loop is a prefix that cannot cache.
-    const recalled = await this.harness.memory.recall(this.cfg.task, this.cfg.recall_limit);
-    this.prefix = prefixOf(this.cfg.system, this.tools.map(schemaOf), recalled);
+    this.prefix = prefixOf(this.cfg.system, this.tools.map(schemaOf), await this.recalled());
 
     const schema = this.cfg.schema;
     const ended = yield* this.toolLoop();
@@ -107,6 +107,61 @@ class Run<T, Kinds extends Record<string, unknown>> {
     // a second call to be told the same thing.
     if (schema === null) return yield* announce(this.done("completed", this.prose as T, "the role answered"));
     return yield* announce(yield* this.emit(schema));
+  }
+
+  // Two reads, one prefix. Episodic recall is keyed on entities and its result is
+  // journaled, because the prefix carries the rows and nothing else records them:
+  // a rebuild that read memory again would read a neighbourhood that has moved
+  // since, which looks like a passing replay until it looks like a wrong answer.
+  // The prose the model reads is rendered from that event, so the rebuild renders
+  // the same bytes from the same rows.
+  //
+  // The cue-shaped read stays for the caller that carries a parent run's own notes
+  // forward: it names where to recall from rather than what to recall about.
+  private async recalled(): Promise<readonly string[]> {
+    const keys = this.cfg.recall_keys ?? [];
+    if (keys.length === 0) return await this.harness.memory.recall(this.cfg.task, this.cfg.recall_limit);
+
+    // Once per run and not once per turn. A workflow whose run is many turns --
+    // a lead taking a fresh turn each iteration -- would otherwise read again
+    // against a neighbourhood that has moved, moving the prefix inside the run and
+    // presenting a later decision with something the earlier ones never saw. The
+    // journaled event is that read, so a later turn and a resume re-render it.
+    const log = await this.harness.state.read(this.cfg.run_id);
+    if (hasRecall(log)) return recalledNotesOf(log);
+
+    // The run's own start rather than the moment this ran, so a resumed run and a
+    // replay sit inside the freshness boundary the first turn did. A turn driven
+    // with nothing behind it -- no workflow opened the run, so the ledger is empty
+    // -- is its own start, and there is no earlier stamp to read.
+    const asOf = log[0]?.ts ?? new Date().toISOString();
+    const payload = await this.read(keys, asOf);
+    // Journaled whether or not it found anything, and whether or not it happened:
+    // an empty read is known-to-be-none, and a replay cannot tell either of those
+    // from a read that never ran.
+    await this.write({ run_id: this.cfg.run_id, run_kind: this.cfg.run_kind, kind: "recall", payload });
+    return isRecalled(payload) ? recalledNotes(payload) : [];
+  }
+
+  // A read that cannot be served is journaled as itself and the run goes on.
+  // Memory reorders what to look at first and settles nothing, so a run that could
+  // not read it has lost an aid rather than an input: failing here would make one
+  // outage the end of every run in flight.
+  //
+  // The shape it is journaled as, and why it is not an empty result, are the
+  // contract's: see RecallUnavailable.
+  private async read(keys: readonly string[], asOf: string): Promise<RecallPayload> {
+    try {
+      return await this.harness.memory.entities({
+        keys,
+        asOf,
+        runId: this.cfg.run_id,
+        ...(this.cfg.signal === undefined ? {} : { signal: this.cfg.signal }),
+      });
+    } catch (error) {
+      if (this.cfg.signal?.aborted === true || hardStop(error)) throw error;
+      return { keys, as_of: asOf, unavailable: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   // Returns an outcome only when the run ends here; otherwise the loop stops

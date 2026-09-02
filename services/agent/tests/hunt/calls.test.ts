@@ -332,7 +332,7 @@ describe("the dispatcher's failure path, end to end", () => {
 
   it("reports the failure and still returns what it gathered", async () => {
     const harness = dying();
-    const dispatcher = workerDispatcher({ harness, spec: SPEC, run_id: "run-1", actions: [] });
+    const dispatcher = workerDispatcher({ harness, spec: SPEC, run_id: "run-1", actions: [], recall_keys: [] });
     const result = await dispatcher.dispatch({
       dispatch_id: "dsp-1",
       agent_id: "network_analyst",

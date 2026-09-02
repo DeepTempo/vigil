@@ -180,17 +180,42 @@ and renders it into the frozen prefix; a worker performs one mid-run through the
 `recall_entity` tool, which lands in the prompt tail and leaves the prefix
 undisturbed. Recall never contributes to corroboration — it reorders what to look
 at and settles nothing (ADR 0015).
+
+A run's keys are the subjects an operator declared for the hypotheses actually
+being put up, and where none were declared, the entities the hypotheses name.
+Declared keys first because a person typed them and the spec refused the
+unusable ones; extraction at all because a scheduled hunt declares none, and the
+autonomous path would otherwise never read memory. A key read out of a statement
+can be beside the point rather than wrong, which spends prefix budget and, since
+recall only reorders, can never move a **Verdict**.
 _Avoid_: search, retrieval, lookup (unqualified), context
 
 **Recall Event**:
-The **Ledger** record of one run-start **Recall**: the keys queried, the rows
-returned with their provenance, what was dropped and why, and the selection
-parameters in force. It carries rows and not an order — the order they were
+The **Ledger** record of one run-start **Recall**. A read that was served carries
+the keys queried, the rows returned with their provenance, what was dropped and
+why, and the selection parameters in force; a read that could not be served is an
+**Unavailable Read**, which carries the keys and the reason and none of the rest.
+It carries rows and not an order — the order they were
 presented in is a fold, so ranking may change without invalidating a historical
 Ledger. The parameters are copied in rather than referenced, because a **RunSpec**
 records the arch by name and not by version.
 _Avoid_: recall log (that is the audit table, which is Python's), snapshot
 (unqualified -- a **Memory Snapshot** is the frozen corpus, not this record)
+
+**Unavailable Read**:
+The **Recall Event** a run journals when the read could not be served at all --
+the far side down, the token wrong, the answer unreadable. It carries the keys
+asked about and why, and it is deliberately not an empty **Recall**: empty lists
+mean *known-to-be-none*, so recording an outage that way would say those entities
+have no history, which is true of every entity while memory is down -- so nothing
+would look wrong. A run that opens on one carries no recalled rows for the rest of
+its life rather than retrying on a later turn, because a read that succeeded on
+turn four would move a prefix the run had already decided against. The run itself
+still finishes: **Recall** reorders and never decides, so losing it costs a run an
+aid and not an input.
+_Avoid_: failed recall, empty recall, **Declared Gap** (that is a question an
+investigation left open, not a read that did not happen), **Visibility Gap** (that
+is a tool that could not answer about the estate)
 
 **Sighting**:
 What one investigation observed about one entity from one source. One row per
@@ -315,7 +340,22 @@ expected output)
 
 **Fold Equivalence**:
 The property the gate asserts — every Fold over a historical Ledger reproduces
-its Golden byte-for-byte, projection and derivations alike.
+its Golden byte-for-byte, projection and derivations alike. Its inputs are the
+pre-harness Ledgers under `tests/fixtures/runs/`; a run recorded by current code
+is **Replay**'s fixture and not one of these.
+
+**Replay**:
+Rebuilding what a decision was shown from the Ledger alone, and checking it
+against what was journaled at the time: the **Digest** from the events before the
+decision, and the recalled rows from the **Recall Event**. Distinct from **Fold
+Equivalence** — that check compares this implementation against the one it
+replaced, over a fixture population closed to old-format Ledgers, while a Replay
+reads a run this code recorded (`tests/fixtures/replay/`). A Replay that
+re-queried **Episodic Memory** rather than reading the journaled rows would read a
+neighbourhood that has moved since the run, and pass while showing a decision
+something it never saw.
+_Avoid_: fold, re-run, regression test (a regression snapshot is the fixture; the
+Replay is the check)
 
 ### Console (web client)
 
@@ -356,8 +396,10 @@ _Avoid_: page, tab, view
 - A **Recall** returns **Sightings**, **Verdicts** and **Declared Gaps** in one
   shape, carried two ways: journaled verbatim as the **Recall Event** at run
   start, and returned as the single row of a `recall_entity` tool result mid-run.
-  One shape and not two — a parallel payload is a second contract, and the second
-  one drifts. Declared in `core/memory/recall_contract.py` and
+  One result shape and not two — a second copy of it is a second contract, and the
+  second one drifts. An **Unavailable Read** is not that second copy: it is the
+  account of a read that did not happen, which only the harness ever writes.
+  Declared in `core/memory/recall_contract.py` and
   `services/agent/contracts/memory.ts`, with a ratchet that fails when they
   disagree
 - **Ingestion** produces **Findings** and depends on **Storage** (never the reverse)

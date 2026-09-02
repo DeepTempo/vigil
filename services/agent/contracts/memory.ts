@@ -1,17 +1,22 @@
 // The recall contract (#729): what a read of episodic memory returns, and the
 // signature of the tool that performs one.
 //
-// One shape, carried two ways. The run-start read journals it verbatim as the
-// recall event payload; a mid-run recall_entity call carries the same object as
-// the single row of a ToolResult. A parallel payload would be a second contract,
-// and the second one drifts.
+// One result shape, carried two ways. The run-start read journals it verbatim as
+// the recall event payload; a mid-run recall_entity call carries the same object
+// as the single row of a ToolResult. A second copy of the result would be a second
+// contract, and the second one drifts.
+//
+// RecallUnavailable is not that second copy. It is the account of a read that did
+// not happen, which is a different fact from a read that found nothing, and only
+// the harness ever writes one -- Python answers reads and has no way to report
+// that it was never asked.
 //
 // A mismatch between the halves fails as "no history", indistinguishable from an
 // entity nobody has looked at. The Python half is core/memory/recall_contract.py
 // and tests/unit/_ratchets/test_recall_contract_agrees.py fails when they
-// disagree. Nothing imports either half yet -- #731 writes the rows, #732 lands
-// the tool, the harness lands the event -- which is why a static check is the
-// only one available.
+// disagree. It is a static check because neither side runs the other's code:
+// Python answers the read and never journals it, the harness journals it and
+// never runs the query.
 
 import type { ToolResult } from "./tool.js";
 
@@ -192,9 +197,24 @@ export interface RecallResult {
   readonly ranking: RecallRanking;
 }
 
-// The event payload is the result. An alias, because a copied interface would say
-// only that the two happen not to have diverged yet.
-export type RecallPayload = RecallResult;
+// A read that did not happen, journaled in place of a result. Not an empty
+// RecallResult: empty lists mean known-to-be-none, so recording an outage as one
+// would say these entities have no history -- true of every entity while memory is
+// down, so nothing would look wrong.
+//
+// The keys are still here because they are what the run asked about, and a reader
+// working out what a run was denied needs them.
+export interface RecallUnavailable {
+  readonly keys: readonly string[];
+  readonly as_of: string;
+  // Why the read did not happen, in the words of whatever refused it.
+  readonly unavailable: string;
+}
+
+// The event payload is the result, or the account of why there is none. An alias
+// for the first, because a copied interface would say only that the two happen not
+// to have diverged yet.
+export type RecallPayload = RecallResult | RecallUnavailable;
 
 // Both key arguments are optional and at least one is required. The singular
 // exists for the caller that sends one string *instead of* the list, so requiring
@@ -225,10 +245,158 @@ export interface RecallArgs {
 // rather than per key. Both fixes add a key; the ranking is the harness's, so the
 // choice is the harness's.
 
+// Known-to-be-none rather than an error: an entity nobody has looked at is empty
+// lists and zeros, and every caller reads the same shape.
+//
+// The ranking is the read's own account of what chose the set. Nothing chose
+// anything here, so the caps are zero and the order is named for that.
+export const emptyRecall = (keys: readonly string[], asOf: string): RecallResult => {
+  const none = { per_key_cap: 0, overall_cap: 0 };
+  return {
+    keys,
+    as_of: asOf,
+    sightings: [],
+    verdicts: [],
+    gaps: [],
+    dropped: { sightings: none, verdicts: none, gaps: none },
+    ranking: { order: "none", per_key_cap: 0, overall_cap: 0 },
+  };
+};
+
+// The one renderer, used by the run that recalls and by the rebuild that replays
+// it. Two renderers would agree until one of them was edited.
+//
+// A pure function of the journaled rows: `ranking` is read by nothing here. The
+// parameters chose the set when the read ran, and the set is what was journaled --
+// a renderer that re-capped or re-sorted under today's parameters would present a
+// decision with something other than what it was made against (ADR 0015).
+
+const windowOf = ({ first_seen, last_seen }: { first_seen: string; last_seen: string }): string =>
+  first_seen === last_seen ? first_seen : `${first_seen} to ${last_seen}`;
+
+// Kind and id rather than run id: one read returns rows from many investigations,
+// and a Case is not a hunt.
+const provenanceOf = (row: RecalledProvenance): string =>
+  `${row.investigation_kind} ${row.investigation_id}, concluded ${row.concluded_at}`;
+
+const verdictNote = (verdict: RecalledVerdict): string => {
+  const held = [
+    `${verdict.outcome}: ${verdict.statement}`,
+    `subjects ${verdict.subject_entities.join(", ")}`,
+    `activity ${windowOf(verdict.window)}${verdict.window_source === "asserted" ? " (asserted)" : ""}`,
+    `${verdict.trust}, from ${provenanceOf(verdict)}`,
+  ];
+  // The one thing a reader must not miss: a conclusion resting only on fields an
+  // adversary could have written is not a conclusion to lean on.
+  if (verdict.attacker_influenceable_only) held.push("rests only on attacker-influenceable evidence");
+  if (verdict.rationale !== "") held.push(`because ${verdict.rationale}`);
+  return held.join(" — ");
+};
+
+const gapNote = (gap: RecalledGap): string =>
+  [
+    `unanswered: ${gap.statement}`,
+    `subjects ${gap.subject_entities.join(", ")}`,
+    `${gap.disposition}: ${gap.reason}`,
+    `from ${provenanceOf(gap)}`,
+  ].join(" — ");
+
+const sightingNote = (sighting: RecalledSighting): string => {
+  const held = [
+    `${sighting.entity_key} seen ${sighting.hit_count}x on ${sighting.source_system}`,
+    windowOf(sighting.window),
+    `from ${provenanceOf(sighting)}`,
+  ];
+  if (sighting.attacker_influenceable) held.push("attacker-influenceable");
+  return held.join(" — ");
+};
+
+// Per kind and per reason, because the two reasons mean different things to a
+// reader: a per-key cap says one entity had more history than its share, and an
+// overall cap says the read was simply broad. Summing them keeps the number and
+// discards the half a reader would act on.
+const DROPPED_KINDS = ["sightings", "verdicts", "gaps"] as const;
+
+const droppedNote = (result: RecallResult): string | null => {
+  const held: string[] = [];
+  for (const kind of DROPPED_KINDS) {
+    const { per_key_cap, overall_cap } = result.dropped[kind];
+    if (per_key_cap > 0) held.push(`${per_key_cap} ${kind} past one entity's share`);
+    if (overall_cap > 0) held.push(`${overall_cap} ${kind} past the read's own limit`);
+  }
+  return held.length === 0 ? null : `Some history was not carried: ${held.join(", ")}.`;
+};
+
+// What an earlier investigation concluded before where an entity was seen: a
+// settled claim bears on the run's own question and a sighting is a lead. A fixed
+// presentation fold, not a parameter -- see the note at the top of this file.
+export function recalledNotes(result: RecallResult): readonly string[] {
+  const notes = [
+    ...result.verdicts.map(verdictNote),
+    ...result.gaps.map(gapNote),
+    ...result.sightings.map(sightingNote),
+  ];
+  if (notes.length === 0) return [];
+  const dropped = droppedNote(result);
+  return dropped === null ? notes : [...notes, dropped];
+}
+
+// Only what the two functions below read off an event: the kind that selects it
+// and the payload they render. Narrower than an AgentEvent on purpose -- this
+// contract is consumed by the harness and by Python, and neither needs the
+// envelope to render a row.
+export interface LedgerRecord {
+  kind: string;
+  payload: unknown;
+}
+
+// Which of the two a journaled payload is. Keyed on the field only the account of
+// an outage carries, so a result is never mistaken for one.
+export function isRecalled(payload: RecallPayload): payload is RecallResult {
+  return !("unavailable" in payload);
+}
+
+// Whether the run has read memory at all. Its own function because the three
+// answers a reader needs -- rows, an outage, nothing yet -- are two questions: a
+// read that found nothing and a read that could not be served both render to no
+// notes, and only the last of the three means ask memory.
+//
+// A run that has read does not read again: a read that succeeded on turn four
+// would move a prefix the run had already decided against (ADR 0009).
+export function hasRecall(log: readonly LedgerRecord[]): boolean {
+  return log.some((one) => one.kind === "recall");
+}
+
+// The rows a run opened on, off its own ledger. The first recall event, because a
+// run recalls once at start; a second one is a later read and not what the opening
+// prefix carried.
+//
+// Null for an outage and null for a payload this cannot read, both of which are
+// journaled reads with no rows to present -- hasRecall is what tells those from a
+// run that has not asked.
+export function recalledRowsOf(log: readonly LedgerRecord[]): RecallResult | null {
+  const event = log.find((one) => one.kind === "recall");
+  if (event === undefined) return null;
+  const payload = event.payload;
+  if (typeof payload !== "object" || payload === null) return null;
+  // Validated rather than cast: a drifted payload cast to a RecallResult renders
+  // as an entity nobody has looked at -- see RecallUnavailable for why that
+  // particular wrong answer is the one that hides.
+  return RECALL_RESULT_KEYS.every((key) => key in payload) ? (payload as RecallResult) : null;
+}
+
+// The rebuild: the notes those rows render to. Pure over the log and reaching no
+// Memory -- a replay that re-reads memory reads a neighbourhood that has moved
+// since the run, which looks like a passing test until it looks like a wrong
+// answer.
+export function recalledNotesOf(log: readonly LedgerRecord[]): readonly string[] {
+  const held = recalledRowsOf(log);
+  return held === null ? [] : recalledNotes(held);
+}
+
 // One row holding the whole mapping. It validates rather than casting, because a
-// cast would let a drifted payload through as a RecallResult of undefined fields,
-// which renders as an entity nobody has looked at -- true of every entity, so
-// nothing looks wrong.
+// cast would let a drifted payload through as a RecallResult of undefined fields
+// -- see RecallUnavailable for why that renders as the wrong answer nobody spots.
 export const recallOf = (result: ToolResult): RecallResult | null => {
   if (!result.ok || result.rowCount !== 1 || result.rows.length !== 1) return null;
   const row = result.rows[0];

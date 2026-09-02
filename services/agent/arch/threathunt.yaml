@@ -42,8 +42,8 @@ roles:
       target_entity names what you are looking at, as a type:value key from the
       Entities seen block. DEEPEN keeps both it and the hypothesis and asks the
       same question one layer down — same host, longer window. PIVOT changes at
-      least one and puts the new target on the frontier: 10.0.0.5 was beaconing,
-      now ask what 45.77.53.176 also talked to. Naming an entity no evidence
+      least one and puts the new target on the frontier: 10.128.0.5 was beaconing,
+      now ask what 198.51.100.7 also talked to. Naming an entity no evidence
       mentions is rejected, so pivot to something the digest shows you.
 
       Do not CONCLUDE while a hypothesis is still active and the budget still

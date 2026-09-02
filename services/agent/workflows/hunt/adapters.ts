@@ -28,6 +28,10 @@ export interface AdapterOptions {
   spec: RunSpec;
   run_id: string;
   actions: readonly string[];
+  // The entity keys the run's episodic read is keyed on, empty when the run names
+  // none. The lead's alone: a worker asks about the entity in front of it through
+  // the recall tool, and a second keyed read would be a second prefix.
+  recall_keys: readonly string[];
   signal?: AbortSignal;
 }
 
@@ -82,6 +86,9 @@ function turnFor(options: AdapterOptions, id: string, spec: RoleSpec, task: stri
     verbs: options.actions,
     result_cap: runtime.result_cap,
     recall_limit: runtime.recall_limit,
+    // Only the lead recalls at run start: it is the role whose prefix is the run's,
+    // and the one whose decisions the journaled rows have to be replayable against.
+    recall_keys: id === "lead" ? options.recall_keys : [],
     ...(held === undefined ? {} : { signal: held }),
   };
 }
