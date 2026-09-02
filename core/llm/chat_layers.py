@@ -76,11 +76,7 @@ _READONLY_LEADS = frozenset(
 # history through recall_entity, which is a static tool and unaffected. The
 # server itself stays connected: the daemon still uses it, and retiring it is
 # its own work.
-_MEMORY_PALACE_SERVER = "mempalace"
-
-
-def _is_memory_palace(name: str) -> bool:
-    return name.startswith(f"{_MEMORY_PALACE_SERVER}_")
+_MEMORY_PALACE_PREFIX = "mempalace_"
 
 
 def _is_destructive_mcp(name: str) -> bool:
@@ -138,7 +134,7 @@ def _declare(
         for n in mcp
         if n not in static_names
         and not _is_destructive_mcp(n)
-        and not _is_memory_palace(n)
+        and not n.startswith(_MEMORY_PALACE_PREFIX)
     ]
     names = static_names + mcp_names
     catalogue = {**static, **mcp}

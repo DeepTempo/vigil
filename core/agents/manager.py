@@ -32,6 +32,7 @@ class SOCAgentLibrary:
                 role=row.get("role", ""),
                 extra_principles=row.get("extra_principles", ""),
                 methodology=row.get("methodology", ""),
+                tools=row.get("recommended_tools") or (),
             )
         return AgentProfile(
             id=row["id"],

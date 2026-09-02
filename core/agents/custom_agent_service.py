@@ -84,6 +84,7 @@ class CustomAgentService:
             role=agent_row.get("role", ""),
             extra_principles=agent_row.get("extra_principles", ""),
             methodology=agent_row.get("methodology", ""),
+            tools=agent_row.get("recommended_tools") or (),
         )
 
     def create_agent(

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import patch
-
 import pytest
 import yaml
 
@@ -59,32 +57,60 @@ def test_memory_block_is_read_only():
     assert "AFTER completing" not in _MEMORY_BLOCK
 
 
-def test_memory_section_gated_on_all_tools():
-    """_memory_section returns _MEMORY_BLOCK only when recall_entity is in ALL_TOOLS."""
-    with patch("core.llm.tool_schemas.ALL_TOOLS", [{"name": "list_findings"}]):
-        assert _memory_section() == ""
+def test_memory_section_gated_on_the_agents_own_grant():
+    """The block follows the grant, not the existence of the tool.
 
-    with patch(
-        "core.llm.tool_schemas.ALL_TOOLS",
-        [{"name": "list_findings"}, {"name": "recall_entity"}],
-    ):
-        assert _memory_section() == _MEMORY_BLOCK
+    ALL_TOOLS always carries recall_entity, so gating on that says yes to every
+    agent including one that was never granted it.
+    """
+    assert _memory_section(["list_findings"]) == ""
+    assert _memory_section(None) == ""
+    assert _memory_section(["list_findings", "recall_entity"]) == _MEMORY_BLOCK
 
 
-def test_render_base_prompt_includes_memory_when_recall_in_all_tools():
-    """render_base_prompt includes the memory block if recall_entity is in ALL_TOOLS."""
-    with patch("core.llm.tool_schemas.ALL_TOOLS", [{"name": "list_findings"}]):
-        prompt_without = render_base_prompt(role="Triage Agent")
-        assert "<memory_operations>" not in prompt_without
+def test_render_base_prompt_includes_memory_only_for_a_granted_agent():
+    without = render_base_prompt(role="Triage Agent", tools=["get_finding"])
+    assert "<memory_operations>" not in without
 
-    with patch(
-        "core.llm.tool_schemas.ALL_TOOLS",
-        [{"name": "list_findings"}, {"name": "recall_entity"}],
-    ):
-        prompt_with = render_base_prompt(role="Triage Agent")
-        assert "<memory_operations>" in prompt_with
-        assert "recall_entity" in prompt_with
-        assert "read-only" in prompt_with
+    granted = render_base_prompt(
+        role="Triage Agent", tools=["get_finding", "recall_entity"]
+    )
+    assert "<memory_operations>" in granted
+    assert "recall_entity" in granted
+    assert "read-only" in granted
+
+
+def test_a_custom_agent_without_the_grant_is_not_told_to_recall():
+    """#129 on a different tool: render_base_prompt is shared with custom agents,
+    whose recommended_tools is user-supplied and carries no recall_entity, while
+    _declare keeps only the names on that list.
+    """
+    from core.agents.manager import SOCAgentLibrary
+    from core.llm.chat_layers import _declare
+
+    row = {
+        "id": "custom-1",
+        "role": "Phishing Analyst",
+        "recommended_tools": ["get_finding"],
+    }
+    profile = SOCAgentLibrary.build_profile(row)
+
+    declared = {t["id"] for t in _declare(row["recommended_tools"], [])}
+    assert "recall_entity" not in declared
+    assert "recall_entity" not in profile.system_prompt
+
+
+def test_a_custom_agent_granted_recall_is_told_about_it():
+    from core.agents.manager import SOCAgentLibrary
+
+    profile = SOCAgentLibrary.build_profile(
+        {
+            "id": "custom-2",
+            "role": "Phishing Analyst",
+            "recommended_tools": ["get_finding", "recall_entity"],
+        }
+    )
+    assert "<memory_operations>" in profile.system_prompt
 
 
 def test_builtin_principles_memory_lines_are_read_only():
@@ -136,9 +162,8 @@ def test_compose_workflows_grant_recall_entity_in_all_phases(workflow_name: str)
         ), f"Workflow '{workflow_name}' phase '{phase['id']}' missing recall_entity in tools: {tools}"
 
 
-# The tests above patch ALL_TOOLS, which is what lets them pass on a branch where
-# recall_entity does not exist. This one asks the real registry, and is the check
-# that fails loudly if this work is ever rebased somewhere #732 has not landed.
+# Asks the real registry rather than a patched one, and fails loudly if this work
+# is ever rebased somewhere #732 has not landed.
 def test_recall_entity_is_registered_in_the_real_tool_registry():
     from core.llm.tool_schemas import ALL_TOOLS
 

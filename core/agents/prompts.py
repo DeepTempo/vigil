@@ -4,38 +4,50 @@
 records so the record data stays free of prompt-template text.
 """
 
-# Memory operations block is inserted when recall_entity is available in
-# ALL_TOOLS (#735, #732). This keeps the agent's prompt honest: if the tool
-# is not available, the prompt won't advertise tools the agent can't call.
+from typing import Iterable, Optional
+
+from core.memory.recall_contract import RECALL_TOOL
+
+# Read-only, and the wording carries ADR 0015 rather than gesturing at it. A
+# prior Verdict is not a disposition: the ADR's first named failure is a benign
+# history burying a compromised host, and a triage agent told to move fast is
+# exactly who acts on one. So the block names Verdicts without ranking them and
+# says plainly what recall may and may not change (#735, #732).
 _MEMORY_BLOCK = """<memory_operations>
 Call recall_entity to read what past investigations saw and concluded about an
-entity: its Sightings, its Verdicts (an entity ruled a false positive before is
-the highest-value thing this returns) and its Declared Gaps. Keys are
-`type:value` — ip:10.2.3.4, sha256:abc..., domain:evil.com, user:jdoe. Every read
-is logged, so pass your own caller_kind and caller_id.
+entity: its Sightings, its Verdicts and its Declared Gaps. Keys are `type:value`
+— ip:10.2.3.4, sha256:abc..., domain:evil.com, user:jdoe. Every read is logged,
+so pass your own caller_kind and caller_id.
 
-An entity nobody has investigated returns empty lists. That is an answer, not an
-error, and not evidence of anything.
+What comes back is what earlier runs concluded from the evidence they had, not a
+standing judgement about the entity. A prior verdict of benign is not a reason
+to look less hard: an adversary working inside a window three runs called routine
+is the case this exists to catch. A prior verdict of malicious is not evidence
+for a new one either — recall never corroborates.
 
-Memory is read-only to you. It may change what you look at first; it never
-decides what you conclude, and a prior Verdict does not corroborate a finding of
-your own. Your conclusions reach memory when the investigation ends, not from
-here — there is no tool to write one and you must not look for one.
+Memory may change what you look at first. It never changes what counts as having
+found something; you conclude from evidence you gathered yourself. It is
+read-only to you: your conclusions reach memory when the investigation ends, not
+from here, and there is no tool to write one.
 </memory_operations>
 """
 
 
-def _memory_section() -> str:
-    """Return the memory prompt block if recall_entity is in ALL_TOOLS,
-    or '' if not registered yet (#735, #732).
-    """
-    try:
-        from core.llm.tool_schemas import ALL_TOOLS
+def _memory_section(tools: Optional[Iterable[str]]) -> str:
+    """Return the memory block for an agent granted the recall tool, else ''.
 
-        has_recall = any(tool.get("name") == "recall_entity" for tool in ALL_TOOLS)
-        return _MEMORY_BLOCK if has_recall else ""
-    except Exception:  # noqa: BLE001
-        return ""
+    Gated on the agent's own grant rather than on the tool existing, because
+    ``ALL_TOOLS`` always carries it and the question the prompt answers is
+    whether *this* agent can call it. ``_declare`` keeps only the names in an
+    agent's ``recommended_tools``, so a custom agent that was never granted
+    recall would otherwise be told to call a tool its turn does not carry —
+    the #129 defect on a different tool.
+
+    No grant and an unknown grant are the same answer. Promising a tool that
+    turns out to be absent is the failure being avoided; omitting the block from
+    an agent that could have used it costs a lookup it did not know to make.
+    """
+    return _MEMORY_BLOCK if RECALL_TOOL in set(tools or ()) else ""
 
 
 BASE_PROMPT = """You are a SOC {role} in the Vigil SOC platform.
@@ -83,18 +95,20 @@ Use MCP tools (server_tool format):
 
 
 def render_base_prompt(
-    role: str, extra_principles: str = "", methodology: str = ""
+    role: str,
+    extra_principles: str = "",
+    methodology: str = "",
+    tools: Optional[Iterable[str]] = None,
 ) -> str:
     """Render BASE_PROMPT with the given fragments. Shared by built-in + custom.
 
-    The memory block is inserted at render time based on whether recall_entity
-    is registered in ALL_TOOLS (#735, #732). This keeps the agent's
-    self-description honest: if the memory tool is not registered, the
-    prompt won't advertise tools the agent can't actually call.
+    ``tools`` is the agent's ``recommended_tools``, which is what decides
+    whether the memory block appears: the prompt describes what this agent can
+    do, and an agent without the grant must not be told to recall (#735).
     """
     return BASE_PROMPT.format(
         role=role,
         extra_principles=extra_principles or "",
         methodology=methodology or "",
-        memory_operations=_memory_section(),
+        memory_operations=_memory_section(tools),
     )
