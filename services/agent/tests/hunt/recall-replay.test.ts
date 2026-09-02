@@ -3,7 +3,7 @@ import { gunzipSync } from "node:zlib";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { prefixBytes, prefixMessages, prefixOf } from "../../core/context.js";
-import { recallEventOf, recalledFromLedger, type RecallResult } from "../../contracts/memory.js";
+import { recalledNotesOf, recalledRowsOf, type RecallResult } from "../../contracts/memory.js";
 import { fold, type HuntEvent } from "../../workflows/hunt/ledger.js";
 import { replay } from "../../workflows/hunt/replay.js";
 
@@ -35,11 +35,11 @@ const LOG = events();
 // The lead's opening turn, rebuilt. Tools are left out because prefixMessages
 // never reads them: recall reaches the opening user turn and nowhere else.
 const openingFrom = (log: readonly HuntEvent[]): string | undefined =>
-  prefixMessages(prefixOf("the lead's prompt", [], recalledFromLedger(log)), "the task")[1]?.content;
+  prefixMessages(prefixOf("the lead's prompt", [], recalledNotesOf(log)), "the task")[1]?.content;
 
 // What the prompt cache is keyed on, which is what a rebuild has to reproduce.
 const bytesFrom = (log: readonly HuntEvent[]): string =>
-  prefixBytes(prefixOf("the lead's prompt", [], recalledFromLedger(log)));
+  prefixBytes(prefixOf("the lead's prompt", [], recalledNotesOf(log)));
 
 describe("the recorded run carries what it recalled", () => {
   it("journals one recall event for the whole run", () => {
@@ -47,7 +47,7 @@ describe("the recorded run carries what it recalled", () => {
   });
 
   it("carries a result the contract can read, key for key", () => {
-    expect(recallEventOf(LOG)).not.toBeNull();
+    expect(recalledRowsOf(LOG)).not.toBeNull();
   });
 
   // The rows were journaled before anything decided against them, so no decision
@@ -95,14 +95,14 @@ describe("a rebuild reads the journaled rows", () => {
   // What the contract's own comment names as the failure that hides: a payload
   // missing a key would render as an entity nobody has looked at.
   it("presents nothing for a payload it cannot read, rather than a prefix of holes", () => {
-    const { keys: _gone, ...missing } = recallEventOf(LOG) as RecallResult;
+    const { keys: _gone, ...missing } = recalledRowsOf(LOG) as RecallResult;
     const drifted = LOG.map((event) => (event.kind === "recall" ? { ...event, payload: missing } : event)) as HuntEvent[];
-    expect(recalledFromLedger(drifted)).toEqual([]);
+    expect(recalledNotesOf(drifted)).toEqual([]);
   });
 
   it("has nothing to present when the event is missing, rather than reading memory for it", () => {
     const without = LOG.filter((event) => event.kind !== "recall");
-    expect(recalledFromLedger(without)).toEqual([]);
+    expect(recalledNotesOf(without)).toEqual([]);
   });
 });
 

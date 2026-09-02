@@ -21,7 +21,12 @@ const ASKED = "192.0.2.10 is beaconing to attacker-controlled infrastructure";
 const SUBJECT = "ip:192.0.2.10";
 const RECALLED = recalledFixture();
 
-function huntSpec(): RunSpec {
+interface Asked {
+  operator?: readonly string[];
+  hypotheses?: readonly string[];
+}
+
+function huntSpec(asked: Asked = {}): RunSpec {
   const entry = archFor("hunt");
   const spec = buildSpec(
     { arch: entry.arch, playbook: join(FIXTURES, "hunt.playbook.yaml"), config: join(FIXTURES, "hunt.config.yaml") },
@@ -33,7 +38,8 @@ function huntSpec(): RunSpec {
     ...spec,
     sections: {
       ...spec.sections,
-      operator_hypotheses: [ASKED],
+      hypotheses: [...(asked.hypotheses ?? [])],
+      operator_hypotheses: [...(asked.operator ?? [ASKED])],
       operator_hypothesis_subjects: { [ASKED]: [SUBJECT] },
     },
   };
@@ -47,9 +53,9 @@ const provider = respondingProvider({
   ticks: 0,
 });
 
-async function hunt() {
+async function hunt(asked: Asked = {}) {
   const state = new InProcessState<HuntKinds>();
-  const spec = huntSpec();
+  const spec = huntSpec(asked);
   const memory = countingMemory(RECALLED);
   const harness: Harness<HuntKinds> = {
     provider,
@@ -90,6 +96,24 @@ describe("a hunt reads episodic memory once, on the keys the operator named", ()
 
   // No fold reads episodic: the projection is one run's own account of itself, and
   // a recalled row is an input to a decision rather than a belief the hunt holds.
+  // A scheduled hunt declares no subjects -- the scheduler queues a hypothesis and
+  // nothing else -- so the autonomous path would recall nothing at all.
+  it("falls back to the entities its hypotheses name", async () => {
+    const { memory } = await hunt({ operator: [], hypotheses: ["198.51.100.7 is receiving beacons from the finance segment"] });
+    expect(memory.reads()).toEqual([["ip:198.51.100.7"]]);
+  });
+
+  it("prefers the subjects an operator declared over anything its prose names", async () => {
+    const { memory } = await hunt({ hypotheses: ["203.0.113.9 is also involved"] });
+    expect(memory.reads()).toEqual([[SUBJECT]]);
+  });
+
+  it("reads nothing when neither names an entity", async () => {
+    const { memory, events } = await hunt({ operator: [], hypotheses: ["something is beaconing overnight"] });
+    expect(memory.reads()).toEqual([]);
+    expect(events.some((event) => event.kind === "recall")).toBe(false);
+  });
+
   it("leaves the projection alone", async () => {
     const { events } = await hunt();
     const withRecall = fold(events);

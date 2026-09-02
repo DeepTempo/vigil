@@ -9,7 +9,7 @@ export type Notes = (limit: number) => Promise<readonly string[]>;
 // not a stub: a run never silently depends on what a backend happened to remember.
 export const nullMemory: Memory = {
   recall: async () => [],
-  entities: async (keys, asOf) => emptyRecall(keys, asOf),
+  entities: async ({ keys, asOf }) => emptyRecall(keys, asOf),
   remember: async () => {},
 };
 
@@ -21,7 +21,7 @@ export const nullMemory: Memory = {
 export function recalling(notes: Notes): Memory {
   return {
     recall: async (_cue, limit) => notes(limit),
-    entities: async (keys, asOf) => emptyRecall(keys, asOf),
+    entities: async ({ keys, asOf }) => emptyRecall(keys, asOf),
     remember: async () => {},
   };
 }

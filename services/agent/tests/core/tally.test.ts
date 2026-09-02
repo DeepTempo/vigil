@@ -186,7 +186,7 @@ function recording(): Memory {
   const notes: string[] = ["the count was two yesterday"];
   return {
     recall: async () => notes,
-    entities: async (keys, asOf) => emptyRecall(keys, asOf),
+    entities: async ({ keys, asOf }) => emptyRecall(keys, asOf),
     remember: async (note) => void notes.push(note),
   };
 }

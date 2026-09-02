@@ -180,6 +180,14 @@ and renders it into the frozen prefix; a worker performs one mid-run through the
 `recall_entity` tool, which lands in the prompt tail and leaves the prefix
 undisturbed. Recall never contributes to corroboration — it reorders what to look
 at and settles nothing (ADR 0015).
+
+A run's keys are the subjects an operator declared for the hypotheses actually
+being put up, and where none were declared, the entities the hypotheses name.
+Declared keys first because a person typed them and the spec refused the
+unusable ones; extraction at all because a scheduled hunt declares none, and the
+autonomous path would otherwise never read memory. A key read out of a statement
+can be beside the point rather than wrong, which spends prefix budget and, since
+recall only reorders, can never move a **Verdict**.
 _Avoid_: search, retrieval, lookup (unqualified), context
 
 **Recall Event**:
@@ -191,6 +199,21 @@ Ledger. The parameters are copied in rather than referenced, because a **RunSpec
 records the arch by name and not by version.
 _Avoid_: recall log (that is the audit table, which is Python's), snapshot
 (unqualified -- a **Memory Snapshot** is the frozen corpus, not this record)
+
+**Unavailable Read**:
+The **Recall Event** a run journals when the read could not be served at all --
+the far side down, the token wrong, the answer unreadable. It carries the keys
+asked about and why, and it is deliberately not an empty **Recall**: empty lists
+mean *known-to-be-none*, so recording an outage that way would say those entities
+have no history, which is true of every entity while memory is down -- so nothing
+would look wrong. A run that opens on one carries no recalled rows for the rest of
+its life rather than retrying on a later turn, because a read that succeeded on
+turn four would move a prefix the run had already decided against. The run itself
+still finishes: **Recall** reorders and never decides, so losing it costs a run an
+aid and not an input.
+_Avoid_: failed recall, empty recall, **Declared Gap** (that is a question an
+investigation left open, not a read that did not happen), **Visibility Gap** (that
+is a tool that could not answer about the estate)
 
 **Sighting**:
 What one investigation observed about one entity from one source. One row per

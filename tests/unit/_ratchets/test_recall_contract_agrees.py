@@ -271,11 +271,17 @@ def test_every_declared_vocabulary_is_ratcheted(ts: str):
     )
 
     interfaces = frozenset(re.findall(r"export interface (\w+)", ts))
-    # Provenance is compared through the rows that extend it. LedgerRecord is not a
-    # row: it is the shape the harness's rebuild reads an event through -- a kind and
-    # a payload -- and Python journals no ledger event, so there is no second
-    # declaration for it to agree with.
-    unshaped = interfaces - frozenset(ROW_SHAPES.values()) - {"RecalledProvenance", "LedgerRecord"}
+    # Provenance is compared through the rows that extend it. Two shapes here are
+    # not rows and have no second declaration to agree with, because Python neither
+    # writes nor reads a Ledger event: LedgerRecord is how the harness's rebuild
+    # reads one (a kind and a payload), and RecallUnavailable is what it journals in
+    # place of a result when the read could not be served -- a fact about the run,
+    # not about an entity.
+    unshaped = interfaces - frozenset(ROW_SHAPES.values()) - {
+        "RecalledProvenance",
+        "LedgerRecord",
+        "RecallUnavailable",
+    }
     assert not unshaped, (
         "these row shapes are declared and compared by nothing. Add each to "
         "ROW_SHAPES:\n  " + "\n  ".join(sorted(unshaped))

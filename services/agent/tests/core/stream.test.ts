@@ -151,7 +151,7 @@ describe("the tool loop", () => {
         recalls += 1;
         return ["the count was two yesterday"];
       },
-      entities: async (keys, asOf) => emptyRecall(keys, asOf),
+      entities: async ({ keys, asOf }) => emptyRecall(keys, asOf),
       remember: async () => {},
     };
     const harness = harnessOf([{ calls: [{ tool: "bump", args: "{}" }] }, { calls: [] }, HALT], { memory });

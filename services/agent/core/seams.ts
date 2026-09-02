@@ -6,6 +6,19 @@ import type { RegisteredTool, ToolResult } from "../contracts/tool.js";
 // already a contract, re-exported so a caller wires all four from one module.
 export type { Budget, BudgetLimits, Quota, Refusal, Spend, SpendPayload, TokenCounts } from "../contracts/budget.js";
 
+// One read of memory on exact keys. The run asking travels with it because the far
+// side logs every read and an unattributed one tells an auditor nothing, and its
+// signal travels with it because a run that has lost its lease must not wait out a
+// read whose answer nobody will use.
+export interface KeyedRead {
+  keys: readonly string[];
+  // The freshness boundary, which is the run's own start rather than now: a resumed
+  // run and a replay have to sit inside the one the first turn did.
+  asOf: string;
+  runId: string;
+  signal?: AbortSignal;
+}
+
 // Null by default: a contract shaped by the component being replaced is the wrong
 // contract, so recall returns nothing until something real lands.
 export interface Memory {
@@ -18,7 +31,11 @@ export interface Memory {
   // Not optional: an implementation that quietly answered nothing would read as an
   // entity nobody has looked at, which is true of every entity, so nothing would
   // look wrong.
-  entities(keys: readonly string[], asOf: string): Promise<RecallResult>;
+  //
+  // The run asking is part of the read rather than something the implementation was
+  // built with: the far side logs every read, and an unattributed one tells whoever
+  // is auditing less than nothing.
+  entities(read: KeyedRead): Promise<RecallResult>;
   remember(note: string): Promise<void>;
 }
 

@@ -6,7 +6,7 @@ import type {
   RecalledVerdict,
 } from "../../contracts/memory.js";
 import type { AgentEvent } from "../../contracts/events.js";
-import { emptyRecall, recalledFromLedger, recalledNotes } from "../../contracts/memory.js";
+import { emptyRecall, hasRecall, recalledNotesOf, recalledNotes } from "../../contracts/memory.js";
 
 const SIGHTING: RecalledSighting = {
   entity_key: "ip:192.0.2.10",
@@ -117,11 +117,11 @@ describe("recalled rows render to notes", () => {
 describe("a rebuild reads the journaled rows and nothing else", () => {
   it("rebuilds the notes the run carried from its recall event", () => {
     const result = resultOf();
-    expect(recalledFromLedger([eventOf(result)])).toEqual(recalledNotes(result));
+    expect(recalledNotesOf([eventOf(result)])).toEqual(recalledNotes(result));
   });
 
   it("has nothing to rebuild when the run journaled no recall", () => {
-    expect(recalledFromLedger([])).toEqual([]);
+    expect(recalledNotesOf([])).toEqual([]);
   });
 
   // The gate the whole fixture exists for. Selection was pinned when the rows were
@@ -130,12 +130,34 @@ describe("a rebuild reads the journaled rows and nothing else", () => {
   it("renders the same notes however the ranking parameters read", () => {
     const journaled = resultOf({ ranking: { order: "recency", per_key_cap: 1, overall_cap: 1 } });
     const drifted = resultOf({ ranking: { order: "salience", per_key_cap: 50, overall_cap: 500 } });
-    expect(recalledFromLedger([eventOf(drifted)])).toEqual(recalledFromLedger([eventOf(journaled)]));
+    expect(recalledNotesOf([eventOf(drifted)])).toEqual(recalledNotesOf([eventOf(journaled)]));
+  });
+
+  // A read that could not be served is journaled as its own shape. Rendering it as
+  // an empty result would say these entities have no history -- true of every
+  // entity while memory is down, so nothing would look wrong.
+  it("presents nothing for a read that could not be served", () => {
+    const unavailable = { keys: ["ip:192.0.2.10"], as_of: "2026-03-07T00:00:00.000Z", unavailable: "the endpoint answered 503" };
+    expect(recalledNotesOf([eventOf(unavailable as never)])).toEqual([]);
+  });
+
+  // Presence is what a run reads to decide whether to ask memory at all, and an
+  // unavailable read is an answer: the run carries no rows rather than asking again.
+  it("counts an unavailable read as a read that happened", () => {
+    const unavailable = { keys: [], as_of: "2026-03-07T00:00:00.000Z", unavailable: "no token" };
+    expect(hasRecall([eventOf(unavailable as never)])).toBe(true);
+    expect(hasRecall([])).toBe(false);
+  });
+
+  it("counts a payload it cannot read at all as a read that happened", () => {
+    const { verdicts: _gone, ...drifted } = resultOf();
+    expect(hasRecall([eventOf(drifted as never)])).toBe(true);
+    expect(recalledNotesOf([eventOf(drifted as never)])).toEqual([]);
   });
 
   it("reads the run's own recall and not a later one", () => {
     const first = resultOf();
     const later = resultOf({ verdicts: [{ ...VERDICT, statement: "recalled after the fact" }] });
-    expect(recalledFromLedger([eventOf(first), eventOf(later)])).toEqual(recalledNotes(first));
+    expect(recalledNotesOf([eventOf(first), eventOf(later)])).toEqual(recalledNotes(first));
   });
 });

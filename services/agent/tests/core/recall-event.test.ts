@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { drain, streamTurn } from "../../core/stream.js";
 import { prefixBytes, prefixMessages, prefixOf } from "../../core/context.js";
-import { emptyRecall, recalledFromLedger, recalledNotes } from "../../contracts/memory.js";
+import { emptyRecall, recalledNotesOf, recalledNotes } from "../../contracts/memory.js";
 import { nullMemory } from "../../core/memory.js";
 import { budgetOf, unmeteredQuota } from "../../core/budget.js";
 import { registryOf } from "../../core/registry.js";
@@ -15,7 +15,9 @@ import { countingMemory, recalledFixture, RECALL_KEYS } from "../support/recalle
 
 const RUN = "5a2c2d3e-0000-4000-8000-000000000737";
 const SCHEMA = { type: "object", required: ["verb"], properties: { verb: { type: "string", enum: ["TALLY", "HALT"] } } };
-const HALT: ScriptedTurn = { calls: [], content: '{"verb":"HALT"}' };
+// The emission the schema asks for, which is how a turn answers rather than
+// stopping: a `content` turn is prose and the scripted provider refuses it here.
+const HALT: ScriptedTurn = { emit: { verb: "HALT" } };
 const CALLING: ScriptedTurn = { calls: [{ tool: "bump", args: "{}" }] };
 const RECALLED = recalledFixture();
 
@@ -70,10 +72,25 @@ const openings = (provider: ScriptedProvider): string[] =>
 
 // What the prompt cache is keyed on. Tools are left out because no recalled row
 // can move them: prefixOf sorts them and the rendering never reads one.
-const rebuiltBytes = (cfg: TurnConfig, log: Parameters<typeof recalledFromLedger>[0]): string =>
-  prefixBytes(prefixOf(cfg.system, [], recalledFromLedger(log)));
+const rebuiltBytes = (cfg: TurnConfig, log: Parameters<typeof recalledNotesOf>[0]): string =>
+  prefixBytes(prefixOf(cfg.system, [], recalledNotesOf(log)));
 
 describe("a run journals the memory it opened on", () => {
+  // The run's own start, not the moment the read ran: a resumed run and a replay
+  // have to sit inside the same freshness boundary as the first turn did.
+  it("asks as of the run's start", async () => {
+    const state = new InProcessState();
+    const memory = countingMemory();
+    const cfg = withKeys();
+    // What a workflow writes at seq 0. A turn driven with no ledger behind it is
+    // its own start, and there is no earlier stamp to read.
+    await state.append(cfg.run_id, [{ run_id: cfg.run_id, run_kind: cfg.run_kind, kind: "run", payload: {} as never }]);
+    const opened = (await state.read(cfg.run_id))[0]?.ts;
+
+    await drain(streamTurn(cfg, harnessOf([{ calls: [] }, HALT], { memory, state })));
+    expect(memory.asOf()).toBe(opened);
+  });
+
   it("writes one recall event carrying the result verbatim", async () => {
     const state = new InProcessState();
     const memory = countingMemory();
@@ -110,6 +127,58 @@ describe("a run journals the memory it opened on", () => {
     await drain(streamTurn(cfg, harness));
 
     expect((await state.read(cfg.run_id)).filter((event) => event.kind === "recall")).toHaveLength(1);
+    expect(openings(harness.provider as ScriptedProvider)[0]).not.toContain("Recalled from earlier work");
+  });
+});
+
+// A read that cannot be served is an answer, not an absence: the run opens on
+// nothing, says so on its own record, and carries that for the rest of its life.
+describe("a read that could not be served", () => {
+  const refusing = (detail: string): Memory & { reads: () => number } => {
+    let reads = 0;
+    return {
+      reads: () => reads,
+      recall: async () => [],
+      entities: async () => {
+        reads += 1;
+        throw new Error(detail);
+      },
+      remember: async () => {},
+    };
+  };
+
+  it("journals why, rather than an empty result", async () => {
+    const state = new InProcessState();
+    const harness = harnessOf([{ calls: [] }, HALT], { memory: refusing("the endpoint answered 503"), state });
+    const cfg = withKeys();
+    await drain(streamTurn(cfg, harness));
+
+    const [event] = (await state.read(cfg.run_id)).filter((one) => one.kind === "recall");
+    expect(event?.payload).toMatchObject({ keys: [...RECALL_KEYS], unavailable: "the endpoint answered 503" });
+    expect(recalledNotesOf(await state.read(cfg.run_id))).toEqual([]);
+  });
+
+  it("does not fail the run: memory reorders and never decides", async () => {
+    const harness = harnessOf([{ calls: [] }, HALT], { memory: refusing("no token") });
+    const outcome = await drain(streamTurn(withKeys(), harness));
+    expect(outcome.status).toBe("completed");
+  });
+
+  it("does not ask again on a later turn, so the prefix cannot move", async () => {
+    const state = new InProcessState();
+    const memory = refusing("the endpoint answered 503");
+    const cfg = withKeys();
+    for (const _turn of [0, 1]) {
+      await drain(streamTurn(cfg, harnessOf([{ calls: [] }, HALT], { memory, state })));
+    }
+
+    expect(memory.reads()).toBe(1);
+    expect((await state.read(cfg.run_id)).filter((one) => one.kind === "recall")).toHaveLength(1);
+  });
+
+  it("shows the model no recalled rows at all", async () => {
+    const harness = harnessOf([{ calls: [] }, HALT], { memory: refusing("no token") });
+    await drain(streamTurn(withKeys(), harness));
     expect(openings(harness.provider as ScriptedProvider)[0]).not.toContain("Recalled from earlier work");
   });
 });
@@ -179,7 +248,7 @@ describe("the replay rebuilds the prefix from the ledger", () => {
     await drain(streamTurn(cfg, harness));
 
     const log = await state.read(cfg.run_id);
-    const rebuilt = prefixOf(cfg.system, [], recalledFromLedger(log));
+    const rebuilt = prefixOf(cfg.system, [], recalledNotesOf(log));
     expect(prefixMessages(rebuilt, cfg.task)[1]?.content).toBe(openings(harness.provider as ScriptedProvider)[0]);
     expect(memory.reads()).toHaveLength(1);
   });
@@ -211,6 +280,6 @@ describe("the replay rebuilds the prefix from the ledger", () => {
     const log = await state.read(cfg.run_id);
     const { verdicts: _dropped, ...missing } = RECALLED;
     const drifted = log.map((event) => (event.kind === "recall" ? { ...event, payload: missing } : event));
-    expect(recalledFromLedger(drifted)).toEqual([]);
+    expect(recalledNotesOf(drifted)).toEqual([]);
   });
 });

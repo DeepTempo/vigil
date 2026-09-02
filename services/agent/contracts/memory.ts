@@ -192,9 +192,24 @@ export interface RecallResult {
   readonly ranking: RecallRanking;
 }
 
-// The event payload is the result. An alias, because a copied interface would say
-// only that the two happen not to have diverged yet.
-export type RecallPayload = RecallResult;
+// A read that did not happen, journaled in place of a result. Not an empty
+// RecallResult: empty lists mean known-to-be-none, so recording an outage as one
+// would say these entities have no history -- true of every entity while memory is
+// down, so nothing would look wrong.
+//
+// The keys are still here because they are what the run asked about, and a reader
+// working out what a run was denied needs them.
+export interface RecallUnavailable {
+  readonly keys: readonly string[];
+  readonly as_of: string;
+  // Why the read did not happen, in the words of whatever refused it.
+  readonly unavailable: string;
+}
+
+// The event payload is the result, or the account of why there is none. An alias
+// for the first, because a copied interface would say only that the two happen not
+// to have diverged yet.
+export type RecallPayload = RecallResult | RecallUnavailable;
 
 // Both key arguments are optional and at least one is required. The singular
 // exists for the caller that sends one string *instead of* the list, so requiring
@@ -330,31 +345,47 @@ export interface LedgerRecord {
   payload: unknown;
 }
 
-// The read a run opened on, off its own ledger. The first recall event, because a
+// Which of the two a journaled payload is. Keyed on the field only the account of
+// an outage carries, so a result is never mistaken for one.
+export function isRecalled(payload: RecallPayload): payload is RecallResult {
+  return !("unavailable" in payload);
+}
+
+// Whether the run has read memory at all. Its own function because the three
+// answers a reader needs -- rows, an outage, nothing yet -- are two questions: a
+// read that found nothing and a read that could not be served both render to no
+// notes, and only the last of the three means ask memory.
+//
+// A run that has read does not read again: a read that succeeded on turn four
+// would move a prefix the run had already decided against (ADR 0009).
+export function hasRecall(log: readonly LedgerRecord[]): boolean {
+  return log.some((one) => one.kind === "recall");
+}
+
+// The rows a run opened on, off its own ledger. The first recall event, because a
 // run recalls once at start; a second one is a later read and not what the opening
 // prefix carried.
 //
-// Separate from the rendering because a read that found nothing renders to no
-// notes, and a caller that reads presence off the notes cannot tell an entity
-// nobody has looked at from a run that has not read memory yet.
-export function recallEventOf(log: readonly LedgerRecord[]): RecallResult | null {
+// Null for an outage and null for a payload this cannot read, both of which are
+// journaled reads with no rows to present -- hasRecall is what tells those from a
+// run that has not asked.
+export function recalledRowsOf(log: readonly LedgerRecord[]): RecallResult | null {
   const event = log.find((one) => one.kind === "recall");
   if (event === undefined) return null;
   const payload = event.payload;
   if (typeof payload !== "object" || payload === null) return null;
   // Validated rather than cast, for the reason recallOf gives below: a drifted
   // payload cast to a RecallResult renders as an entity nobody has looked at,
-  // which is true of every entity, so nothing looks wrong. An event this cannot
-  // read is one no rebuild can present, and the caller is told rather than shown
-  // a prefix of undefined fields.
+  // which is true of every entity, so nothing looks wrong.
   return RECALL_RESULT_KEYS.every((key) => key in payload) ? (payload as RecallResult) : null;
 }
 
-// The rebuild. Pure over the log and reaching no Memory: a replay that re-reads
-// memory reads a neighbourhood that has moved since the run, which looks like a
-// passing test until it looks like a wrong answer.
-export function recalledFromLedger(log: readonly LedgerRecord[]): readonly string[] {
-  const held = recallEventOf(log);
+// The rebuild: the notes those rows render to. Pure over the log and reaching no
+// Memory -- a replay that re-reads memory reads a neighbourhood that has moved
+// since the run, which looks like a passing test until it looks like a wrong
+// answer.
+export function recalledNotesOf(log: readonly LedgerRecord[]): readonly string[] {
+  const held = recalledRowsOf(log);
   return held === null ? [] : recalledNotes(held);
 }
 

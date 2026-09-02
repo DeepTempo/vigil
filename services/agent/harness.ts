@@ -5,6 +5,7 @@ import { httpPrices } from "./core/prices.js";
 import { Limiter } from "./core/limiter.js";
 import type { Harness } from "./core/loop.js";
 import { nullMemory } from "./core/memory.js";
+import { httpRecall } from "./core/recall.js";
 import { registryOf } from "./core/registry.js";
 import { remoteDispatch } from "./core/remote.js";
 import type { Memory, State } from "./core/seams.js";
@@ -62,15 +63,16 @@ export function harnessFor<K extends Record<string, unknown>>(
   memory: Memory = nullMemory,
   seed: Seed = FRESH,
 ): Harness<K> {
+  const tools = process.env["VIGIL_TOOLS_URL"] ?? "http://localhost:6987/internal/tools/invoke";
   return {
     provider: openAiSurface(client, spec.model, limiter, "bifrost"),
     registry: registryOf(toolsFrom(spec.tools), grantsFor(kind, spec)),
-    dispatch: remoteDispatch({
-      url: process.env["VIGIL_TOOLS_URL"] ?? "http://localhost:6987/internal/tools/invoke",
-      token: internalToken(),
-    }),
+    dispatch: remoteDispatch({ url: tools, token: internalToken() }),
     budget: budgetOf(spec.budgets, unmeteredQuota, Date.now, seed, prices),
-    memory,
+    // Wrapped rather than replaced: whatever the caller passed still answers the
+    // cue-shaped recall, and the keyed read is added over the same endpoint the
+    // tools go to -- one address for the far side, not two to keep in step.
+    memory: httpRecall(memory, { url: tools, token: internalToken() }),
     state,
   };
 }

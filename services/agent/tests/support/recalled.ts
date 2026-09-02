@@ -65,16 +65,21 @@ export interface Counting extends Memory {
   // Every keyed read, in order, so a test can assert both how many happened and
   // what they asked about.
   reads: () => readonly (readonly string[])[];
+  // The freshness boundary the last read was asked for.
+  asOf: () => string | null;
 }
 
 // Counts, because the rule is that a run reads once and a rebuild never does.
 export function countingMemory(result: RecallResult = recalledFixture()): Counting {
   const reads: string[][] = [];
+  let asOf: string | null = null;
   return {
     reads: () => reads,
+    asOf: () => asOf,
     recall: async () => [],
-    entities: async (keys) => {
+    entities: async ({ keys, asOf: stamp }) => {
       reads.push([...keys]);
+      asOf = stamp;
       return result;
     },
     remember: async () => {},
