@@ -90,7 +90,6 @@ class Finding(Base):
     # Primary key
     finding_id: Mapped[str] = mapped_column(String(50), primary_key=True)
 
-    mitre_predictions: Mapped[dict] = mapped_column(JSONB, nullable=False)
     anomaly_score: Mapped[float] = mapped_column(Float, nullable=False)
 
     # Human-readable description (populated from ingestion or synthesized from entity_context)
@@ -133,6 +132,12 @@ class Finding(Base):
     cases: Mapped[List["Case"]] = relationship(
         "Case", secondary=case_findings, back_populates="findings", lazy="selectin"
     )
+    mitre_prediction_rows: Mapped[List["FindingMitrePrediction"]] = relationship(
+        "FindingMitrePrediction",
+        back_populates="finding",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     # Indexes
     __table_args__ = (
@@ -156,6 +161,35 @@ class Finding(Base):
             postgresql_where=text(
                 "data_source IS NOT NULL AND external_id IS NOT NULL"
             ),
+        ),
+    )
+
+
+class FindingMitrePrediction(Base):
+    """One predicted ATT&CK technique (or ingest key) for a finding.
+
+    Keys are stored as text: parquet/CSV ingest uses tactic names, not only T-IDs.
+    """
+
+    __tablename__ = "finding_mitre_predictions"
+
+    finding_id: Mapped[str] = mapped_column(
+        String(50),
+        ForeignKey("findings.finding_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    technique_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+
+    finding: Mapped["Finding"] = relationship(
+        "Finding", back_populates="mitre_prediction_rows"
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_finding_mitre_predictions_technique_confidence",
+            "technique_id",
+            text("confidence DESC"),
         ),
     )
 

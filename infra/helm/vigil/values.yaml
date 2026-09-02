@@ -411,6 +411,7 @@ dbInit:
     - 21_agent_run_leases.sql
     - 22_workflow_run_deleted.sql
     - 23_drop_finding_embedding.sql
+    - 24_finding_mitre_predictions.sql
   resources:
     requests:
       cpu: 50m

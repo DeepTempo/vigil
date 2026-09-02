@@ -50,6 +50,7 @@ from core.storage.models import (  # noqa: F401
     CustomAgent,
     CustomWorkflow,
     Finding,
+    FindingMitrePrediction,
     IntegrationConfig,
     Investigation,
     InvestigationLog,
