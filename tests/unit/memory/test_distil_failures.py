@@ -13,13 +13,13 @@ with whatever this module happened to do. The transient failure is driven throug
 honest way to stand in for a store that is down -- no arrangement of real rows
 produces one.
 
-**The predicate is asserted on the Case poll only.** The hunt poll reads
+**The Case poll is the one asserted here.** The hunt poll reads
 ``agent_events``, which has no ORM model, and the throwaway database these tests
-run against is built by ``create_all`` -- so the table this poll joins from does
-not exist here (which is why the hunt Distil has no unit tests at all). Both
-polls carry the same failure join, and what is hunt-specific about a failure --
-that it is keyed by a run and carries the terminal's seq -- is asserted below
-without it.
+run against is built by ``create_all`` -- so the table it joins from does not
+exist here. It is covered instead in
+``tests/integration/test_distil_poll_failures.py``, which applies the ledger DDL
+itself. What is hunt-specific about a *failure* -- that it is keyed by a run and
+names the terminal it failed on -- needs no ledger and is asserted below.
 """
 
 from __future__ import annotations
@@ -200,25 +200,35 @@ class TestAFailureIsOnTheRecord:
 class TestTheIntervalWidens:
     """Retried, but not on every tick, and never given up on."""
 
-    def test_each_further_failure_counts_and_waits_longer(self, session):
+    def test_each_further_failure_counts_and_never_waits_less(self, session):
+        """Asserted as behaviour rather than against ``RETRY_INTERVALS``.
+
+        Comparing the observed waits to the constant they were read from only
+        proves the code can index its own list: a schedule typed in the wrong
+        order agrees with itself and passes. What a caller needs is that the
+        count rises, the wait never shrinks, and neither runs away -- all true
+        of any schedule someone might reasonably substitute, and false of the
+        mistakes worth catching.
+        """
         key = FailureKey(InvestigationKind.CASE, "case-734")
         at = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
 
         waits = []
-        for _ in range(len(RETRY_INTERVALS) + 2):
+        for tick in range(1, len(RETRY_INTERVALS) + 3):
             row = failure(session, key, now=at)
+            assert row.attempts == tick
             waits.append(row.next_attempt_at - at)
-
         session.commit()
-        assert row.attempts == len(RETRY_INTERVALS) + 2
-        assert waits[: len(RETRY_INTERVALS)] == list(RETRY_INTERVALS)
-        # Past the last entry it settles there rather than growing without bound
-        # or giving up: a count cannot tell a store that will come back from one
-        # that will not.
-        assert waits[len(RETRY_INTERVALS) :] == [
-            RETRY_INTERVALS[-1],
-            RETRY_INTERVALS[-1],
-        ]
+
+        assert waits[0] > timedelta(0)
+        assert all(
+            later >= earlier for earlier, later in zip(waits, waits[1:])
+        ), f"a later failure waited less than an earlier one: {waits}"
+        # It stops growing rather than running away, and it stops rather than
+        # giving up: a count cannot tell a store that will come back from one
+        # that will not, so the last wait repeats instead of becoming RETRY_NEVER.
+        assert waits[-1] == waits[-2]
+        assert max(waits) < timedelta(days=1)
 
     def test_the_first_failure_is_kept_and_the_last_error_is_replaced(self, session):
         key = FailureKey(InvestigationKind.CASE, "case-734")
@@ -233,14 +243,20 @@ class TestTheIntervalWidens:
         assert row.last_failed_at == later
         assert row.last_error == "deadlock detected"
 
-    def test_a_refusal_waits_forever_rather_than_on_a_schedule(self, session):
-        row = failure(
+    def test_a_refusal_waits_out_of_all_proportion_to_a_transient_failure(
+        self, session
+    ):
+        """The difference is a kind, not a longer interval on the same scale."""
+        transient = failure(session, FailureKey(InvestigationKind.CASE, "case-a"))
+        refused = failure(
             session,
-            FailureKey(InvestigationKind.CASE, "case-734"),
+            FailureKey(InvestigationKind.CASE, "case-b"),
             reason=DistilFailureReason.REFUSED,
         )
         session.commit()
-        assert row.next_attempt_at == RETRY_NEVER
+
+        assert refused.next_attempt_at > transient.next_attempt_at + timedelta(days=365)
+        assert refused.next_attempt_at == RETRY_NEVER
 
 
 class TestThePollHonoursIt:
