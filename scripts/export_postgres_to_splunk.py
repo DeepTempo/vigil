@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.storage.connection import get_db_manager
 from core.storage.models import Finding, Case
+from core.storage.schemas import FindingSchema
 from core.time import utcnow
 from sqlalchemy import func
 
@@ -144,7 +145,9 @@ class PostgresToSplunkExporter:
             "anomaly_score": finding.anomaly_score,
             
             # MITRE ATT&CK
-            "mitre_predictions": finding.mitre_predictions,
+            "mitre_predictions": FindingSchema.dump(finding).get(
+                "mitre_predictions", {}
+            ),
             
             # Entity context (if available)
             "entity_context": finding.entity_context,

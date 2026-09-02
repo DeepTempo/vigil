@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import selectinload
 
 from core.exceptions import default_on_error
 from core.storage.case_repository import CaseRepository
@@ -17,11 +18,54 @@ from core.storage.models import (
     AIDecisionLog,
     Case,
     Finding,
+    FindingMitrePrediction,
 )
 from core.storage.schemas import FindingSchema
 from core.time import utcnow
 
 logger = logging.getLogger(__name__)
+
+_UNSET = object()
+
+
+def _numeric_prediction_items(mitre_predictions: Any) -> List[tuple[str, float]]:
+    """Persist numeric map values only; keys stay text (tactic names included)."""
+    if not isinstance(mitre_predictions, dict):
+        return []
+    items: List[tuple[str, float]] = []
+    for key, value in mitre_predictions.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        items.append((str(key), float(value)))
+    return items
+
+
+def _set_mitre_prediction_rows(finding: Finding, mitre_predictions: Any) -> None:
+    finding.mitre_prediction_rows.clear()
+    for technique_id, confidence in _numeric_prediction_items(mitre_predictions):
+        finding.mitre_prediction_rows.append(
+            FindingMitrePrediction(
+                technique_id=technique_id,
+                confidence=confidence,
+            )
+        )
+
+
+def findings_by_technique_stmt(technique_id: str, limit: Optional[int] = None):
+    """Findings predicting ``technique_id``, highest confidence first."""
+    stmt = (
+        select(Finding)
+        .join(
+            FindingMitrePrediction,
+            FindingMitrePrediction.finding_id == Finding.finding_id,
+        )
+        .where(FindingMitrePrediction.technique_id == technique_id)
+        .order_by(FindingMitrePrediction.confidence.desc())
+        .options(selectinload(Finding.mitre_prediction_rows))
+    )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return stmt
 
 
 class DatabaseService:
@@ -60,7 +104,6 @@ class DatabaseService:
         with self.db_manager.session_scope() as session:
             finding = Finding(
                 finding_id=finding_id,
-                mitre_predictions=mitre_predictions,
                 anomaly_score=anomaly_score,
                 timestamp=timestamp,
                 data_source=data_source,
@@ -72,9 +115,11 @@ class DatabaseService:
                 severity=kwargs.get("severity"),
                 status=kwargs.get("status", "new"),
             )
+            _set_mitre_prediction_rows(finding, mitre_predictions)
             session.add(finding)
             session.flush()
             session.refresh(finding)
+            _ = finding.mitre_prediction_rows
             logger.info(f"Created finding: {finding_id}")
             return finding
 
@@ -97,22 +142,23 @@ class DatabaseService:
                 new_ids = [i for i in ids if i not in existing]
                 for finding_id in new_ids:
                     r = by_id[finding_id]
-                    session.add(
-                        Finding(
-                            finding_id=finding_id,
-                            mitre_predictions=r.get("mitre_predictions") or {},
-                            anomaly_score=r.get("anomaly_score", 0.0),
-                            timestamp=r["timestamp"],
-                            data_source=r.get("data_source", "imported"),
-                            external_id=r.get("external_id"),
-                            description=r.get("description"),
-                            entity_context=r.get("entity_context"),
-                            evidence_links=r.get("evidence_links"),
-                            cluster_id=r.get("cluster_id"),
-                            severity=r.get("severity"),
-                            status=r.get("status", "new"),
-                        )
+                    finding = Finding(
+                        finding_id=finding_id,
+                        anomaly_score=r.get("anomaly_score", 0.0),
+                        timestamp=r["timestamp"],
+                        data_source=r.get("data_source", "imported"),
+                        external_id=r.get("external_id"),
+                        description=r.get("description"),
+                        entity_context=r.get("entity_context"),
+                        evidence_links=r.get("evidence_links"),
+                        cluster_id=r.get("cluster_id"),
+                        severity=r.get("severity"),
+                        status=r.get("status", "new"),
                     )
+                    _set_mitre_prediction_rows(
+                        finding, r.get("mitre_predictions") or {}
+                    )
+                    session.add(finding)
                 session.flush()
                 return {"imported": len(new_ids), "skipped": len(rows) - len(new_ids)}
         except Exception as e:
@@ -131,7 +177,11 @@ class DatabaseService:
             Finding object or None if not found
         """
         with self.db_manager.session_scope() as session:
-            finding = session.get(Finding, finding_id)
+            finding = session.get(
+                Finding,
+                finding_id,
+                options=(selectinload(Finding.mitre_prediction_rows),),
+            )
             if finding:
                 # Detach from session to avoid lazy loading issues
                 session.expunge(finding)
@@ -170,7 +220,7 @@ class DatabaseService:
             List of Finding objects
         """
         with self.db_manager.session_scope() as session:
-            query = select(Finding)
+            query = select(Finding).options(selectinload(Finding.mitre_prediction_rows))
 
             filters = []
             if severity:
@@ -226,11 +276,15 @@ class DatabaseService:
         self, limit: int = 100, max_age_hours: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Findings stored but never enriched (ai_enrichment IS NULL), oldest first.
-        Returns dicts (to_dict inside the session) so callers get detached-safe data.
+        Returns dicts (FindingSchema.dump inside the session) so callers get detached-safe data.
         ``max_age_hours`` bounds the working set so ancient, un-enrichable findings
         aren't retried forever."""
         with self.db_manager.session_scope() as session:
-            query = select(Finding).where(Finding.ai_enrichment.is_(None))
+            query = (
+                select(Finding)
+                .options(selectinload(Finding.mitre_prediction_rows))
+                .where(Finding.ai_enrichment.is_(None))
+            )
             if max_age_hours:
                 cutoff = utcnow() - timedelta(hours=max_age_hours)
                 query = query.where(Finding.timestamp >= cutoff)
@@ -297,10 +351,16 @@ class DatabaseService:
             True if successful, False otherwise
         """
         with self.db_manager.session_scope() as session:
-            finding = session.get(Finding, finding_id)
+            finding = session.get(
+                Finding,
+                finding_id,
+                options=(selectinload(Finding.mitre_prediction_rows),),
+            )
             if not finding:
                 logger.warning(f"Finding not found: {finding_id}")
                 return False
+
+            mitre_predictions = updates.pop("mitre_predictions", _UNSET)
 
             # Unknown keys are skipped rather than rejected: the S3 sync path
             # passes whole external finding dicts. Say which, or a typo'd column
@@ -315,6 +375,9 @@ class DatabaseService:
             for key, value in updates.items():
                 if hasattr(finding, key):
                     setattr(finding, key, value)
+
+            if mitre_predictions is not _UNSET:
+                _set_mitre_prediction_rows(finding, mitre_predictions)
 
             finding.updated_at = utcnow()
             session.flush()
@@ -341,6 +404,76 @@ class DatabaseService:
             session.delete(finding)
             logger.info(f"Deleted finding: {finding_id}")
             return True
+
+    @default_on_error(list)
+    def get_findings_by_technique(
+        self, technique_id: str, limit: Optional[int] = None
+    ) -> List[Finding]:
+        """Findings predicting ``technique_id``, ordered by confidence descending."""
+        with self.db_manager.session_scope() as session:
+            findings = (
+                session.execute(findings_by_technique_stmt(technique_id, limit=limit))
+                .scalars()
+                .all()
+            )
+            for finding in findings:
+                session.expunge(finding)
+            return findings
+
+    @default_on_error(dict)
+    def get_technique_max_confidence(self) -> Dict[str, float]:
+        """Max confidence per technique_id across all prediction rows."""
+        with self.db_manager.session_scope() as session:
+            rows = session.execute(
+                select(
+                    FindingMitrePrediction.technique_id,
+                    func.max(FindingMitrePrediction.confidence),
+                ).group_by(FindingMitrePrediction.technique_id)
+            ).all()
+            return {tid: float(conf) for tid, conf in rows}
+
+    @default_on_error(list)
+    def get_technique_severity_counts(
+        self,
+        min_confidence: float = 0.0,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> List[tuple]:
+        """(technique_id, severity, count) from the child table."""
+        with self.db_manager.session_scope() as session:
+            stmt = (
+                select(
+                    FindingMitrePrediction.technique_id,
+                    Finding.severity,
+                    func.count(),
+                )
+                .join(
+                    Finding,
+                    Finding.finding_id == FindingMitrePrediction.finding_id,
+                )
+                .where(FindingMitrePrediction.confidence >= min_confidence)
+                .group_by(FindingMitrePrediction.technique_id, Finding.severity)
+            )
+            if start_time is not None:
+                stmt = stmt.where(Finding.timestamp >= start_time)
+            if end_time is not None:
+                stmt = stmt.where(Finding.timestamp <= end_time)
+            return [
+                (tid, severity, int(count))
+                for tid, severity, count in session.execute(stmt).all()
+            ]
+
+    @default_on_error(dict)
+    def get_technique_occurrence_counts(self) -> Dict[str, int]:
+        """Finding-row counts per technique_id."""
+        with self.db_manager.session_scope() as session:
+            rows = session.execute(
+                select(
+                    FindingMitrePrediction.technique_id,
+                    func.count(),
+                ).group_by(FindingMitrePrediction.technique_id)
+            ).all()
+            return {tid: int(count) for tid, count in rows}
 
     # ========== Case Operations ==========
 
@@ -416,7 +549,8 @@ class DatabaseService:
             if case:
                 # Force load findings if needed
                 if include_findings:
-                    _ = case.findings  # Trigger lazy load
+                    for linked in case.findings:
+                        _ = linked.mitre_prediction_rows
                 session.expunge(case)
             return case
 

@@ -306,6 +306,57 @@ class DatabaseDataService:
                     return f
         return None
 
+    def get_findings_by_technique(
+        self, technique_id: str, limit: Optional[int] = None
+    ) -> List[Dict]:
+        """Findings predicting ``technique_id`` from the child table. DB only."""
+        if not self._db_available or not self._db_service:
+            return []
+        try:
+            findings = self._db_service.get_findings_by_technique(
+                technique_id, limit=limit
+            )
+            return FindingSchema.dump_many(findings)
+        except Exception as e:
+            logger.error(f"Error getting findings by technique from DB: {e}")
+            return []
+
+    def get_technique_max_confidence(self) -> Dict[str, float]:
+        if not self._db_available or not self._db_service:
+            return {}
+        try:
+            return self._db_service.get_technique_max_confidence()
+        except Exception as e:
+            logger.error(f"Error getting technique max confidence from DB: {e}")
+            return {}
+
+    def get_technique_severity_counts(
+        self,
+        min_confidence: float = 0.0,
+        start_time=None,
+        end_time=None,
+    ) -> list:
+        if not self._db_available or not self._db_service:
+            return []
+        try:
+            return self._db_service.get_technique_severity_counts(
+                min_confidence=min_confidence,
+                start_time=start_time,
+                end_time=end_time,
+            )
+        except Exception as e:
+            logger.error(f"Error getting technique severity counts from DB: {e}")
+            return []
+
+    def get_technique_occurrence_counts(self) -> Dict[str, int]:
+        if not self._db_available or not self._db_service:
+            return {}
+        try:
+            return self._db_service.get_technique_occurrence_counts()
+        except Exception as e:
+            logger.error(f"Error getting technique occurrence counts from DB: {e}")
+            return {}
+
     def create_finding(self, finding_data: Dict) -> Optional[Dict]:
         if self._demo_mode and self._demo_service:
             return self._demo_service.create_finding(finding_data)
