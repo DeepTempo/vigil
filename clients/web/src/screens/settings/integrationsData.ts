@@ -6,6 +6,7 @@ export const HIDDEN_MCP_SERVERS = new Set(['mempalace', 'splunk-selfhosted'])
 export const SERVER_TO_INTEGRATION = new Map(Object.entries({
   'aws-security': 'aws-security-hub',
   'gcp-scc': 'gcp-security',
+  'elastic': 'elastic-siem',
 }))
 
 export function getIntegrationForServer(serverName: string): IntegrationMetadata | undefined {
@@ -41,7 +42,7 @@ export const MCP_CATEGORIES: McpCategory[] = [
   { label: 'DeepTempo', servers: ['loglm'] },
   { label: 'Reference Servers', servers: ['github'] },
   { label: 'EDR / XDR', servers: ['crowdstrike', 'sentinelone', 'carbon-black', 'microsoft-defender'] },
-  { label: 'SIEM / Data Lake', servers: ['splunk', 'azure-sentinel', 'gcp-secops', 'cribl-stream'] },
+  { label: 'SIEM / Data Lake', servers: ['splunk', 'elastic', 'azure-sentinel', 'gcp-secops', 'cribl-stream'] },
   { label: 'Threat Intelligence', servers: ['virustotal', 'gcp-threat-intel', 'shodan', 'alienvault-otx', 'misp', 'firecrawl'] },
   { label: 'Cloud Security', servers: ['aws-security', 'gcp-scc', 'palo-alto'] },
   { label: 'Identity & Access', servers: ['okta', 'azure-ad'] },
@@ -63,6 +64,7 @@ export const SERVER_DESCRIPTIONS = new Map(Object.entries({
   'carbon-black': 'Query VMware Carbon Black for endpoint events, process trees, and binary analysis.',
   'microsoft-defender': 'Query Microsoft Defender for Endpoint alerts, device info, and advanced hunting. May overlap with Sentinel.',
   splunk: 'Run SPL searches against Splunk for log analysis, correlation searches, and alert triage.',
+  elastic: 'Query Elasticsearch and Elastic Security for logs, IOC hits, and detection alerts. Requires an Elasticsearch URL and API key or username/password.',
   'azure-sentinel': 'Query Microsoft Sentinel via KQL for security logs, incidents, and custom detection rules.',
   'gcp-secops': 'Query Google SecOps (Chronicle) for UDM security events, detection rules, and threat investigation.',
   'cribl-stream': 'Manage Cribl Stream data pipelines — inspect routes, check data flow, and troubleshoot ingestion.',

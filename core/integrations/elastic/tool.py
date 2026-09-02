@@ -4,10 +4,6 @@ Exposes Elasticsearch search and Kibana Security API capabilities as
 MCP tools for use by Vigil's AI agents.
 """
 
-import asyncio
-import json
-import logging
-import os
 import sys
 from pathlib import Path
 
@@ -19,17 +15,18 @@ _REPO_ROOT = str(Path(__file__).resolve().parents[3])
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+import asyncio
+import json
+import logging
+
 import mcp.server.stdio
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass
+from core.integrations._base.config import missing, resolve
+from core.integrations.elastic.client import ElasticService
+from core.integrations.elastic.descriptor import ELASTIC
 
 logger = logging.getLogger(__name__)
 _elastic_service = None
@@ -44,21 +41,21 @@ def get_elastic_service():
     if _elastic_service is not None:
         return _elastic_service
     try:
-        from core.integrations.elastic.client import ElasticService
-
-        host = os.environ.get("ELASTIC_HOST")
-        if not host:
+        config = resolve(ELASTIC)
+        if missing(config, "elasticsearch_url"):
             return None
+        # resolve() always returns every declared field, so a .get(k, True)
+        # default would never fire — verify_ssl is present-but-None when unset.
+        verify = True if config.get("verify_ssl") is None else config.get("verify_ssl")
         _elastic_service = ElasticService(
-            elasticsearch_url=host,
-            kibana_url=os.environ.get("ELASTIC_KIBANA_URL"),
-            api_key=os.environ.get("ELASTIC_API_KEY"),
-            username=os.environ.get("ELASTIC_USERNAME"),
-            password=os.environ.get("ELASTIC_PASSWORD"),
-            verify_ssl=os.environ.get("ELASTIC_VERIFY_SSL", "true").lower() == "true",
-            index_pattern=os.environ.get(
-                "ELASTIC_INDEX_PATTERN", ".alerts-security.alerts-default"
-            ),
+            elasticsearch_url=config["elasticsearch_url"],
+            kibana_url=config.get("kibana_url"),
+            api_key=config.get("api_key"),
+            username=config.get("username"),
+            password=config.get("password"),
+            verify_ssl=verify,
+            index_pattern=config.get("index_pattern")
+            or ".alerts-security.alerts-default",
         )
         return _elastic_service
     except Exception:
@@ -147,9 +144,7 @@ async def handle_list_tools():
 async def handle_call_tool(name: str, arguments: dict | None):
     svc = get_elastic_service()
     if svc is None:
-        return result(
-            {"error": "Elastic service not configured. Set ELASTIC_HOST in .env."}
-        )
+        return result({"error": "Elastic service not configured"})
 
     if name == "elastic_search_logs":
         return await _search_logs(svc, arguments or {})

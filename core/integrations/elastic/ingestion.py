@@ -9,9 +9,10 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from core.config import get_integration_config
 from core.ingestion.siem_ingestion_service import SIEMIngestionService
+from core.integrations._base.config import resolve
 from core.integrations.elastic.client import ElasticService
+from core.integrations.elastic.descriptor import ELASTIC
 from core.time import utcnow
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ class ElasticIngestion(SIEMIngestionService):
     def __init__(self):
         super().__init__()
         self.siem_name = "Elastic Security"
-        self.config = get_integration_config("elastic-siem")
+        self.config = resolve(ELASTIC)
         self._elastic_service: Optional[ElasticService] = None
 
     def _get_elastic_service(self) -> Optional[ElasticService]:
@@ -38,16 +39,22 @@ class ElasticIngestion(SIEMIngestionService):
                 )
                 return None
 
+            # resolve() always returns every declared field, so a .get(k, True)
+            # default would never fire — verify_ssl is present-but-None when unset.
+            verify = (
+                True
+                if self.config.get("verify_ssl") is None
+                else self.config.get("verify_ssl")
+            )
             self._elastic_service = ElasticService(
                 elasticsearch_url=host,
                 kibana_url=self.config.get("kibana_url"),
                 api_key=self.config.get("api_key"),
                 username=self.config.get("username"),
                 password=self.config.get("password"),
-                verify_ssl=self.config.get("verify_ssl", True),
-                index_pattern=self.config.get(
-                    "index_pattern", ".alerts-security.alerts-default"
-                ),
+                verify_ssl=verify,
+                index_pattern=self.config.get("index_pattern")
+                or ".alerts-security.alerts-default",
             )
             return self._elastic_service
         except Exception as e:
