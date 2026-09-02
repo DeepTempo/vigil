@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { WatchersCard } from './CaseSections'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { WatchersCard, SLACard, TasksCard } from './CaseSections'
 import { casesApi } from '../../services/api'
 
 /**
@@ -20,6 +20,12 @@ vi.mock('../../services/api', () => ({
     getWatchers: vi.fn(),
     addWatcher: vi.fn(),
     removeWatcher: vi.fn(),
+    getSLA: vi.fn(),
+    pauseSLA: vi.fn(),
+    resumeSLA: vi.fn(),
+    getTasks: vi.fn(),
+    updateTask: vi.fn(),
+    addTask: vi.fn(),
   },
 }))
 
@@ -31,10 +37,45 @@ const WATCHER_ROW = {
   created_at: '2026-06-15T09:14:00Z',
 }
 
+/** The shape `CaseSLAStatusSchema` records (CaseSLAService.get_sla_status). */
+const SLA_STATUS = {
+  case_id: 'case-2026-0142',
+  sla_policy_id: 'sla-high',
+  response_due: '2026-06-15T11:14:00Z',
+  resolution_due: '2026-06-16T09:14:00Z',
+  response_remaining_seconds: 3600,
+  resolution_remaining_seconds: 7200,
+  response_percent_elapsed: 40,
+  resolution_percent_elapsed: 25,
+  response_completed: false,
+  resolution_completed: false,
+  response_sla_met: null,
+  resolution_sla_met: null,
+  is_breached: false,
+  breach_type: null,
+  is_paused: false,
+  health_status: 'healthy',
+}
+
+/** The shape `CaseTaskSchema` dumps — `task_id`, not `id`. */
+const TASK_ROW = {
+  task_id: 42,
+  title: 'Collect packet capture',
+  status: 'pending',
+  priority: 'high',
+}
+
 beforeEach(() => {
   vi.mocked(casesApi.getWatchers).mockResolvedValue({
     data: { watchers: [WATCHER_ROW] },
   } as never)
+  vi.mocked(casesApi.getSLA).mockResolvedValue({
+    data: SLA_STATUS,
+  } as never)
+  vi.mocked(casesApi.getTasks).mockResolvedValue({
+    data: { tasks: [TASK_ROW] },
+  } as never)
+  vi.mocked(casesApi.updateTask).mockResolvedValue({ data: TASK_ROW } as never)
 })
 
 describe('WatchersCard', () => {
@@ -75,5 +116,45 @@ describe('WatchersCard', () => {
     )
 
     expect(screen.getByText('Watching since —')).toBeInTheDocument()
+  })
+})
+
+describe('SLACard', () => {
+  it('renders the computed SLA status payload, not an invented envelope', async () => {
+    render(<SLACard caseId="case-2026-0142" />)
+
+    await waitFor(() => expect(screen.getByText('healthy')).toBeInTheDocument())
+
+    expect(screen.getByText('sla-high')).toBeInTheDocument()
+    expect(screen.getByText('Response due')).toBeInTheDocument()
+    expect(screen.getByText('Resolution due')).toBeInTheDocument()
+    expect(screen.queryByText('No SLA policy attached')).not.toBeInTheDocument()
+  })
+
+  it('treats a 404 as no policy rather than an error', async () => {
+    vi.mocked(casesApi.getSLA).mockRejectedValueOnce({ response: { status: 404 } })
+    render(<SLACard caseId="case-2026-0142" />)
+
+    await waitFor(() =>
+      expect(screen.getByText('No SLA policy attached')).toBeInTheDocument(),
+    )
+  })
+})
+
+describe('TasksCard', () => {
+  it('toggles a task by task_id via PUT, not a hand-written id', async () => {
+    render(<TasksCard caseId="case-2026-0142" />)
+
+    await waitFor(() =>
+      expect(screen.getByText('Collect packet capture')).toBeInTheDocument(),
+    )
+
+    fireEvent.click(screen.getByTitle('Toggle'))
+    await waitFor(() =>
+      expect(casesApi.updateTask).toHaveBeenCalledWith('case-2026-0142', 42, {
+        status: 'completed',
+        completed_at: expect.any(String),
+      }),
+    )
   })
 })

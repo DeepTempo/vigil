@@ -1,5 +1,6 @@
 import { format } from 'date-fns'
 import type { CaseRow, Finding } from './data'
+import type { Schema } from '../services/apiTypes'
 import {
   prettyHandle,
   type Workflow,
@@ -13,27 +14,7 @@ import { techniqueTactic } from './mitre'
 
 const DASH = '—'
 
-export interface ApiCase {
-  case_id: string
-  title?: string
-  description?: string
-  status?: string
-  priority?: string
-  assignee?: string
-  finding_ids?: string[]
-  /** GET /cases/{id} returns full finding objects (include_findings=True) */
-  findings?: ApiFinding[]
-  finding_count?: number
-  created_at?: string
-  updated_at?: string
-  mitre_techniques?: string[]
-  primary_tactic?: string
-  tactic?: string
-  sla?: string
-  sla_remaining?: string
-  sla_state?: string
-  timeline?: Array<{ event?: string; timestamp?: string }>
-}
+export type ApiCase = Schema<'CaseSchema'>
 
 export interface ApiFinding {
   finding_id: string
@@ -92,30 +73,23 @@ function casePrio(p?: string): CaseRow['prio'] {
   return 'medium'
 }
 
-function slaState(s?: string): CaseRow['slaState'] {
-  const v = (s || '').toLowerCase()
-  if (v === 'breached') return 'danger'
-  if (v === 'danger' || v === 'warn' || v === 'ok') return v as CaseRow['slaState']
-  return 'ok'
-}
-
 export function mapApiCase(c: ApiCase): CaseRow {
   return {
-    id: c.case_id,
-    title: c.title || c.case_id,
+    id: c.case_id || '',
+    title: c.title || c.case_id || '',
     desc: c.description || '',
-    status: caseStatus(c.status),
-    prio: casePrio(c.priority),
-    owner: initials(c.assignee),
+    status: caseStatus(c.status ?? undefined),
+    prio: casePrio(c.priority ?? undefined),
+    owner: initials(c.assignee ?? undefined),
     ownerName: c.assignee || 'unassigned',
-    findings: c.finding_count ?? c.finding_ids?.length ?? 0,
-    tactic: c.mitre_techniques?.[0] || c.primary_tactic || c.tactic || DASH,
-    age: compactAge(c.created_at),
-    sla: c.sla || c.sla_remaining || DASH,
-    slaState: slaState(c.sla_state),
-    updated: fmt(c.updated_at || c.created_at, 'MMM d'),
-    updatedTs: epochMs(c.updated_at || c.created_at),
-    createdTs: epochMs(c.created_at),
+    findings: c.finding_ids?.length ?? 0,
+    tactic: c.mitre_techniques?.[0] || DASH,
+    age: compactAge(c.created_at ?? undefined),
+    sla: DASH,
+    slaState: 'ok',
+    updated: fmt(c.updated_at || c.created_at || undefined, 'MMM d'),
+    updatedTs: epochMs(c.updated_at || c.created_at || undefined),
+    createdTs: epochMs(c.created_at ?? undefined),
   }
 }
 

@@ -487,8 +487,11 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
     }).catch(() => {})
     casesApi.getAll().then((r) => {
       if (cancelled) return
-      const list = (r.data?.cases || []) as { case_id: string; title?: string }[]
-      setCaseOpts(list.map((c) => ({ id: c.case_id, label: c.title || '' })))
+      setCaseOpts(
+        r.data.cases
+          .filter((c): c is typeof c & { case_id: string } => Boolean(c.case_id))
+          .map((c) => ({ id: c.case_id, label: c.title || '' })),
+      )
     }).catch(() => {})
     workflowApi.get(wf.id).then((r) => {
       if (!cancelled) setLimits(r.data as WfLimits)

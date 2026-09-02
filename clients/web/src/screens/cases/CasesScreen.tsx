@@ -714,7 +714,7 @@ function NewCaseDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
     try {
       await casesApi.create({
         title: title.trim(),
-        description: description.trim() || undefined,
+        description: description.trim(),
         finding_ids: [],
         priority,
         status,

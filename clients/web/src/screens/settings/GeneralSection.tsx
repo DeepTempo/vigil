@@ -76,7 +76,7 @@ export default function GeneralSection({ notify }: SectionProps) {
         notify('ok', count != null ? `Cleared ${count} investigations.` : 'All investigations cleared.')
       } else if (clearAction === 'cases') {
         const res = await casesApi.deleteAll()
-        const count = (res.data as { deleted?: number })?.deleted
+        const count = res.data.deleted
         notify('ok', count != null ? `Cleared ${count} cases and case metrics.` : 'Cases and metrics cleared.')
       } else {
         const failed: string[] = []

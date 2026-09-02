@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { basePath } from '../config/basePath'
+import type { Schema } from './apiTypes'
 
 // Auth is cookie-based; withCredentials sends the HttpOnly cookies on every
 // request, including through the Vite dev proxy.
@@ -194,127 +195,112 @@ export const casesApi = {
     status?: string
     priority?: string
     force_refresh?: boolean
-  }) => api.get('/cases/', { params }),
-  
-  getById: (id: string) => api.get(`/cases/${id}`),
-  
-  create: (data: {
-    title: string
-    description?: string
-    finding_ids: string[]
-    priority?: string
-    status?: string
-  }) => api.post('/cases/', data),
-  
-  update: (id: string, data: {
-    title?: string
-    description?: string
-    status?: string
-    priority?: string
-    notes?: string
-    assignee?: string
-  }) => api.patch(`/cases/${id}`, data),
-  
-  delete: (id: string) => api.delete(`/cases/${id}`),
+  }) => api.get<Schema<'CaseListResponse'>>('/cases/', { params }),
 
-  deleteAll: () => api.delete('/cases/all'),
-  
-  addActivity: (id: string, data: {
-    activity_type: string
-    description: string
-    details?: any
-  }) => api.post(`/cases/${id}/activities`, data),
-  
-  addResolutionStep: (id: string, data: {
-    description: string
-    action_taken: string
-    result?: string
-  }) => api.post(`/cases/${id}/resolution-steps`, data),
-  
+  getById: (id: string) => api.get<Schema<'CaseSchema'>>(`/cases/${id}`),
+
+  create: (data: Schema<'CaseCreate'>) =>
+    api.post<Schema<'CaseSchema'>>('/cases/', data),
+
+  update: (id: string, data: Schema<'CaseUpdate'>) =>
+    api.patch<Schema<'CaseSuccessResponse'>>(`/cases/${id}`, data),
+
+  delete: (id: string) =>
+    api.delete<Schema<'CaseSuccessResponse'>>(`/cases/${id}`),
+
+  deleteAll: () => api.delete<Schema<'CasePurgeResponse'>>('/cases/all'),
+
+  addActivity: (id: string, data: Schema<'ActivityAdd'>) =>
+    api.post<Schema<'CaseSchema'>>(`/cases/${id}/activities`, data),
+
+  addResolutionStep: (id: string, data: Schema<'ResolutionStepAdd'>) =>
+    api.post<Schema<'CaseSchema'>>(`/cases/${id}/resolution-steps`, data),
+
   addFinding: (id: string, finding_id: string) =>
-    api.post(`/cases/${id}/findings/${finding_id}`),
-  
+    api.post<Schema<'CaseSchema'>>(`/cases/${id}/findings/${finding_id}`),
+
   removeFinding: (id: string, finding_id: string) =>
-    api.delete(`/cases/${id}/findings/${finding_id}`),
-  
+    api.delete<Schema<'CaseSchema'>>(`/cases/${id}/findings/${finding_id}`),
+
   generateReport: (id: string) =>
-    api.post(`/cases/${id}/generate-report`, null, { timeout: LLM_TIMEOUT }),
-  
-  getSummary: () => api.get('/cases/stats/summary'),
-  
-  getComments: (id: string) => api.get(`/cases/${id}/comments`),
-  addComment: (id: string, data: { content: string; author: string; parent_comment_id?: number | string }) =>
-    api.post(`/cases/${id}/comments`, data),
-  
-  getWatchers: (id: string) => api.get(`/cases/${id}/watchers`),
+    api.post<Schema<'CaseReportResponse'>>(`/cases/${id}/generate-report`, null, {
+      timeout: LLM_TIMEOUT,
+    }),
+
+  getSummary: () => api.get<Schema<'CaseSummaryResponse'>>('/cases/stats/summary'),
+
+  getComments: (id: string) =>
+    api.get<Schema<'CaseCommentsResponse'>>(`/cases/${id}/comments`),
+  addComment: (id: string, data: Schema<'CommentAdd'>) =>
+    api.post<Schema<'CaseCommentSchema'>>(`/cases/${id}/comments`, data),
+
+  getWatchers: (id: string) =>
+    api.get<Schema<'CaseWatchersResponse'>>(`/cases/${id}/watchers`),
   addWatcher: (id: string, userId: string) =>
-    api.post(`/cases/${id}/watchers`, { user_id: userId }),
+    api.post<Schema<'CaseWatcherSchema'>>(`/cases/${id}/watchers`, { user_id: userId }),
   removeWatcher: (id: string, userId: string) =>
-    api.delete(`/cases/${id}/watchers/${userId}`),
-  
+    api.delete<Schema<'CaseSuccessResponse'>>(`/cases/${id}/watchers/${userId}`),
+
+  // No /cases/{id}/tags route — left untyped on purpose. See #699.
   updateTags: (id: string, tags: string[]) =>
     api.put(`/cases/${id}/tags`, { tags }),
-  
-  getEvidence: (id: string) => api.get(`/cases/${id}/evidence`),
-  addEvidence: (id: string, data: {
-    name: string
-    description?: string
-    file_path?: string
-    url?: string
-    evidence_type: string
-  }) => api.post(`/cases/${id}/evidence`, data),
-  
-  getIOCs: (id: string) => api.get(`/cases/${id}/iocs`),
-  addIOC: (id: string, data: {
-    ioc_type: string
-    value: string
-    description?: string
-    source?: string
-    tags?: string[]
-  }) => api.post(`/cases/${id}/iocs`, data),
-  
-  getTasks: (id: string) => api.get(`/cases/${id}/tasks`),
-  addTask: (id: string, data: {
-    title: string
-    description?: string
-    assignee?: string
-    due_date?: string
-    priority?: string
-  }) => api.post(`/cases/${id}/tasks`, data),
-  updateTask: (id: string, taskId: string, data: {
-    status?: string
-    completed_at?: string
-  }) => api.patch(`/cases/${id}/tasks/${taskId}`, data),
-  
-  getSLA: (id: string) => api.get(`/cases/${id}/sla`),
-  assignSLA: (id: string, data: {
-    sla_policy_id?: string  // Optional - if not provided, uses default for priority
-  }) => api.post(`/cases/${id}/sla`, data),
-  pauseSLA: (id: string) => api.post(`/cases/${id}/sla/pause`),
-  resumeSLA: (id: string) => api.post(`/cases/${id}/sla/resume`),
-  
-  linkCase: (id: string, relatedCaseId: string, relationshipType: string) =>
-    api.post(`/cases/${id}/links`, { related_case_id: relatedCaseId, relationship_type: relationshipType }),
-  getLinkedCases: (id: string) => api.get(`/cases/${id}/links`),
-  
-  closeCase: (id: string, data: {
-    resolution_summary: string
-    root_cause?: string
-    lessons_learned?: string
-    recommendations?: string
-  }) => api.post(`/cases/${id}/close`, data),
-  
-  escalate: (id: string, data: {
-    escalation_reason: string
-    escalated_to?: string
-    priority_override?: string
-  }) => api.post(`/cases/${id}/escalate`, data),
-  
-  getAuditLog: (id: string) => api.get(`/cases/${id}/audit-log`),
-  
-  merge: (targetCaseId: string, sourceCaseId: string) =>
-    api.post(`/cases/${targetCaseId}/merge`, { source_case_id: sourceCaseId, merged_by: 'user' }),
 
+  getEvidence: (id: string) =>
+    api.get<Schema<'CaseEvidenceListResponse'>>(`/cases/${id}/evidence`),
+  addEvidence: (id: string, data: Schema<'EvidenceAdd'>) =>
+    api.post<Schema<'CaseEvidenceSchema'>>(`/cases/${id}/evidence`, data),
+
+  getIOCs: (id: string) =>
+    api.get<Schema<'CaseIOCListResponse'>>(`/cases/${id}/iocs`),
+  addIOC: (id: string, data: Schema<'IOCAdd'>) =>
+    api.post<Schema<'CaseIOCSchema'>>(`/cases/${id}/iocs`, data),
+
+  getTasks: (id: string) =>
+    api.get<Schema<'CaseTasksResponse'>>(`/cases/${id}/tasks`),
+  addTask: (id: string, data: Schema<'TaskAdd'>) =>
+    api.post<Schema<'CaseTaskSchema'>>(`/cases/${id}/tasks`, data),
+  updateTask: (id: string, taskId: number, data: Schema<'TaskUpdate'>) =>
+    api.put<Schema<'CaseTaskSchema'>>(`/cases/${id}/tasks/${taskId}`, data),
+
+  getSLA: (id: string) =>
+    api.get<Schema<'CaseSLAStatusSchema'>>(`/cases/${id}/sla`),
+  assignSLA: (id: string, data: Schema<'SLAAssign'>) =>
+    api.post<Schema<'CaseSLASchema'>>(`/cases/${id}/sla`, data),
+  pauseSLA: (id: string) =>
+    api.post<Schema<'CaseSuccessResponse'>>(`/cases/${id}/sla/pause`),
+  resumeSLA: (id: string) =>
+    api.post<Schema<'CaseSuccessResponse'>>(`/cases/${id}/sla/resume`),
+
+  linkCase: (
+    id: string,
+    relatedCaseId: string,
+    relationshipType: string,
+    createdBy = 'SOC Analyst',
+  ) =>
+    api.post<Schema<'CaseRelationshipSchema'>>(`/cases/${id}/relationships`, {
+      related_case_id: relatedCaseId,
+      relationship_type: relationshipType,
+      created_by: createdBy,
+    }),
+  getLinkedCases: (id: string) =>
+    api.get<Schema<'CaseRelationshipsResponse'>>(`/cases/${id}/relationships`),
+
+  closeCase: (id: string, data: Schema<'ClosureInfo'>) =>
+    api.post<Schema<'CaseCloseResponse'>>(`/cases/${id}/close`, data),
+
+  escalate: (id: string, data: Schema<'EscalationAdd'>) =>
+    api.post<Schema<'CaseSuccessResponse'>>(`/cases/${id}/escalate`, data),
+
+  // No /cases/{id}/audit-log route — left untyped on purpose. See #699.
+  getAuditLog: (id: string) => api.get(`/cases/${id}/audit-log`),
+
+  merge: (targetCaseId: string, sourceCaseId: string) =>
+    api.post<Schema<'CaseMergeResponse'>>(`/cases/${targetCaseId}/merge`, {
+      source_case_id: sourceCaseId,
+      merged_by: 'user',
+    }),
+
+  // No /cases/bulk-update route — left untyped on purpose. See #699.
   bulkUpdate: (data: {
     case_ids: string[]
     updates: {

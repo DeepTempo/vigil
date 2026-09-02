@@ -824,7 +824,11 @@ if frontend_build_dir.exists() and (frontend_build_dir / "index.html").exists():
         async def redirect_to_trailing_slash():
             return RedirectResponse(url=f"{_CONTEXT_PATH}/", status_code=301)
 
-    @app.get(f"{_CONTEXT_PATH}/{{full_path:path}}")
+    # Out of the OpenAPI spec: it is the SPA fallback, not an API route, and it
+    # is only registered when a frontend build happens to be present. Leaving it
+    # in makes the generated types (scripts/generate_frontend_types.py) depend on
+    # whether the developer regenerating them had run `npm run build`.
+    @app.get(f"{_CONTEXT_PATH}/{{full_path:path}}", include_in_schema=False)
     async def serve_react_app(full_path: str):
         """Serve React app for all non-API routes."""
         # Don't interfere with API routes
