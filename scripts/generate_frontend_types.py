@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,10 +22,40 @@ OUT_DIR = WEB / "src" / "services" / "generated"
 OUT_FILE = OUT_DIR / "schema.d.ts"
 OPENAPI_TS = WEB / "node_modules" / ".bin" / "openapi-typescript"
 
-# Match tests/conftest.py so importing the app doesn't demand JWT_SECRET_KEY
-# or read a developer's .env.
-os.environ.setdefault("DEV_MODE", "true")
-os.environ["VIGIL_DISABLE_DOTENV"] = "1"
+# The spec must be a pure function of the source tree: regenerating on a
+# developer's machine and in CI has to produce byte-identical output, or the
+# CI diff check fails for reasons that have nothing to do with the API.
+#
+# Every one of these is assignment, not setdefault — an exported value in the
+# caller's shell is exactly what we are defending against.
+#
+#   DEV_MODE / VIGIL_DISABLE_DOTENV — match tests/conftest.py: importing the app
+#     must not demand JWT_SECRET_KEY or read a developer's .env.
+#   VIGIL_CONTEXT_PATH — prefixes *every* route (services/api/main.py), so a
+#     non-empty value rewrites all of them and the diff is 100%.
+#   DARKTRACE_ENABLED / CLOUDY_INGESTION_ENABLED — RouterMeta.enabled gates,
+#     evaluated at mount time. When on, their webhook routes join the spec.
+#   VIGIL_DIR — the State Directory holding the encrypted secrets store, and so
+#     the POSTGRESQL_CONNECTION_STRING that DatabaseConfig prefers. Pointed at an
+#     empty temp dir together with an unusable POSTGRES_* target because
+#     cloudy_ingestion_enabled() consults system_config in the database before
+#     falling back to its setting: without this the spec depends on the contents
+#     of whatever instance the developer happens to have running.
+_STATE_DIR = tempfile.mkdtemp(prefix="vigil-openapi-")
+os.environ.update(
+    {
+        "DEV_MODE": "true",
+        "VIGIL_DISABLE_DOTENV": "1",
+        "VIGIL_CONTEXT_PATH": "",
+        "DARKTRACE_ENABLED": "false",
+        "CLOUDY_INGESTION_ENABLED": "false",
+        "VIGIL_DIR": _STATE_DIR,
+        # Refused, not filtered: a closed port fails immediately, where an
+        # unroutable host would stall the dump on a connect timeout.
+        "POSTGRES_HOST": "127.0.0.1",
+        "POSTGRES_PORT": "1",
+    }
+)
 
 
 def _stable_operation_ids(spec: dict) -> None:
@@ -77,6 +108,7 @@ def main() -> int:
         )
     finally:
         spec_path.unlink(missing_ok=True)
+        shutil.rmtree(_STATE_DIR, ignore_errors=True)
 
     print(f"wrote {OUT_FILE.relative_to(ROOT)}")
     return 0
