@@ -16,7 +16,7 @@ phases:
   - id: evidence-acquisition
     agent: forensics
     name: "Evidence Acquisition & Preservation"
-    tools: [get_finding, list_findings, nearest_neighbors]
+    tools: [get_finding, list_findings, nearest_neighbors, recall_entity]
     instructions: |
       Acquire all evidence via tools without modifying originals, establish chain
       of custody, create an artifact inventory and reconstruct a master timeline.
@@ -44,7 +44,7 @@ phases:
   - id: malware-analysis
     agent: malware_analyst
     name: "Malware & Artifact Deep-Dive"
-    tools: [get_finding]
+    tools: [get_finding, recall_entity]
     instructions: |
       Static and dynamic analysis of the suspicious artifacts: PE structure,
       string extraction, sandbox results, capability assessment and family
@@ -75,7 +75,7 @@ phases:
   - id: network-forensics
     agent: network_analyst
     name: "Network Forensics"
-    tools: [list_findings, get_finding, search_detections]
+    tools: [list_findings, get_finding, search_detections, recall_entity]
     instructions: |
       Reconstruct communication timelines, identify data exfiltration, map
       lateral movement and identify external C2.
@@ -106,7 +106,7 @@ phases:
   - id: report
     agent: reporter
     name: "Forensic Report"
-    tools: [get_case, list_findings, create_attack_layer]
+    tools: [get_case, list_findings, create_attack_layer, recall_entity]
     instructions: |
       Produce an audit-ready forensic report with executive summary, technical
       findings, evidence chain and legal-grade documentation.

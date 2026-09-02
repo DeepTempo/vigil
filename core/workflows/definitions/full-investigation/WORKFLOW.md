@@ -16,7 +16,7 @@ phases:
   - id: evidence-gathering
     agent: investigator
     name: "Evidence Gathering"
-    tools: [get_finding, list_findings, nearest_neighbors, search_detections]
+    tools: [get_finding, list_findings, nearest_neighbors, search_detections, recall_entity]
     instructions: |
       Retrieve finding details, collect surrounding context, reconstruct the
       timeline and identify all entities.
@@ -36,7 +36,7 @@ phases:
   - id: attack-mapping
     agent: mitre_analyst
     name: "ATT&CK Mapping"
-    tools: [get_technique_rollup, create_attack_layer, get_finding]
+    tools: [get_technique_rollup, create_attack_layer, get_finding, recall_entity]
     instructions: |
       Map all findings to MITRE ATT&CK techniques, assess kill chain progression
       and identify detection gaps.
@@ -57,7 +57,7 @@ phases:
   - id: correlation
     agent: correlator
     name: "Cross-Signal Correlation"
-    tools: [list_findings, create_case, get_technique_rollup, nearest_neighbors]
+    tools: [list_findings, create_case, get_technique_rollup, nearest_neighbors, recall_entity]
     instructions: |
       Link related alerts across time, entity and technique dimensions. Identify
       attack chains and campaigns.
@@ -78,7 +78,7 @@ phases:
   - id: response-planning
     agent: responder
     name: "Response Planning"
-    tools: [create_approval_action, update_case, get_finding]
+    tools: [create_approval_action, update_case, get_finding, recall_entity]
     approval_required: true
     instructions: |
       Based on the full correlated scope, plan containment across all affected
@@ -100,7 +100,7 @@ phases:
   - id: report
     agent: reporter
     name: "Comprehensive Report"
-    tools: [get_case, list_findings, create_attack_layer]
+    tools: [get_case, list_findings, create_attack_layer, recall_entity]
     instructions: |
       Assemble the full investigation report from every artifact the earlier
       steps produced.

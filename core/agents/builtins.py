@@ -97,10 +97,15 @@ BUILTIN_AGENTS = [
         "color": "#FF6B6B",
         "description": "Rapid alert assessment and prioritization",
         "specialization": "Alert Triage & Prioritization",
-        "recommended_tools": ["list_findings", "get_finding", "create_case"],
+        "recommended_tools": [
+            "list_findings",
+            "get_finding",
+            "create_case",
+            "recall_entity",
+        ],
         "max_tokens": 2048,
         "enable_thinking": False,
-        "extra_principles": "- Speed first - provide rapid assessment\n- Be decisive - escalate, investigate, or dismiss\n- Focus on rapid triage, not deep investigation\n- Memory: call mempalace_search with alert entities before triaging; mempalace_add_drawer to wing=agent-decisions/triage-history after decision; store FP reasoning to false-positives",
+        "extra_principles": "- Speed first - provide rapid assessment\n- Be decisive - escalate, investigate, or dismiss\n- Focus on rapid triage, not deep investigation\n- Memory: recall_entity on alert entities before triaging; do not write to memory",
         "methodology": """<methodology>
 1. Fetch finding via get_finding
 2. Quick assess: severity, data source, anomaly score, MITRE techniques
@@ -126,11 +131,12 @@ BUILTIN_AGENTS = [
             "create_approval_action",
             "vstrike_ui_legend_apply",
             "vstrike_ui_rightpanel_focus",
+            "recall_entity",
         ],
         "max_tokens": 16384,
         "enable_thinking": True,
         "thinking_budget": 10000,
-        "extra_principles": "- Be thorough - follow systematic methodology\n- Document chain of evidence\n- Proactively suggest containment actions\n- Memory: mempalace_search all IOCs before starting; mempalace_add_drawer to wing=investigations/active-cases during; mempalace_kg_add for entity relationships found\n- When a VStrike network is loaded, drive the analyst's view in lockstep: vstrike_ui_legend_apply to set the right legend for your narrative, vstrike_ui_rightpanel_focus on the node currently under discussion",
+        "extra_principles": "- Be thorough - follow systematic methodology\n- Document chain of evidence\n- Proactively suggest containment actions\n- Memory: recall_entity on all IOCs before starting; do not write to memory\n- When a VStrike network is loaded, drive the analyst's view in lockstep: vstrike_ui_legend_apply to set the right legend for your narrative, vstrike_ui_rightpanel_focus on the node currently under discussion",
         "methodology": """<methodology>
 1. Retrieve data via MCP tools
 2. Collect context: related findings, logs, threat intel
@@ -151,11 +157,15 @@ BUILTIN_AGENTS = [
         "color": "#95E1D3",
         "description": "Proactive threat hunting and anomaly detection",
         "specialization": "Proactive Threat Hunting",
-        "recommended_tools": ["list_findings", "create_approval_action"],
+        "recommended_tools": [
+            "list_findings",
+            "create_approval_action",
+            "recall_entity",
+        ],
         "max_tokens": 16384,
         "enable_thinking": True,
         "thinking_budget": 10000,
-        "extra_principles": "- Think like an attacker\n- Search across all available data sources\n- Share insights to improve team hunting\n- Memory: mempalace_search in threat-intel wing before forming hypotheses; mempalace_add_drawer confirmed TTPs to wing=threat-intel/actor-profiles",
+        "extra_principles": "- Think like an attacker\n- Search across all available data sources\n- Share insights to improve team hunting\n- Memory: recall_entity on IOCs before forming hypotheses; do not write to memory",
         "methodology": """<methodology>
 1. Formulate hypothesis based on TTPs
 2. Define hunt parameters: scope, timeframe, sources
@@ -176,11 +186,16 @@ BUILTIN_AGENTS = [
         "color": "#F38181",
         "description": "Multi-signal correlation and pattern recognition",
         "specialization": "Signal Correlation & Pattern Analysis",
-        "recommended_tools": ["list_findings", "create_case", "get_technique_rollup"],
+        "recommended_tools": [
+            "list_findings",
+            "create_case",
+            "get_technique_rollup",
+            "recall_entity",
+        ],
         "max_tokens": 16384,
         "enable_thinking": True,
         "thinking_budget": 8000,
-        "extra_principles": "- Find hidden connections\n- Think multi-stage attack chains\n- Reduce alert fatigue by grouping findings\n- Memory: mempalace_search all wings for entity overlap before scoring; mempalace_find_tunnels for cross-wing connections; mempalace_kg_add for new entity links",
+        "extra_principles": "- Find hidden connections\n- Think multi-stage attack chains\n- Reduce alert fatigue by grouping findings\n- Memory: recall_entity on entities before scoring overlap; do not write to memory",
         "methodology": """<methodology>
 1. Gather findings via list_findings
 2. Identify common attributes: time proximity, entity overlap, MITRE patterns
@@ -201,10 +216,15 @@ BUILTIN_AGENTS = [
         "color": "#FF8B94",
         "description": "Incident response and containment",
         "specialization": "Incident Response & Containment",
-        "recommended_tools": ["get_finding", "update_case", "create_approval_action"],
+        "recommended_tools": [
+            "get_finding",
+            "update_case",
+            "create_approval_action",
+            "recall_entity",
+        ],
         "max_tokens": 4096,
         "enable_thinking": False,
-        "extra_principles": "- Speed matters in incident response\n- Preserve forensic evidence\n- Document all response activities\n- Memory: mempalace_search wing=agent-decisions/response-playbooks for prior playbooks on this incident type; mempalace_add_drawer outcome after response",
+        "extra_principles": "- Speed matters in incident response\n- Preserve forensic evidence\n- Document all response activities\n- Memory: recall_entity on incident entities before planning response; do not write to memory",
         "methodology": """<methodology>
 NIST Framework:
 1. Detection & Analysis: Review incident details via tools
@@ -238,10 +258,15 @@ Confidence scoring:
         "color": "#A8E6CF",
         "description": "Executive summaries, detailed reports, and board briefs",
         "specialization": "Reporting & Communication",
-        "recommended_tools": ["get_case", "list_cases", "list_findings"],
+        "recommended_tools": [
+            "get_case",
+            "list_cases",
+            "list_findings",
+            "recall_entity",
+        ],
         "max_tokens": 8192,
         "enable_thinking": False,
-        "extra_principles": "- Clear language, avoid jargon for executives\n- Focus on actionable insights\n- Never speculate - report only retrieved data\n- For board briefs: one page max, lead with risk posture, no CVEs or ATT&CK IDs in main body\n- Memory: mempalace_search in investigations/closed-cases for historical context before generating trend analysis",
+        "extra_principles": "- Clear language, avoid jargon for executives\n- Focus on actionable insights\n- Never speculate - report only retrieved data\n- For board briefs: one page max, lead with risk posture, no CVEs or ATT&CK IDs in main body\n- Memory: recall_entity on case entities for historical context; do not write to memory",
         "methodology": """<methodology>
 1. Gather data via tools (cases, findings, actions)
 2. Analyze context: severity, timeline, impact
@@ -294,11 +319,12 @@ Confidence scoring:
             "get_finding",
             "get_technique_rollup",
             "create_attack_layer",
+            "recall_entity",
         ],
         "max_tokens": 16384,
         "enable_thinking": True,
         "thinking_budget": 6000,
-        "extra_principles": "- Use specific technique IDs (T1566.001)\n- Explain attacker objectives\n- Visualize with ATT&CK layers\n- Memory: mempalace_search in threat-intel/actor-profiles for known actors using these techniques; mempalace_kg_query on technique IDs before attributing",
+        "extra_principles": "- Use specific technique IDs (T1566.001)\n- Explain attacker objectives\n- Visualize with ATT&CK layers\n- Memory: recall_entity on technique-linked entities before attributing; do not write to memory",
         "methodology": """<methodology>
 1. Retrieve findings and extract MITRE technique IDs
 2. Map to ATT&CK framework tactics (Recon -> Initial Access -> Execution -> ...)
@@ -319,11 +345,11 @@ Confidence scoring:
         "color": "#FFAAA5",
         "description": "Digital forensics and artifact analysis",
         "specialization": "Digital Forensics",
-        "recommended_tools": ["get_finding"],
+        "recommended_tools": ["get_finding", "recall_entity"],
         "max_tokens": 16384,
         "enable_thinking": True,
         "thinking_budget": 8000,
-        "extra_principles": "- Never modify original evidence\n- Document chain of custody\n- Be meticulous - small details matter\n- Memory: mempalace_search for prior forensic findings on same hosts/hashes; mempalace_add_drawer to wing=investigations/kill-chains; mempalace_kg_add artifact relationships",
+        "extra_principles": "- Never modify original evidence\n- Document chain of custody\n- Be meticulous - small details matter\n- Memory: recall_entity on hosts/hashes before analysis; do not write to memory",
         "methodology": """<methodology>
 1. Acquire evidence via MCP tools
 2. Preserve chain of custody documentation
@@ -349,11 +375,12 @@ Confidence scoring:
             "list_findings",
             "cf_lookup_ip_threat",
             "cf_lookup_domain_threat",
+            "recall_entity",
         ],
         "max_tokens": 16384,
         "enable_thinking": True,
         "thinking_budget": 6000,
-        "extra_principles": "- Focus on actionable intelligence\n- State confidence in attribution\n- Query multiple threat intel sources in parallel\n- Memory: mempalace_search in threat-intel/ioc-registry before querying external APIs (avoid duplicate lookups); mempalace_add_drawer enriched IOCs and actor attributions immediately\n- Cloudflare context: when finding.enrichment.threat_indicators contains Cloudforce One hits, treat them as ground-truth edge-observed indicators (cite source='cloudforce_one' and the STIX confidence). Cloudy summaries (finding.evidence.cloudy_summary) are premium per-event context — quote them with provenance, do not paraphrase as your own analysis.",
+        "extra_principles": "- Focus on actionable intelligence\n- State confidence in attribution\n- Query multiple threat intel sources in parallel\n- Memory: recall_entity on IOCs before querying external APIs; do not write to memory\n- Cloudflare context: when finding.enrichment.threat_indicators contains Cloudforce One hits, treat them as ground-truth edge-observed indicators (cite source='cloudforce_one' and the STIX confidence). Cloudy summaries (finding.evidence.cloudy_summary) are premium per-event context — quote them with provenance, do not paraphrase as your own analysis.",
         "methodology": """<methodology>
 1. Retrieve context and extract IOCs
 2. Enrich IOCs: IP geolocation, Shodan, VirusTotal, OTX
@@ -374,10 +401,15 @@ Confidence scoring:
         "color": "#C7CEEA",
         "description": "Compliance monitoring and policy validation",
         "specialization": "Compliance & Policy",
-        "recommended_tools": ["list_findings", "get_finding", "list_cases"],
+        "recommended_tools": [
+            "list_findings",
+            "get_finding",
+            "list_cases",
+            "recall_entity",
+        ],
         "max_tokens": 4096,
         "enable_thinking": False,
-        "extra_principles": "- Document for compliance audits\n- Map findings to framework controls\n- Prioritize high-risk violations\n- Memory: mempalace_add_drawer all framework mappings to wing=compliance/control-mapping; mempalace_diary_write compliance decisions for audit trail",
+        "extra_principles": "- Document for compliance audits\n- Map findings to framework controls\n- Prioritize high-risk violations\n- Memory: recall_entity on entities under review; do not write to memory",
         "methodology": """<methodology>
 1. Gather evidence via MCP tools
 2. Identify policy violations and assess severity
@@ -416,11 +448,12 @@ Confidence scoring:
             "anyrun_get_report",
             # URL behavioral analysis (core/integrations/url_analysis/tool.py)
             "url_analyze",
+            "recall_entity",
         ],
         "max_tokens": 16384,
         "enable_thinking": True,
         "thinking_budget": 10000,
-        "extra_principles": "- Static before dynamic analysis\n- Use multiple sandboxes; prefer cache lookup (cape_search_hash / ha_search_hash / anyrun_search_hash) before submitting new detonations\n- Extract comprehensive IOCs\n- Memory: mempalace_search in threat-intel/ioc-registry for known file hashes before sandboxing; mempalace_add_drawer malware family and IOCs; mempalace_kg_add malware → actor relationships",
+        "extra_principles": "- Static before dynamic analysis\n- Use multiple sandboxes; prefer cache lookup (cape_search_hash / ha_search_hash / anyrun_search_hash) before submitting new detonations\n- Extract comprehensive IOCs\n- Memory: recall_entity on file hashes before sandboxing; do not write to memory",
         "methodology": """<methodology>
 1. Retrieve context and extract file hashes
 2. Static analysis: File properties, strings, imports, PE structure
@@ -451,11 +484,12 @@ Confidence scoring:
             "cf_lookup_domain_threat",
             "vstrike_network_graph_get",
             "vstrike_ui_rightpanel_focus",
+            "recall_entity",
         ],
         "max_tokens": 16384,
         "enable_thinking": True,
         "thinking_budget": 8000,
-        "extra_principles": "- Understand normal traffic to spot anomalies\n- Deep dive protocol-specific attacks\n- Always look for C2 indicators\n- Memory: mempalace_search in infrastructure/network-baselines for known-good patterns; mempalace_add_drawer new C2 infrastructure to wing=threat-intel/ioc-registry\n- VStrike topology: use vstrike_network_graph_get for full {label, nodes, edges, bbox} when reasoning about blast radius or lateral paths; call vstrike_ui_rightpanel_focus to surface a node's panel for the analyst as you cite it",
+        "extra_principles": "- Understand normal traffic to spot anomalies\n- Deep dive protocol-specific attacks\n- Always look for C2 indicators\n- Memory: recall_entity on IPs/domains before analysis; do not write to memory\n- VStrike topology: use vstrike_network_graph_get for full {label, nodes, edges, bbox} when reasoning about blast radius or lateral paths; call vstrike_ui_rightpanel_focus to surface a node's panel for the analyst as you cite it",
         "methodology": """<methodology>
 1. Retrieve network findings and extract IOCs
 2. Flow analysis: Patterns, destinations, volumes
@@ -486,11 +520,12 @@ Confidence scoring:
             "cf_waf_unblock_ip",
             "cf_gateway_block_domain",
             "cf_access_revoke_session",
+            "recall_entity",
         ],
         "max_tokens": 16384,
         "enable_thinking": True,
         "thinking_budget": 3000,
-        "extra_principles": "- Act immediately on high-confidence threats (>=0.90)\n- Never auto-approve without strong evidence\n- Provide complete audit trail\n- Memory: mempalace_search in agent-decisions/approval-actions for prior auto-approvals on this entity; mempalace_add_drawer all approval decisions with confidence scores\n- Prefer the most surgical Cloudflare action available: cf_waf_block_ip for malicious source IPs, cf_gateway_block_domain for outbound C2/exfil, cf_access_revoke_session only when an authenticated user identity is implicated. All cf_* write actions go through the approval pipeline; do not call them directly when confidence < 0.90.",
+        "extra_principles": "- Act immediately on high-confidence threats (>=0.90)\n- Never auto-approve without strong evidence\n- Provide complete audit trail\n- Memory: recall_entity on entity before auto-response decisions; do not write to memory\n- Prefer the most surgical Cloudflare action available: cf_waf_block_ip for malicious source IPs, cf_gateway_block_domain for outbound C2/exfil, cf_access_revoke_session only when an authenticated user identity is implicated. All cf_* write actions go through the approval pipeline; do not call them directly when confidence < 0.90.",
         "methodology": """<methodology>
 1. Gather data from multiple detection sources (Tempo Flow, EDR)
 2. Correlate signals: shared IPs/hosts/users, time proximity, MITRE techniques
