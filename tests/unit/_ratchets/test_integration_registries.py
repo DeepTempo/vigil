@@ -23,15 +23,28 @@ import pytest
 
 from core.integrations._base.descriptor import iter_descriptors
 from core.integrations.integration_secrets import INTEGRATION_SECRET_FIELDS
+from core.integrations.mcp.service import extract_required_env_vars
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _MCP_CONFIG = _REPO_ROOT / "mcp-config.json"
 _CATALOG = _REPO_ROOT / "clients" / "web" / "src" / "config" / "integrations.ts"
 _SETTINGS_DATA = (
-    _REPO_ROOT / "clients" / "web" / "src" / "screens" / "settings" / "integrationsData.ts"
+    _REPO_ROOT
+    / "clients"
+    / "web"
+    / "src"
+    / "screens"
+    / "settings"
+    / "integrationsData.ts"
 )
 _DATA_SOURCE_DIALOG = (
-    _REPO_ROOT / "clients" / "web" / "src" / "screens" / "setup" / "DataSourceDialog.tsx"
+    _REPO_ROOT
+    / "clients"
+    / "web"
+    / "src"
+    / "screens"
+    / "setup"
+    / "DataSourceDialog.tsx"
 )
 _TS_PAIR_RE = re.compile(r"'([A-Za-z0-9_-]+)'\s*:\s*'([A-Za-z0-9_-]+)'")
 
@@ -209,3 +222,17 @@ def test_aliased_mcp_server_names_are_in_the_frontend_maps():
         "descriptor mcp_server_names that differ from id must appear in both "
         f"frontend maps:\n{missing}"
     )
+
+
+@pytest.mark.unit
+def test_elastic_mcp_config_declares_no_required_env_placeholders():
+    """Settings never writes ELASTIC_HOST; a ${ELASTIC_HOST} placeholder
+    marks the server dormant even after a UI save."""
+    servers = json.loads(_MCP_CONFIG.read_text())["mcpServers"]
+    elastic = servers["elastic"]
+    env = {
+        k: str(v)
+        for k, v in (elastic.get("env") or {}).items()
+        if not k.startswith("_")
+    }
+    assert extract_required_env_vars(env, list(elastic.get("args") or [])) == []
