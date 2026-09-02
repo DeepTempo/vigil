@@ -83,39 +83,6 @@ class MCPServer:
         # server. Read by mcp_client.connect_to_server at connect time.
         self.required_env_vars: List[str] = list(required_env_vars or [])
 
-    def start(self) -> bool:
-        """Start the MCP server."""
-        if self.process is not None:
-            logger.warning(f"Server {self.name} is already running")
-            return False
-
-        try:
-            # Prepare environment
-            env = os.environ.copy()  # noqa: ENV001 - MCP child process env
-            # httpx ignores REQUESTS_CA_BUNDLE, so inheriting it is not enough.
-            env.update(ca_bundle_env())
-            env.update(self.env)
-
-            # Start process
-            self.process = subprocess.Popen(
-                [self.command] + self.args,
-                cwd=self.cwd,
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-
-            self.status = "running"
-            self.start_time = datetime.now()
-            logger.info(f"Started MCP server: {self.name}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to start MCP server {self.name}: {e}")
-            self.status = "error"
-            return False
-
     def stop(self) -> bool:
         """Stop the MCP server."""
         if self.process is None:
