@@ -132,7 +132,10 @@ celerybeat.pid
 .env.local
 # Timestamped .env backups written by local tooling. One was sitting untracked
 # with a live provider key in it, which `git add -A` would have published.
-.env.bak.*
+# It then happened anyway: `.env.bak-<stamp>` matched neither pattern here, an
+# `add -A` swept it into a pushed branch, and every credential in it had to be
+# rotated. The glob is deliberately loose now -- anything starting `.env.bak`.
+.env.bak*
 .env.*.bak
 .venv
 env/
