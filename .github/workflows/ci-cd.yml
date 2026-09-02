@@ -126,7 +126,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install -r requirements.lock
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
