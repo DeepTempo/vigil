@@ -1,16 +1,26 @@
 """Prompt assembly for SOC agents (Reorg R1 / #482).
 
-``BASE_PROMPT`` and the memory-palace block live here, separated from the
-agent records so the record data stays free of prompt-template text.
+``BASE_PROMPT`` and the memory block live here, separated from the agent
+records so the record data stays free of prompt-template text.
 """
 
 # Memory operations block is inserted when recall_entity is available in
 # ALL_TOOLS (#735, #732). This keeps the agent's prompt honest: if the tool
 # is not available, the prompt won't advertise tools the agent can't call.
 _MEMORY_BLOCK = """<memory_operations>
-You have access to episodic memory via the recall_entity tool.
-Use it to retrieve prior Sightings, Verdicts, and Gaps for entities in scope (IPs, hashes, domains, accounts).
-Read prior history to avoid redundant analysis and apply past decisions; do not write to memory.
+Call recall_entity to read what past investigations saw and concluded about an
+entity: its Sightings, its Verdicts (an entity ruled a false positive before is
+the highest-value thing this returns) and its Declared Gaps. Keys are
+`type:value` — ip:10.2.3.4, sha256:abc..., domain:evil.com, user:jdoe. Every read
+is logged, so pass your own caller_kind and caller_id.
+
+An entity nobody has investigated returns empty lists. That is an answer, not an
+error, and not evidence of anything.
+
+Memory is read-only to you. It may change what you look at first; it never
+decides what you conclude, and a prior Verdict does not corroborate a finding of
+your own. Your conclusions reach memory when the investigation ends, not from
+here — there is no tool to write one and you must not look for one.
 </memory_operations>
 """
 
@@ -73,7 +83,7 @@ Use MCP tools (server_tool format):
 
 
 def render_base_prompt(
-    role: str, extra_principles: str = "", methodology: str = "", mcp_client=None
+    role: str, extra_principles: str = "", methodology: str = ""
 ) -> str:
     """Render BASE_PROMPT with the given fragments. Shared by built-in + custom.
 
@@ -88,8 +98,3 @@ def render_base_prompt(
         methodology=methodology or "",
         memory_operations=_memory_section(),
     )
-
-
-# Backward compatibility aliases
-_MEMORY_PALACE_BLOCK = _MEMORY_BLOCK
-_memory_palace_section = lambda mcp_client=None: _memory_section()  # noqa: E731

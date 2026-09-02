@@ -67,6 +67,22 @@ _READONLY_LEADS = frozenset(
 )
 
 
+# Chat must not write episodic memory (#735). The reason is not the one above:
+# a palace write is gateable, it simply must not happen — an analyst thinking
+# aloud is not a Verdict, and letting speculation reach the store is the
+# promotion of prose to fact ADR 0015 forbids. Dropped whole-server rather than
+# by verb because the palace ships 44 tools of which the write half is the
+# larger, so an allow-list of reads goes stale toward more writes. Chat reads
+# history through recall_entity, which is a static tool and unaffected. The
+# server itself stays connected: the daemon still uses it, and retiring it is
+# its own work.
+_MEMORY_PALACE_SERVER = "mempalace"
+
+
+def _is_memory_palace(name: str) -> bool:
+    return name.startswith(f"{_MEMORY_PALACE_SERVER}_")
+
+
 def _is_destructive_mcp(name: str) -> bool:
     """True for a server-prefixed MCP tool that performs an irreversible action.
 
@@ -117,7 +133,13 @@ def _declare(
     static_names = (
         list(static) if wanted is None else [n for n in wanted if n in static]
     )
-    mcp_names = [n for n in mcp if n not in static_names and not _is_destructive_mcp(n)]
+    mcp_names = [
+        n
+        for n in mcp
+        if n not in static_names
+        and not _is_destructive_mcp(n)
+        and not _is_memory_palace(n)
+    ]
     names = static_names + mcp_names
     catalogue = {**static, **mcp}
     declared = []

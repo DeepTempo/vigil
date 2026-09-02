@@ -70,3 +70,45 @@ def test_declare_drops_blank_description_mcp_tool():
     # "[server] " prefix), so the emptiness guard drops it.
     declared = {t["id"] for t in _declare(None, [_mcp("shodan_host", description="")])}
     assert "shodan_host" not in declared
+
+
+# The second filter, and it exists for a different reason than the first. A
+# destructive tool is dropped because chat cannot gate it; the memory palace is
+# dropped because chat must not write episodic memory at all (#735). An analyst
+# thinking aloud is not a Verdict, and letting speculation reach the store is the
+# promotion of prose to fact ADR 0015 forbids. Chat reads history through
+# recall_entity instead, which is a static tool and unaffected by this.
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "name",
+    [
+        "mempalace_add_drawer",
+        "mempalace_diary_write",
+        "mempalace_kg_add",
+        "mempalace_kg_invalidate",
+        "mempalace_kg_supersede",
+        "mempalace_update_drawer",
+        "mempalace_event_append",
+        "mempalace_artifact_put",
+        # Reads go too: the palace ships 44 tools and its write half is the
+        # larger one, so an allow-list of reads goes stale toward more writes.
+        # Whole-server is the only filter that stays closed on its own.
+        "mempalace_search",
+        "mempalace_kg_query",
+        "mempalace_status",
+    ],
+)
+def test_declare_drops_every_mempalace_tool(name):
+    declared = {t["id"] for t in _declare(None, [_mcp(name)])}
+    assert name not in declared
+
+
+@pytest.mark.unit
+def test_declare_drops_the_palace_without_touching_other_servers():
+    declared = {
+        t["id"]
+        for t in _declare(
+            [], [_mcp("mempalace_add_drawer"), _mcp("virustotal_get_ip_report")]
+        )
+    }
+    assert declared == {"virustotal_get_ip_report"}
