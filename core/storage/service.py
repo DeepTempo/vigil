@@ -276,7 +276,7 @@ class DatabaseService:
         self, limit: int = 100, max_age_hours: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Findings stored but never enriched (ai_enrichment IS NULL), oldest first.
-        Returns dicts (to_dict inside the session) so callers get detached-safe data.
+        Returns dicts (FindingSchema.dump inside the session) so callers get detached-safe data.
         ``max_age_hours`` bounds the working set so ancient, un-enrichable findings
         aren't retried forever."""
         with self.db_manager.session_scope() as session:

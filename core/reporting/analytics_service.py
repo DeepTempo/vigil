@@ -525,7 +525,12 @@ async def get_attack_time_heatmap(
 async def get_mitre_technique_distribution(
     db: Session, start_time: datetime, end_time: datetime, limit: int = 10
 ) -> List[Dict[str, Any]]:
-    """Get distribution of MITRE ATT&CK techniques from findings."""
+    """Get distribution of MITRE ATT&CK techniques from findings.
+
+    Counts child-table rows only. Nested / list-shaped JSONB maps were never a
+    findings column contract; numeric ``{key: confidence}`` values are what
+    create/update persist and what the backfill copies.
+    """
 
     rows = (
         db.query(

@@ -63,6 +63,17 @@ def test_create_update_and_bulk_persist_numeric_rows_only():
     replaced = FindingSchema.dump(service.get_finding("f-mitre-write-1"))
     assert replaced["mitre_predictions"] == {"T1048.003": 0.25}
 
+    assert service.update_finding(
+        "f-mitre-write-1",
+        mitre_predictions={"T1071.001": 0.25},
+        severity="low",
+        predicted_techniques=[{"technique_id": "T1071.001"}],
+        unknown_s3_field=True,
+    )
+    whole_dict = FindingSchema.dump(service.get_finding("f-mitre-write-1"))
+    assert whole_dict["mitre_predictions"] == {"T1071.001": 0.25}
+    assert whole_dict["severity"] == "low"
+
     bulk = service.bulk_create_findings(
         [
             {
