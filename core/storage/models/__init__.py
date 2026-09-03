@@ -2,7 +2,9 @@
 
 Domain modules live beside the matching schemas in
 ``core.storage.schemas``. Public names are re-exported here so
-``from core.storage.models import ...`` stays valid.
+``from core.storage.models import ...`` stays valid. Import from this
+package, not a submodule, so every mapped class registers on
+``Base.metadata``.
 """
 
 from core.storage.models.ai import (
