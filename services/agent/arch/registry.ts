@@ -82,3 +82,11 @@ export function archFor(kind: RunKind): ArchEntry {
 export function registeredKinds(): RunKind[] {
   return (Object.keys(REGISTERED) as RunKind[]).sort();
 }
+
+// Whether a kind runs the shared hunt lead-loop -- `hunt`, `root_cause`, and any
+// future kind that reuses HUNT_LOOP. The one place the membership is decided, so a
+// new hunt-like kind is registered above and nothing downstream has to be found and
+// widened by hand. Mirrors Python's is_hunt_like / HUNT_LIKE_RUN_KINDS.
+export function isHuntLike(kind: RunKind): boolean {
+  return REGISTERED[kind]?.workflow === "hunt";
+}
