@@ -3,9 +3,10 @@ import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { LedgerRepository } from "../../ledger/repository.js";
 import type { NewEvent, RunKind } from "../../contracts/events.js";
+import { TEST_DSN } from "../support/testdb.js";
 
 const pool = new pg.Pool({
-  connectionString: process.env["DATABASE_URL"] ?? "postgres://vigil:vigil@localhost:55432/vigil_test",
+  connectionString: TEST_DSN,
 });
 const ledger = new LedgerRepository(pool);
 
