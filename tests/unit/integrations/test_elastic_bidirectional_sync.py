@@ -39,7 +39,7 @@ class TestElasticUpstreamSync:
 
     @pytest.mark.asyncio
     async def test_sync_closed(self):
-        with patch("core.integrations.elastic.ingestion.get_integration_config") as cfg:
+        with patch("core.integrations.elastic.ingestion.resolve") as cfg:
             cfg.return_value = {
                 "elasticsearch_url": "https://es.test:9200",
                 "kibana_url": "https://kibana.test:5601",
@@ -61,7 +61,7 @@ class TestElasticUpstreamSync:
 
     @pytest.mark.asyncio
     async def test_sync_maps_resolved_to_closed(self):
-        with patch("core.integrations.elastic.ingestion.get_integration_config") as cfg:
+        with patch("core.integrations.elastic.ingestion.resolve") as cfg:
             cfg.return_value = {
                 "elasticsearch_url": "https://es.test:9200",
                 "kibana_url": "https://kibana.test:5601",
@@ -82,7 +82,7 @@ class TestElasticUpstreamSync:
 
     @pytest.mark.asyncio
     async def test_sync_maps_new_to_open(self):
-        with patch("core.integrations.elastic.ingestion.get_integration_config") as cfg:
+        with patch("core.integrations.elastic.ingestion.resolve") as cfg:
             cfg.return_value = {
                 "elasticsearch_url": "https://es.test:9200",
                 "kibana_url": "https://kibana.test:5601",
@@ -103,7 +103,7 @@ class TestElasticUpstreamSync:
 
     @pytest.mark.asyncio
     async def test_returns_false_when_service_unavailable(self):
-        with patch("core.integrations.elastic.ingestion.get_integration_config") as cfg:
+        with patch("core.integrations.elastic.ingestion.resolve") as cfg:
             cfg.return_value = {}
             from core.integrations.elastic.ingestion import ElasticIngestion
 
