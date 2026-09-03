@@ -18,18 +18,38 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _MCP_CONFIG = _REPO_ROOT / "mcp-config.json"
 
-_FLOATING_GIT_REFS = {"HEAD", "head", "main", "master", "latest", "dev", "develop"}
-_RANGE_IN_VERSION = re.compile(r"[<>=^~*]")
-_EXACT_PYPI = re.compile(r"==[A-Za-z0-9][A-Za-z0-9._-]*$")
+# Concrete versions only: 1.2.3, 2025.4.8. Dist-tags, x-ranges, and pre-releases
+# are not pins.
+_EXACT_VERSION = re.compile(r"^[0-9]+(\.[0-9]+)*$")
+_EXACT_PYPI = re.compile(r"==([0-9]+(?:\.[0-9]+)*)$")
 _GIT_REF = re.compile(r"\.git@([^#]+)$")
 _SHA256 = re.compile(r"@sha256:[0-9a-f]{64}$")
+_MCP_REMOTE_PATCH = re.compile(r"^0\.1\.(\d+)$")
+_FLOATING_GIT_REFS = {"HEAD", "head", "main", "master", "latest", "dev", "develop"}
 
-# uvx flags that consume the next argv token as a package spec.
-_UVX_SPEC_FLAGS = {
-    "--from",
-    "--with",
+# uvx flags whose next token is a package spec that must be pinned.
+_UVX_SPEC_FLAGS = {"--from", "--with"}
+# uvx flags whose next token is not a package (interpreter, path, index).
+_UVX_VALUE_FLAGS = {
+    "--python",
     "--with-editable",
     "--with-requirements",
+    "--index",
+    "--extra-index-url",
+}
+_DOCKER_VALUE_FLAGS = {
+    "-e",
+    "--env",
+    "-v",
+    "--volume",
+    "-w",
+    "--workdir",
+    "--name",
+    "-u",
+    "--user",
+    "--platform",
+    "-p",
+    "--publish",
 }
 
 
@@ -48,7 +68,7 @@ def _npm_version(spec: str) -> str | None:
 
 def _npm_pinned(spec: str) -> bool:
     version = _npm_version(spec)
-    return bool(version) and not _RANGE_IN_VERSION.search(version) and version != "latest"
+    return bool(version) and bool(_EXACT_VERSION.fullmatch(version))
 
 
 def _npx_package(args: list[str]) -> str | None:
@@ -64,10 +84,19 @@ def _npx_package(args: list[str]) -> str | None:
     return None
 
 
+def _git_pinned(spec: str) -> bool:
+    match = _GIT_REF.search(spec.split("#", 1)[0])
+    if not match:
+        return False
+    ref = match.group(1)
+    if ref in _FLOATING_GIT_REFS or ref.startswith(("refs/heads/", "refs/remotes/")):
+        return False
+    return True
+
+
 def _pypi_or_git_pinned(spec: str) -> bool:
     if spec.startswith("git+") or "git+" in spec:
-        match = _GIT_REF.search(spec.split("#", 1)[0])
-        return bool(match) and match.group(1) not in _FLOATING_GIT_REFS
+        return _git_pinned(spec)
     return bool(_EXACT_PYPI.search(spec))
 
 
@@ -84,6 +113,9 @@ def _uvx_unpinned(args: list[str]) -> list[str]:
                 has_from = True
             if not _pypi_or_git_pinned(spec):
                 unpinned.append(spec)
+            i += 2
+            continue
+        if arg in _UVX_VALUE_FLAGS:
             i += 2
             continue
         if arg.startswith("-"):
@@ -103,13 +135,56 @@ def _docker_image(args: list[str]) -> str | None:
         if skip_next:
             skip_next = False
             continue
-        if arg in ("-e", "--env", "-v", "--volume", "-w", "--workdir", "--name", "-u"):
+        if arg in _DOCKER_VALUE_FLAGS:
             skip_next = True
             continue
         if arg.startswith("-") or arg == "run":
             continue
         images.append(arg)
     return images[-1] if images else None
+
+
+def _mcp_remote_in_cve_window(version: str) -> bool:
+    """CVE-2025-6514 is fixed in 0.1.16; stay on exact 0.1.N with N >= 16."""
+    match = _MCP_REMOTE_PATCH.fullmatch(version)
+    return bool(match) and int(match.group(1)) >= 16
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "spec, ok",
+    [
+        ("pkg@1.2.3", True),
+        ("@scope/pkg@2025.4.8", True),
+        ("pkg", False),
+        ("pkg@latest", False),
+        ("pkg@Latest", False),
+        ("pkg@next", False),
+        ("pkg@^0.1.16", False),
+        ("pkg@0.1.x", False),
+    ],
+)
+def test_npm_pin_helper(spec: str, ok: bool):
+    assert _npm_pinned(spec) is ok
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "spec, ok",
+    [
+        ("falcon-mcp==0.19.0", True),
+        ("falcon-mcp==latest", False),
+        ("mcp<2", False),
+        ("mcp==1.29.1", True),
+        ("git+https://github.com/org/repo.git@v0.7.0", True),
+        ("git+https://github.com/org/repo.git", False),
+        ("git+https://github.com/org/repo.git@HEAD", False),
+        ("git+https://github.com/org/repo.git@main", False),
+        ("git+https://github.com/org/repo.git@refs/heads/main", False),
+    ],
+)
+def test_pypi_or_git_pin_helper(spec: str, ok: bool):
+    assert _pypi_or_git_pinned(spec) is ok
 
 
 @pytest.mark.unit
@@ -157,10 +232,30 @@ def test_mcp_remote_stays_inside_the_0_1_cve_window():
                 continue
             found += 1
             version = _npm_version(arg) or ""
-            if not version.startswith("0.1.") or _RANGE_IN_VERSION.search(version):
+            if not _mcp_remote_in_cve_window(version):
                 offenders[name] = arg
-    assert found, "no mcp-remote specs found; the CVE pin ratchet is vacuous"
-    assert not offenders, (
-        "mcp-remote must stay on an exact 0.1.x pin (CVE-2025-6514 window), "
-        f"not a range or 0.8.x: {offenders}"
+    assert found >= 3, (
+        "expected several mcp-remote specs; the CVE pin ratchet is vacuous "
+        f"if they were renamed ({found} found)"
     )
+    assert not offenders, (
+        "mcp-remote must stay on an exact 0.1.N pin with N>=16 "
+        f"(CVE-2025-6514 window), not a range or 0.8.x: {offenders}"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "version, ok",
+    [
+        ("0.1.16", True),
+        ("0.1.49", True),
+        ("0.1.15", False),
+        ("0.1.0", False),
+        ("0.1.x", False),
+        ("0.8.3", False),
+        ("^0.1.16", False),
+    ],
+)
+def test_mcp_remote_cve_window_helper(version: str, ok: bool):
+    assert _mcp_remote_in_cve_window(version) is ok
