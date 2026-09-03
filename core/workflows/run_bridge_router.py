@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header
@@ -162,8 +164,53 @@ def record_terminal(
     if origin:
         _record_report(origin, run_id, update)
 
+    # A threat hunt that proved a compromise tees up the backward root-cause run,
+    # parked for the operator's go-ahead. Computed once: an RCA's own handoff
+    # (run_kind root_cause) returns False, so a root cause never spawns another.
+    # The forward hunt files each handoff the moment it lands (see the /handoff
+    # route), so by the time its terminal arrives the case and RCA are usually
+    # already teed up; _process_handoff is idempotent per handoff, so re-sending
+    # them here is a safety net, not a second case.
+    start_rca = _source_is_hunt(run_id, run_service)
     for handoff in update.handoffs:
-        _open_case(run_id, handoff, origin)
+        _process_handoff(run_id, handoff, origin, start_rca, run_service)
+
+
+# A handoff pushed the moment the hunt journals it, ahead of the terminal that will
+# carry it again. A forward hunt escalates and keeps hunting -- its terminal can be
+# an hour of parking away, or never arrive -- so the case IR receives, and the
+# root-cause run it tees up, are filed here rather than left waiting on that end.
+@router.post("/{run_id}/handoff", status_code=204)
+def record_handoff(
+    run_id: str,
+    handoff: TerminalHandoff,
+    authorization: Optional[str] = Header(default=None),
+    run_service: WorkflowRunService = Depends(provide_workflow_runs),
+) -> None:
+    authorise(authorization, "run handoff")
+    origin = _origin_case(run_id, run_service)
+    _process_handoff(
+        run_id, handoff, origin, _source_is_hunt(run_id, run_service), run_service
+    )
+
+
+# Opens the case a handoff hands over and, for a hunt, tees up the backward run --
+# once per handoff. Both the /handoff push and the terminal that re-carries it land
+# here, so the RCA dedup guards the case too: a handoff whose root-cause run already
+# exists has already opened its case, and a second call is a no-op rather than a
+# duplicate.
+def _process_handoff(
+    run_id: str,
+    handoff: TerminalHandoff,
+    origin: str,
+    start_rca: bool,
+    run_service: WorkflowRunService,
+) -> None:
+    if start_rca and _rca_exists(run_id, handoff, run_service):
+        return
+    opened_case = _open_case(run_id, handoff, origin)
+    if start_rca:
+        _start_root_cause(run_id, handoff, opened_case)
 
 
 def _origin_case(run_id: str, run_service: WorkflowRunService) -> str:
@@ -213,7 +260,9 @@ def _record_report(case_id: str, run_id: str, update: TerminalUpdate) -> None:
 
 # A run that ended by handing work over opens the case that receives it. The agent
 # layer holds no case table, so the document travels and this side files it.
-def _open_case(run_id: str, handoff: TerminalHandoff, origin: str = "") -> None:
+def _open_case(
+    run_id: str, handoff: TerminalHandoff, origin: str = ""
+) -> Optional[str]:
     from core.storage.database_data_service import DatabaseDataService
 
     try:
@@ -225,11 +274,130 @@ def _open_case(run_id: str, handoff: TerminalHandoff, origin: str = "") -> None:
         )
     except Exception:  # noqa: BLE001 — the run ended either way
         logger.exception("could not open %s handed off by %s", handoff.case_id, run_id)
-        return
+        return None
 
+    opened_id = (opened or {}).get("case_id", "")
     # Both directions, so neither case is a dead end.
-    if origin and opened:
-        _record_handoff(origin, run_id, handoff, opened.get("case_id", ""))
+    if origin and opened_id:
+        _record_handoff(origin, run_id, handoff, opened_id)
+    return opened_id or None
+
+
+def _source_is_hunt(run_id: str, run_service: WorkflowRunService) -> bool:
+    """True only when ``run_id`` is a threat hunt (run_kind 'hunt') — the one kind
+    whose handoff tees up a backward root-cause run. An RCA's own handoff resolves
+    to run_kind 'root_cause' and returns False, so a root cause never spawns another.
+    """
+    from core.workflows.workflows_service import HUNT_RUN_KIND, WorkflowsService
+
+    run = run_service.get_run(run_id) or {}
+    wf_id = run.get("workflow_id")
+    if not wf_id:
+        return False
+    try:
+        workflow = WorkflowsService().get_workflow(str(wf_id))
+    except Exception:  # noqa: BLE001 — a missing workflow just means no RCA
+        return False
+    return bool(workflow and workflow.run_kind == HUNT_RUN_KIND)
+
+
+# The join key tying a backward root-cause run to the handoff it traces back from.
+# One spelling, since both the dedup check and the enqueue key off it.
+def _triggered_by(source_run_id: str, handoff: TerminalHandoff) -> str:
+    return f"handoff:{source_run_id}:{handoff.case_id}"
+
+
+# Whether the backward run for this handoff was already teed up, keyed by the
+# handoff it traces back from. Guards both the case and the RCA, since a handoff
+# arrives twice -- once pushed the moment it lands, once on the terminal that
+# re-carries it -- and the second must open nothing new. Fail-open: a missed dedup
+# is a duplicate case, better than no root-cause run at all.
+def _rca_exists(
+    source_run_id: str, handoff: TerminalHandoff, run_service: WorkflowRunService
+) -> bool:
+    triggered_by = _triggered_by(source_run_id, handoff)
+    try:
+        existing = run_service.list_runs(workflow_id="root-cause-analysis", limit=50)
+        return any(r.get("triggered_by") == triggered_by for r in existing)
+    except Exception:  # noqa: BLE001 — a missed dedup is better than no RCA
+        logger.exception("could not check for an existing root-cause run")
+        return False
+
+
+# A proven hunt hands off; the RCA that traces how it started is teed up here rather
+# than left for someone to remember. It parks at its hypothesis_approval checkpoint
+# (root-cause-analysis declares it "ask"), so it waits in the same approvals inbox a
+# hunt uses for the operator to go ahead. The backward hypothesis is derived from the
+# handoff finding, which already carries the confirmed claim — not the later report.
+# _process_handoff has already guarded on _rca_exists, so this is the sole tee-up.
+def _start_root_cause(
+    source_run_id: str,
+    handoff: TerminalHandoff,
+    opened_case: Optional[str],
+) -> None:
+    params = {
+        "hypothesis": _rca_hypothesis(handoff),
+        "context": _rca_context(handoff),
+        "agent_id": "threat_hunter",
+        # Files the RCA's report back onto the IR case the hunt opened, and lets it
+        # read that case's finding as target context.
+        "case_id": opened_case or handoff.case_id,
+        "source_run_id": source_run_id,
+    }
+    try:
+        asyncio.run(_enqueue_root_cause(params, _triggered_by(source_run_id, handoff)))
+    except Exception:  # noqa: BLE001 — the case it opened is the deliverable
+        logger.exception(
+            "could not tee up a root-cause run for handoff %s of %s",
+            handoff.case_id,
+            source_run_id,
+        )
+
+
+async def _enqueue_root_cause(params: Dict[str, Any], triggered_by: str) -> None:
+    from core.workflows.workflows_service import WorkflowsService
+
+    await WorkflowsService().execute_workflow(
+        "root-cause-analysis", params, triggered_by=triggered_by
+    )
+
+
+# A Windows hostname (FYODOR-L) if the handoff names one, else the first IP. The
+# hypothesis reads better naming the host, but a run still starts without one.
+_HOST_RE = re.compile(r"\b[A-Z][A-Z0-9]+-[A-Z0-9]+\b")
+_IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+
+
+def _rca_subject(handoff: TerminalHandoff) -> str:
+    text = f"{handoff.title}\n{handoff.markdown}"
+    host = _HOST_RE.search(text)
+    if host:
+        return host.group(0)
+    ip = _IP_RE.search(text)
+    return ip.group(0) if ip else "the confirmed-compromised host"
+
+
+def _rca_hypothesis(handoff: TerminalHandoff) -> str:
+    return (
+        f"{_rca_subject(handoff)} was compromised via an initial-access vector that "
+        f"led to the confirmed threat escalated as {handoff.case_id}; establish how "
+        "the attacker first got onto this host — the initial-access vector and "
+        "patient zero."
+    )
+
+
+def _rca_context(handoff: TerminalHandoff) -> str:
+    finding = handoff.markdown.strip() or handoff.title
+    return (
+        "This run follows a CONFIRMED compromise handed to incident response. The "
+        "confirmed finding to work backward from:\n\n"
+        f"{finding}\n\n"
+        "Work BACKWARD to the initial-access vector: find the earliest malicious "
+        "activity that PRECEDES the confirmed compromise, what was delivered to the "
+        "user and how, and when. Report the initial-access vector confirmed / "
+        "refuted / inconclusive with the specific artifact, delivery method, and "
+        "timestamp."
+    )
 
 
 def _with_origin(markdown: str, origin: str) -> str:

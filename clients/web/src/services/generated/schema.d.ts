@@ -7411,6 +7411,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/runs/{run_id}/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Handoff */
+        post: operations["post_internal_runs_run_id_handoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/runs/{run_id}/phases": {
         parameters: {
             query?: never;
@@ -10388,7 +10405,7 @@ export interface components {
             prompt: string;
             /**
              * Run Kind
-             * @description One of hunt, investigate, compose, chat.
+             * @description One of hunt, root_cause, investigate, compose, chat.
              * @default hunt
              */
             run_kind: string;
@@ -23558,6 +23575,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Decisions"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_internal_runs_run_id_handoff: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TerminalHandoff"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

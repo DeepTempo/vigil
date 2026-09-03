@@ -408,6 +408,14 @@ def resolve_hunt(
         "hypothesis_loop": HUNT_HYPOTHESIS_LOOP,
     }
 
+    # Checkpoint policies a definition declares (e.g. root-cause-analysis sets
+    # hypothesis_approval: ask so it parks for operator go-ahead at start). The
+    # agent merges these over its DEFAULT_CHECKPOINTS, so an unset policy keeps the
+    # default; omit the key entirely when the definition names none.
+    checkpoints = dict(definition.metadata.get("checkpoints") or {})
+    if checkpoints:
+        config["checkpoints"] = checkpoints
+
     return _dump(playbook), _dump(config)
 
 

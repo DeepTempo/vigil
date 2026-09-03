@@ -36,6 +36,12 @@ export interface Mirror {
   readonly answerable: boolean;
   phase(runId: string, update: PhaseUpdate): Promise<void>;
   terminal(runId: string, result: TerminalResult): Promise<void>;
+  // A case handed to IR mid-run, filed the moment it is journaled rather than
+  // held back until the run ends. A hunt escalates and keeps hunting, so its
+  // terminal can be an hour of parking away -- or never arrive, if the run parks
+  // for good. The terminal still carries the same handoffs, so the backend that
+  // takes this must be idempotent per case.
+  handoff(runId: string, handoff: TerminalHandoff): Promise<void>;
   decisions(runId: string): Promise<ResolutionPayload[]>;
 }
 
@@ -45,6 +51,7 @@ export const nullMirror: Mirror = {
   answerable: false,
   phase: async () => {},
   terminal: async () => {},
+  handoff: async () => {},
   decisions: async () => [],
 };
 
@@ -74,6 +81,7 @@ export function httpMirror(options: MirrorOptions): Mirror {
     answerable: true,
     phase: (runId, update) => post(`/${encodeURIComponent(runId)}/phases`, update),
     terminal: (runId, result) => post(`/${encodeURIComponent(runId)}/terminal`, result),
+    handoff: (runId, handoff) => post(`/${encodeURIComponent(runId)}/handoff`, handoff),
     decisions: httpAnswers(options),
   };
 }

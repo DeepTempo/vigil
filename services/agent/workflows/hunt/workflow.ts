@@ -24,7 +24,7 @@ import { grantsOf } from "../lead/workflow.js";
 
 export interface HuntOptions {
   run_id: string;
-  // The kind the run was started as. "hunt" for a forward hunt, "root-cause" for a
+  // The kind the run was started as. "hunt" for a forward hunt, "root_cause" for a
   // backward one: the loop is the same, so this only decides how events are stamped.
   run_kind: RunKind;
   spec: RunSpec;
@@ -32,6 +32,12 @@ export interface HuntOptions {
   queue: DirectiveQueue;
   started_by?: string;
   announce?: Announce;
+  // Told the moment a handoff is journaled, not held back to the terminal. A hunt
+  // escalates and keeps hunting, so its terminal can be far off or never come; the
+  // case and the root-cause run it tees up should not wait on that. Fail-open --
+  // the ledger is the record, and the terminal carries the same handoffs, so a
+  // backend that takes these must be idempotent per case.
+  onHandoff?: (runId: string, handoff: TerminalHandoff) => Promise<void>;
   signal?: AbortSignal;
 }
 
@@ -94,6 +100,10 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
     harness.budget,
   );
 
+  // Seeded with the escalations the ledger already holds, so a resumed hunt files
+  // only the ones this attempt raises rather than re-filing the lot on every sweep.
+  const filed = new Set(ledger.projection.handoffs.map((handoff) => handoff.case_id));
+
   for (;;) {
     // Handing the run back, not ending it. This signal fires for exactly one
     // reason -- renewal found another worker holding the lease -- so that worker
@@ -105,6 +115,10 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
       // The controller buffers an iteration and the caller makes it durable: a
       // crash between the two loses the iteration rather than half of it.
       await ledger.flush();
+      // Filed off the durable ledger, so a case is never announced for an iteration
+      // a crash rolled back. An escalation this iteration reaches IR now, not when
+      // the hunt eventually stops -- which for a parked run may be never.
+      if (options.onHandoff) await fileHandoffs(options.onHandoff, run_id, ledger.projection, filed);
       if (iteration.hunt_status === "terminal") {
         return await end(harness, options, ledger, outcomeOf(iteration.hunt_outcome), iteration.note, controller, narrator);
       }
@@ -221,11 +235,35 @@ async function handoffsOf(harness: Harness<HuntKinds>, runId: string, projection
   return events
     .filter((event) => event.kind === "handoff")
     .map((event) => event.payload as Handoff)
-    .map((handoff) => ({
-      case_id: handoff.case_id,
-      title: projection.hypotheses.get(handoff.hypothesis_id)?.statement ?? handoff.rationale,
-      markdown: handoff.case_markdown ?? handoff.case_file ?? handoff.rationale,
-    }));
+    .map((handoff) => toTerminalHandoff(handoff, projection));
+}
+
+// The case a handoff hands over, named by the claim it rests on. One mapping, so
+// what is pushed the moment a handoff lands and what rides out on the terminal are
+// the same case, titled the same way.
+function toTerminalHandoff(handoff: Handoff, projection: Projection): TerminalHandoff {
+  return {
+    case_id: handoff.case_id,
+    title: projection.hypotheses.get(handoff.hypothesis_id)?.statement ?? handoff.rationale,
+    markdown: handoff.case_markdown ?? handoff.case_file ?? handoff.rationale,
+  };
+}
+
+// New handoffs since the last look, filed as they land. Seeded with whatever the
+// ledger already held, so a resume does not re-file the escalations a prior attempt
+// already sent -- the backend is idempotent, but a parked hunt is swept every
+// interval and would otherwise re-announce every case on every sweep.
+async function fileHandoffs(
+  onHandoff: (runId: string, handoff: TerminalHandoff) => Promise<void>,
+  runId: string,
+  projection: Projection,
+  filed: Set<string>,
+): Promise<void> {
+  for (const handoff of projection.handoffs) {
+    if (filed.has(handoff.case_id)) continue;
+    filed.add(handoff.case_id);
+    await onHandoff(runId, toTerminalHandoff(handoff, projection));
+  }
 }
 
 // What the workers were granted and nothing else: a chain runs with no decision

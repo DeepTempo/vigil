@@ -13,6 +13,13 @@ trigger_examples:
 # cannot express a backward walk whose next question is the last answer's subject.
 run_kind: root_cause
 
+# An RCA is teed up automatically when a threat hunt hands off to IR, so it parks
+# for the operator to go ahead before spending a model call -- the same
+# hypothesis_approval gate a threat hunt raises at its own start. ask suspends the
+# run until a human approves; the other checkpoints keep their auto defaults.
+checkpoints:
+  hypothesis_approval: ask
+
 # Deliberately empty. What a run traces back is a claim about one confirmed
 # compromise on one estate, supplied by the caller (the triggering finding: host,
 # malware, C2, timeframe). A run with no hypothesis from the caller is refused --
@@ -86,7 +93,7 @@ phases:
   - id: threat_hunter
     agent: threat_hunter
     name: "Endpoint reconstruction"
-    tools: [search_findings, nearest_neighbors, telemetry_search]
+    tools: [findings_search, similar_findings, telemetry_search]
     instructions: |
       Walk the host backward: process lineage (which parent spawned the confirmed
       malicious child), file-create events (what wrote the payload and where), and
@@ -96,7 +103,7 @@ phases:
   - id: network_analyst
     agent: network_analyst
     name: "Delivery and egress"
-    tools: [telemetry_search, search_findings]
+    tools: [telemetry_search, findings_search]
     instructions: |
       Find how the payload arrived over the wire -- the download, mail pull or web
       request around the time the file first appeared -- and tie its external
@@ -105,7 +112,7 @@ phases:
   - id: threat_intel
     agent: threat_intel
     name: "Delivery-path enrichment"
-    tools: [lookup_indicators]
+    tools: [indicator_lookup]
     instructions: |
       Reputation and attribution for the delivery-path observables: the download
       domain, the sender infrastructure, the payload hash. A miss is not
