@@ -88,9 +88,9 @@ class TestProcessHandoff:
 
     def test_a_hunt_handoff_opens_a_case_and_tees_the_rca(self):
         svc = _run_service()
-        with patch.object(rbr, "_open_case", return_value="case-opened") as open_case, patch.object(
-            rbr, "_start_root_cause"
-        ) as start_rca:
+        with patch.object(
+            rbr, "_open_case", return_value="case-opened"
+        ) as open_case, patch.object(rbr, "_start_root_cause") as start_rca:
             rbr._process_handoff("run-1", HANDOFF, "", True, svc)
         open_case.assert_called_once()
         start_rca.assert_called_once()
@@ -112,9 +112,9 @@ class TestProcessHandoff:
     def test_a_non_hunt_handoff_opens_a_case_but_tees_nothing(self):
         # A root-cause run's own handoff opens its case and spawns no further RCA.
         svc = _run_service()
-        with patch.object(rbr, "_open_case", return_value="case-opened") as open_case, patch.object(
-            rbr, "_start_root_cause"
-        ) as start_rca:
+        with patch.object(
+            rbr, "_open_case", return_value="case-opened"
+        ) as open_case, patch.object(rbr, "_start_root_cause") as start_rca:
             rbr._process_handoff("run-2", HANDOFF, "", False, svc)
         open_case.assert_called_once()
         start_rca.assert_not_called()

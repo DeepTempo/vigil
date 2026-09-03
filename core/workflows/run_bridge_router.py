@@ -261,9 +261,15 @@ def _record_report(case_id: str, run_id: str, update: TerminalUpdate) -> None:
 # the hunt journals it, then again on the terminal that re-carries it -- would open
 # two cases with nothing able to tell they are the same escalation. No date in the
 # key, so two arrivals either side of midnight still land on one case.
+#
+# 16 hex characters, not 8. A collision here does not merely reuse an id: the second
+# escalation finds the first one's case already open and returns, so its case file is
+# discarded with nothing said. 32 bits makes that a coin flip at seventy-odd thousand
+# escalations; 64 makes it unreachable, and cases.case_id is String(50) against the
+# 29 this spends, so the width is free.
 def _handoff_case_id(source_run_id: str, handoff: TerminalHandoff) -> str:
     digest = hashlib.sha256(f"{source_run_id}:{handoff.case_id}".encode()).hexdigest()
-    return f"case-handoff-{digest[:8]}"
+    return f"case-handoff-{digest[:16]}"
 
 
 def _case_exists(data: Any, case_id: str) -> bool:
@@ -423,7 +429,13 @@ async def _enqueue_root_cause(
 
     try:
         return await WorkflowsService().execute_workflow(
-            "root-cause-analysis", params, triggered_by=triggered_by
+            "root-cause-analysis",
+            params,
+            triggered_by=triggered_by,
+            # The join key is not a person. Without this the run event and the
+            # approval an operator is asked to answer both name the escalation's
+            # hash where every other run names api, watchdog or a username.
+            actor="handoff",
         )
     finally:
         # asyncio.run closes the loop this ran on, and _run_queue caches one Queue

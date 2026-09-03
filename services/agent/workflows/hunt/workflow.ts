@@ -103,9 +103,15 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
     harness.budget,
   );
 
-  // Seeded with the escalations the ledger already holds, so a resumed hunt files
-  // only the ones this attempt raises rather than re-filing the lot on every sweep.
-  const filed = new Set(ledger.projection.handoffs.map((handoff) => handoff.case_id));
+  // Empty on every attempt, a resume included. Seeding it from the ledger looks
+  // like it saves work, but the ledger records that a handoff was journaled and
+  // never that the push landed -- so a seeded resume drops precisely the ones whose
+  // push failed, which are the only ones still owed a send. The saving was not real
+  // either: a parked run's sweep throws HuntParked out of advanceIteration before
+  // this is reached, so there were no repeat announcements to prevent. What it costs
+  // is one request per escalation on the first iteration after a resume, and the
+  // backend keys a case on the handoff, so that request opens nothing new.
+  const filed = new Set<string>();
 
   for (;;) {
     // Handing the run back, not ending it. This signal fires for exactly one

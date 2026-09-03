@@ -458,6 +458,11 @@ class WorkflowsService:
         workflow_id: str,
         parameters: Dict[str, Any],
         triggered_by: Optional[str] = None,
+        # Who started it, when that is not the same fact as what started it.
+        # triggered_by doubled as both until a caller had a reason to key on it:
+        # a root-cause run's is the handoff it traces back from, which is a join
+        # key and reads as nonsense in the "started by" an operator is shown.
+        actor: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Start a workflow as a compose run on the agent layer.
 
@@ -538,7 +543,7 @@ class WorkflowsService:
                     or None,
                 }
             ),
-            enqueued_by=triggered_by or "api",
+            enqueued_by=actor or triggered_by or "api",
         )
         try:
             job_id = await enqueue_run(job)

@@ -1874,6 +1874,11 @@ class WorkflowRun(Base):
     __table_args__ = (
         Index("idx_workflow_runs_workflow_id", "workflow_id", "started_at"),
         Index("idx_workflow_runs_started_at", "started_at"),
+        # find_run_by_trigger reads this on every handoff a run hands over -- once
+        # when the hunt journals it and again on the terminal that re-carries it --
+        # to decide whether a root-cause run was already teed up. Without it that is
+        # a sequential scan that grows with run history.
+        Index("idx_workflow_runs_triggered_by", "triggered_by", "started_at"),
     )
 
 
