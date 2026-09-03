@@ -4,12 +4,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from core.config import get_settings
 from core.secrets import get_secret
+from core.workflows.workflow_run_service import LIST_RUNS_MAX, WorkflowRunService
 
 logger = logging.getLogger(__name__)
 
@@ -86,3 +89,40 @@ async def write_narrative(run_id: str) -> Dict[str, Any]:
         detail = response.text[:400]
         raise RuntimeError(f"the agent layer answered {response.status_code}: {detail}")
     return response.json()
+
+
+THREAT_HUNT_WORKFLOW_ID = "threat-hunt"
+
+
+def parse_window_instant(value: str) -> datetime:
+    """ISO-8601 to naive UTC, matching workflow_runs columns."""
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+# Completed threat-hunt projections for an assessment window. The projection is
+# the pack: hypotheses (with provenance), evidence provenance, verdict, checkpoint
+# resolutions, timestamps. A missing projection is skipped, not folded from
+# agent_events.
+async def pack_completed_hunts(
+    *, start: str, end: str, limit: int = LIST_RUNS_MAX
+) -> Dict[str, Any]:
+    started_at = parse_window_instant(start)
+    finished_at = parse_window_instant(end)
+    if started_at > finished_at:
+        raise ValueError("start must be at or before end")
+    cap = max(1, min(int(limit), LIST_RUNS_MAX))
+    runs = WorkflowRunService().list_runs(
+        workflow_id=THREAT_HUNT_WORKFLOW_ID,
+        status="completed",
+        started_at=started_at,
+        finished_at=finished_at,
+        limit=cap,
+    )
+    projections = await asyncio.gather(
+        *(read_projection(run["run_id"]) for run in runs)
+    )
+    hunts = [projection for projection in projections if projection is not None]
+    return {"start": start, "end": end, "hunts": hunts}

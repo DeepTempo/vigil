@@ -9,8 +9,12 @@ cleanly if not.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import pytest
 
+from core.storage.connection import get_db_manager
+from core.storage.models import WorkflowRun
 from core.workflows.workflow_run_service import WorkflowRunService, generate_run_id
 
 
@@ -171,3 +175,29 @@ class TestListRuns:
         # ``list_runs`` calls to_dict(include_result=False) — result_summary
         # should not be in the envelope so list responses stay small.
         assert "result_summary" not in runs[0]
+
+    def test_list_respects_started_at_and_finished_at_bounds(self, service, clean_runs):
+        early = service.begin_run(workflow_id="test-wf-window", workflow_name="W")
+        mid = service.begin_run(workflow_id="test-wf-window", workflow_name="W")
+        late = service.begin_run(workflow_id="test-wf-window", workflow_name="W")
+        for run_id in (early, mid, late):
+            service.finalize_run(run_id, status="completed")
+
+        t0 = datetime(2026, 1, 1, 12, 0, 0)
+        t1 = datetime(2026, 2, 1, 12, 0, 0)
+        t2 = datetime(2026, 3, 1, 12, 0, 0)
+        stamps = {early: t0, mid: t1, late: t2}
+        with get_db_manager().session_scope() as session:
+            for run_id, started in stamps.items():
+                row = session.get(WorkflowRun, run_id)
+                row.started_at = started
+                row.finished_at = started + timedelta(hours=1)
+
+        in_window = service.list_runs(
+            workflow_id="test-wf-window",
+            status="completed",
+            started_at=datetime(2026, 1, 15),
+            finished_at=datetime(2026, 2, 15),
+        )
+        ids = {row["run_id"] for row in in_window}
+        assert ids == {mid}

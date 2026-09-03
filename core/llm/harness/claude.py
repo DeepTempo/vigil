@@ -145,7 +145,7 @@ You have access to MCP (Model Context Protocol) tools that connect to various se
 1. **Findings & Cases**: Retrieve and analyze security findings and cases from DeepTempo
    - Finding IDs start with "f-" (e.g., "f-20260109-40d9379b")
    - Case IDs start with "case-" (e.g., "case-20260114-a1b2c3d4")
-   - Use deeptempo-findings server tools: list_findings, get_finding, list_cases, get_case, create_case, update_case
+   - Use deeptempo-findings server tools: list_findings, get_finding, list_cases, get_case, create_case, update_case, list_completed_hunts
 
 2. **Security Integrations**: Query data from various security platforms
    - The available integrations are dynamically loaded based on what's configured

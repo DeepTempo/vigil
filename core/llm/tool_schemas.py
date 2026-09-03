@@ -321,6 +321,35 @@ DEEPTEMPO_FINDING_TOOLS = [
             "required": ["case_id", "description", "action_taken"],
         },
     },
+    {
+        "name": "list_completed_hunts",
+        "description": (
+            "Return completed threat-hunt runs whose start and finish fall in "
+            "an assessment window. Each hunt is the existing hunt projection: "
+            "hypotheses (with provenance), evidence provenance, verdict, "
+            "checkpoint resolutions (approver identity), and timestamps. "
+            "Hunts whose projection is not yet available are omitted."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start": {
+                    "type": "string",
+                    "description": "Window start (ISO-8601 timestamp)",
+                },
+                "end": {
+                    "type": "string",
+                    "description": "Window end (ISO-8601 timestamp)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of completed hunts to return",
+                    "default": 200,
+                },
+            },
+            "required": ["start", "end"],
+        },
+    },
 ]
 
 # Attack Layer Tools
