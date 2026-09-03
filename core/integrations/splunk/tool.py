@@ -318,7 +318,9 @@ async def handle_call_tool(name: str, arguments: dict | None):
                 args.get("max_results", 100),
             )
             if results is None:
-                return result({"error": "Splunk search failed or timed out", "query": spl})
+                return result(
+                    {"error": "Splunk search failed or timed out", "query": spl}
+                )
             return result(
                 {
                     "success": True,
