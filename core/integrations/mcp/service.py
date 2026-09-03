@@ -292,6 +292,11 @@ class MCPService:
         "approval",
         "attack-layer",
         "mempalace",
+        # The self-hosted SIEM a hunt reads through telemetry_search -- the
+        # customer's own Splunk, the expected telemetry path, not an optional
+        # add-on. Safe to default-on: unset ${SPLUNK_*} placeholders leave it
+        # dormant (never connects, no error), not failing a boot.
+        "splunk-selfhosted",
     }
 
     def is_server_enabled(self, server_name: str) -> bool:
