@@ -201,3 +201,34 @@ class TestListRuns:
         )
         ids = {row["run_id"] for row in in_window}
         assert ids == {mid}
+
+    def test_list_finished_after_includes_runs_that_started_earlier(
+        self, service, clean_runs
+    ):
+        overlap = service.begin_run(workflow_id="test-wf-finish", workflow_name="W")
+        mid = service.begin_run(workflow_id="test-wf-finish", workflow_name="W")
+        late = service.begin_run(workflow_id="test-wf-finish", workflow_name="W")
+        for run_id in (overlap, mid, late):
+            service.finalize_run(run_id, status="completed")
+
+        t_start = datetime(2026, 1, 1, 12, 0, 0)
+        t_mid = datetime(2026, 2, 1, 12, 0, 0)
+        t_late = datetime(2026, 3, 1, 12, 0, 0)
+        with get_db_manager().session_scope() as session:
+            for run_id, started, finished in (
+                (overlap, t_start, t_mid),
+                (mid, t_mid, t_mid + timedelta(hours=1)),
+                (late, t_late, t_late + timedelta(hours=1)),
+            ):
+                row = session.get(WorkflowRun, run_id)
+                row.started_at = started
+                row.finished_at = finished
+
+        in_window = service.list_runs(
+            workflow_id="test-wf-finish",
+            status="completed",
+            finished_after=datetime(2026, 1, 15),
+            finished_at=datetime(2026, 2, 15),
+        )
+        ids = {row["run_id"] for row in in_window}
+        assert ids == {overlap, mid}

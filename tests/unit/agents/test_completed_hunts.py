@@ -97,9 +97,33 @@ async def test_pack_asks_list_runs_for_completed_threat_hunts_in_the_window(
 
     assert captured["workflow_id"] == "threat-hunt"
     assert captured["status"] == "completed"
-    assert captured["started_at"] == datetime(2026, 1, 1, 0, 0, 0)
+    assert captured["finished_after"] == datetime(2026, 1, 1, 0, 0, 0)
     assert captured["finished_at"] == datetime(2026, 3, 1, 0, 0, 0)
     assert captured["limit"] == LIST_RUNS_MAX
+
+
+@pytest.mark.asyncio
+async def test_pack_date_only_end_includes_that_utc_day(monkeypatch):
+    captured = _install(monkeypatch, [], {})
+
+    await pack_completed_hunts(start="2026-01-01", end="2026-03-31")
+
+    assert captured["finished_after"] == datetime(2026, 1, 1, 0, 0, 0)
+    assert captured["finished_at"] == datetime(2026, 3, 31, 23, 59, 59, 999999)
+
+
+@pytest.mark.asyncio
+async def test_pack_errors_when_every_projection_is_missing(monkeypatch):
+    _install(monkeypatch, [{"run_id": "wfr-gone"}], {})
+
+    with pytest.raises(RuntimeError, match="could not read hunt projections"):
+        await pack_completed_hunts(start=START, end=END)
+
+
+@pytest.mark.asyncio
+async def test_pack_rejects_an_inverted_window():
+    with pytest.raises(ValueError, match="start must be at or before end"):
+        await pack_completed_hunts(start=END, end=START)
 
 
 @pytest.mark.asyncio

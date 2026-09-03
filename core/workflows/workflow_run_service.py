@@ -147,14 +147,16 @@ class WorkflowRunService:
         status: Optional[str] = None,
         started_at: Optional[datetime] = None,
         finished_at: Optional[datetime] = None,
+        finished_after: Optional[datetime] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """List runs, newest first. Does not include the (potentially
         large) ``result_summary`` field — use ``get_run`` for detail.
 
-        ``started_at`` / ``finished_at`` are inclusive column bounds
-        (started no earlier than, finished no later than).
+        ``started_at`` is an inclusive lower bound on when the run
+        started. ``finished_after`` / ``finished_at`` bound when it
+        finished (inclusive).
         """
         try:
             db = get_db_manager()
@@ -169,6 +171,10 @@ class WorkflowRunService:
                 if started_at is not None:
                     stmt = stmt.where(
                         WorkflowRun.started_at >= _as_naive_utc(started_at)
+                    )
+                if finished_after is not None:
+                    stmt = stmt.where(
+                        WorkflowRun.finished_at >= _as_naive_utc(finished_after)
                     )
                 if finished_at is not None:
                     stmt = stmt.where(

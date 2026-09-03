@@ -185,6 +185,7 @@ async def _list_completed_hunts(args: Args) -> Any:
     allowed = {key: args[key] for key in ("start", "end", "limit") if key in args}
     return await pack_completed_hunts(**allowed)
 
+
 _SECURITY_TOOLS = frozenset(
     {
         "analyze_coverage",

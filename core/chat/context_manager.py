@@ -86,7 +86,7 @@ class ContextManager:
         "list_findings": 12000,
         "search_findings": 12000,
         "list_cases": 12000,
-        "list_completed_hunts": 12000,
+        "list_completed_hunts": 30000,
         "semantic_search_findings": 12000,
         "nearest_neighbors": 12000,
     }

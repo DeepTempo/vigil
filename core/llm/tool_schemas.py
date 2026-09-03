@@ -324,8 +324,8 @@ DEEPTEMPO_FINDING_TOOLS = [
     {
         "name": "list_completed_hunts",
         "description": (
-            "Return completed threat-hunt runs whose start and finish fall in "
-            "an assessment window. Each hunt is the existing hunt projection: "
+            "Return completed threat-hunt runs that finished in an "
+            "assessment window. Each hunt is the existing hunt projection: "
             "hypotheses (with provenance), evidence provenance, verdict, "
             "checkpoint resolutions (approver identity), and timestamps. "
             "Hunts whose projection is not yet available are omitted."
