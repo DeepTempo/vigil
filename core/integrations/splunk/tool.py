@@ -313,12 +313,16 @@ async def handle_call_tool(name: str, arguments: dict | None):
                 "now",
                 args.get("max_results", 100),
             )
+            if results is None:
+                return result(
+                    {"error": "Splunk search failed or timed out", "query": spl}
+                )
             return result(
                 {
                     "success": True,
                     "query": spl,
-                    "count": len(results or []),
-                    "results": results or [],
+                    "count": len(results),
+                    "results": results,
                 }
             )
         except Exception as e:
@@ -333,13 +337,10 @@ async def handle_call_tool(name: str, arguments: dict | None):
             return result({"error": "Splunk not configured"})
         try:
             results = splunk.search_by_ip(ip, args.get("hours") or _ALL_TIME_HOURS)
+            if results is None:
+                return result({"error": "Splunk search failed or timed out", "ip": ip})
             return result(
-                {
-                    "success": True,
-                    "ip": ip,
-                    "count": len(results or []),
-                    "results": results or [],
-                }
+                {"success": True, "ip": ip, "count": len(results), "results": results}
             )
         except Exception as e:
             return result({"error": str(e)})
@@ -355,12 +356,16 @@ async def handle_call_tool(name: str, arguments: dict | None):
             results = splunk.search_by_hostname(
                 host, args.get("hours") or _ALL_TIME_HOURS
             )
+            if results is None:
+                return result(
+                    {"error": "Splunk search failed or timed out", "hostname": host}
+                )
             return result(
                 {
                     "success": True,
                     "hostname": host,
-                    "count": len(results or []),
-                    "results": results or [],
+                    "count": len(results),
+                    "results": results,
                 }
             )
         except Exception as e:
@@ -380,14 +385,21 @@ async def handle_call_tool(name: str, arguments: dict | None):
             results = splunk.search(
                 spl_result["spl_query"], _ALL_TIME, "now", args.get("max_results", 100)
             )
+            if results is None:
+                return result(
+                    {
+                        "error": "Splunk search failed or timed out",
+                        "spl": spl_result["spl_query"],
+                    }
+                )
             return result(
                 {
                     "success": True,
                     "query": query,
                     "spl": spl_result["spl_query"],
                     "pattern": spl_result["pattern"],
-                    "count": len(results or []),
-                    "results": results or [],
+                    "count": len(results),
+                    "results": results,
                 }
             )
         except Exception as e:
