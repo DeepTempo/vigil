@@ -3,7 +3,7 @@ import { DEFAULT_TERMINATION, DEFAULT_VERDICTS } from "../../workflows/hunt/conf
 import {
   BASE_RATE_PROVENANCE,
   InvalidDecision,
-  NULL_HYPOTHESIS,
+  nullHypothesisFor,
   validateDecision,
 } from "../../workflows/hunt/controller.js";
 import { buildDigest, scoredFrontier } from "../../workflows/hunt/digest.js";
@@ -37,16 +37,18 @@ const contenders = (started: Started) =>
 describe("the null is on the board before anything is argued", () => {
   it("seeds a benign hypothesis at base rate, and shows it in the first digest", async () => {
     const started = await loop();
+    // newLedger's default hypothesis; the null is phrased against it.
+    const expectedNull = nullHypothesisFor(["a credential is used from new infrastructure"]);
 
     const [seeded] = nulls(started);
-    expect(seeded!.statement).toBe(NULL_HYPOTHESIS);
+    expect(seeded!.statement).toBe(expectedNull);
     expect(seeded!.status).toBe("active");
     expect(seeded!.attack_technique).toBeNull();
 
     // Before iteration 1, so the lead never argues without the alternative in view.
     expect(started.ledger.projection.hunt.iteration).toBe(0);
     const digest = buildDigest(started.ledger.projection, 1);
-    expect(digest.hypotheses.map((h) => h.statement)).toContain(NULL_HYPOTHESIS);
+    expect(digest.hypotheses.map((h) => h.statement)).toContain(expectedNull);
   });
 
   it("leaves a legacy hunt with only the hypotheses it was given", async () => {

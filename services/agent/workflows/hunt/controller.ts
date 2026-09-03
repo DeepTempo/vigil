@@ -113,7 +113,20 @@ export const MAX_DECISION_ATTEMPTS = 3;
 // Seeded at its base rate: most activity that looks like this is not an attack,
 // so the benign account starts as the hypothesis to beat rather than an objection.
 export const BASE_RATE_PROVENANCE = "base_rate";
+// The generic fallback, used only when there is no hypothesis to specialise from.
 export const NULL_HYPOTHESIS = "the activity has a benign explanation and no attack occurred";
+
+// The null, phrased against the activity actually under test. A generic "no attack
+// occurred" is a strawman the evidence never has to engage; a base rate that names
+// this activity's legitimate explanation is a harder claim to beat, and it keeps the
+// benign account a genuine competitor from turn 0 rather than a placeholder. The
+// argue-the-null critic still sharpens it further with the specific counter-story it
+// constructs against the linked evidence at VALIDATE.
+export function nullHypothesisFor(hypotheses: readonly string[]): string {
+  const primary = hypotheses.find((h) => h.trim().length > 0);
+  if (primary === undefined) return NULL_HYPOTHESIS;
+  return `the activity described in "${primary}" has a legitimate explanation — expected operations, sanctioned tooling, or normal user/automation behavior — and is not adversary action`;
+}
 
 // What the deployment reports about its own reach, never a worker's telemetry. Kept
 // out of data_domains so it earns no corroboration credit.
@@ -420,7 +433,7 @@ export async function startHunt(
       kind: "hypothesis",
       payload: {
         hypothesis_id: newId("h", 4),
-        statement: NULL_HYPOTHESIS,
+        statement: nullHypothesisFor([...spec.operator_hypotheses, ...spec.hypotheses]),
         status: "active",
         attack_technique: null,
         provenance: BASE_RATE_PROVENANCE,
