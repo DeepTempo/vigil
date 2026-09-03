@@ -485,10 +485,16 @@ export async function startHunt(
 
   // Raised whichever way the policy falls, so the approval is a ledger fact
   // rather than something a caller remembers. An ask with nothing pending deadlocks.
+  //
+  // "this run", not "this hunt": a root-cause run parks here too, and it is usually
+  // one no operator started -- a hunt's escalation teed it up -- so a question in
+  // the inbox calling it a hunt names the wrong run. spec.name is not the substitute
+  // it looks like: it is the playbook's own name, which is as often a phrase about
+  // the activity ("beaconing on the finance segment") as it is a title.
   const checkpoint = raiseCheckpoint(
     "hypothesis_approval",
     0,
-    `Approve and start this hunt on ${spec.hypotheses.length + spec.operator_hypotheses.length} hypothesis(es)` +
+    `Approve and start this run on ${spec.hypotheses.length + spec.operator_hypotheses.length} hypothesis(es)` +
       `${spec.operator_hypotheses.length > 0 ? `, ${spec.operator_hypotheses.length} from your request` : ""}?`,
     {
       hypotheses: [...ledger.projection.hypotheses.values()].map((hypothesis) => ({
@@ -516,6 +522,8 @@ export async function resumeHunt(
   state: State<HuntKinds>,
   queue: DirectiveQueue,
   runId: string,
+  // Only reached for a ledger with no run event to read the kind off, which a
+  // resume does not have: Journal.open prefers what the ledger itself says.
   runKind: RunKind = "hunt",
 ): Promise<{ ledger: Journal; spec: HuntSpec }> {
   const ledger = await Journal.open(state, queue, runId, runKind);

@@ -191,6 +191,32 @@ class WorkflowRunService:
             logger.warning("Error listing workflow runs: %s", e)
             return []
 
+    # Raises rather than swallowing, unlike the listings around it. Those serve
+    # views, where an empty answer is a fair degraded one. A caller asking whether
+    # a trigger has already produced a run needs "could not tell" to be a different
+    # answer from "no" -- returning None on a failed query is the one that has it
+    # act as though nothing had run.
+    def find_run_by_trigger(self, triggered_by: str) -> Optional[Dict[str, Any]]:
+        """The newest live run a ``triggered_by`` key produced, or None for none.
+
+        Exact, rather than scanning the most recent runs of a workflow: the window
+        such a scan would have to span is however long whatever fires the run takes
+        to come back, which is not a number this side can pick.
+        """
+        db = get_db_manager()
+        with db.session_scope() as session:
+            stmt = (
+                select(WorkflowRun)
+                .where(
+                    WorkflowRun.triggered_by == triggered_by,
+                    WorkflowRun.deleted_at.is_(None),
+                )
+                .order_by(WorkflowRun.started_at.desc())
+                .limit(1)
+            )
+            row = session.execute(stmt).scalars().first()
+            return WorkflowRunSchema.dump_summary(row) if row else None
+
     def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
         """Get one run with the full ``result_summary`` attached."""
         try:

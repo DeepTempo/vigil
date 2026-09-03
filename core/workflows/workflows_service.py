@@ -251,6 +251,10 @@ class WorkflowDefinition:
             # The console reads this to know a run takes a turn count rather than
             # walking phases, instead of keying off the workflow id.
             "run_kind": self.run_kind,
+            # Derived, so the console asks whether a definition drives the
+            # hypothesis loop rather than listing the kinds that do. A new
+            # hunt-like kind joins HUNT_LIKE_RUN_KINDS and every client follows.
+            "hunt_like": is_hunt_like(self.run_kind),
         }
         if include_body:
             result["body"] = self.body

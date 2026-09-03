@@ -499,7 +499,11 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
     return () => { cancelled = true }
   }, [wf.id])
 
-  const isHunt = wf.runKind === 'hunt'
+  // The backend's own answer, not a list of kinds held here: root-cause runs the
+  // same hypothesis loop a hunt does, and asking by kind is how it ended up with
+  // the phase-walking dialog -- its turn count and cost ceiling dropped on the way
+  // to the server, and nothing warned about an unbound tool before the spend.
+  const isHuntLike = wf.huntLike
   const turns = Number(iterations)
   const turnsBad = iterations.trim() !== '' && (!Number.isInteger(turns) || turns < 1 || turns > 40)
   const cost = Number(maxCost)
@@ -514,17 +518,17 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
   // A turn count says how long to run, never what to run on, so it is not a target.
   const withTurns = {
     ...params,
-    ...(isHunt && !turnsBad && iterations.trim() && { iterations: turns }),
-    ...(isHunt && !costBad && maxCost.trim() && { max_cost_usd: cost }),
-    ...(isHunt && approve && { approve_hypotheses: true }),
+    ...(isHuntLike && !turnsBad && iterations.trim() && { iterations: turns }),
+    ...(isHuntLike && !costBad && maxCost.trim() && { max_cost_usd: cost }),
+    ...(isHuntLike && approve && { approve_hypotheses: true }),
   }
   // Checked on Run, not per keystroke: a button dead through a sentence reads as an argument.
-  const needsHypothesis = isHunt && hypothesis.trim() === ''
+  const needsHypothesis = isHuntLike && hypothesis.trim() === ''
   const canRun = Object.keys(params).length > 0 && !turnsBad && !costBad && !starting
 
   const run = async () => {
     if (needsHypothesis) {
-      setError('A hunt tests a claim you state. Put at least one in Hypothesis — the benign account is added for you.')
+      setError('This run tests a claim you state. Put at least one in Hypothesis — the benign account is added for you.')
       return
     }
     setStarting(true)
@@ -552,10 +556,10 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
   return (
     <Popup open onClose={onClose} title={`Run · ${wf.name}`}>
       <div className="flex flex-col gap-3.5">
-        <p className="text-[12.5px] text-tx-3 leading-[1.5]">Provide at least one target, then start the run — the agents work it on the server and History reports where it got to. A finding or case gives the run something to work from, and the report comes back onto the case you pick. A hunt tests what you state: each line of Hypothesis goes on the board as its own belief, and the benign explanation goes up beside them as the claim to beat.</p>
+        <p className="text-[12.5px] text-tx-3 leading-[1.5]">Provide at least one target, then start the run — the agents work it on the server and History reports where it got to. A finding or case gives the run something to work from, and the report comes back onto the case you pick. A run that tests beliefs takes what you state: each line of Hypothesis goes on the board as its own, and the benign explanation goes up beside them as the claim to beat.</p>
         {error && <div className="text-[12.5px] leading-[1.5]" style={{ color: 'var(--crit)' }}>{error}</div>}
-        {isHunt && <Unpriced pricing={limits?.pricing} />}
-        {isHunt && <Blindness unbound={limits?.capabilities?.unbound ?? []} />}
+        {isHuntLike && <Unpriced pricing={limits?.pricing} />}
+        {isHuntLike && <Blindness unbound={limits?.capabilities?.unbound ?? []} />}
         <ComboField label="Finding ID" value={findingId} onChange={setFindingId} placeholder="f-20260614-3b5c585e" options={findingOpts} hint={findingOpts.length ? `${findingOpts.length} recent findings — start typing to filter.` : undefined} />
         <ComboField label="Case ID" value={caseId} onChange={setCaseId} placeholder="case-2026-0142" options={caseOpts} />
         <Field label="Context" value={context} onChange={setContext} placeholder="Active ransomware on HOST-42…" textarea />
@@ -565,12 +569,12 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
           onChange={setHypothesis}
           placeholder="Credentials taken from HOST-42 were reused on another host…"
           textarea
-          hint={isHunt
-            ? 'One belief per line, each a claim the hunt can argue against. The benign account is added for you as the claim to beat.'
+          hint={isHuntLike
+            ? 'One belief per line, each a claim the run can argue against. The benign account is added for you as the claim to beat.'
             : undefined}
         />
-        {isHunt && <HypothesisPreview text={hypothesis} />}
-        {isHunt && (
+        {isHuntLike && <HypothesisPreview text={hypothesis} />}
+        {isHuntLike && (
           <Field
             label="Iterations"
             value={iterations}
@@ -579,7 +583,7 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
             hint={turnsBad ? 'A whole number of turns between 1 and 40.' : turnsHint(iterations, maxCost, limits)}
           />
         )}
-        {isHunt && (
+        {isHuntLike && (
           <Field
             label="Cost ceiling"
             value={maxCost}
@@ -590,11 +594,11 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
               : 'Dollars this run may spend before it stops and reports on what it has. The turn count above is the other ceiling; whichever it reaches first ends the run.'}
           />
         )}
-        {isHunt && (
+        {isHuntLike && (
           <label className="flex items-start gap-2 text-[12.5px] leading-[1.5] text-tx-2 cursor-pointer">
             <input type="checkbox" className="mt-0.5" checked={approve} onChange={(e) => setApprove(e.target.checked)} />
             <span>
-              Ask me before it starts. The hunt puts its board up and waits for approval in
+              Ask me before it starts. The run puts its board up and waits for approval in
               History rather than approving itself — which is what a run with nobody watching
               has to do, and why nothing asked you last time.
             </span>

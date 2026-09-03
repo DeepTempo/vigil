@@ -107,7 +107,8 @@ function announceFor(): Announce {
 // Where a handoff goes the moment it is journaled: the mirror's own channel, so a
 // case reaches IR when the hunt escalates rather than when it eventually stops.
 // Off unless a deployment says where to mirror to, same as the terminal it precedes.
-function handoffFor(): (runId: string, handoff: TerminalHandoff) => Promise<void> {
+// Answers whether it landed, so the loop can ask again for one that did not.
+function handoffFor(): (runId: string, handoff: TerminalHandoff) => Promise<boolean> {
   const mirror = mirrorFor();
   return (runId, handoff) => mirror.handoff(runId, handoff);
 }

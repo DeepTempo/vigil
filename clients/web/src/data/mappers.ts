@@ -266,6 +266,7 @@ export interface ApiWorkflow {
   trigger_examples?: string[]
   source?: string
   run_kind?: string
+  hunt_like?: boolean
 }
 
 /** the backend carries no presentation icon, so derive one from the name */
@@ -293,6 +294,10 @@ export function mapApiWorkflow(w: ApiWorkflow): Workflow {
     source: w.source || 'file',
     useCase: w.use_case || '',
     runKind: w.run_kind || 'compose',
+    // The backend derives this from the kind, so the console never has to hold a
+    // list of which kinds run the hypothesis loop. Falls back to the one kind that
+    // did before the flag existed, so an older backend still reads correctly.
+    huntLike: w.hunt_like ?? w.run_kind === 'hunt',
   }
 }
 

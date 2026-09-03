@@ -27,9 +27,12 @@ vi.mock('../../services/skillsApi', () => ({
   SKILL_CATEGORIES: [],
 }))
 
-const wf = (runKind = 'hunt') => ({
+// huntLike is the backend's own answer about the kind, which is what the dialog
+// gates on. Defaulted from the kind here so a case that only cares about one of
+// them says one thing.
+const wf = (runKind = 'hunt', huntLike = runKind === 'hunt' || runKind === 'root_cause') => ({
   id: 'threat-hunt', icon: 'flow' as const, name: 'Threat Hunt', desc: '',
-  agents: [], cmds: [], source: 'file', useCase: '', runKind,
+  agents: [], cmds: [], source: 'file', useCase: '', runKind, huntLike,
 })
 
 const limits = (unbound: string[], source = 'heuristic') => ({
@@ -142,6 +145,18 @@ describe('what the run will cost', () => {
 
     await waitFor(() => expect(getWorkflow).toHaveBeenCalled())
     expect(screen.queryByLabelText(/Iterations/)).toBeNull()
+  })
+
+  /* root_cause runs the same hypothesis loop a hunt does. Asking by kind gave it the
+     phase-walking dialog: the ceilings the operator typed were dropped on the way to
+     the server, and nothing named an unbound tool before the spend. */
+  it('gives a root-cause workflow the same ceilings and warnings a hunt gets', async () => {
+    getWorkflow.mockResolvedValueOnce(limits(['telemetry_search']))
+    open('root_cause')
+
+    expect(await screen.findByLabelText(/Iterations/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Cost ceiling/)).toBeInTheDocument()
+    expect(screen.getByText(/telemetry_search/)).toBeInTheDocument()
   })
 })
 

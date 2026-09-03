@@ -232,10 +232,12 @@ class DemoDataService:
         priority: str = "medium",
         description: str = "",
         status: str = "open",
+        case_id: Optional[str] = None,
     ) -> Optional[Dict]:
         now = datetime.now(timezone.utc)
         case = {
-            "case_id": f"case-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}",
+            "case_id": case_id
+            or f"case-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}",
             "title": title,
             "description": description,
             "finding_ids": finding_ids,

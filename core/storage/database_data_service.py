@@ -460,13 +460,21 @@ class DatabaseDataService:
         priority: str = "medium",
         description: str = "",
         status: str = "open",
+        case_id: Optional[str] = None,
     ) -> Optional[Dict]:
         if self._demo_mode and self._demo_service:
             return self._demo_service.create_case(
-                title, finding_ids, priority, description, status
+                title, finding_ids, priority, description, status, case_id
             )
 
-        case_id = f"case-{datetime.now().strftime('%Y-%m-%d')}-{uuid.uuid4().hex[:8]}"
+        # Minted here unless the caller brought one. A caller that can derive a
+        # stable id -- an agent handoff, whose document arrives twice -- gets an
+        # idempotent create out of it, because cases.case_id is the primary key and
+        # the second insert loses rather than opening a second case.
+        if case_id is None:
+            case_id = (
+                f"case-{datetime.now().strftime('%Y-%m-%d')}-{uuid.uuid4().hex[:8]}"
+            )
 
         if self._db_available:
             try:
