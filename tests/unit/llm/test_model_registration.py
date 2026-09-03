@@ -3,8 +3,8 @@ Unit tests verifying that all SQLAlchemy models are registered with
 Base.metadata before create_all() is called.
 
 Importing core.storage.connection is sufficient to trigger model registration
-because the module-level imports at the top of connection.py pull in every
-model class defined in core/storage/models.py.
+because it imports core.storage.models, whose package init loads every domain
+submodule so all mapped classes register on Base.metadata.
 """
 
 import pytest
@@ -52,5 +52,5 @@ def test_all_model_tables_registered():
         ):
             assert obj.__tablename__ in registered_tables, (
                 f"Model '{name}' with __tablename__='{obj.__tablename__}' is not registered "
-                "in Base.metadata. Add it to the import block in core/storage/connection.py."
+                "in Base.metadata. Import its submodule from core/storage/models/__init__.py."
             )

@@ -3,7 +3,7 @@
 Schema migration script for Vigil SOC.
 
 Brings an existing database up to date with the current SQLAlchemy models
-defined in core/storage/models.py. Safe to run multiple times (idempotent).
+defined in core.storage.models. Safe to run multiple times (idempotent).
 
 Usage:
     python scripts/migrate_schema.py
