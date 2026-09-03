@@ -789,6 +789,14 @@
       background: var(--ok);
    }
 
+   .sev.unrated {
+      color: var(--tx-2);
+   }
+
+   .sev.unrated .dot {
+      background: var(--tx-3);
+   }
+
    .tag {
       font-size: 11.5px;
       font-weight: 500;

@@ -2,7 +2,7 @@
    the VStrike provider, which isn't mounted under the console shell. */
 import { useEffect, useState } from 'react'
 import { findingsApi } from '../../services/api'
-import { mapApiFinding, type ApiFinding } from '../../data/mappers'
+import { mapApiFinding, formatFindingScore, type ApiFinding } from '../../data/mappers'
 import { techniqueName } from '../../data/mitre'
 import { ConfirmDialog, EmptyState, Popup, Select } from '../../shared/ui'
 import { Icon } from '../../shared/icons'
@@ -314,7 +314,7 @@ export default function FindingPopup({
             </div>
             <div className="fp-metrics">
               <div className="fp-metric"><span className="fp-m-val">{f.conf}%</span><span className="fp-m-lab">confidence</span></div>
-              <div className="fp-metric"><span className="fp-m-val">{f.score.toFixed(2)}</span><span className="fp-m-lab">anomaly</span></div>
+              <div className="fp-metric"><span className="fp-m-val">{formatFindingScore(f.score)}</span><span className="fp-m-lab">anomaly</span></div>
             </div>
           </div>
 

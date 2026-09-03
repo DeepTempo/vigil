@@ -1,5 +1,11 @@
 import { format } from 'date-fns'
-import type { CaseRow, Finding } from './data'
+import {
+  MISSING_FINDING_SCORE,
+  MISSING_FINDING_SEVERITY,
+  MISSING_FINDING_TIME,
+  type CaseRow,
+  type Finding,
+} from './data'
 import type { Schema } from '../services/apiTypes'
 import {
   prettyHandle,
@@ -18,10 +24,10 @@ export type ApiCase = Schema<'CaseSchema'>
 
 export interface ApiFinding {
   finding_id: string
-  severity?: string
+  severity?: string | null
   data_source?: string
-  timestamp?: string
-  anomaly_score?: number
+  timestamp?: string | null
+  anomaly_score?: number | null
   title?: string
   description?: string
   mitre_predictions?: Record<string, number>
@@ -99,12 +105,17 @@ function epochMs(s?: string): number | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d.getTime()
 }
 
-function findingSev(s?: string): Finding['sev'] {
+function findingSev(s?: string | null): Finding['sev'] {
   const v = (s || '').toLowerCase()
   if (v === 'critical') return 'Critical'
   if (v === 'high') return 'High'
+  if (v === 'medium') return 'Medium'
   if (v === 'low') return 'Low'
-  return 'Medium'
+  return MISSING_FINDING_SEVERITY
+}
+
+export function formatFindingScore(score: number | null | undefined): string {
+  return typeof score === 'number' ? score.toFixed(2) : MISSING_FINDING_SCORE
 }
 
 /** mitre_predictions is keyed by *technique* id (e.g. "T1567.002") */
@@ -147,9 +158,9 @@ export function mapApiFinding(f: ApiFinding): Finding {
     src: f.data_source || DASH,
     host: ec?.hostnames?.[0] || DASH,
     user: ec?.usernames?.[0] || DASH,
-    time: fmt(f.timestamp, 'MMM d, HH:mm'),
-    ts: epochMs(f.timestamp),
-    score: typeof f.anomaly_score === 'number' ? f.anomaly_score : 0,
+    time: f.timestamp ? fmt(f.timestamp, 'MMM d, HH:mm') : MISSING_FINDING_TIME,
+    ts: epochMs(f.timestamp ?? undefined),
+    score: typeof f.anomaly_score === 'number' ? f.anomaly_score : null,
     status: findingStatus(f.status),
     extra: extraEntities(ec),
   }

@@ -32,7 +32,7 @@ export const NAV: [IconName, string, ConsoleScreenKey | null, NavGate?][] = [
 
 export interface Finding {
   id: string
-  sev: 'Critical' | 'High' | 'Medium' | 'Low'
+  sev: 'Critical' | 'High' | 'Medium' | 'Low' | 'Unrated'
   tech: string
   conf: number
   tactic: string
@@ -42,13 +42,17 @@ export interface Finding {
   time: string
   /** `time` above is display-only and not safely comparable */
   ts?: number
-  score: number
+  score: number | null
   status: 'open' | 'investigating' | 'closed'
   /** entity_context keys the fixed fields don't cover. Sources disagree about
    *  these (CrowdStrike sends device_id and no dest_ips, Splunk the reverse), so
    *  they are carried through and rendered as columns derived from the rows. */
   extra?: Record<string, string>
 }
+
+export const MISSING_FINDING_SCORE = 'Not provided' as const
+export const MISSING_FINDING_SEVERITY = 'Unrated' as const
+export const MISSING_FINDING_TIME = 'Source time unavailable' as const
 
 export interface CaseRow {
   id: string
