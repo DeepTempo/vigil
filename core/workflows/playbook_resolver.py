@@ -49,9 +49,16 @@ def _mcp_catalogue(registry: Optional["MCPRegistry"]) -> List[Dict[str, Any]]:
     if registry is None:
         return []
     try:
+        # Sync to the running client's live connection state first: a server
+        # enabled+connected after boot must bind here without a reload (and one
+        # since disconnected must drop). No-op when there is no process client.
+        from core.integrations.mcp.registry import refresh_from_client
+
+        refresh_from_client(registry)
         tools = registry.get_all_tools()
         # An empty registry and a deployment with no integrations resolve differently,
         # so fill from the cache before concluding a capability binds to nothing.
+        # Only reached with no live client (boot warm-start / subprocess / tests).
         if not tools:
             from core.integrations.mcp.registry import populate_from_cache
 
