@@ -385,6 +385,20 @@ export function recalledRowsOf(log: readonly LedgerRecord[]): RecallResult | nul
   return RECALL_RESULT_KEYS.every((key) => key in payload) ? (payload as RecallResult) : null;
 }
 
+// The journaled payload whole, outage included, for a reader that presents the read
+// rather than rendering its rows. recalledRowsOf answers null for an outage and null
+// for a run that never asked, and those are not the same fact: one says memory was
+// down, the other that nothing was ever looked up. A report that printed them alike
+// would be the wrong answer nobody spots -- see RecallUnavailable.
+export function recalledPayloadOf(log: readonly LedgerRecord[]): RecallPayload | null {
+  const event = log.find((one) => one.kind === "recall");
+  if (event === undefined) return null;
+  const payload = event.payload;
+  if (typeof payload !== "object" || payload === null) return null;
+  if ("unavailable" in payload) return payload as RecallUnavailable;
+  return recalledRowsOf(log);
+}
+
 // The rebuild: the notes those rows render to. Pure over the log and reaching no
 // Memory -- a replay that re-reads memory reads a neighbourhood that has moved
 // since the run, which looks like a passing test until it looks like a wrong

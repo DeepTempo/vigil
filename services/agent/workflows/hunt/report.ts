@@ -3,6 +3,7 @@ import { suppressedEntities } from "./digest.js";
 import type { Projection } from "./ledger.js";
 import { citedTechniques, isGap, sensorAttested, unruledObservations } from "./strength.js";
 import { renderNarrative, type Narrative } from "./narrative.js";
+import { isRecalled, recalledNotes, type RecallPayload } from "../../contracts/memory.js";
 import type {
   Budgets,
   EvidenceRecord,
@@ -258,7 +259,57 @@ function findings(projection: Projection): string[] {
 
 // projection is optional and never touches HuntReport's own shape, which the ADR 0012
 // goldens compare exactly: citations are derived fresh from the ledger at render time.
-export function renderReport(report: HuntReport, projection?: Projection, narrative?: Narrative | null): string {
+// What the run read out of episodic memory before it started, rendered from the
+// payload its own ledger carries. The notes come from recalledNotes, which is the
+// contract's one renderer and the same one that built the model's opening turn: a
+// second renderer here would drift, and the report would then describe a prompt
+// nobody was given.
+//
+// Three outcomes, three different sentences. A read that found nothing is a fact
+// about the entities; a read that could not be served is a fact about the system;
+// and a run that never asked is neither.
+function openedOn(recall: RecallPayload | null): string[] {
+  if (recall === null) return [];
+  const heading = "## What this hunt knew going in";
+  const asked = recall.keys.length === 0 ? "no entities" : recall.keys.join(", ");
+
+  if (!isRecalled(recall)) {
+    return [
+      heading,
+      "",
+      `Episodic memory could not be read (${recall.unavailable}), so the hunt ran without it.`,
+      `It would have asked about ${asked}. Nothing below rests on what earlier investigations concluded.`,
+      "",
+    ];
+  }
+
+  const notes = recalledNotes(recall);
+  if (notes.length === 0) {
+    return [
+      heading,
+      "",
+      `Nothing had been concluded about ${asked} before this hunt, as of ${recall.as_of}.`,
+      "This is the first investigation on record to look.",
+      "",
+    ];
+  }
+
+  return [
+    heading,
+    "",
+    `Read on ${asked}, as of ${recall.as_of}. What earlier investigations left on the record:`,
+    "",
+    ...notes.map((note) => `- ${note}`),
+    "",
+  ];
+}
+
+export function renderReport(
+  report: HuntReport,
+  projection?: Projection,
+  narrative?: Narrative | null,
+  recall?: RecallPayload | null,
+): string {
   const lines: string[] = [
     `# Hunt report — ${report.name}`,
     "",
@@ -273,7 +324,10 @@ export function renderReport(report: HuntReport, projection?: Projection, narrat
   // Before the verdicts, since everything below is the record it was written from.
   // Absent when the narrator could not run, leaving the report as it was.
   if (narrative !== undefined && narrative !== null) lines.push("", ...renderNarrative(narrative));
-  lines.push("", headline(report), "", "## Verdicts", "");
+  // Before the verdicts, because it is what the hunt was reasoning from and not
+  // something it found. Omitted entirely when the run never asked, so a hunt that
+  // predates the read does not grow an empty section.
+  lines.push("", headline(report), "", ...openedOn(recall ?? null), "## Verdicts", "");
 
   const ordered = [...report.hypotheses].sort(
     (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.hypothesis_id.localeCompare(b.hypothesis_id),

@@ -2,6 +2,7 @@ import { announceOpen, noAnnounce, type Announce } from "../../core/checkpoints.
 import { GatewayExhausted } from "../../core/limiter.js";
 import type { Harness } from "../../core/loop.js";
 import type { RunOutcome, TerminalHandoff } from "../../contracts/events.js";
+import { recalledPayloadOf } from "../../contracts/memory.js";
 import type { RunSpec } from "../../core/spec.js";
 import { BudgetRefused, disconfirmationCritic, decisionProvider, narrativeWriter, workerDispatcher } from "./adapters.js";
 import { narrativeInput, type Narrative } from "./narrative.js";
@@ -186,9 +187,14 @@ async function end(
   const built = buildReport(ledger.projection);
   const narrative = await narrate(harness, options, ledger.projection, built, narrator);
   if ((await harness.state.terminal(options.run_id)) === null) {
-    const handoffs = await handoffsOf(harness, options.run_id, ledger.projection);
+    // One read for both: the handoffs and the recall the report opens on are rows
+    // of the same ledger, and the stored summary must match what the console
+    // renders from that ledger rather than being a second account of one hunt.
+    const events = await harness.state.read(options.run_id);
+    const handoffs = handoffsOf(events, ledger.projection);
+    const summary = renderReport(built, ledger.projection, narrative, recalledPayloadOf(events));
     await harness.state.append(options.run_id, [
-      { run_id: options.run_id, run_kind: "hunt", kind: "terminal", payload: { outcome, reason, summary: renderReport(built, ledger.projection, narrative), handoffs } } as never,
+      { run_id: options.run_id, run_kind: "hunt", kind: "terminal", payload: { outcome, reason, summary, handoffs } } as never,
     ]);
   }
   return report(ledger, outcome, reason);
@@ -219,8 +225,7 @@ async function narrate(
 
 // The case files the hunt wrote, carried out on the terminal. Read off the events
 // rather than the fold, which keeps a handoff only as a mark on its hypothesis.
-async function handoffsOf(harness: Harness<HuntKinds>, runId: string, projection: Projection): Promise<TerminalHandoff[]> {
-  const events = await harness.state.read(runId);
+function handoffsOf(events: readonly HuntEvent[], projection: Projection): TerminalHandoff[] {
   return events
     .filter((event) => event.kind === "handoff")
     .map((event) => event.payload as Handoff)
