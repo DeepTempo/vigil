@@ -269,6 +269,27 @@ function validateAbandon(decision: Decision, projection: Projection): void {
     throw new InvalidDecision("ABANDON must name the hypothesis or entity it is dropping");
   }
 
+  // Only an active belief can be dropped. abandon() patches a status and dispatches
+  // nothing, so re-abandoning a settled one costs a turn and changes no part of the
+  // board -- and the board is what the next decision is made against, so the Lead
+  // sees the same thing again and repeats. Observed burning 22 of 25 iterations on
+  // one hypothesis while two others were never engaged.
+  //
+  // Refused rather than absorbed: a no-op accepted silently is indistinguishable
+  // from progress in the ledger, and the run parks at its ceiling looking like it
+  // worked. Three of these in a row ends the turn, which is the louder failure and
+  // the shorter one.
+  const target = decision.target_hypothesis_id;
+  if (target !== undefined && target !== null) {
+    const held = projection.hypotheses.get(target);
+    if (held !== undefined && held.status !== "active") {
+      throw new InvalidDecision(
+        `${target} is already ${held.status} and cannot be abandoned again; ` +
+          "ABANDON drops an active belief, so target one that is still open or choose another action",
+      );
+    }
+  }
+
   const cited = (decision.evidence_citations ?? [])
     .map((id) => projection.evidence.get(id))
     .filter((record): record is EvidenceRecord => record !== undefined);
