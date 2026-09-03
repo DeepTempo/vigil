@@ -52,12 +52,17 @@ _DEFAULT_EXEMPT = ("/api/webhooks/", "/api/ingest/")
 def _apply_context_path(path: str, prefix: str) -> str:
     """Prefix an app-root path with VIGIL_CONTEXT_PATH.
 
-    Already-prefixed paths are left alone so an operator can set fully
-    qualified VIGIL_CSRF_EXEMPT_PATHS without doubling.
+    Already-prefixed paths (``{prefix}/api/...``) are left alone so an
+    operator can set fully qualified VIGIL_CSRF_EXEMPT_PATHS without
+    doubling. The skip is ``{prefix}/api``, not ``{prefix}/``, so a
+    context path of ``/api`` does not treat Helm's ``/api/webhooks/``
+    as already done.
     """
     if not path.startswith("/"):
         path = "/" + path
-    if not prefix or path == prefix or path.startswith(prefix + "/"):
+    if not prefix:
+        return path
+    if path == prefix or path == prefix + "/api" or path.startswith(prefix + "/api/"):
         return path
     return f"{prefix}{path}"
 

@@ -100,12 +100,30 @@ def test_auth_cookie_paths_follow_context_path(monkeypatch, prefix, access, refr
             ("/vigil/api/webhooks/", "/vigil/api/ingest/"),
         ),
         ("/vigil/api/webhooks/", "/vigil", ("/vigil/api/webhooks/",)),
+        ("/api/webhooks/", "/api", ("/api/api/webhooks/",)),
     ],
 )
 def test_csrf_exempt_paths_follow_context_path(raw, context_path, expected):
     from services.api.middleware.csrf import _parse_exempt_paths
 
     assert _parse_exempt_paths(raw, context_path) == expected
+
+
+def test_csrf_middleware_prefixes_helm_defaults_from_settings(monkeypatch):
+    """Helm leaves VIGIL_CSRF_EXEMPT_PATHS app-root relative; only the
+    context path is set. That is production ``add_middleware(CSRFMiddleware)``."""
+    from core.config import get_settings
+    from services.api.middleware.csrf import CSRFMiddleware
+
+    monkeypatch.setenv("VIGIL_CONTEXT_PATH", "/vigil")
+    monkeypatch.setenv("VIGIL_CSRF_EXEMPT_PATHS", "/api/webhooks/,/api/ingest/")
+    get_settings.cache_clear()
+
+    middleware = CSRFMiddleware(FastAPI(), enabled=True)
+    assert middleware._is_exempt("/vigil/api/webhooks/darktrace")
+    assert middleware._is_exempt("/vigil/api/ingest/upload")
+    assert not middleware._is_exempt("/api/webhooks/darktrace")
+    assert not middleware._is_exempt("/vigil/api/cases")
 
 
 def test_csrf_exempt_matching_requires_the_prefix():
