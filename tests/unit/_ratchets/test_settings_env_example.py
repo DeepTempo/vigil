@@ -87,6 +87,11 @@ NOT_SETTINGS = {
     "AWS_REGION",
     "OTEL_TRACES_SAMPLER",
     "OTEL_TRACES_SAMPLER_ARG",
+    # TLS trust for inspecting proxies. Python and Node read these directly;
+    # ca_bundle_env() forwards them to MCP children. Not Settings fields.
+    "NODE_EXTRA_CA_CERTS",
+    "REQUESTS_CA_BUNDLE",
+    "SSL_CERT_FILE",
     # Consumed outside the Python backend (shell scripts, compose, Vite).
     "BIND_HOST",
     "GRAFANA_PASSWORD",

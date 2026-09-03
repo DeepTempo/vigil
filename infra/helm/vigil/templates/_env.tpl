@@ -45,6 +45,51 @@ write. Include all three together, or none.
   {{- toYaml .Values.stateDirectory.volume | nindent 2 }}
 {{- end -}}
 
+{{/*
+Operator-supplied CA PEM for TLS-inspecting proxies. Include all three together
+(or none) on backend, daemon, llm-worker, agent-worker, and agent-serve only —
+the same rule as vigil.state*: env without the mount advertises a path the
+container cannot read. Empty existingSecret and existingConfigMap skip every
+helper. Prefer the Secret when both are set.
+*/}}
+{{- define "vigil.caBundleEnv" -}}
+{{- if or .Values.caBundle.existingSecret .Values.caBundle.existingConfigMap }}
+- name: SSL_CERT_FILE
+  value: {{ .Values.caBundle.mountPath | quote }}
+- name: REQUESTS_CA_BUNDLE
+  value: {{ .Values.caBundle.mountPath | quote }}
+- name: NODE_EXTRA_CA_CERTS
+  value: {{ .Values.caBundle.mountPath | quote }}
+{{- end }}
+{{- end -}}
+
+{{- define "vigil.caBundleVolumeMount" -}}
+{{- if or .Values.caBundle.existingSecret .Values.caBundle.existingConfigMap }}
+- name: vigil-ca-bundle
+  mountPath: {{ .Values.caBundle.mountPath }}
+  subPath: ca-bundle.pem
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{- define "vigil.caBundleVolume" -}}
+{{- if .Values.caBundle.existingSecret }}
+- name: vigil-ca-bundle
+  secret:
+    secretName: {{ .Values.caBundle.existingSecret | quote }}
+    items:
+      - key: {{ .Values.caBundle.key | default "ca.crt" | quote }}
+        path: ca-bundle.pem
+{{- else if .Values.caBundle.existingConfigMap }}
+- name: vigil-ca-bundle
+  configMap:
+    name: {{ .Values.caBundle.existingConfigMap | quote }}
+    items:
+      - key: {{ .Values.caBundle.key | default "ca.crt" | quote }}
+        path: ca-bundle.pem
+{{- end }}
+{{- end -}}
+
 {{- define "vigil.env" -}}
 - name: HOME
   value: "/home/vigil"

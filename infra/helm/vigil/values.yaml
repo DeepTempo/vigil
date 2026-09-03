@@ -470,6 +470,30 @@ stateDirectory:
     emptyDir: {}
 
 # -----------------------------------------------------------------------------
+# Custom CA bundle (TLS-inspecting proxies)
+# -----------------------------------------------------------------------------
+# Mount an operator-supplied PEM into backend, daemon, llm-worker, agent-worker,
+# and agent-serve, and set SSL_CERT_FILE, REQUESTS_CA_BUNDLE, and
+# NODE_EXTRA_CA_CERTS to that path. Python and Node then trust the inspecting
+# CA with verification still enabled. MCP children inherit the same vars.
+#
+# Point at an existing Secret or ConfigMap — this chart does not create one.
+# Leave both names empty (the default) to skip the mount. Prefer the Secret
+# when both are set.
+#
+#   kubectl create secret generic vigil-proxy-ca \
+#     --from-file=ca.crt=/path/to/corporate-ca.pem
+#
+#   caBundle:
+#     existingSecret: vigil-proxy-ca
+#     key: ca.crt
+caBundle:
+  existingSecret: ""
+  existingConfigMap: ""
+  key: ca.crt
+  mountPath: /etc/vigil/ca-bundle.pem
+
+# -----------------------------------------------------------------------------
 # Pod security
 # -----------------------------------------------------------------------------
 podSecurityContext:
