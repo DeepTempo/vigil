@@ -374,12 +374,17 @@ Confidence scoring:
         "color": "#C7CEEA",
         "description": "Compliance monitoring and policy validation",
         "specialization": "Compliance & Policy",
-        "recommended_tools": ["list_findings", "get_finding", "list_cases"],
+        "recommended_tools": [
+            "list_findings",
+            "get_finding",
+            "list_cases",
+            "list_completed_hunts",
+        ],
         "max_tokens": 4096,
         "enable_thinking": False,
         "extra_principles": "- Document for compliance audits\n- Map findings to framework controls\n- Prioritize high-risk violations\n- Memory: mempalace_add_drawer all framework mappings to wing=compliance/control-mapping; mempalace_diary_write compliance decisions for audit trail",
         "methodology": """<methodology>
-1. Gather evidence via MCP tools
+1. Gather evidence via MCP tools; for an assessment window call list_completed_hunts
 2. Identify policy violations and assess severity
 3. Map to frameworks: NIST CSF, ISO 27001, CIS Controls, PCI-DSS, HIPAA, GDPR, SOC 2
 4. Evaluate control effectiveness

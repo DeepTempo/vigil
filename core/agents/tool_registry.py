@@ -8,6 +8,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, Tuple
 
+from core.agents.projections import pack_completed_hunts
 from core.findings.similarity import similar_findings
 
 logger = logging.getLogger(__name__)
@@ -179,6 +180,12 @@ _DATA_TOOLS: Dict[str, Callable[[Any, Args], Any]] = {
     "get_technique_rollup": _technique_rollup,
 }
 
+
+async def _list_completed_hunts(args: Args) -> Any:
+    allowed = {key: args[key] for key in ("start", "end", "limit") if key in args}
+    return await pack_completed_hunts(**allowed)
+
+
 _SECURITY_TOOLS = frozenset(
     {
         "analyze_coverage",
@@ -276,6 +283,9 @@ async def execute_backend_tool(
         from core.storage.database_data_service import DatabaseDataService
 
         return _DATA_TOOLS[tool_name](DatabaseDataService(), args), True
+
+    if tool_name == "list_completed_hunts":
+        return await _list_completed_hunts(args), True
 
     if tool_name in _SECURITY_TOOLS:
         from core.detections.tools import get_security_detection_tools

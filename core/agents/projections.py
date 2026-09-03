@@ -4,12 +4,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from core.config import get_settings
 from core.secrets import get_secret
+from core.workflows.workflow_run_service import LIST_RUNS_MAX, WorkflowRunService
 
 logger = logging.getLogger(__name__)
 
@@ -86,3 +89,63 @@ async def write_narrative(run_id: str) -> Dict[str, Any]:
         detail = response.text[:400]
         raise RuntimeError(f"the agent layer answered {response.status_code}: {detail}")
     return response.json()
+
+
+THREAT_HUNT_WORKFLOW_ID = "threat-hunt"
+PROJECTION_READ_CONCURRENCY = 8
+
+
+def _is_date_only(value: str) -> bool:
+    trimmed = value.rstrip("Zz")
+    return "T" not in trimmed and " " not in trimmed
+
+
+def parse_window_instant(value: str, *, end: bool = False) -> datetime:
+    """ISO-8601 to naive UTC, matching workflow_runs columns.
+
+    A date-only ``end`` is the last microsecond of that UTC day so an
+    assessment window named by dates includes the end date.
+    """
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    if end and _is_date_only(value):
+        return parsed.replace(hour=23, minute=59, second=59, microsecond=999999)
+    return parsed
+
+
+async def _read_gated(run_id: str, gate: asyncio.Semaphore) -> Optional[Dict[str, Any]]:
+    async with gate:
+        return await read_projection(run_id)
+
+
+# Completed threat-hunt projections for an assessment window. The projection is
+# the pack: hypotheses (with provenance), evidence provenance, verdict, checkpoint
+# resolutions, timestamps. A missing projection is skipped, not folded from
+# agent_events. If every listed run fails to read, that is an error, not an
+# empty pack.
+async def pack_completed_hunts(
+    *, start: str, end: str, limit: int = LIST_RUNS_MAX
+) -> Dict[str, Any]:
+    started_at = parse_window_instant(start)
+    finished_at = parse_window_instant(end, end=True)
+    if started_at > finished_at:
+        raise ValueError("start must be at or before end")
+    cap = max(1, min(int(limit), LIST_RUNS_MAX))
+    runs = WorkflowRunService().list_runs(
+        workflow_id=THREAT_HUNT_WORKFLOW_ID,
+        status="completed",
+        finished_after=started_at,
+        finished_at=finished_at,
+        limit=cap,
+    )
+    gate = asyncio.Semaphore(PROJECTION_READ_CONCURRENCY)
+    projections = await asyncio.gather(
+        *(_read_gated(run["run_id"], gate) for run in runs)
+    )
+    hunts = [projection for projection in projections if projection is not None]
+    if runs and not hunts:
+        raise RuntimeError(
+            "could not read hunt projections for completed runs in the window"
+        )
+    return {"start": start, "end": end, "hunts": hunts}

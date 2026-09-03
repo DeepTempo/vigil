@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -15,10 +15,20 @@ from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
+# Same ceiling as GET /workflows/{workflow_id}/runs.
+LIST_RUNS_MAX = 200
+
 
 def generate_run_id() -> str:
     """Return a new run_id shaped ``wfr-YYYYMMDD-<uuid8>``."""
     return f"wfr-{utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+
+
+def _as_naive_utc(value: datetime) -> datetime:
+    """Match workflow_runs columns, which store naive UTC."""
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
 
 
 class WorkflowRunService:
@@ -135,11 +145,19 @@ class WorkflowRunService:
         *,
         workflow_id: Optional[str] = None,
         status: Optional[str] = None,
+        started_at: Optional[datetime] = None,
+        finished_at: Optional[datetime] = None,
+        finished_after: Optional[datetime] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """List runs, newest first. Does not include the (potentially
-        large) ``result_summary`` field — use ``get_run`` for detail."""
+        large) ``result_summary`` field — use ``get_run`` for detail.
+
+        ``started_at`` is an inclusive lower bound on when the run
+        started. ``finished_after`` / ``finished_at`` bound when it
+        finished (inclusive).
+        """
         try:
             db = get_db_manager()
             with db.session_scope() as session:
@@ -150,6 +168,18 @@ class WorkflowRunService:
                     stmt = stmt.where(WorkflowRun.workflow_id == workflow_id)
                 if status:
                     stmt = stmt.where(WorkflowRun.status == status)
+                if started_at is not None:
+                    stmt = stmt.where(
+                        WorkflowRun.started_at >= _as_naive_utc(started_at)
+                    )
+                if finished_after is not None:
+                    stmt = stmt.where(
+                        WorkflowRun.finished_at >= _as_naive_utc(finished_after)
+                    )
+                if finished_at is not None:
+                    stmt = stmt.where(
+                        WorkflowRun.finished_at <= _as_naive_utc(finished_at)
+                    )
                 stmt = (
                     stmt.order_by(WorkflowRun.started_at.desc())
                     .limit(limit)

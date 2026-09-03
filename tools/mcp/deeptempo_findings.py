@@ -9,6 +9,7 @@ from typing import Optional
 import numpy as np
 from mcp.server.mcpserver import MCPServer
 
+from core.agents.projections import pack_completed_hunts
 from core.time import utcnow
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,20 @@ def get_finding(finding_id: str, **kwargs) -> str:
         return jdump({"error": f"Finding {finding_id} not found"})
     except Exception as e:
         logger.error(f"Error getting finding {finding_id}: {e}")
+        return jdump({"error": str(e)})
+
+
+@mcp.tool()
+async def list_completed_hunts(
+    start: str,
+    end: str,
+    limit: int = 200,
+    **kwargs,
+) -> str:
+    """Return completed threat-hunt projections for an assessment window."""
+    try:
+        return jdump(await pack_completed_hunts(start=start, end=end, limit=limit))
+    except Exception as e:
         return jdump({"error": str(e)})
 
 
