@@ -27,6 +27,15 @@ x-agent-env: &agent-env
   # placeholder only when the variable is absent, and the := form would set it
   # to an empty string the OpenAI client then sends as a real credential.
   - BIFROST_API_KEY
+  # Inspecting-proxy CA. Pass-through (no `:-` default): an empty SSL_CERT_FILE
+  # makes Python fail every HTTPS call. Bind-mount the operator PEM — Compose
+  # has no optional-volume syntax, so do not default the source to /dev/null.
+  #   volumes:
+  #     - ${VIGIL_CA_BUNDLE}:/etc/vigil/ca-bundle.pem:ro
+  # with SSL_CERT_FILE / REQUESTS_CA_BUNDLE / NODE_EXTRA_CA_CERTS=/etc/vigil/ca-bundle.pem
+  - SSL_CERT_FILE
+  - REQUESTS_CA_BUNDLE
+  - NODE_EXTRA_CA_CERTS
 
 services:
   postgres:
@@ -158,6 +167,10 @@ services:
       # which was the agent layer's address while it shared the backend process.
       - AGENT_URL=http://agent-serve:6989
       - PYTHONUNBUFFERED=1
+      # Inspecting-proxy CA. Pass-through; bind-mount the PEM (see x-agent-env).
+      - SSL_CERT_FILE
+      - REQUESTS_CA_BUNDLE
+      - NODE_EXTRA_CA_CERTS
     ports:
       - "6987:6987"
     depends_on:
@@ -224,6 +237,10 @@ services:
       # Logging
       - DAEMON_LOG_LEVEL=${DAEMON_LOG_LEVEL:-INFO}
       - PYTHONUNBUFFERED=1
+      # Inspecting-proxy CA. Pass-through; bind-mount the PEM (see x-agent-env).
+      - SSL_CERT_FILE
+      - REQUESTS_CA_BUNDLE
+      - NODE_EXTRA_CA_CERTS
       # Integrations (loaded from core/config)
       - SPLUNK_URL=${SPLUNK_URL}
       - SPLUNK_USERNAME=${SPLUNK_USERNAME}
@@ -287,6 +304,10 @@ services:
       - BIFROST_URL=${BIFROST_URL:-http://bifrost:8080}
       - REDIS_URL=redis://redis:6379/0
       - PYTHONUNBUFFERED=1
+      # Inspecting-proxy CA. Pass-through; bind-mount the PEM (see x-agent-env).
+      - SSL_CERT_FILE
+      - REQUESTS_CA_BUNDLE
+      - NODE_EXTRA_CA_CERTS
     depends_on:
       postgres:
         condition: service_healthy

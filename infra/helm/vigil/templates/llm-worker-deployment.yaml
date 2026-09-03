@@ -46,6 +46,7 @@ spec:
                   key: {{ include "vigil.postgres.passwordSecretKey" . }}
             {{- include "vigil.env" . | nindent 12 }}
             {{- include "vigil.stateEnv" . | nindent 12 }}
+            {{- include "vigil.caBundleEnv" . | nindent 12 }}
             {{- with .Values.llmWorker.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -55,8 +56,10 @@ spec:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           volumeMounts:
             {{- include "vigil.stateVolumeMount" . | nindent 12 }}
+            {{- include "vigil.caBundleVolumeMount" . | nindent 12 }}
       volumes:
         {{- include "vigil.stateVolume" . | nindent 8 }}
+        {{- include "vigil.caBundleVolume" . | nindent 8 }}
       {{- with .Values.llmWorker.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

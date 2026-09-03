@@ -46,12 +46,15 @@ def test_no_bundle_configured_leaves_httpx_on_certifi():
 
 @pytest.mark.parametrize("var", _ALL_VARS[:1] + _ALL_VARS[2:])
 def test_a_file_bundle_arrives_as_ssl_cert_file(monkeypatch, tmp_path, var):
-    """Whatever the operator called it, httpx only reads SSL_CERT_FILE."""
+    """httpx reads SSL_CERT_FILE; npx/Node reads NODE_EXTRA_CA_CERTS."""
     bundle = tmp_path / "corporate-ca.pem"
     bundle.write_text("-----BEGIN CERTIFICATE-----\n")
     monkeypatch.setenv(var, str(bundle))
 
-    assert ca_bundle_env() == {"SSL_CERT_FILE": str(bundle)}
+    assert ca_bundle_env() == {
+        "SSL_CERT_FILE": str(bundle),
+        "NODE_EXTRA_CA_CERTS": str(bundle),
+    }
 
 
 def test_a_directory_bundle_arrives_as_ssl_cert_dir(monkeypatch, tmp_path):
@@ -70,7 +73,10 @@ def test_the_httpx_native_name_wins(monkeypatch, tmp_path):
     monkeypatch.setenv("SSL_CERT_FILE", str(current))
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(legacy))
 
-    assert ca_bundle_env() == {"SSL_CERT_FILE": str(current)}
+    assert ca_bundle_env() == {
+        "SSL_CERT_FILE": str(current),
+        "NODE_EXTRA_CA_CERTS": str(current),
+    }
 
 
 def test_a_missing_path_falls_back_rather_than_breaking_tls(monkeypatch, tmp_path):
@@ -91,6 +97,7 @@ def test_the_sdk_would_otherwise_strip_it(monkeypatch, tmp_path):
     monkeypatch.setenv("SSL_CERT_FILE", str(bundle))
 
     assert "SSL_CERT_FILE" not in get_default_environment()
+    assert "NODE_EXTRA_CA_CERTS" not in get_default_environment()
 
 
 @pytest.mark.parametrize("rel, env_built", CHILD_ENV_SITES)
