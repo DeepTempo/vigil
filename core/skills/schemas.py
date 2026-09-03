@@ -2,7 +2,7 @@
 
 Skills are reusable, parameterized SOC capabilities (detection, enrichment,
 response, reporting) that agents and workflows will be able to invoke. See
-`core/storage/models.py::Skill` for the persisted shape.
+`core.storage.models.Skill` for the persisted shape.
 """
 
 from typing import Any, Dict, List, Optional
