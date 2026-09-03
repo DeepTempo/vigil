@@ -242,7 +242,7 @@ def safe_tool_names(registry: Optional[MCPRegistry]) -> List[str]:
         return []
 
 
-def refresh_from_client(registry: MCPRegistry) -> int:
+def refresh_from_client(registry: MCPRegistry, prune: bool = True) -> int:
     """Sync the registry to the client's LIVE connection state.
 
     Unlike ``populate_from_cache`` (a boot warm-start that prefers the on-disk
@@ -251,6 +251,9 @@ def refresh_from_client(registry: MCPRegistry) -> int:
     saved its credential and enabled it — becomes usable on the next turn
     without a restart, and one that has disconnected drops out. Cheap and
     idempotent; call it wherever a turn assembles its tool list.
+
+    ``prune=False`` adds without dropping, for a caller whose binding outlives
+    the moment it reads.
     """
     from core.integrations.mcp.client import process_mcp_client
 
@@ -277,7 +280,12 @@ def refresh_from_client(registry: MCPRegistry) -> int:
     # server should drop out. In lazy mode the boot-populated set is intended
     # availability (servers reconnect on first call), so we add without pruning
     # to avoid wiping tools that are still reachable.
-    if eager_connect_enabled() and connected:
+    #
+    # A caller passes prune=False when it binds once and is read for a long time
+    # afterwards: is_connected goes False on any failed call and stays there
+    # until the next one reconnects, so it says "the last call failed", not
+    # "unreachable", and dropping the server costs more than keeping it.
+    if prune and eager_connect_enabled() and connected:
         registry.retain_only(active)
     return len(active)
 
