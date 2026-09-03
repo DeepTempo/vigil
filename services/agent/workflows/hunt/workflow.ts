@@ -1,7 +1,7 @@
 import { announceOpen, noAnnounce, type Announce } from "../../core/checkpoints.js";
 import { GatewayExhausted } from "../../core/limiter.js";
 import type { Harness } from "../../core/loop.js";
-import type { RunOutcome, TerminalHandoff } from "../../contracts/events.js";
+import type { RunKind, RunOutcome, TerminalHandoff } from "../../contracts/events.js";
 import type { RunSpec } from "../../core/spec.js";
 import { BudgetRefused, disconfirmationCritic, decisionProvider, narrativeWriter, workerDispatcher } from "./adapters.js";
 import { narrativeInput, type Narrative } from "./narrative.js";
@@ -24,6 +24,9 @@ import { grantsOf } from "../lead/workflow.js";
 
 export interface HuntOptions {
   run_id: string;
+  // The kind the run was started as. "hunt" for a forward hunt, "root-cause" for a
+  // backward one: the loop is the same, so this only decides how events are stamped.
+  run_kind: RunKind;
   spec: RunSpec;
   actions: readonly string[];
   queue: DirectiveQueue;
@@ -49,13 +52,13 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
   const opened = (await harness.state.latestSeq(run_id)) !== null;
   let ledger;
   try {
-    ledger = opened ? (await resumeHunt(harness.state, queue, run_id)).ledger : await startHunt(harness.state, queue, run_id, spec, options.started_by ?? "worker");
+    ledger = opened ? (await resumeHunt(harness.state, queue, run_id, options.run_kind)).ledger : await startHunt(harness.state, queue, run_id, spec, options.started_by ?? "worker", options.run_kind);
   } catch (error) {
     // Its own projection ended but the domain-free terminal is missing, so the
     // run is over for the hunt and not for anyone else. Settle rather than throw.
     if (!(error instanceof HuntAlreadyTerminal)) throw error;
     await harness.state.append(run_id, [
-      { run_id, run_kind: "hunt", kind: "terminal", payload: { outcome: "completed", reason: error.message } } as never,
+      { run_id, run_kind: options.run_kind, kind: "terminal", payload: { outcome: "completed", reason: error.message } } as never,
     ]);
     return { status: "completed", reason: error.message, iterations: 0 };
   }
@@ -76,7 +79,7 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
   const granted = ledger.projection.hunt.budgets;
   harness.budget.raise({ max_cost_usd: granted.max_cost_usd, max_wall_ms: granted.max_wall_ms });
 
-  const ports = { harness: scoped, spec: options.spec, run_id, actions: options.actions, ...(options.signal === undefined ? {} : { signal: options.signal }) };
+  const ports = { harness: scoped, spec: options.spec, run_id, run_kind: options.run_kind, actions: options.actions, ...(options.signal === undefined ? {} : { signal: options.signal }) };
   const narrator = narrativeWriter(ports);
   const controller = new HuntController(
     ledger,
@@ -148,12 +151,15 @@ export async function narrateRun(
 ): Promise<Narrative> {
   const projection = fold(events);
   const spec = projection.hunt.spec;
-  const harness = build<HuntKinds>("hunt", spec, state);
-  const narrative = await narrativeWriter({ harness, spec, run_id: runId, actions: [] }).narrate(
+  // The kind is on the run's own events, so a rewrite stamps the narrative with the
+  // same kind the run carried rather than assuming "hunt".
+  const runKind: RunKind = events[0]?.run_kind ?? "hunt";
+  const harness = build<HuntKinds>(runKind, spec, state);
+  const narrative = await narrativeWriter({ harness, spec, run_id: runId, run_kind: runKind, actions: [] }).narrate(
     narrativeInput(projection, buildReport(projection)),
   );
   await state.append(runId, [
-    { run_id: runId, run_kind: "hunt", kind: "narrative", payload: narrative } as never,
+    { run_id: runId, run_kind: runKind, kind: "narrative", payload: narrative } as never,
   ]);
   return narrative;
 }
@@ -179,7 +185,7 @@ async function end(
   if ((await harness.state.terminal(options.run_id)) === null) {
     const handoffs = await handoffsOf(harness, options.run_id, ledger.projection);
     await harness.state.append(options.run_id, [
-      { run_id: options.run_id, run_kind: "hunt", kind: "terminal", payload: { outcome, reason, summary: renderReport(built, ledger.projection, narrative), handoffs } } as never,
+      { run_id: options.run_id, run_kind: options.run_kind, kind: "terminal", payload: { outcome, reason, summary: renderReport(built, ledger.projection, narrative), handoffs } } as never,
     ]);
   }
   return report(ledger, outcome, reason);
@@ -199,7 +205,7 @@ async function narrate(
   try {
     const narrative = await narrator.narrate(narrativeInput(projection, built));
     await harness.state.append(options.run_id, [
-      { run_id: options.run_id, run_kind: "hunt", kind: "narrative", payload: narrative } as never,
+      { run_id: options.run_id, run_kind: options.run_kind, kind: "narrative", payload: narrative } as never,
     ]);
     return narrative;
   } catch (error) {
@@ -251,7 +257,7 @@ async function parked(
 ): Promise<HuntReport> {
   const [open] = pendingCheckpoints(ledger.projection);
   if (open !== undefined) {
-    await announceOpen(harness.state, options.run_id, "hunt", open.checkpoint_id, options.announce ?? noAnnounce);
+    await announceOpen(harness.state, options.run_id, options.run_kind, open.checkpoint_id, options.announce ?? noAnnounce);
   }
   return report(ledger, "waiting_approval", reason);
 }

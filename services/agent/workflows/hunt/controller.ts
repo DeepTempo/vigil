@@ -1,4 +1,5 @@
 import type { Budget } from "../../contracts/budget.js";
+import type { RunKind } from "../../contracts/events.js";
 import type { State } from "../../core/seams.js";
 import type { HuntKinds } from "./journal.js";
 import { type HuntSpec } from "./config.js";
@@ -342,6 +343,9 @@ export async function startHunt(
   runId: string,
   spec: HuntSpec,
   startedBy = "worker",
+  // Defaults to "hunt" so every existing caller and test is unchanged; a backward
+  // run passes "root-cause" so its events and run envelope carry the right kind.
+  runKind: RunKind = "hunt",
 ): Promise<Journal> {
   const now = new Date().toISOString();
   const huntId = newId("hunt");
@@ -367,8 +371,8 @@ export async function startHunt(
     parked_at: null,
     parked_reason: null,
     termination_reason: null,
-  }, "hunt", {
-    run_kind: "hunt",
+  }, runKind, {
+    run_kind: runKind,
     spec,
     budgets: spec.budgets,
     seed: runId,
@@ -483,8 +487,9 @@ export async function resumeHunt(
   state: State<HuntKinds>,
   queue: DirectiveQueue,
   runId: string,
+  runKind: RunKind = "hunt",
 ): Promise<{ ledger: Journal; spec: HuntSpec }> {
-  const ledger = await Journal.open(state, queue, runId);
+  const ledger = await Journal.open(state, queue, runId, runKind);
   const { hunt } = ledger.projection;
   if (hunt.status === "terminal") throw new HuntAlreadyTerminal(`${hunt.hunt_id} already ended as ${hunt.outcome}`);
   return { ledger, spec: hunt.spec };

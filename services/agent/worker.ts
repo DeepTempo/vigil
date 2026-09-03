@@ -156,7 +156,9 @@ async function drive(
   const entry = archFor(kind);
   if (entry.workflow === "hunt") {
     const harness = build(kind, spec, as<HuntKinds>(state), undefined, seed);
-    await runHunt(harness, { run_id, spec, actions: entry.actions, queue: directives, started_by, announce: announceFor(), signal });
+    // run_kind threaded so a hunt-loop run started as root-cause journals its own
+    // kind rather than the "hunt" the loop was first written for.
+    await runHunt(harness, { run_id, run_kind: kind, spec, actions: entry.actions, queue: directives, started_by, announce: announceFor(), signal });
     return;
   }
   if (kind === "hunt" || kind === "investigate") {

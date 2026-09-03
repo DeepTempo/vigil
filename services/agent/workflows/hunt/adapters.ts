@@ -2,6 +2,7 @@ import { setMaxListeners } from "node:events";
 import { drain, streamTurn } from "../../core/stream.js";
 import type { Attempt, Harness } from "../../core/loop.js";
 import { clamp } from "../../core/security.js";
+import type { RunKind } from "../../contracts/events.js";
 import type { RoleSpec, RunSpec } from "../../core/spec.js";
 import { SpecError } from "../../core/spec.js";
 import { narrativeOf, renderDigest, renderDispatch, renderNullCheck } from "./render.js";
@@ -27,6 +28,9 @@ export interface AdapterOptions {
   harness: Harness<HuntKinds>;
   spec: RunSpec;
   run_id: string;
+  // The run's kind, stamped on every turn event so a root-cause run's dispatches
+  // are not journalled as "hunt". Defaults handled by the caller (ports in runHunt).
+  run_kind: RunKind;
   actions: readonly string[];
   signal?: AbortSignal;
 }
@@ -72,7 +76,7 @@ function turnFor(options: AdapterOptions, id: string, spec: RoleSpec, task: stri
   const { runtime } = options.spec;
   return {
     run_id: options.run_id,
-    run_kind: "hunt" as const,
+    run_kind: options.run_kind,
     role: id,
     system: spec.prompt,
     task,

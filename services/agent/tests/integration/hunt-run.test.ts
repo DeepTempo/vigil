@@ -180,6 +180,7 @@ describe("a hunt started through the queue", () => {
 
     const outcome = await runHunt(build("hunt", spec, ledger, undefined, undefined) as never, {
       run_id: runId,
+      run_kind: "hunt",
       spec,
       actions: archFor("hunt").actions,
       queue: new InProcessDirectiveQueue(),

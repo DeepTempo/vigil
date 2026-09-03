@@ -146,7 +146,9 @@ async function readProjection(state: State, runId: string, res: ServerResponse):
 async function writeNarrative(state: State, runId: string, res: ServerResponse, build: HarnessFactory): Promise<void> {
   const events = await state.read(runId);
   const opened = events[0];
-  if (opened === undefined || opened.run_kind !== "hunt") return refuse(res, 404, `no hunt to write up: ${runId}`);
+  // root-cause is a hunt run backward, so its ledger is a hunt ledger and narrates
+  // the same way; both kinds are written up, anything else has no account to give.
+  if (opened === undefined || (opened.run_kind !== "hunt" && opened.run_kind !== "root_cause")) return refuse(res, 404, `no hunt to write up: ${runId}`);
 
   // Narrowed on the line that established the kind: the store holds payloads as JSON and
   // never reads them. archFor() is the typed fix when a second kind wants an account.

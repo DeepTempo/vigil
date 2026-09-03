@@ -18,7 +18,18 @@ logger = logging.getLogger(__name__)
 # agent layer's vocabulary, so they are stated here once rather than inline.
 COMPOSE_RUN_KIND = "compose"
 HUNT_RUN_KIND = "hunt"
+ROOT_CAUSE_RUN_KIND = "root_cause"
+# Both drive the same hypothesis loop and read the same projection: a hunt asks
+# whether a threat is real, a root-cause run works backward from a confirmed one to
+# how it began. Everything that gates on "is this the hunt loop?" tests this set, so
+# the two stay in lockstep and root-cause never silently loses telemetry_search.
+HUNT_LIKE_RUN_KINDS = frozenset({HUNT_RUN_KIND, ROOT_CAUSE_RUN_KIND})
 WORKFLOW_SCHEME = "workflow:"
+
+
+def is_hunt_like(run_kind: Optional[str]) -> bool:
+    """True when a run_kind drives the hunt hypothesis loop (hunt or root-cause)."""
+    return run_kind in HUNT_LIKE_RUN_KINDS
 
 
 # None rather than a number, so a caller that says nothing leaves the definition's
@@ -123,7 +134,7 @@ def _not_a_claim(statement: str) -> bool:
 def _nothing_to_run(
     workflow: "WorkflowDefinition", parameters: Optional[Dict[str, Any]] = None
 ) -> str:
-    if workflow.run_kind == HUNT_RUN_KIND:
+    if is_hunt_like(workflow.run_kind):
         if workflow.metadata.get("hypotheses"):
             return ""
         asked = _asked_hypotheses(parameters)

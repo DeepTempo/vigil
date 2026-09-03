@@ -49,8 +49,8 @@ function loadArchOnly(body: string, handled: readonly string[] = ["EXAMINE", "CO
 }
 
 describe("the registry resolves a run kind to an arch", () => {
-  it("registers the four shipped arches and nothing else", () => {
-    expect(registeredKinds()).toEqual(["chat", "compose", "hunt", "investigate"]);
+  it("registers the shipped arches and nothing else", () => {
+    expect(registeredKinds()).toEqual(["chat", "compose", "hunt", "investigate", "root_cause"]);
   });
 
   // Adding an agent type is an arch file and an entry. Nothing in the worker

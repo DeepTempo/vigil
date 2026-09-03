@@ -41,6 +41,19 @@ const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
     notes: (state, runId) => huntNotes(state as unknown as State<HuntKinds>, runId),
     projection: (runId, events) => huntProjection(runId, events as readonly AgentEvent<HuntKinds>[]),
   },
+  root_cause: {
+    // Same loop, projection and notes as hunt: root-cause is a hunt run backward.
+    // Only the arch prompt differs (rootcause.yaml frames the lead's job as tracing
+    // a confirmed compromise to its origin), so the loop mechanics are shared and
+    // the kind stays honest rather than borrowing "hunt".
+    arch: packaged("rootcause.yaml"),
+    workflow: "hunt",
+    actions: ["INVESTIGATE", "EXPAND", "PIVOT", "DEEPEN", "ABANDON", "VALIDATE", "CHECKPOINT", "CONCLUDE", "HANDOFF_IR"],
+    halts: ["CONCLUDE"],
+    owned: { playbook: ["hypotheses", "attack_techniques", "data_domains"], config: ["enrichment", "checkpoints", "hypothesis_loop"] },
+    notes: (state, runId) => huntNotes(state as unknown as State<HuntKinds>, runId),
+    projection: (runId, events) => huntProjection(runId, events as readonly AgentEvent<HuntKinds>[]),
+  },
   investigate: {
     arch: packaged("investigate.yaml"),
     workflow: "lead",
