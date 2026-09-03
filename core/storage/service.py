@@ -82,8 +82,8 @@ class DatabaseService:
         self,
         finding_id: str,
         mitre_predictions: dict,
-        anomaly_score: float,
-        timestamp: datetime,
+        anomaly_score: Optional[float],
+        timestamp: Optional[datetime],
         data_source: str,
         **kwargs,
     ) -> Optional[Finding]:
@@ -93,8 +93,8 @@ class DatabaseService:
         Args:
             finding_id: Unique finding ID
             mitre_predictions: MITRE ATT&CK predictions
-            anomaly_score: Anomaly score (0-1)
-            timestamp: Finding timestamp
+            anomaly_score: Anomaly score (0-1), or None when the source omitted it
+            timestamp: Finding timestamp, or None when the source omitted it
             data_source: Data source type
             **kwargs: Additional fields (entity_context, evidence_links, cluster_id, severity, status)
 
@@ -144,8 +144,8 @@ class DatabaseService:
                     r = by_id[finding_id]
                     finding = Finding(
                         finding_id=finding_id,
-                        anomaly_score=r.get("anomaly_score", 0.0),
-                        timestamp=r["timestamp"],
+                        anomaly_score=r.get("anomaly_score"),
+                        timestamp=r.get("timestamp"),
                         data_source=r.get("data_source", "imported"),
                         external_id=r.get("external_id"),
                         description=r.get("description"),

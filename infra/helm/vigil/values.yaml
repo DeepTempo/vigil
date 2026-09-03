@@ -412,6 +412,7 @@ dbInit:
     - 22_workflow_run_deleted.sql
     - 23_drop_finding_embedding.sql
     - 24_finding_mitre_predictions.sql
+    - 25_nullable_finding_score_timestamp.sql
   resources:
     requests:
       cpu: 50m

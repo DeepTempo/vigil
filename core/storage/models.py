@@ -90,7 +90,7 @@ class Finding(Base):
     # Primary key
     finding_id: Mapped[str] = mapped_column(String(50), primary_key=True)
 
-    anomaly_score: Mapped[float] = mapped_column(Float, nullable=False)
+    anomaly_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Human-readable description (populated from ingestion or synthesized from entity_context)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -102,7 +102,7 @@ class Finding(Base):
     evidence_links: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
 
     # Metadata
-    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     data_source: Mapped[str] = mapped_column(String(50), nullable=False)
     # Source-native ID. Combined with data_source it forms the dedup key
     # for federated ingest (see uniq_findings_source_extid).

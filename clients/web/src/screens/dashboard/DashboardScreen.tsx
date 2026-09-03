@@ -3,6 +3,7 @@ import { Icon } from '../../shared/icons'
 import { Pie, Hbars } from '../../shared/charts'
 import { useFindings, useDashboardKpis } from './useFindings'
 import type { Finding } from '../../data/data'
+import { formatFindingScore } from '../../data/mappers'
 import { useAttack } from './useAttack'
 import { useTimeline } from './useTimeline'
 import { EmptyState, FilterButton, FilterGroup } from '../../shared/ui'
@@ -61,7 +62,7 @@ function findingPrompt(f: Finding): string {
   const parts = [`${f.sev} severity`, `MITRE ${f.tech}${f.tactic !== NDASH ? ` (${f.tactic})` : ''}`, `source ${f.src}`]
   if (f.host !== NDASH) parts.push(`host ${f.host}`)
   if (f.user !== NDASH) parts.push(`user ${f.user}`)
-  parts.push(`anomaly score ${f.score.toFixed(2)}`)
+  parts.push(`anomaly score ${formatFindingScore(f.score)}`)
   return `Investigate finding ${f.id} — ${parts.join(', ')}. What happened and what should I do next?`
 }
 

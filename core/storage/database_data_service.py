@@ -4,7 +4,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.config import is_demo_mode, vigil_path
 from core.exceptions import DatabaseError
@@ -22,6 +22,23 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 FINDINGS_FILE = DATA_DIR / "findings.json"
 CASES_FILE = DATA_DIR / "cases.json"
+
+
+def _optional_score(value: Any) -> Optional[float]:
+    """Parse a score; missing, empty, and NaN stay None (do not coerce to 0.0)."""
+    if value is None or value == "":
+        return None
+    parsed = float(value)
+    if parsed != parsed:
+        return None
+    return parsed
+
+
+def _score_at_least(finding: Dict, minimum: float) -> bool:
+    """True when a finding's score is present and meets the floor. Null scores
+    are excluded, matching SQL `anomaly_score >= minimum` (NULL is not true)."""
+    score = finding.get("anomaly_score")
+    return score is not None and score >= minimum
 
 
 class DatabaseDataService:
@@ -198,9 +215,7 @@ class DatabaseDataService:
                 findings = [f for f in findings if f.get("cluster_id") == cluster_id]
             if min_anomaly_score is not None:
                 findings = [
-                    f
-                    for f in findings
-                    if f.get("anomaly_score", 0) >= min_anomaly_score
+                    f for f in findings if _score_at_least(f, min_anomaly_score)
                 ]
             if status:
                 findings = [f for f in findings if f.get("status") == status]
@@ -269,9 +284,7 @@ class DatabaseDataService:
                 findings = [f for f in findings if f.get("cluster_id") == cluster_id]
             if min_anomaly_score is not None:
                 findings = [
-                    f
-                    for f in findings
-                    if f.get("anomaly_score", 0) >= min_anomaly_score
+                    f for f in findings if _score_at_least(f, min_anomaly_score)
                 ]
             if status:
                 findings = [f for f in findings if f.get("status") == status]
@@ -365,8 +378,8 @@ class DatabaseDataService:
                 finding = self._db_service.create_finding(
                     finding_id=finding_data.get("finding_id"),
                     mitre_predictions=finding_data.get("mitre_predictions", {}),
-                    anomaly_score=float(finding_data.get("anomaly_score", 0.0)),
-                    timestamp=finding_data.get("timestamp", utcnow()),
+                    anomaly_score=_optional_score(finding_data.get("anomaly_score")),
+                    timestamp=finding_data.get("timestamp") or None,
                     data_source=finding_data.get("data_source", "imported"),
                     description=finding_data.get("description"),
                     entity_context=finding_data.get("entity_context"),
@@ -764,10 +777,10 @@ class DatabaseDataService:
                                     mitre_predictions=finding.get(
                                         "mitre_predictions", {}
                                     ),
-                                    anomaly_score=float(
-                                        finding.get("anomaly_score", 0.0)
+                                    anomaly_score=_optional_score(
+                                        finding.get("anomaly_score")
                                     ),
-                                    timestamp=finding.get("timestamp", utcnow()),
+                                    timestamp=finding.get("timestamp") or None,
                                     data_source=finding.get("data_source", "s3_import"),
                                     entity_context=finding.get("entity_context"),
                                     evidence_links=finding.get("evidence_links"),
