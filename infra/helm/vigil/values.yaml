@@ -476,6 +476,8 @@ stateDirectory:
 # and agent-serve, and set SSL_CERT_FILE, REQUESTS_CA_BUNDLE, and
 # NODE_EXTRA_CA_CERTS to that path. Python and Node then trust the inspecting
 # CA with verification still enabled. MCP children inherit the same vars.
+# SSL_CERT_FILE replaces the default store — the PEM should include public CAs
+# as well as the inspecting one. NODE_EXTRA_CA_CERTS appends.
 #
 # Point at an existing Secret or ConfigMap — this chart does not create one.
 # Leave both names empty (the default) to skip the mount. Prefer the Secret
