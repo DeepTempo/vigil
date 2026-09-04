@@ -2130,7 +2130,10 @@ function HuntMemory({ recall }: { recall: HuntRecall }) {
                 {gaps.map((g) => (
                   <tr key={`${g.investigation_id}|${g.hypothesis_id}`}>
                     <td>{g.statement}</td>
-                    <td className="tight">
+                    {/* Not tight: the disposition is one word but the reason under it is a
+                        sentence, and nowrap on a sentence takes the whole row -- which leaves
+                        the claim beside it a column one character wide. */}
+                    <td>
                       {g.disposition}
                       {g.reason && <div className="muted text-[11px]">{g.reason}</div>}
                     </td>
