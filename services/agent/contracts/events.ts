@@ -9,7 +9,10 @@ export const EVENT_SCHEMA_VERSION = 1;
 
 // tally is the conformance workflow, not a product surface: it keeps the harness
 // boundary exercised by something that is not a real domain.
-export const RUN_KINDS = ["hunt", "investigate", "compose", "chat", "tally"] as const;
+// root-cause reuses the hunt loop (its arch entry declares workflow: "hunt"): a
+// hunt confirms that a threat exists, root-cause works backward from a confirmed
+// one to how it got there. Same machinery, its own kind so it is never mislabelled.
+export const RUN_KINDS = ["hunt", "root_cause", "investigate", "compose", "chat", "tally"] as const;
 export type RunKind = (typeof RUN_KINDS)[number];
 
 // Domain-free, so the harness never imports a workflow's vocabulary.

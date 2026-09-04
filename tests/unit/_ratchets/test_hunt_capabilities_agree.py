@@ -16,8 +16,19 @@ from core.workflows.playbook_resolver import CAPABILITIES, HUNT_CAPABILITIES
 pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parents[3]
-ARCH = ROOT / "services" / "agent" / "arch" / "threathunt.yaml"
 MCP_CONFIG = ROOT / "mcp-config.json"
+
+# Every arch that drives the hunt loop, with the definition it is resolved for.
+# Both resolve through resolve_hunt and are granted HUNT_CAPABILITIES, so both are
+# what this ratchet is about -- a second arch checked against nothing is a worker
+# free to lose a tool, which is the failure the file exists to catch. Not globbed:
+# investigate, compose and chat are granted something else entirely.
+HUNT_LIKE = [
+    ("threathunt.yaml", "threat-hunt"),
+    ("rootcause.yaml", "root-cause-analysis"),
+]
+ARCHES = [ROOT / "services" / "agent" / "arch" / name for name, _ in HUNT_LIKE]
+ARCH = ARCHES[0]
 
 # Read off the source rather than imported: this must not need the mcp package
 # installed, and the arch's needs: are parsed the same way below.
@@ -42,16 +53,16 @@ def _tools_reported_by(path: Path) -> Set[str]:
     return set(TOOL_NAME.findall(path.read_text()))
 
 
-def _declared_domains() -> List[str]:
+def _declared_domains(workflow_id: str = "threat-hunt") -> List[str]:
     from core.workflows.workflows_service import WorkflowsService
 
-    definition = WorkflowsService().get_workflow("threat-hunt")
+    definition = WorkflowsService().get_workflow(workflow_id)
     return list(definition.metadata.get("data_domains") or [])
 
 
-def _needs_in_arch() -> set[str]:
+def _needs_in_arch(arch: Path = ARCH) -> set[str]:
     declared: set[str] = set()
-    for line in ARCH.read_text().splitlines():
+    for line in arch.read_text().splitlines():
         match = re.match(r"\s*needs:\s*\[(.*)\]\s*$", line)
         if match:
             names = match.group(1).split(",")
@@ -59,21 +70,26 @@ def _needs_in_arch() -> set[str]:
     return declared
 
 
-def test_the_arch_declares_needs_at_all():
+@pytest.mark.parametrize("arch", ARCHES, ids=lambda path: path.name)
+def test_the_arch_declares_needs_at_all(arch):
     # A vacuous pass is the one way this check fails silently.
-    assert _needs_in_arch(), "no role in threathunt.yaml declares needs:"
+    assert _needs_in_arch(arch), f"no role in {arch.name} declares needs:"
 
 
-def test_python_binds_every_capability_the_arch_asks_for():
-    unbound = _needs_in_arch() - set(HUNT_CAPABILITIES)
+@pytest.mark.parametrize("arch", ARCHES, ids=lambda path: path.name)
+def test_python_binds_every_capability_the_arch_asks_for(arch):
+    unbound = _needs_in_arch(arch) - set(HUNT_CAPABILITIES)
     assert not unbound, (
-        "threathunt.yaml asks for capabilities the resolver does not emit, so the "
+        f"{arch.name} asks for capabilities the resolver does not emit, so the "
         f"roles needing them would be granted nothing: {sorted(unbound)}"
     )
 
 
-def test_the_resolver_emits_nothing_the_arch_does_not_ask_for():
-    unused = set(HUNT_CAPABILITIES) - _needs_in_arch()
+# Over the union, not per arch: a capability only rootcause.yaml asks for is still
+# one the resolver is right to bind, and checking each alone would call it unused.
+def test_the_resolver_emits_nothing_any_hunt_like_arch_does_not_ask_for():
+    asked = set().union(*(_needs_in_arch(arch) for arch in ARCHES))
+    unused = set(HUNT_CAPABILITIES) - asked
     assert (
         not unused
     ), f"the resolver binds capabilities no role asks for: {sorted(unused)}"
@@ -141,21 +157,25 @@ def test_backend_candidates_are_in_the_tool_manifest():
 # Corroboration is counted over distinct source systems, and a worker's schema is
 # narrowed to this list at spec build. Declaring nothing leaves the field an open
 # string; declaring the wrong things collapses every domain into one bucket.
-def test_the_definition_declares_a_telemetry_vocabulary():
-    assert (
-        _declared_domains()
-    ), "threat-hunt declares no data_domains, so source_system is unconstrained"
+@pytest.mark.parametrize("workflow_id", [wf for _, wf in HUNT_LIKE])
+def test_the_definition_declares_a_telemetry_vocabulary(workflow_id):
+    assert _declared_domains(
+        workflow_id
+    ), f"{workflow_id} declares no data_domains, so source_system is unconstrained"
 
 
 # Recorded runs show workers answering with their own agent id -- threat_hunter,
 # network_analyst -- which the prompts forbid. If one of those were a declared
 # domain, a worker would corroborate itself and two of its findings would read as
 # two independent sources.
-def test_no_declared_domain_is_the_name_of_a_worker():
+@pytest.mark.parametrize(("arch_name", "workflow_id"), HUNT_LIKE)
+def test_no_declared_domain_is_the_name_of_a_worker(arch_name, workflow_id):
     import yaml
 
-    arch = yaml.safe_load(ARCH.read_text())
-    overlap = set(_declared_domains()) & set(arch["roles"]["workers"])
+    arch = yaml.safe_load(
+        (ROOT / "services" / "agent" / "arch" / arch_name).read_text()
+    )
+    overlap = set(_declared_domains(workflow_id)) & set(arch["roles"]["workers"])
 
     assert (
         not overlap
@@ -165,13 +185,16 @@ def test_no_declared_domain_is_the_name_of_a_worker():
 # The definition's phases block is the roster of who the lead may dispatch, and the
 # arch is what they actually are. A name in one and not the other reads as a
 # worker that can be asked for and never answers.
-def test_the_definition_rosters_the_workers_the_arch_carries():
+@pytest.mark.parametrize(("arch_name", "workflow_id"), HUNT_LIKE)
+def test_the_definition_rosters_the_workers_the_arch_carries(arch_name, workflow_id):
     import yaml
 
     from core.workflows.workflows_service import WorkflowsService
 
-    arch = yaml.safe_load(ARCH.read_text())
-    rostered = WorkflowsService().get_workflow("threat-hunt").agents
+    arch = yaml.safe_load(
+        (ROOT / "services" / "agent" / "arch" / arch_name).read_text()
+    )
+    rostered = WorkflowsService().get_workflow(workflow_id).agents
 
     assert set(rostered) == set(arch["roles"]["workers"])
 
@@ -216,14 +239,15 @@ def test_both_sides_agree_what_a_turn_costs_in_calls():
 
 # The number the ratchet above pins is only right if it matches the arch a run is
 # actually built from, which is a third file again.
-def test_the_arch_fans_out_to_the_workers_the_budget_assumes():
+@pytest.mark.parametrize("arch_path", ARCHES, ids=lambda path: path.name)
+def test_the_arch_fans_out_to_the_workers_the_budget_assumes(arch_path):
     from core.workflows.playbook_resolver import HUNT_MAX_WORKERS
 
-    arch = (ROOT / "services" / "agent" / "arch" / "threathunt.yaml").read_text()
+    arch = arch_path.read_text()
     # Anchored: a comment a line above says "Serial is max_workers: 1", and an
     # unanchored search reads that instead of the setting.
     match = re.search(r"^\s+max_workers:\s*(\d+)", arch, re.MULTILINE)
-    assert match is not None, "threathunt.yaml declares no max_workers"
+    assert match is not None, f"{arch_path.name} declares no max_workers"
     assert int(match.group(1)) == HUNT_MAX_WORKERS
 
 

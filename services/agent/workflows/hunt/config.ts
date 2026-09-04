@@ -1,6 +1,6 @@
 import { callsPerIteration, DEFAULT_BUDGETS, type Budgets } from "./types.js";
 import { SpecError, type Counts, type RunSpec } from "../../core/spec.js";
-import { DEFAULT_CHECKPOINTS, type Checkpoints } from "./checkpoints.js";
+import { checkpointsFrom, DEFAULT_CHECKPOINTS, type Checkpoints } from "./checkpoints.js";
 
 // The core spec carries domain config as untyped numeric bags, so what a
 // threshold means is stated here rather than in a harness the hunt shares.
@@ -182,7 +182,7 @@ export function huntSpec(spec: RunSpec): HuntSpec {
     attack_techniques: Array.isArray(held["attack_techniques"]) ? (held["attack_techniques"] as string[]) : [],
     data_domains: Array.isArray(held["data_domains"]) ? (held["data_domains"] as string[]) : [],
     enrichment: { ...DEFAULT_ENRICHMENT, ...(held["enrichment"] as object | undefined) },
-    checkpoints: { ...DEFAULT_CHECKPOINTS, ...(held["checkpoints"] as object | undefined) },
+    checkpoints: { ...DEFAULT_CHECKPOINTS, ...checkpointsFrom(held["checkpoints"]) },
     termination: terminationOf(spec),
   };
 }

@@ -1,7 +1,7 @@
 import { announceOpen, noAnnounce, type Announce } from "../../core/checkpoints.js";
 import { GatewayExhausted } from "../../core/limiter.js";
 import type { Harness } from "../../core/loop.js";
-import type { RunOutcome, TerminalHandoff } from "../../contracts/events.js";
+import type { RunKind, RunOutcome, TerminalHandoff } from "../../contracts/events.js";
 import type { RunSpec } from "../../core/spec.js";
 import { BudgetRefused, disconfirmationCritic, decisionProvider, narrativeWriter, workerDispatcher } from "./adapters.js";
 import { narrativeInput, type Narrative } from "./narrative.js";
@@ -24,11 +24,23 @@ import { grantsOf } from "../lead/workflow.js";
 
 export interface HuntOptions {
   run_id: string;
+  // The kind the run was started as. "hunt" for a forward hunt, "root_cause" for a
+  // backward one: the loop is the same, so this only decides how events are stamped.
+  run_kind: RunKind;
   spec: RunSpec;
   actions: readonly string[];
   queue: DirectiveQueue;
   started_by?: string;
   announce?: Announce;
+  // Told the moment a handoff is journaled, not held back to the terminal. A hunt
+  // escalates and keeps hunting, so its terminal can be far off or never come; the
+  // case and the root-cause run it tees up should not wait on that. Fail-open --
+  // the ledger is the record, and the terminal carries the same handoffs, so a
+  // backend that takes these must be idempotent per case.
+  //
+  // Answers whether the escalation landed. false is retried on the next iteration,
+  // which is the only cover a run that never writes a terminal has.
+  onHandoff?: (runId: string, handoff: TerminalHandoff) => Promise<boolean>;
   signal?: AbortSignal;
 }
 
@@ -49,13 +61,13 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
   const opened = (await harness.state.latestSeq(run_id)) !== null;
   let ledger;
   try {
-    ledger = opened ? (await resumeHunt(harness.state, queue, run_id)).ledger : await startHunt(harness.state, queue, run_id, spec, options.started_by ?? "worker");
+    ledger = opened ? (await resumeHunt(harness.state, queue, run_id, options.run_kind)).ledger : await startHunt(harness.state, queue, run_id, spec, options.started_by ?? "worker", options.run_kind);
   } catch (error) {
     // Its own projection ended but the domain-free terminal is missing, so the
     // run is over for the hunt and not for anyone else. Settle rather than throw.
     if (!(error instanceof HuntAlreadyTerminal)) throw error;
     await harness.state.append(run_id, [
-      { run_id, run_kind: "hunt", kind: "terminal", payload: { outcome: "completed", reason: error.message } } as never,
+      { run_id, run_kind: options.run_kind, kind: "terminal", payload: { outcome: "completed", reason: error.message } } as never,
     ]);
     return { status: "completed", reason: error.message, iterations: 0 };
   }
@@ -76,7 +88,7 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
   const granted = ledger.projection.hunt.budgets;
   harness.budget.raise({ max_cost_usd: granted.max_cost_usd, max_wall_ms: granted.max_wall_ms });
 
-  const ports = { harness: scoped, spec: options.spec, run_id, actions: options.actions, ...(options.signal === undefined ? {} : { signal: options.signal }) };
+  const ports = { harness: scoped, spec: options.spec, run_id, run_kind: options.run_kind, actions: options.actions, ...(options.signal === undefined ? {} : { signal: options.signal }) };
   const narrator = narrativeWriter(ports);
   const controller = new HuntController(
     ledger,
@@ -91,6 +103,16 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
     harness.budget,
   );
 
+  // Empty on every attempt, a resume included. Seeding it from the ledger looks
+  // like it saves work, but the ledger records that a handoff was journaled and
+  // never that the push landed -- so a seeded resume drops precisely the ones whose
+  // push failed, which are the only ones still owed a send. The saving was not real
+  // either: a parked run's sweep throws HuntParked out of advanceIteration before
+  // this is reached, so there were no repeat announcements to prevent. What it costs
+  // is one request per escalation on the first iteration after a resume, and the
+  // backend keys a case on the handoff, so that request opens nothing new.
+  const filed = new Set<string>();
+
   for (;;) {
     // Handing the run back, not ending it. This signal fires for exactly one
     // reason -- renewal found another worker holding the lease -- so that worker
@@ -102,6 +124,20 @@ export async function runHunt(harness: Harness<HuntKinds>, options: HuntOptions)
       // The controller buffers an iteration and the caller makes it durable: a
       // crash between the two loses the iteration rather than half of it.
       await ledger.flush();
+      // Filed off the durable ledger, so a case is never announced for an iteration
+      // a crash rolled back. An escalation this iteration reaches IR now, not when
+      // the hunt eventually stops -- which for a parked run may be never.
+      //
+      // Caught here rather than left to the catch below, which ends the run on an
+      // unknown error: a mirror that cannot take an escalation is not this hunt
+      // failing, and the escalation is on the ledger whatever happened to the push.
+      if (options.onHandoff) {
+        try {
+          await fileHandoffs(options.onHandoff, run_id, ledger.projection, filed);
+        } catch (error) {
+          console.warn(`hunt ${run_id} could not file its escalations`, error);
+        }
+      }
       if (iteration.hunt_status === "terminal") {
         return await end(harness, options, ledger, outcomeOf(iteration.hunt_outcome), iteration.note, controller, narrator);
       }
@@ -148,12 +184,15 @@ export async function narrateRun(
 ): Promise<Narrative> {
   const projection = fold(events);
   const spec = projection.hunt.spec;
-  const harness = build<HuntKinds>("hunt", spec, state);
-  const narrative = await narrativeWriter({ harness, spec, run_id: runId, actions: [] }).narrate(
+  // The kind is on the run's own events, so a rewrite stamps the narrative with the
+  // same kind the run carried rather than assuming "hunt".
+  const runKind: RunKind = events[0]?.run_kind ?? "hunt";
+  const harness = build<HuntKinds>(runKind, spec, state);
+  const narrative = await narrativeWriter({ harness, spec, run_id: runId, run_kind: runKind, actions: [] }).narrate(
     narrativeInput(projection, buildReport(projection)),
   );
   await state.append(runId, [
-    { run_id: runId, run_kind: "hunt", kind: "narrative", payload: narrative } as never,
+    { run_id: runId, run_kind: runKind, kind: "narrative", payload: narrative } as never,
   ]);
   return narrative;
 }
@@ -179,7 +218,7 @@ async function end(
   if ((await harness.state.terminal(options.run_id)) === null) {
     const handoffs = await handoffsOf(harness, options.run_id, ledger.projection);
     await harness.state.append(options.run_id, [
-      { run_id: options.run_id, run_kind: "hunt", kind: "terminal", payload: { outcome, reason, summary: renderReport(built, ledger.projection, narrative), handoffs } } as never,
+      { run_id: options.run_id, run_kind: options.run_kind, kind: "terminal", payload: { outcome, reason, summary: renderReport(built, ledger.projection, narrative), handoffs } } as never,
     ]);
   }
   return report(ledger, outcome, reason);
@@ -199,7 +238,7 @@ async function narrate(
   try {
     const narrative = await narrator.narrate(narrativeInput(projection, built));
     await harness.state.append(options.run_id, [
-      { run_id: options.run_id, run_kind: "hunt", kind: "narrative", payload: narrative } as never,
+      { run_id: options.run_id, run_kind: options.run_kind, kind: "narrative", payload: narrative } as never,
     ]);
     return narrative;
   } catch (error) {
@@ -215,11 +254,36 @@ async function handoffsOf(harness: Harness<HuntKinds>, runId: string, projection
   return events
     .filter((event) => event.kind === "handoff")
     .map((event) => event.payload as Handoff)
-    .map((handoff) => ({
-      case_id: handoff.case_id,
-      title: projection.hypotheses.get(handoff.hypothesis_id)?.statement ?? handoff.rationale,
-      markdown: handoff.case_markdown ?? handoff.case_file ?? handoff.rationale,
-    }));
+    .map((handoff) => toTerminalHandoff(handoff, projection));
+}
+
+// The case a handoff hands over, named by the claim it rests on. One mapping, so
+// what is pushed the moment a handoff lands and what rides out on the terminal are
+// the same case, titled the same way.
+function toTerminalHandoff(handoff: Handoff, projection: Projection): TerminalHandoff {
+  return {
+    case_id: handoff.case_id,
+    title: projection.hypotheses.get(handoff.hypothesis_id)?.statement ?? handoff.rationale,
+    markdown: handoff.case_markdown ?? handoff.case_file ?? handoff.rationale,
+  };
+}
+
+// New handoffs since the last look, filed as they land. Marked filed only once the
+// push has answered that it landed: a case recorded as sent when the backend refused
+// it is never re-sent, not by a later iteration and not by a resume, and for a run
+// that parks for good there is no terminal to carry it instead. Retrying is safe --
+// the backend keys a case on the handoff -- so the cost of asking again is a request,
+// and the cost of not asking is an escalation IR never receives.
+async function fileHandoffs(
+  onHandoff: (runId: string, handoff: TerminalHandoff) => Promise<boolean>,
+  runId: string,
+  projection: Projection,
+  filed: Set<string>,
+): Promise<void> {
+  for (const handoff of projection.handoffs) {
+    if (filed.has(handoff.case_id)) continue;
+    if (await onHandoff(runId, toTerminalHandoff(handoff, projection))) filed.add(handoff.case_id);
+  }
 }
 
 // What the workers were granted and nothing else: a chain runs with no decision
@@ -251,7 +315,7 @@ async function parked(
 ): Promise<HuntReport> {
   const [open] = pendingCheckpoints(ledger.projection);
   if (open !== undefined) {
-    await announceOpen(harness.state, options.run_id, "hunt", open.checkpoint_id, options.announce ?? noAnnounce);
+    await announceOpen(harness.state, options.run_id, options.run_kind, open.checkpoint_id, options.announce ?? noAnnounce);
   }
   return report(ledger, "waiting_approval", reason);
 }

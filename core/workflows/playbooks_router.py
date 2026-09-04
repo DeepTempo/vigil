@@ -36,12 +36,14 @@ class ResolvedPlaybook(BaseModel):
 
 
 def _resolver_for(workflows: WorkflowsService, workflow_id: str):
-    from core.workflows.workflows_service import HUNT_RUN_KIND
+    from core.workflows.workflows_service import is_hunt_like
 
     definition = workflows.get_workflow(workflow_id)
     if definition is None:
         raise UnknownPlaybook(f"no such workflow: {workflow_id}")
-    return resolve_hunt if definition.run_kind == HUNT_RUN_KIND else resolve
+    # Both hunt and root-cause resolve through resolve_hunt so root-cause inherits
+    # HUNT_CAPABILITIES (telemetry_search et al.) and the hypothesis-loop config.
+    return resolve_hunt if is_hunt_like(definition.run_kind) else resolve
 
 
 @router.get("/{workflow_id}", response_model=ResolvedPlaybook)

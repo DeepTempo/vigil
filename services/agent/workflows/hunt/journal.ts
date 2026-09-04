@@ -24,14 +24,19 @@ export class Journal {
     private readonly runKind: RunKind,
   ) {}
 
+  // runKind is the fallback, not the answer: the kind was settled when the run
+  // opened, and it is on the first event. Trusting a caller's instead is how one
+  // ledger ends up with events stamped two different ways -- the resume job says
+  // what it was told, and only the ledger knows what the run actually is.
   static async open(
     state: State<HuntKinds>,
     queue: DirectiveQueue,
     runId: string,
     runKind: RunKind = "hunt",
   ): Promise<Journal> {
-    const journal = new Journal(state, queue, runId, runKind);
-    journal.events = await state.read(runId);
+    const events = await state.read(runId);
+    const journal = new Journal(state, queue, runId, events[0]?.run_kind ?? runKind);
+    journal.events = events;
     return journal;
   }
 

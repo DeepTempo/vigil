@@ -50,6 +50,7 @@ async function run(error: () => Error) {
   };
   const report = await runHunt(harness, {
     run_id: "run-dying",
+    run_kind: "hunt",
     spec,
     actions: archFor("hunt").actions,
     queue: new InProcessDirectiveQueue(),

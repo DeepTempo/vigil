@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_TERMINATION, DEFAULT_VERDICTS } from "../../workflows/hunt/config.js";
 import {
+  BACKWARD_NULL_HYPOTHESIS,
   BASE_RATE_PROVENANCE,
   InvalidDecision,
   NULL_HYPOTHESIS,
+  nullHypothesisFor,
   validateDecision,
 } from "../../workflows/hunt/controller.js";
 import { buildDigest, scoredFrontier } from "../../workflows/hunt/digest.js";
@@ -37,22 +39,53 @@ const contenders = (started: Started) =>
 describe("the null is on the board before anything is argued", () => {
   it("seeds a benign hypothesis at base rate, and shows it in the first digest", async () => {
     const started = await loop();
+    // newLedger's default hypothesis; the null is phrased against it. Pinned as a
+    // literal (not nullHypothesisFor(...) recomputed) so a phrasing regression in
+    // the function is caught here rather than cancelling itself out on both sides.
+    const expectedNull =
+      'the activity described in "a credential is used from new infrastructure" has a legitimate explanation' +
+      " — expected operations, sanctioned tooling, or normal user/automation behavior — and is not adversary action";
 
     const [seeded] = nulls(started);
-    expect(seeded!.statement).toBe(NULL_HYPOTHESIS);
+    expect(seeded!.statement).toBe(expectedNull);
     expect(seeded!.status).toBe("active");
     expect(seeded!.attack_technique).toBeNull();
 
     // Before iteration 1, so the lead never argues without the alternative in view.
     expect(started.ledger.projection.hunt.iteration).toBe(0);
     const digest = buildDigest(started.ledger.projection, 1);
-    expect(digest.hypotheses.map((h) => h.statement)).toContain(NULL_HYPOTHESIS);
+    expect(digest.hypotheses.map((h) => h.statement)).toContain(expectedNull);
   });
 
   it("leaves a legacy hunt with only the hypotheses it was given", async () => {
     const started = await newLedger();
     expect(nulls(started)).toHaveLength(0);
     expect(started.hypothesisIds).toHaveLength(1);
+  });
+});
+
+describe("nullHypothesisFor phrases the base rate against the activity under test", () => {
+  it("names the first non-empty hypothesis in the benign account", () => {
+    expect(nullHypothesisFor(["", "  ", "lateral movement over SMB"])).toBe(
+      'the activity described in "lateral movement over SMB" has a legitimate explanation' +
+        " — expected operations, sanctioned tooling, or normal user/automation behavior — and is not adversary action",
+    );
+  });
+
+  it("falls back to the generic null when no hypothesis is given", () => {
+    expect(nullHypothesisFor([])).toBe(NULL_HYPOTHESIS);
+    expect(nullHypothesisFor(["", "   "])).toBe(NULL_HYPOTHESIS);
+  });
+
+  // A backward run starts from a confirmed compromise, so its null must contest the
+  // origin vector, never re-open "no attack occurred". The origin claim is ignored:
+  // negating it whole would deny the very compromise the RCA is told to take as given.
+  it("grants the compromise and denies only the vector on a root_cause run", () => {
+    expect(nullHypothesisFor(["FYODOR-L was compromised via phishing"], "root_cause")).toBe(
+      BACKWARD_NULL_HYPOTHESIS,
+    );
+    expect(nullHypothesisFor([], "root_cause")).toBe(BACKWARD_NULL_HYPOTHESIS);
+    expect(BACKWARD_NULL_HYPOTHESIS).not.toMatch(/no attack occurred|is not adversary action/);
   });
 });
 

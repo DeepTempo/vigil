@@ -13,7 +13,7 @@ from core.llm.defaults import DEFAULT_MODEL
 
 if TYPE_CHECKING:
     from core.integrations.mcp.registry import MCPRegistry
-    from core.workflows.workflows_service import WorkflowsService
+    from core.workflows.workflows_service import WorkflowDefinition, WorkflowsService
 
 logger = logging.getLogger(__name__)
 
@@ -423,7 +423,50 @@ def resolve_hunt(
         "hypothesis_loop": HUNT_HYPOTHESIS_LOOP,
     }
 
+    # Checkpoint policies a definition declares (e.g. root-cause-analysis sets
+    # hypothesis_approval: ask so it parks for operator go-ahead at start). The
+    # agent merges these over its DEFAULT_CHECKPOINTS, so an unset policy keeps the
+    # default; omit the key entirely when the definition names none.
+    checkpoints = _checkpoints(definition)
+    if checkpoints:
+        config["checkpoints"] = checkpoints
+
     return _dump(playbook), _dump(config)
+
+
+# The policies the agent layer understands. Stated rather than imported, like
+# RUN_KINDS: the class list is CHECKPOINT_CLASSES in the agent's checkpoints.ts,
+# and only the two words are needed to tell a policy from a typo.
+CHECKPOINT_POLICIES = ("ask", "auto")
+
+
+# Refused here rather than shrugged at. A WORKFLOW.md's front matter is text nobody
+# type-checks, and YAML reads `hypothesis_approval: yes` as the boolean True. The
+# agent layer now reads anything that is not "auto" as "ask", so a typo can no
+# longer switch an approval gate off -- but a run that parks when its author meant
+# it not to is still an author being misread, and this is where they can be told.
+# The class name is the agent's to know, so an unrecognised one passes through and
+# is dropped there.
+def _checkpoints(definition: "WorkflowDefinition") -> Dict[str, Any]:
+    declared = definition.metadata.get("checkpoints") or {}
+    if not isinstance(declared, dict):
+        raise UnknownPlaybook(
+            f"{definition.id}: checkpoints must be a mapping of "
+            f"checkpoint class to {' or '.join(CHECKPOINT_POLICIES)}"
+        )
+    wrong = {
+        name: policy
+        for name, policy in declared.items()
+        if policy not in CHECKPOINT_POLICIES
+    }
+    if wrong:
+        stated = ", ".join(f"{name}: {policy!r}" for name, policy in wrong.items())
+        raise UnknownPlaybook(
+            f"{definition.id} declares checkpoint policies that are neither "
+            f"{' nor '.join(CHECKPOINT_POLICIES)}: {stated}. Quote them if YAML is "
+            "reading one as a boolean."
+        )
+    return dict(declared)
 
 
 # Local, because the answer is the run's own ledger. Declared here so the lead's

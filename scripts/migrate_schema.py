@@ -139,6 +139,16 @@ def create_llm_interaction_vk_index(conn):
     """))
 
 
+# create_all is checkfirst=True, so a table that already exists gets no new index
+# from the model. A hunt handing off looks this column up twice per escalation.
+@migration("Create idx_workflow_runs_triggered_by index")
+def create_workflow_runs_triggered_by_index(conn):
+    conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_workflow_runs_triggered_by
+        ON workflow_runs (triggered_by, started_at);
+    """))
+
+
 # ---------------------------------------------------------------------------
 # New tables (create if missing via SQLAlchemy create_all)
 # ---------------------------------------------------------------------------
