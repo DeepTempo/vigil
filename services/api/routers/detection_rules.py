@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from core.deps import provide_detection_rules, provide_mcp_client, provide_mcp_registry
 from core.detections.detection_rules_service import DetectionRulesService
-from core.integrations.mcp.registry import MCPRegistry, deactivate, register_connected
+from core.integrations.mcp.registry import MCPRegistry, register_connected
 from core.routing import Auth, RouterMeta
 
 logger = logging.getLogger(__name__)
@@ -257,16 +257,8 @@ async def _restart_security_detections_mcp(
                 # Stop and restart
                 mcp_service.stop_server(server_name)
 
-                # Disconnect and reconnect MCP client
+                # Restart, not disable: a failed reconnect must not hide tools.
                 await mcp_client.disconnect_from_server(server_name)
-                try:
-                    deactivate(registry, server_name)
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug(
-                        "MCP registry deactivate during restart failed for %s: %s",
-                        server_name,
-                        exc,
-                    )
                 reconnected = await mcp_client.connect_to_server(
                     server_name, persistent=True
                 )

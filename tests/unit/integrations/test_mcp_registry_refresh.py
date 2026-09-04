@@ -101,3 +101,40 @@ async def test_execute_mcp_tool_reaches_a_runtime_enabled_server(monkeypatch):
     rows, handled = await execute_mcp_tool(FLAT, {}, 5.0, registry)
     assert handled is True
     assert rows == [{"ok": True}]
+
+
+@pytest.mark.asyncio
+async def test_failed_detections_restart_keeps_registered_tools():
+    from services.api.routers.detection_rules import _restart_security_detections_mcp
+
+    registry = MCPRegistry()
+    registry.register_server(
+        "security-detections",
+        {},
+        [{"name": "search", "description": "x", "inputSchema": {}}],
+    )
+
+    class _Server:
+        env: dict = {}
+
+    class _Service:
+        servers = {"security-detections": _Server()}
+
+        def stop_server(self, name):
+            return None
+
+    class _Client:
+        mcp_service = _Service()
+
+        async def disconnect_from_server(self, name):
+            return True
+
+        async def connect_to_server(self, name, persistent=True):
+            return False
+
+    class _Rules:
+        def get_mcp_env_vars(self):
+            return {"SIGMA_PATHS": "/tmp"}
+
+    await _restart_security_detections_mcp(_Client(), _Rules(), registry)
+    assert registry.get_tool_names() == ["security-detections_search"]
