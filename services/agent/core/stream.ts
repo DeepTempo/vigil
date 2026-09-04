@@ -298,6 +298,28 @@ class Run<T, Kinds extends Record<string, unknown>> {
         return this.done("completed", parsed as T, "the role answered");
       }
 
+      // Pasting the body back is the right correction for a model that got the
+      // shape wrong, and the wrong one for a model that ran past the output
+      // ceiling: it makes the retry's input larger than the attempt that failed
+      // and asks for an answer just as long, so the ceiling is hit again. That is
+      // what the ladder already exists for, so a cut-off emission folds and is
+      // told what to do differently rather than shown itself.
+      if (parsed === undefined && cutOff(turn.content)) {
+        const tighter = FOLD_LADDER[this.folds];
+        this.rejected.push("the emission ran past the output ceiling and was cut off mid-JSON; asked again for a shorter answer");
+        tail = [
+          "Emit your answer now as JSON matching the schema.",
+          "Your previous emission was cut off mid-JSON because it ran past the output ceiling.",
+          "Keep every string field short. State the conclusion and cite evidence ids -- do not restate what the evidence says.",
+        ].join("\n\n");
+        if (tighter !== undefined) {
+          this.tightened = tighter;
+          this.folds += 1;
+          attempt -= 1;
+        }
+        continue;
+      }
+
       const reason = parsed === undefined ? "the response was not valid JSON" : errorsOf(validate);
       this.rejected.push(`${reason}: ${turn.content.slice(0, 400)}`);
       // The rejected emission goes back as the assistant turn it was, or the model
@@ -524,6 +546,25 @@ function tryParse(content: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+// Truncation, read off the content rather than a token count: the ceiling lives in
+// the wire layer and no finish_reason is carried this far. Both halves are load-
+// bearing. An emission the model finished closes its own JSON, so unclosed is the
+// ceiling and malformed-but-closed is a shape error that takes the correction which
+// shows it back. And it has to have *started* an object, or a model answering in
+// prose -- which closes nothing either -- reads as a length problem and spends the
+// ladder being told to be brief about the wrong thing.
+function cutOff(content: string): boolean {
+  const body = opening(content);
+  const started = body.startsWith("{") || body.startsWith("[");
+  return started && !body.endsWith("}") && !body.endsWith("]");
+}
+
+// What fenceless cannot do: an emission cut off inside a fenced block has no closing
+// fence to match on, so its opening one is still there to strip.
+function opening(content: string): string {
+  return fenceless(content).trim().replace(/^```(?:json)?\s*/, "").trim();
 }
 
 // Some models return the object inside a markdown code fence, which is a correct
