@@ -12,7 +12,8 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from core.deps import provide_mcp_client
+from core.deps import provide_mcp_client, provide_mcp_registry
+from core.integrations.mcp.registry import MCPRegistry, deactivate, register_connected
 from core.integrations.mcp.service import MCPService
 from core.routing import Auth, RouterMeta
 from core.storage.models import User
@@ -129,6 +130,7 @@ async def set_server_enabled(
     request: ServerEnabledRequest,
     current_user: User = Depends(get_current_active_user),
     mcp_client=Depends(provide_mcp_client),
+    registry: MCPRegistry = Depends(provide_mcp_registry),
 ):
     """Enable or disable an MCP server and apply the change at runtime.
 
@@ -184,6 +186,15 @@ async def set_server_enabled(
             except Exception as exc:  # noqa: BLE001
                 connected = False
                 error = f"{type(exc).__name__}: {exc}"
+            if connected:
+                try:
+                    register_connected(registry, mcp_client, server_name)
+                except Exception as exc:  # noqa: BLE001 — do not change this response
+                    logger.debug(
+                        "MCP registry register after enable failed for %s: %s",
+                        server_name,
+                        exc,
+                    )
     else:
         # Disable → stop any running monitor process + tear down the
         # persistent MCP session so tools disappear from the pool.
@@ -197,6 +208,14 @@ async def set_server_enabled(
                 logger.debug(
                     "Disconnect for %s failed (non-fatal): %s", server_name, exc
                 )
+        try:
+            deactivate(registry, server_name)
+        except Exception as exc:  # noqa: BLE001 — do not change this response
+            logger.debug(
+                "MCP registry deactivate after disable failed for %s: %s",
+                server_name,
+                exc,
+            )
 
     return {
         "success": True,

@@ -52,14 +52,10 @@ def _mcp_catalogue(registry: Optional["MCPRegistry"]) -> List[Dict[str, Any]]:
     # enabled+connected after boot binds here without a reload. No-op when there
     # is no process client. Best effort in its own right: a refresh that fails
     # must not cost us the registry we already hold, nor the cache fallback below.
-    #
-    # Without pruning: a run binds its capabilities once and then reads them for
-    # as long as it lasts, so a server dropped here for a stale is_connected is
-    # gone for the whole run even though the next call would reconnect it.
     try:
         from core.integrations.mcp.registry import refresh_from_client
 
-        refresh_from_client(registry, prune=False)
+        refresh_from_client(registry)
     except Exception as exc:  # noqa: BLE001
         logger.debug("MCP refresh failed while resolving tools: %s", exc)
 

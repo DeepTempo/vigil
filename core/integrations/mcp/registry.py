@@ -53,13 +53,15 @@ class MCPRegistry:
             name for name, info in self._servers.items() if info.get("active", False)
         ]
 
-    def retain_only(self, active_names: List[str]) -> None:
-        """Mark exactly ``active_names`` active; deactivate every other server.
+    def set_active(self, server_name: str, active: bool) -> None:
+        """Mark one server active or inactive. No-op when it is not registered."""
+        info = self._servers.get(server_name)
+        if info is None:
+            return
+        info["active"] = active
 
-        Lets a live refresh make the registry reflect current connection state:
-        a server that has since disconnected stops offering its tools, without
-        needing a restart.
-        """
+    def retain_only(self, active_names: List[str]) -> None:
+        """Mark exactly ``active_names`` active; deactivate every other server."""
         wanted = set(active_names)
         for name, info in self._servers.items():
             info["active"] = name in wanted
@@ -177,9 +179,9 @@ def _normalised(tool: Dict[str, Any]) -> Dict[str, Any]:
 
 # Whether this deployment dials every configured MCP server at startup. Off by
 # default under DEV_MODE; an explicit ``mcp_auto_connect_on_startup`` wins either
-# way. ``refresh_from_client`` uses it to decide whether live connection state is
-# authoritative enough to prune servers. services/api/main.py makes the same call
-# for its own startup path; core/ cannot import services/, so the rule lives here.
+# way. ``populate_from_cache`` uses it to decide whether live connection state
+# gates the warm-start cache. services/api/main.py makes the same call for its
+# own startup path; core/ cannot import services/, so the rule lives here.
 def eager_connect_enabled() -> bool:
     from core.config import get_settings
 
@@ -242,18 +244,49 @@ def safe_tool_names(registry: Optional[MCPRegistry]) -> List[str]:
         return []
 
 
-def refresh_from_client(registry: MCPRegistry, prune: bool = True) -> int:
-    """Sync the registry to the client's LIVE connection state.
+def register_connected(registry: MCPRegistry, mcp_client, server_name: str) -> bool:
+    """Register one server from the client's ``tools_cache``.
+
+    Called where a connect succeeds so the registry tracks enable intent, not
+    the next reader's liveness check. Best effort: a failure logs at debug and
+    returns False, so an enable endpoint can keep its own result.
+    """
+    try:
+        tools = (getattr(mcp_client, "tools_cache", None) or {}).get(server_name)
+        if not isinstance(tools, list) or not tools:
+            return False
+        registry.register_server(
+            server_name,
+            _server_config(mcp_client, server_name),
+            [_normalised(t) for t in tools],
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001 — callers must not 500 on a registry write
+        logger.debug("Could not register MCP server %s: %s", server_name, exc)
+        return False
+
+
+def deactivate(registry: MCPRegistry, server_name: str) -> None:
+    """Stop offering a server's tools. Best effort; unknown names are a no-op."""
+    try:
+        registry.set_active(server_name, False)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Could not deactivate MCP server %s: %s", server_name, exc)
+
+
+def refresh_from_client(registry: MCPRegistry) -> int:
+    """Add servers that connected after startup from the client's ``tools_cache``.
 
     Unlike ``populate_from_cache`` (a boot warm-start that prefers the on-disk
     tool cache), this reads the running client's ``tools_cache`` and current
-    connection status, so a server connected *after* startup — e.g. a user just
-    saved its credential and enabled it — becomes usable on the next turn
-    without a restart, and one that has disconnected drops out. Cheap and
-    idempotent; call it wherever a turn assembles its tool list.
+    connection status so a server connected *after* startup — e.g. a dormant
+    retry came online, or ``call_tool`` created a session — becomes usable on
+    the next turn without a restart. Cheap and idempotent; call it wherever a
+    turn assembles its tool list.
 
-    ``prune=False`` adds without dropping, for a caller whose binding outlives
-    the moment it reads.
+    Does not deactivate. Removal follows disable via ``deactivate``, not
+    liveness: ``is_connected`` goes False on any failed call and stays there
+    until the next one reconnects, so it is not "unreachable".
     """
     from core.integrations.mcp.client import process_mcp_client
 
@@ -267,33 +300,22 @@ def refresh_from_client(registry: MCPRegistry, prune: bool = True) -> int:
         logger.debug("Could not read MCP connection status: %s", exc)
         connected = {}
 
-    active: List[str] = []
+    added = 0
     for name, tools in tools_dict.items():
         if connected and not connected.get(name, False):
             continue
         registry.register_server(
             name, _server_config(mcp_client, name), [_normalised(t) for t in tools]
         )
-        active.append(name)
-    # Only prune when this boot dials eagerly and we actually have live status:
-    # then tools_cache/connected is the source of truth, so a disconnected
-    # server should drop out. In lazy mode the boot-populated set is intended
-    # availability (servers reconnect on first call), so we add without pruning
-    # to avoid wiping tools that are still reachable.
-    #
-    # A caller passes prune=False when it binds once and is read for a long time
-    # afterwards: is_connected goes False on any failed call and stays there
-    # until the next one reconnects, so it says "the last call failed", not
-    # "unreachable", and dropping the server costs more than keeping it.
-    if prune and eager_connect_enabled() and connected:
-        registry.retain_only(active)
-    return len(active)
+        added += 1
+    return added
 
 
 def live_mcp_tools(registry: MCPRegistry) -> List[Dict]:
-    """The connected MCP integrations' tools, Claude-API-shaped, for one turn.
+    """The MCP integrations currently offered, Claude-API-shaped, for one turn.
 
-    Refreshes the registry from the running client, then returns its tools
+    Refreshes the registry from the running client (add-path for servers
+    connected outside the enable endpoint), then returns its tools
     (server-prefixed names). Returns ``[]`` — never raises — when the client or
     registry is unavailable, so a caller can fall back to built-in tools. This
     is the one call a request path needs to surface live integrations.
