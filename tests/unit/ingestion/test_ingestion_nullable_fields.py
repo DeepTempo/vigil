@@ -14,7 +14,6 @@ from core.ingestion.ingestion_service import (  # noqa: E402
     ID_HASH_WIDTH,
     IngestionService,
 )
-from core.storage.database_data_service import _score_at_least  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -174,16 +173,3 @@ def test_batch_ingest_does_not_fill_null_score_or_time(service):
     assert db.batch[0]["anomaly_score"] is None
     assert db.batch[0]["timestamp"] is None
     assert db.batch[0]["severity"] is None
-
-
-def test_json_min_anomaly_score_excludes_null_scores():
-    rows = [
-        {"finding_id": "scored", "anomaly_score": 0.9},
-        {"finding_id": "missing-key"},
-        {"finding_id": "explicit-null", "anomaly_score": None},
-        {"finding_id": "zero", "anomaly_score": 0.0},
-    ]
-
-    kept = [f["finding_id"] for f in rows if _score_at_least(f, 0.0)]
-
-    assert kept == ["scored", "zero"]

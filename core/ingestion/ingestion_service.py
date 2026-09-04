@@ -7,8 +7,6 @@ Handles ingestion of findings and cases from various formats:
 - JSONL (JSON Lines) files
 - Parquet files (DeepTempo LogLM embeddings)
 - Direct JSON data
-
-All data is stored in PostgreSQL when available, with fallback to JSON files.
 """
 
 import csv
@@ -138,9 +136,9 @@ class IngestionService:
             else:
                 self.db_service = None
                 self.use_database = False
-                logger.warning("Database unavailable, using JSON fallback")
+                logger.warning("Database unavailable")
         except Exception as e:
-            logger.warning(f"Database not available: {e}, using JSON fallback")
+            logger.warning(f"Database not available: {e}")
             self.db_service = None
             self.use_database = False
 
@@ -275,25 +273,9 @@ class IngestionService:
                     self.stats["findings_errors"] += 1
                     logger.error(f"Failed to create finding: {finding_id}")
                     return False
-            else:
-                # Fallback to JSON file storage
-                from core.storage.database_data_service import DatabaseDataService
-
-                data_service = DatabaseDataService()
-                findings = data_service.get_findings()
-
-                # Check for duplicate
-                if any(f.get("finding_id") == finding_id for f in findings):
-                    self.stats["findings_skipped"] += 1
-                    return True
-
-                findings.append(finding_data)
-                if data_service.save_findings(findings):
-                    self.stats["findings_imported"] += 1
-                    return True
-                else:
-                    self.stats["findings_errors"] += 1
-                    return False
+            self.stats["findings_errors"] += 1
+            logger.error("Database unavailable, cannot ingest finding %s", finding_id)
+            return False
 
         except Exception as e:
             self.stats["findings_errors"] += 1
@@ -306,8 +288,7 @@ class IngestionService:
             return
 
         if not self.use_database or not self.db_service:
-            for finding_data in finding_dicts:
-                self.ingest_finding(finding_data)
+            self.stats["findings_errors"] += len(finding_dicts)
             return
 
         valid = []
@@ -415,25 +396,9 @@ class IngestionService:
                     self.stats["cases_errors"] += 1
                     logger.error(f"Failed to create case: {case_id}")
                     return False
-            else:
-                # Fallback to JSON file storage
-                from core.storage.database_data_service import DatabaseDataService
-
-                data_service = DatabaseDataService()
-                cases = data_service.get_cases()
-
-                # Check for duplicate
-                if any(c.get("case_id") == case_id for c in cases):
-                    self.stats["cases_skipped"] += 1
-                    return True
-
-                cases.append(case_data)
-                if data_service.save_cases(cases):
-                    self.stats["cases_imported"] += 1
-                    return True
-                else:
-                    self.stats["cases_errors"] += 1
-                    return False
+            self.stats["cases_errors"] += 1
+            logger.error("Database unavailable, cannot ingest case %s", case_id)
+            return False
 
         except Exception as e:
             self.stats["cases_errors"] += 1

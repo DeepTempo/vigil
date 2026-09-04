@@ -532,12 +532,9 @@ async def _startup(app: FastAPI):
         # Defense-in-depth: ensure the SQLAlchemy-managed schema exists before
         # any endpoint tries to query it. start.sh runs scripts/init_schema.py
         # first, but this covers environments that launch uvicorn directly
-        # (e.g. Docker, systemd, CI). When DATA_BACKEND=database, a failure
-        # here is fatal — we do NOT silently fall back to JSON because that
-        # leaves the DB in an inconsistent state (some endpoints use
-        # get_db_session() directly, see core/cases/case_metrics_router.py).
-        data_backend_env = get_settings().data_backend.lower()
-        if not is_demo_mode() and data_backend_env == "database":
+        # (e.g. Docker, systemd, CI). A failure here is fatal — some endpoints
+        # use get_db_session() directly (see core/cases/case_metrics_router.py).
+        if not is_demo_mode():
             try:
                 from core.storage.connection import init_database
 
@@ -550,7 +547,6 @@ async def _startup(app: FastAPI):
                 )
                 raise
 
-        # Check for demo mode first
         if is_demo_mode():
             logger.info("=" * 40)
             logger.info("  DEMO MODE ENABLED")
@@ -561,41 +557,25 @@ async def _startup(app: FastAPI):
             backend_info = test_service.get_backend_info()
             logger.info(f"  Backend: {backend_info['backend']}")
         else:
-            # Check configuration preference
-            data_backend = get_settings().data_backend.lower()
-            use_database = data_backend == "database"
-
-            if use_database:
-                logger.info("Attempting to connect to PostgreSQL database...")
-                try:
-                    test_service = DatabaseDataService()
-
-                    if test_service.is_using_database():
-                        logger.info("✓ PostgreSQL database connected and ready")
-                        backend_info = test_service.get_backend_info()
-                        logger.info(f"  Backend: {backend_info['backend']}")
-                    else:
-                        logger.warning("⚠ PostgreSQL not available")
-                        logger.warning("  Using JSON file storage as fallback")
-                        logger.warning("  To enable PostgreSQL:")
-                        logger.warning(
-                            "    1. Start database: "
-                            "cd docker && docker compose up -d postgres"
-                        )
-                        logger.warning("    2. Restart application: ./start.sh")
-
-                except Exception as e:
-                    logger.warning(f"⚠ Could not connect to PostgreSQL: {e}")
-                    logger.warning("  Using JSON file storage as fallback")
+            logger.info("Attempting to connect to PostgreSQL database...")
+            test_service = DatabaseDataService()
+            if test_service.is_using_database():
+                logger.info("✓ PostgreSQL database connected and ready")
+                backend_info = test_service.get_backend_info()
+                logger.info(f"  Backend: {backend_info['backend']}")
             else:
-                logger.info("Using JSON file storage (DATA_BACKEND=json)")
+                logger.warning("⚠ PostgreSQL not available")
+                logger.warning("  To enable PostgreSQL:")
+                logger.warning(
+                    "    1. Start database: "
+                    "cd docker && docker compose up -d postgres"
+                )
+                logger.warning("    2. Restart application: ./start.sh")
 
     except ImportError as e:
         logger.warning(f"Database modules not available: {e}")
-        logger.warning("Using JSON file storage")
     except Exception as e:
         logger.error(f"Error during storage initialization: {e}")
-        logger.warning("Falling back to JSON file storage")
 
     # Check integration compatibility
     logger.info("Checking integration compatibility...")

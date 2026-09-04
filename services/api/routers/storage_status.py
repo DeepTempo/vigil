@@ -1,7 +1,7 @@
 """
 Storage backend status API endpoints.
 
-Provides information about the current data storage backend (PostgreSQL or JSON).
+Provides information about the current PostgreSQL storage backend.
 """
 
 import logging
@@ -58,7 +58,6 @@ async def get_storage_status():
             "backend": "unknown",
             "database_available": False,
             "demo_mode": False,
-            "json_available": True,
             "error": str(e),
             "description": "Unable to determine storage backend",
         }
@@ -70,7 +69,7 @@ def _get_backend_description(backend: str, demo_mode: bool = False) -> str:
         return "Demo mode: Using generated sample data for demonstration"
     descriptions = {
         "postgresql": "Using PostgreSQL database for production-grade data storage",
-        "json": "Using JSON file storage (development/fallback mode)",
+        "none": "PostgreSQL is not connected",
         "unknown": "Storage backend status unknown",
     }
     return descriptions.get(backend, "Unknown storage backend")
@@ -83,11 +82,11 @@ def _get_recommendations(backend_info: dict) -> list:
     backend = backend_info.get("backend")
     database_available = backend_info.get("database_available", False)
 
-    if backend == "json" and not database_available:
+    if backend == "none" and not database_available:
         recommendations.append(
             {
-                "title": "Enable PostgreSQL for Production",
-                "description": "Currently using JSON file storage. For better performance and reliability, enable PostgreSQL.",
+                "title": "Connect PostgreSQL",
+                "description": "PostgreSQL is not connected. Findings and cases cannot be stored until it is.",
                 "action": "Start database with: cd docker && docker compose up -d postgres",
                 "priority": "medium",
             }
@@ -132,7 +131,7 @@ async def check_storage_health():
             elif service.is_using_database():
                 backend = "postgresql"
             else:
-                backend = "json"
+                backend = "none"
 
             return {
                 "healthy": is_healthy,
@@ -192,7 +191,7 @@ def reconnect_database(current_user: User = Depends(get_current_active_user)):
             return {
                 "success": False,
                 "changed": False,
-                "backend": "postgresql" if db_manager.health_check() else "json",
+                "backend": "postgresql" if db_manager.health_check() else "none",
                 "message": f"New target rejected; the existing connection is intact: {e}",
                 "database_available": db_manager.health_check(),
                 "recommendation": "Check the connection string, and that the database is reachable.",
@@ -317,58 +316,3 @@ def init_schema(current_user: User = Depends(get_current_active_user)):
     db_manager.create_tables()
     logger.info("Provisioned Vigil schema into empty database")
     return {"success": True, "message": "Schema created", **db_manager.schema_report()}
-
-
-@router.post("/switch-backend")
-async def switch_backend(backend: str):
-    """
-    Attempt to switch storage backend (requires restart).
-
-    Args:
-        backend: Target backend ('database' or 'json')
-
-    Returns:
-        Status of the switch request
-    """
-    if backend not in ["database", "json"]:
-        return {
-            "success": False,
-            "message": 'Invalid backend. Must be "database" or "json"',
-        }
-
-    from pathlib import Path
-
-    try:
-        # Update .env file
-        env_file = Path(".env")
-
-        if env_file.exists():
-            with open(env_file, "r") as f:
-                lines = f.readlines()
-
-            updated = False
-            with open(env_file, "w") as f:
-                for line in lines:
-                    if line.startswith("DATA_BACKEND="):
-                        f.write(f"DATA_BACKEND={backend}\n")
-                        updated = True
-                    else:
-                        f.write(line)
-
-                if not updated:
-                    f.write(f"\n# Data storage backend\nDATA_BACKEND={backend}\n")
-
-            return {
-                "success": True,
-                "message": f"Backend set to {backend}. Please restart the application for changes to take effect.",
-                "requires_restart": True,
-            }
-        else:
-            return {
-                "success": False,
-                "message": ".env file not found. Please create one from env.example",
-            }
-
-    except Exception as e:
-        logger.error(f"Error switching backend: {e}")
-        return {"success": False, "message": f"Failed to switch backend: {str(e)}"}

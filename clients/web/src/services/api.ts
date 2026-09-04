@@ -898,7 +898,6 @@ export const storageApi = {
   getStatus: () => api.get('/storage/status'),
   getHealth: () => api.get('/storage/health'),
   reconnect: () => api.post('/storage/reconnect'),
-  switchBackend: (backend: string) => api.post('/storage/switch-backend', { backend }),
 }
 
 export const timesketchApi = {

@@ -28,8 +28,7 @@ data_service = DatabaseDataService()
 def _parse_finding_timestamp(finding: dict) -> Optional[datetime]:
     """Parse a finding's timestamp (ISO string or datetime) into a naive UTC datetime.
 
-    Findings come from `Finding.to_dict()` (ISO string) or the JSON fallback
-    (raw dict values) — handle both.
+    Findings come from `Finding.to_dict()` (ISO string) or dumped dict values.
     """
     raw = finding.get("timestamp") or finding.get("created_at")
     if raw is None:

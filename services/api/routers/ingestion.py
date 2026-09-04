@@ -288,7 +288,7 @@ async def get_supported_formats():
         "notes": [
             "finding_id and case_id are auto-generated if not provided",
             "Duplicate IDs are automatically skipped",
-            "All data is stored in PostgreSQL when available, falls back to JSON files",
+            "All data is stored in PostgreSQL",
             "Timestamps are parsed from various formats or default to current time",
         ],
     }

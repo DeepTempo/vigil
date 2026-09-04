@@ -69,7 +69,7 @@ export default function DeveloperSection({ notify }: SectionProps) {
     <>
       <SettingsCard
         title="PostgreSQL"
-        desc="Platform storage backend. Findings and cases persist here when connected; otherwise they fall back to JSON files."
+        desc="Platform storage backend. Findings and cases persist here when connected."
         actions={
           <>
             <button className="btn ghost" onClick={reload}>
@@ -83,7 +83,7 @@ export default function DeveloperSection({ notify }: SectionProps) {
       >
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           <span className={`status ${isPg ? 'closed' : 'open'}`}>
-            {isPg ? 'PostgreSQL Active' : 'JSON Files'}
+            {isPg ? 'PostgreSQL Active' : 'Disconnected'}
           </span>
           {health && (
             <span className="chip">

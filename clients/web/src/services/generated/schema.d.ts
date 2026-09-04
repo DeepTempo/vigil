@@ -6594,32 +6594,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/storage/switch-backend": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Switch Backend
-         * @description Attempt to switch storage backend (requires restart).
-         *
-         *     Args:
-         *         backend: Target backend ('database' or 'json')
-         *
-         *     Returns:
-         *         Status of the switch request
-         */
-        post: operations["post_api_storage_switch-backend"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/timeline/case/{case_id}": {
         parameters: {
             query?: never;
@@ -22216,39 +22190,6 @@ export interface operations {
     get_api_storage_status: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    "post_api_storage_switch-backend": {
-        parameters: {
-            query: {
-                backend: string;
-            };
             header?: {
                 authorization?: string | null;
             };
