@@ -2079,8 +2079,8 @@ function HuntMemory({ recall }: { recall: HuntRecall }) {
     <div style={{ marginTop: 12 }}>
       <h4>What this hunt knew going in</h4>
       <div className="muted text-[11.5px] mb-2">
-        Read on <span className="mono">{asked}</span>, as of {fmtStarted(recall.as_of)}. The record the hunt opened
-        on, off its own ledger — not what memory holds now.
+        Read on <span className="mono">{asked}</span>, as of {fmtStarted(recall.as_of)}. The state of memory read by
+        the hunt when opened.
       </div>
 
       {verdicts.length + gaps.length + sightings.length === 0 && (
