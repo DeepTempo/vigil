@@ -353,3 +353,35 @@ class TestTheCapabilityReport:
         report = capability_report(_Registry())
         assert "telemetry_search" in report["bound"]
         assert "telemetry_search" not in report["unbound"]
+
+    def test_binds_a_server_connected_after_boot_without_a_reload(self, monkeypatch):
+        # The bug: a server enabled+connected at runtime stayed invisible to the
+        # resolver until a reload rewrote the on-disk cache. The report must sync
+        # from the live client, so a just-connected server binds on the next turn.
+        from core.integrations.mcp.registry import MCPRegistry
+        from core.workflows.playbook_resolver import capability_report
+
+        class _LiveClient:
+            mcp_service = None
+            # Raw, unprefixed tool name as the live client caches it; the
+            # registry re-prefixes it with the server on get_all_tools().
+            tools_cache = {
+                "splunk-selfhosted": [
+                    {
+                        "name": "splunk_execute",
+                        "description": "Execute SPL",
+                        "inputSchema": {},
+                    }
+                ]
+            }
+
+            def get_connection_status(self):
+                return {"splunk-selfhosted": True}
+
+        monkeypatch.setattr(
+            "core.integrations.mcp.client.process_mcp_client", lambda: _LiveClient()
+        )
+
+        # A fresh registry knows nothing of the server; refresh_from_client fills it.
+        registry = MCPRegistry()
+        assert "telemetry_search" in capability_report(registry)["bound"]
