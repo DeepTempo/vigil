@@ -36,6 +36,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from core.auth.auth_cookies import context_path_prefix, cookie_root_path
 from core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -48,10 +49,34 @@ UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _DEFAULT_EXEMPT = ("/api/webhooks/", "/api/ingest/")
 
 
-def _parse_exempt_paths(raw: Optional[str]) -> tuple:
-    if not raw:
-        return _DEFAULT_EXEMPT
-    return tuple(p.strip() for p in raw.split(",") if p.strip())
+def _apply_context_path(path: str, prefix: str) -> str:
+    """Prefix an app-root path with VIGIL_CONTEXT_PATH.
+
+    Already-prefixed paths (``{prefix}/api/...``) are left alone so an
+    operator can set fully qualified VIGIL_CSRF_EXEMPT_PATHS without
+    doubling. The skip is ``{prefix}/api``, not ``{prefix}/``, so a
+    context path of ``/api`` does not treat Helm's ``/api/webhooks/``
+    as already done.
+    """
+    if not path.startswith("/"):
+        path = "/" + path
+    if not prefix:
+        return path
+    if path == prefix or path == prefix + "/api" or path.startswith(prefix + "/api/"):
+        return path
+    return f"{prefix}{path}"
+
+
+def _parse_exempt_paths(
+    raw: Optional[str], context_path: Optional[str] = None
+) -> tuple:
+    prefix = context_path_prefix() if context_path is None else context_path.rstrip("/")
+    bases = (
+        tuple(p.strip() for p in raw.split(",") if p.strip())
+        if raw
+        else _DEFAULT_EXEMPT
+    )
+    return tuple(_apply_context_path(p, prefix) for p in bases)
 
 
 class CSRFMiddleware(BaseHTTPMiddleware):
@@ -129,7 +154,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 httponly=False,  # JS must be able to read it
                 secure=self.cookie_secure,
                 samesite="strict",
-                path="/",
+                path=cookie_root_path(),
             )
 
         return response
