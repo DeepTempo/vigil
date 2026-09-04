@@ -1228,12 +1228,13 @@ function HuntTabs({ d, hunt, onReload }: { d: WfRunDetail; hunt: HuntView; onRel
   const memory = hunt.recall ?? null
   const remembered = memory === null ? null : recalledCount(memory)
   const tabs: [HuntTab, string, number | null][] = [
-    // First, because it is what the hunt opened on: the tabs read before, during,
-    // after. Absent entirely when the run never asked, so an older run does not
-    // grow an empty tab.
-    ...(memory !== null ? ([['memory', 'Memory', remembered]] as [HuntTab, string, number | null][]) : []),
     ['hyp', 'Hypotheses', hunt.hypotheses.length],
     ...(hunt.evidence_count > 0 ? ([['evidence', 'Evidence', hunt.evidence_count]] as [HuntTab, string, number][]) : []),
+    // After what this run gathered, because it is not one of that: memory is what
+    // earlier investigations left behind, and reading it first invites it to be
+    // taken for a finding of this hunt's own. Absent entirely when the run never
+    // asked, so an older run does not grow an empty tab.
+    ...(memory !== null ? ([['memory', 'Memory', remembered]] as [HuntTab, string, number | null][]) : []),
     ...(moves.length > 0 ? ([['moves', 'Moves', moves.length]] as [HuntTab, string, number][]) : []),
     ...(frontier.length > 0 ? ([['frontier', 'Frontier', frontier.length]] as [HuntTab, string, number][]) : []),
     ...(gaps.length > 0 ? ([['gaps', 'Gaps', gaps.length]] as [HuntTab, string, number][]) : []),
