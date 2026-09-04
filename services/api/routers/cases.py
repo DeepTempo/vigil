@@ -60,7 +60,6 @@ ROUTER_META = RouterMeta(
     tags=["cases"],
     auth=Auth.REQUIRED,
 )
-# Use DatabaseDataService which automatically uses PostgreSQL if available, falls back to JSON
 data_service = DatabaseDataService()
 if REPORTLAB_AVAILABLE:
     report_service = ReportService()

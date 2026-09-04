@@ -1,9 +1,7 @@
 import json
 import logging
-import os
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -15,12 +13,6 @@ from core.time import utcnow
 logger = logging.getLogger(__name__)
 mcp = MCPServer("deeptempo-findings")
 
-DATA_DIR = Path(
-    os.environ.get("DEEPTEMPO_DATA_DIR", Path(__file__).parent.parent / "data")
-)
-FINDINGS_FILE = DATA_DIR / "findings.json"
-
-# Global data service instance (initialized lazily)
 _data_service = None
 
 
@@ -42,21 +34,12 @@ def jdump(obj, indent=2):
 
 
 def get_data_service():
-    """
-    Get DatabaseDataService instance (lazy initialization).
-
-    This service automatically handles:
-    - Demo mode (if enabled)
-    - PostgreSQL (if available)
-    - JSON file fallback
-    """
+    """Return the shared DatabaseDataService (demo mode or PostgreSQL)."""
     global _data_service
     if _data_service is None:
         from core.storage.database_data_service import DatabaseDataService
 
         _data_service = DatabaseDataService()
-
-        # Log which backend we're using
         backend_info = _data_service.get_backend_info()
         logger.info(f"MCP deeptempo-findings using backend: {backend_info['backend']}")
 
@@ -64,29 +47,11 @@ def get_data_service():
 
 
 def load_findings():
-    """
-    Load findings from DatabaseDataService.
-
-    This replaces the old JSON-only loading with smart data access:
-    - Uses PostgreSQL if available
-    - Falls back to JSON files
-    - Supports demo mode
-    """
+    """Load findings from DatabaseDataService."""
     try:
-        data_service = get_data_service()
-        return data_service.get_findings(limit=10000)
+        return get_data_service().get_findings(limit=10000)
     except Exception as e:
         logger.error(f"Error loading findings via DatabaseDataService: {e}")
-        # Emergency fallback to direct JSON read
-        if FINDINGS_FILE.exists():
-            try:
-                with open(FINDINGS_FILE, "r") as f:
-                    data = json.load(f)
-                    if isinstance(data, dict) and "findings" in data:
-                        return data["findings"]
-                    return data if isinstance(data, list) else []
-            except Exception as json_error:
-                logger.error(f"Error reading JSON fallback: {json_error}")
         return []
 
 

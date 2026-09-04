@@ -550,14 +550,14 @@ def test_concurrent_callers_inspect_and_log_once(drifted_manager, caplog):
     assert len(errors) == 1, f"expected a single ERROR, got {len(errors)}"
 
 
-def test_strict_mode_is_not_swallowed_into_json_fallback(
+def test_strict_mode_is_not_swallowed_on_schema_drift(
     drifted_db, monkeypatch, postgres_available
 ):
-    """DatabaseDataService must not downgrade an explicit refusal to a warning.
+    """DatabaseDataService must not swallow an explicit schema-drift refusal.
 
-    Its _init_database() catches Exception and falls back to JSON files. That
-    would turn DB_STRICT_SCHEMA=true into a silent switch to a different storage
-    backend, which is the exact shape of the bug #562 describes.
+    _init_database() catches Exception for a down database so reconnect can
+    retry. SchemaDriftError is re-raised so DB_STRICT_SCHEMA=true stays fatal
+    (#562).
     """
     from core.storage import database_data_service as dds
 

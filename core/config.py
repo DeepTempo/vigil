@@ -121,7 +121,6 @@ class Settings(BaseSettings):
     environment: str = "development"
     release_version: str = "unknown"
     demo_mode: Optional[bool] = None
-    data_backend: str = "database"
     autostart_services: Optional[str] = None
     max_upload_size_mb: int = 500
     vigil_context_path: str = ""
