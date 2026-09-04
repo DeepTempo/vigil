@@ -303,3 +303,6 @@ index.scip.stamp
 
 # Repo-local uv install, created by scripts/lib.sh when the host has no uv.
 /.uv/
+
+# Timestamped .env copies left by setup and migration scripts.
+.env.*

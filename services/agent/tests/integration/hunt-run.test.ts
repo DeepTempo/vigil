@@ -15,13 +15,14 @@ import { localDispatch } from "../../core/dispatch.js";
 import { nullMemory } from "../../core/memory.js";
 import { registryOf } from "../../core/registry.js";
 import type { HarnessFactory } from "../../harness.js";
+import { TEST_DSN } from "../support/testdb.js";
 
 // A hunt started through the queue must reach the hunt loop. Routing it to the
 // generic one produced a run that completed and looked fine, and hunted nothing.
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
 
 const pool = new pg.Pool({
-  connectionString: process.env["DATABASE_URL"] ?? "postgres://vigil:vigil@localhost:55432/vigil_test",
+  connectionString: TEST_DSN,
 });
 const ledger = new LedgerRepository(pool);
 const leases = new LeaseRepository(pool);
