@@ -37,6 +37,31 @@ export const DEFAULT_CHECKPOINTS: Checkpoints = {
 // reader can tell policy from a person at a glance, and so grepping the ledger
 export const AUTO_ACTOR = "policy:auto";
 
+// What a definition asked for, made safe to act on. Policies now arrive from a
+// WORKFLOW.md's front matter, which is text nobody type-checks: YAML reads
+// `hypothesis_approval: yes` as the boolean true, and the controller branches on
+// `=== "ask"` for the gate and `=== "auto"` for the auto-answer, so a value that is
+// neither takes no branch at all -- the run starts active AND leaves an unresolved
+// checkpoint behind. That is an approval gate switched off by a typo, so anything
+// that is not exactly "auto" is read as "ask": a definition nobody can parse asks a
+// human rather than spending on its own say-so. Unknown classes are dropped, since
+// the controller has no policy for one and would raise what nobody can answer.
+export function checkpointsFrom(declared: unknown): Partial<Checkpoints> {
+  const asked = (declared ?? {}) as Record<string, unknown>;
+  const safe: Partial<Checkpoints> = {};
+  for (const [name, policy] of Object.entries(asked)) {
+    if (!(CHECKPOINT_CLASSES as readonly string[]).includes(name)) {
+      console.warn(`checkpoints: ignoring ${name}, which names no checkpoint class`);
+      continue;
+    }
+    if (policy !== "ask" && policy !== "auto") {
+      console.warn(`checkpoints: ${name} asked for ${JSON.stringify(policy)}, which is neither "ask" nor "auto" — asking`);
+    }
+    safe[name as CheckpointClass] = policy === "auto" ? "auto" : "ask";
+  }
+  return safe;
+}
+
 export type Resolution = ResolutionPayload;
 export type Checkpoint = CheckpointPayload;
 

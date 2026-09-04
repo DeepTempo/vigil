@@ -9,7 +9,7 @@ import { harnessFor, internalToken, type HarnessFactory } from "./harness.js";
 import { poolConfig, redisConfig } from "./core/db.js";
 import { healthPort, healthServer } from "./core/health.js";
 import { jobIdFor, RUN_QUEUE, JOB_SCHEMA_VERSION, type RunJob } from "./contracts/job.js";
-import type { AgentEvent, CheckpointPayload, ResolutionPayload, RunPayload } from "./contracts/events.js";
+import type { AgentEvent, CheckpointPayload, ResolutionPayload, RunPayload, TerminalHandoff } from "./contracts/events.js";
 import type { SpendPayload } from "./contracts/budget.js";
 import {
   LEASE_TTL_MS,
@@ -106,6 +106,15 @@ function announceFor(): Announce {
   return url === undefined || url === "" ? noAnnounce : httpAnnounce({ url, token: internalToken() });
 }
 
+// Where a handoff goes the moment it is journaled: the mirror's own channel, so a
+// case reaches IR when the hunt escalates rather than when it eventually stops.
+// Off unless a deployment says where to mirror to, same as the terminal it precedes.
+// Answers whether it landed, so the loop can ask again for one that did not.
+function handoffFor(): (runId: string, handoff: TerminalHandoff) => Promise<boolean> {
+  const mirror = mirrorFor();
+  return (runId, handoff) => mirror.handoff(runId, handoff);
+}
+
 function defaultResolver(): PlaybookResolver {
   return httpPlaybooks({
     url: process.env["VIGIL_PLAYBOOKS_URL"] ?? "http://localhost:6987/internal/playbooks",
@@ -158,7 +167,14 @@ async function drive(
   const entry = archFor(kind);
   if (entry.workflow === "hunt") {
     const harness = build(kind, spec, as<HuntKinds>(state), undefined, seed);
-    await runHunt(harness, { run_id, spec, actions: entry.actions, queue: directives, started_by, announce: announceFor(), signal });
+    // run_kind threaded so a hunt-loop run started as root-cause journals its own
+    // kind rather than the "hunt" the loop was first written for.
+    // Only a forward hunt files its handoffs early: it escalates and keeps hunting,
+    // so its case must not wait on a terminal that may be far off or never come. A
+    // backward root-cause run concludes and stops, so its handoff rides the terminal
+    // as every kind's did -- and firing it early would double-open the same case.
+    const onHandoff = kind === "hunt" ? handoffFor() : undefined;
+    await runHunt(harness, { run_id, run_kind: kind, spec, actions: entry.actions, queue: directives, started_by, announce: announceFor(), ...(onHandoff ? { onHandoff } : {}), signal });
     return;
   }
   if (kind === "hunt" || kind === "investigate") {

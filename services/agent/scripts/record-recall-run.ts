@@ -65,6 +65,7 @@ const main = async (): Promise<void> => {
   const report = await runHunt(recallHarness(spec, provider, memory, state), {
     run_id: RUN,
     spec,
+    run_kind: "hunt",
     actions: archFor("hunt").actions,
     queue: new InProcessDirectiveQueue(),
   });

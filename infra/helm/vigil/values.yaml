@@ -411,10 +411,12 @@ dbInit:
     - 21_agent_run_leases.sql
     - 22_workflow_run_deleted.sql
     - 23_drop_finding_embedding.sql
-    - 24_episodic_memory.sql
-    - 25_episodic_read_log.sql
-    - 26_case_closure_actor.sql
-    - 27_episodic_distil_failures.sql
+    - 24_finding_mitre_predictions.sql
+    - 25_nullable_finding_score_timestamp.sql
+    - 26_episodic_memory.sql
+    - 27_episodic_read_log.sql
+    - 28_case_closure_actor.sql
+    - 29_episodic_distil_failures.sql
   resources:
     requests:
       cpu: 50m
@@ -435,6 +437,8 @@ ingress:
   hosts:
     - host: vigil.local
       paths:
+        # Subdirectory deploys (e.g. /vigil) must set config.VIGIL_CONTEXT_PATH
+        # to the same string; the chart does not derive one from the other.
         - path: /
           pathType: Prefix
   tls: []
@@ -471,6 +475,32 @@ stateDirectory:
   mountPath: /var/lib/vigil
   volume:
     emptyDir: {}
+
+# -----------------------------------------------------------------------------
+# Custom CA bundle (TLS-inspecting proxies)
+# -----------------------------------------------------------------------------
+# Mount an operator-supplied PEM into backend, daemon, llm-worker, agent-worker,
+# and agent-serve, and set SSL_CERT_FILE, REQUESTS_CA_BUNDLE, and
+# NODE_EXTRA_CA_CERTS to that path. Python and Node then trust the inspecting
+# CA with verification still enabled. MCP children inherit the same vars.
+# SSL_CERT_FILE replaces the default store — the PEM should include public CAs
+# as well as the inspecting one. NODE_EXTRA_CA_CERTS appends.
+#
+# Point at an existing Secret or ConfigMap — this chart does not create one.
+# Leave both names empty (the default) to skip the mount. Prefer the Secret
+# when both are set.
+#
+#   kubectl create secret generic vigil-proxy-ca \
+#     --from-file=ca.crt=/path/to/corporate-ca.pem
+#
+#   caBundle:
+#     existingSecret: vigil-proxy-ca
+#     key: ca.crt
+caBundle:
+  existingSecret: ""
+  existingConfigMap: ""
+  key: ca.crt
+  mountPath: /etc/vigil/ca-bundle.pem
 
 # -----------------------------------------------------------------------------
 # Pod security
@@ -596,6 +626,7 @@ config:
   AUTH_MIN_PASSWORD_LENGTH: "12"
   AUTH_PASSWORD_HISTORY_LIMIT: "5"
   PASSWORD_RESET_TTL_SECONDS: "3600"
+  # Include the context path under a subdirectory (e.g. https://example.com/vigil).
   VIGIL_FRONTEND_URL: ""
 
   # Email backend
@@ -608,6 +639,10 @@ config:
 
   # HTTP security headers + CORS
   VIGIL_CORS_ORIGINS: ""
+  # Sub-directory the app is served under (e.g. "/vigil"). Empty = root.
+  # Must match ingress path; the chart does not derive one from the other.
+  # The reverse proxy must forward the prefix unchanged.
+  VIGIL_CONTEXT_PATH: ""
   VIGIL_HSTS_ENABLED: "true"
   VIGIL_HSTS_MAX_AGE: "31536000"
   VIGIL_FRAME_OPTIONS_ENABLED: "true"
@@ -619,6 +654,7 @@ config:
   # CSRF
   VIGIL_CSRF_ENABLED: "true"
   VIGIL_CSRF_REPORT_ONLY: "true"
+  # App-root relative; the API prefixes each entry with VIGIL_CONTEXT_PATH.
   VIGIL_CSRF_EXEMPT_PATHS: "/api/webhooks/,/api/ingest/"
 
   # Auth cookies

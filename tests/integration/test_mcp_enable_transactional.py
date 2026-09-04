@@ -26,6 +26,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from core.deps import provide_mcp_client, provide_mcp_registry
+from core.integrations.mcp.registry import MCPRegistry
+
 
 @pytest.fixture(scope="module")
 def client():
@@ -36,15 +39,16 @@ def client():
 
 
 @contextmanager
-def _override_mcp_client(client, fake_client):
-    """Swap the MCP client the handler receives (#459) for the duration."""
-    from core.deps import provide_mcp_client
-
+def _override_mcp(client, fake_client, registry=None):
+    """Swap the MCP client (and optionally registry) the handler receives."""
     client.app.dependency_overrides[provide_mcp_client] = lambda: fake_client
+    if registry is not None:
+        client.app.dependency_overrides[provide_mcp_registry] = lambda: registry
     try:
         yield
     finally:
         client.app.dependency_overrides.pop(provide_mcp_client, None)
+        client.app.dependency_overrides.pop(provide_mcp_registry, None)
 
 
 @pytest.fixture
@@ -79,7 +83,7 @@ class TestEnableTransactional:
         fake_client.get_last_error = MagicMock(return_value=None)
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
-        with _override_mcp_client(client, fake_client):
+        with _override_mcp(client, fake_client):
             r = client.put(
                 "/api/mcp/servers/deeptempo-findings/enabled",
                 json={"enabled": True},
@@ -106,7 +110,7 @@ class TestEnableTransactional:
         )
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
-        with _override_mcp_client(client, fake_client):
+        with _override_mcp(client, fake_client):
             r = client.put(
                 "/api/mcp/servers/virustotal/enabled",
                 json={"enabled": True},
@@ -125,7 +129,7 @@ class TestEnableTransactional:
         fake_client.connect_to_server = AsyncMock(return_value=True)
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
-        with _override_mcp_client(client, fake_client):
+        with _override_mcp(client, fake_client):
             r = client.put(
                 "/api/mcp/servers/deeptempo-findings/enabled",
                 json={"enabled": False},
@@ -140,6 +144,87 @@ class TestEnableTransactional:
             "deeptempo-findings"
         )
         fake_client.connect_to_server.assert_not_called()
+
+
+@pytest.mark.integration
+class TestEnableUpdatesRegistry:
+    """Enable/disable must write the registry so chat sees the change with no refresh."""
+
+    def test_enable_makes_tools_visible_without_refresh(
+        self, client, fake_server_known
+    ):
+        registry = MCPRegistry()
+        fake_client = MagicMock()
+        fake_client.tools_cache = {
+            "deeptempo-findings": [
+                {
+                    "name": "list_findings",
+                    "description": "list them",
+                    "inputSchema": {},
+                }
+            ]
+        }
+        fake_client.connect_to_server = AsyncMock(return_value=True)
+        fake_client.get_last_error = MagicMock(return_value=None)
+
+        with _override_mcp(client, fake_client, registry):
+            r = client.put(
+                "/api/mcp/servers/deeptempo-findings/enabled",
+                json={"enabled": True},
+            )
+
+        assert r.status_code == 200, r.text
+        assert [t["name"] for t in registry.get_all_tools()] == [
+            "deeptempo-findings_list_findings"
+        ]
+
+    def test_disable_removes_tools_without_refresh(self, client, fake_server_known):
+        registry = MCPRegistry()
+        registry.register_server(
+            "deeptempo-findings",
+            {},
+            [{"name": "list_findings", "description": "list them", "inputSchema": {}}],
+        )
+        fake_client = MagicMock()
+        fake_client.disconnect_from_server = AsyncMock(return_value=True)
+
+        with _override_mcp(client, fake_client, registry):
+            r = client.put(
+                "/api/mcp/servers/deeptempo-findings/enabled",
+                json={"enabled": False},
+            )
+
+        assert r.status_code == 200, r.text
+        assert registry.get_all_tools() == []
+
+    def test_registry_write_failure_does_not_change_the_response(
+        self, client, fake_server_known
+    ):
+        registry = MCPRegistry()
+        fake_client = MagicMock()
+        fake_client.tools_cache = {
+            "deeptempo-findings": [
+                {"name": "list_findings", "description": "x", "inputSchema": {}}
+            ]
+        }
+        fake_client.connect_to_server = AsyncMock(return_value=True)
+        fake_client.get_last_error = MagicMock(return_value=None)
+
+        with patch(
+            "services.api.routers.mcp.register_connected",
+            side_effect=RuntimeError("registry down"),
+        ), _override_mcp(client, fake_client, registry):
+            r = client.put(
+                "/api/mcp/servers/deeptempo-findings/enabled",
+                json={"enabled": True},
+            )
+
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["success"] is True
+        assert body["enabled"] is True
+        assert body["connected"] is True
+        assert body["error"] is None
 
 
 @pytest.mark.integration

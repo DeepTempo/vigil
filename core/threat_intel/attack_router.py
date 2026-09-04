@@ -28,8 +28,7 @@ data_service = DatabaseDataService()
 def _parse_finding_timestamp(finding: dict) -> Optional[datetime]:
     """Parse a finding's timestamp (ISO string or datetime) into a naive UTC datetime.
 
-    Findings come from `Finding.to_dict()` (ISO string) or the JSON fallback
-    (raw dict values) — handle both.
+    Findings come from `Finding.to_dict()` (ISO string) or dumped dict values.
     """
     raw = finding.get("timestamp") or finding.get("created_at")
     if raw is None:
@@ -56,19 +55,19 @@ def get_attack_layer():
         ATT&CK layer JSON
     """
     try:
-        findings = data_service.get_findings()
-
-        # Build technique scores from findings
-        technique_scores = {}
-        for finding in findings:
-            for tech in iter_techniques(finding):
-                tid = tech.get("technique_id") or tech.get("id")
-                confidence = tech.get("confidence", 0) or 0
-                if tid:
-                    # Track max confidence per technique
-                    technique_scores[tid] = max(
-                        technique_scores.get(tid, 0), confidence
-                    )
+        if data_service.is_using_database():
+            technique_scores = data_service.get_technique_max_confidence()
+        else:
+            findings = data_service.get_findings()
+            technique_scores = {}
+            for finding in findings:
+                for tech in iter_techniques(finding):
+                    tid = tech.get("technique_id") or tech.get("id")
+                    confidence = tech.get("confidence", 0) or 0
+                    if tid:
+                        technique_scores[tid] = max(
+                            technique_scores.get(tid, 0), confidence
+                        )
 
         techniques = [
             {
@@ -117,49 +116,80 @@ def get_technique_rollup(
         Technique statistics sorted by occurrence count, including
         human-readable technique name and tactic per row.
     """
-    findings = data_service.get_findings()
-
-    if time_range != "all":
-        start_time, end_time = get_time_range(time_range)
-        scoped: list[dict] = []
-        for finding in findings:
-            ts = _parse_finding_timestamp(finding)
-            if ts is None or start_time <= ts <= end_time:
-                scoped.append(finding)
-        findings = scoped
-
-    technique_counts: dict[str, int] = {}
-    technique_severities: dict[str, dict[str, int]] = {}
-    technique_meta: dict[str, tuple[str, str]] = {}
-
-    for finding in findings:
-        severity = finding.get("severity", "unknown")
-
-        for tech in iter_techniques(finding):
-            confidence = tech.get("confidence", 0) or 0
-
-            if confidence < min_confidence:
+    if data_service.is_using_database():
+        start_time = end_time = None
+        if time_range != "all":
+            start_time, end_time = get_time_range(time_range)
+        severity_rows = data_service.get_technique_severity_counts(
+            min_confidence=min_confidence,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        technique_counts: dict[str, int] = {}
+        technique_severities: dict[str, dict[str, int]] = {}
+        technique_meta: dict[str, tuple[str, str]] = {}
+        for tid, severity, count in severity_rows:
+            resolved_id, name, tactic = resolve_technique(tid)
+            if not resolved_id:
                 continue
-
-            tid, name, tactic = resolve_technique(tech)
-            if not tid:
-                continue
-
-            technique_counts[tid] = technique_counts.get(tid, 0) + 1
-            if tid not in technique_meta:
-                technique_meta[tid] = (name, tactic)
-
-            if tid not in technique_severities:
-                technique_severities[tid] = {
+            technique_counts[resolved_id] = technique_counts.get(resolved_id, 0) + count
+            if resolved_id not in technique_meta:
+                technique_meta[resolved_id] = (name, tactic)
+            if resolved_id not in technique_severities:
+                technique_severities[resolved_id] = {
                     "critical": 0,
                     "high": 0,
                     "medium": 0,
                     "low": 0,
                 }
-
-            technique_severities[tid][severity] = (
-                technique_severities[tid].get(severity, 0) + 1
+            sev_key = severity or "unknown"
+            technique_severities[resolved_id][sev_key] = (
+                technique_severities[resolved_id].get(sev_key, 0) + count
             )
+    else:
+        findings = data_service.get_findings()
+
+        if time_range != "all":
+            start_time, end_time = get_time_range(time_range)
+            scoped: list[dict] = []
+            for finding in findings:
+                ts = _parse_finding_timestamp(finding)
+                if ts is None or start_time <= ts <= end_time:
+                    scoped.append(finding)
+            findings = scoped
+
+        technique_counts = {}
+        technique_severities = {}
+        technique_meta = {}
+
+        for finding in findings:
+            severity = finding.get("severity", "unknown")
+
+            for tech in iter_techniques(finding):
+                confidence = tech.get("confidence", 0) or 0
+
+                if confidence < min_confidence:
+                    continue
+
+                tid, name, tactic = resolve_technique(tech)
+                if not tid:
+                    continue
+
+                technique_counts[tid] = technique_counts.get(tid, 0) + 1
+                if tid not in technique_meta:
+                    technique_meta[tid] = (name, tactic)
+
+                if tid not in technique_severities:
+                    technique_severities[tid] = {
+                        "critical": 0,
+                        "high": 0,
+                        "medium": 0,
+                        "low": 0,
+                    }
+
+                technique_severities[tid][severity] = (
+                    technique_severities[tid].get(severity, 0) + 1
+                )
 
     techniques = []
     for tid, count in technique_counts.items():
@@ -193,15 +223,15 @@ def get_findings_by_technique(technique_id: str):
     Returns:
         List of findings
     """
-    findings = data_service.get_findings()
-
-    matching_findings = []
-
-    for finding in findings:
-        for tech in iter_techniques(finding):
-            if (tech.get("technique_id") or tech.get("id")) == technique_id:
-                matching_findings.append(finding)
-                break
+    if data_service.is_using_database():
+        matching_findings = data_service.get_findings_by_technique(technique_id)
+    else:
+        matching_findings = []
+        for finding in data_service.get_findings():
+            for tech in iter_techniques(finding):
+                if (tech.get("technique_id") or tech.get("id")) == technique_id:
+                    matching_findings.append(finding)
+                    break
 
     return {
         "technique_id": technique_id,
@@ -218,14 +248,19 @@ def get_tactics_summary():
     Returns:
         Tactics summary
     """
-    findings = data_service.get_findings()
-
-    tactic_counts: dict[str, int] = {}
-
-    for finding in findings:
-        for tech in iter_techniques(finding):
-            _tid, _name, tactic = resolve_technique(tech)
-            tactic_counts[tactic] = tactic_counts.get(tactic, 0) + 1
+    if data_service.is_using_database():
+        technique_counts = data_service.get_technique_occurrence_counts()
+        tactic_counts: dict[str, int] = {}
+        for tid, count in technique_counts.items():
+            _tid, _name, tactic = resolve_technique(tid)
+            tactic_counts[tactic] = tactic_counts.get(tactic, 0) + count
+    else:
+        findings = data_service.get_findings()
+        tactic_counts = {}
+        for finding in findings:
+            for tech in iter_techniques(finding):
+                _tid, _name, tactic = resolve_technique(tech)
+                tactic_counts[tactic] = tactic_counts.get(tactic, 0) + 1
 
     return {
         "tactics": [

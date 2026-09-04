@@ -4,7 +4,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.config import is_demo_mode, vigil_path
 from core.exceptions import DatabaseError
@@ -15,25 +15,27 @@ from core.storage.connection import (
 )
 from core.storage.schemas import CaseSchema, FindingSchema
 from core.storage.service import DatabaseService
-from core.time import utcnow
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
-FINDINGS_FILE = DATA_DIR / "findings.json"
-CASES_FILE = DATA_DIR / "cases.json"
+
+def _optional_score(value: Any) -> Optional[float]:
+    """Parse a score; missing, empty, and NaN stay None (do not coerce to 0.0)."""
+    if value is None or value == "":
+        return None
+    parsed = float(value)
+    if parsed != parsed:
+        return None
+    return parsed
 
 
 class DatabaseDataService:
     # Minimum seconds between reconnection attempts when DB is unreachable.
-    # Without this, a Postgres outage during startup would trap the singleton
-    # in JSON-file fallback for the rest of the process lifetime.
     _RECONNECT_INTERVAL_SECONDS = 10.0
 
-    def __init__(self, require_db: bool = False, demo_data=None):
+    def __init__(self, demo_data=None):
         self._db_service = None
         self._db_connected = False
-        self._use_json_fallback = False
         self._last_reconnect_attempt = 0.0
         self._demo_mode = is_demo_mode()
         self._demo_service = None
@@ -45,10 +47,9 @@ class DatabaseDataService:
 
             self._demo_service = demo_data or DemoDataService()
         else:
-            self._init_database(require_db)
-        DATA_DIR.mkdir(exist_ok=True)
+            self._init_database()
 
-    def _init_database(self, require_db: bool = False):
+    def _init_database(self):
         try:
             init_database(echo=False, create_tables=True)
             db_manager = get_db_manager()
@@ -56,16 +57,10 @@ class DatabaseDataService:
                 raise DatabaseError("Database health check failed")
             self._db_service = DatabaseService()
             self._db_connected = True
-            if self._use_json_fallback:
-                logger.info("PostgreSQL reconnected - exiting JSON file fallback")
-                self._use_json_fallback = False
-            else:
-                logger.info("PostgreSQL connection established")
+            logger.info("PostgreSQL connection established")
         except SchemaDriftError:
             # DB_STRICT_SCHEMA is set, so the operator asked for this to be
-            # fatal. Falling back to JSON files here would turn an explicit
-            # refusal into a silent downgrade, which is the failure mode #562
-            # is about.
+            # fatal (#562).
             self._db_connected = False
             self._db_service = None
             raise
@@ -73,11 +68,6 @@ class DatabaseDataService:
             self._db_connected = False
             self._db_service = None
             logger.warning(f"PostgreSQL not available: {e}")
-            if require_db:
-                raise DatabaseError(f"Failed to connect to PostgreSQL: {e}")
-            if not self._use_json_fallback:
-                self._use_json_fallback = True
-                logger.info("Using JSON file fallback for data storage")
 
     @property
     def _db_available(self) -> bool:
@@ -95,7 +85,7 @@ class DatabaseDataService:
         if now - self._last_reconnect_attempt < self._RECONNECT_INTERVAL_SECONDS:
             return False
         self._last_reconnect_attempt = now
-        self._init_database(require_db=False)
+        self._init_database()
         return self._db_connected
 
     def is_using_database(self) -> bool:
@@ -113,47 +103,7 @@ class DatabaseDataService:
                 "database_available": True,
                 "demo_mode": False,
             }
-        elif self._use_json_fallback:
-            return {"backend": "json", "database_available": False, "demo_mode": False}
         return {"backend": "none", "database_available": False, "demo_mode": False}
-
-    def _load_findings_json(self) -> List[Dict]:
-        if FINDINGS_FILE.exists():
-            try:
-                with open(FINDINGS_FILE) as f:
-                    data = json.load(f)
-                    return data.get("findings", []) if isinstance(data, dict) else data
-            except Exception as e:
-                logger.error(f"Error loading findings JSON: {e}")
-        return []
-
-    def _save_findings_json(self, findings: List[Dict]) -> bool:
-        try:
-            with open(FINDINGS_FILE, "w") as f:
-                json.dump({"findings": findings}, f, indent=2, default=str)
-            return True
-        except Exception as e:
-            logger.error(f"Error saving findings JSON: {e}")
-            return False
-
-    def _load_cases_json(self) -> List[Dict]:
-        if CASES_FILE.exists():
-            try:
-                with open(CASES_FILE) as f:
-                    data = json.load(f)
-                    return data.get("cases", []) if isinstance(data, dict) else data
-            except Exception as e:
-                logger.error(f"Error loading cases JSON: {e}")
-        return []
-
-    def _save_cases_json(self, cases: List[Dict]) -> bool:
-        try:
-            with open(CASES_FILE, "w") as f:
-                json.dump({"cases": cases}, f, indent=2, default=str)
-            return True
-        except Exception as e:
-            logger.error(f"Error saving cases JSON: {e}")
-            return False
 
     def get_findings(
         self,
@@ -188,43 +138,12 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error getting findings from DB: {e}")
                 return []
-        elif self._use_json_fallback:
-            findings = self._load_findings_json()
-            if severity:
-                findings = [f for f in findings if f.get("severity") == severity]
-            if data_source:
-                findings = [f for f in findings if f.get("data_source") == data_source]
-            if cluster_id is not None:
-                findings = [f for f in findings if f.get("cluster_id") == cluster_id]
-            if min_anomaly_score is not None:
-                findings = [
-                    f
-                    for f in findings
-                    if f.get("anomaly_score", 0) >= min_anomaly_score
-                ]
-            if status:
-                findings = [f for f in findings if f.get("status") == status]
-            if search_query:
-                q = search_query.lower()
-                findings = [
-                    f
-                    for f in findings
-                    if (
-                        q in f.get("finding_id", "").lower()
-                        or q in str(f.get("entity_context", "")).lower()
-                        or q in f.get("description", "").lower()
-                    )
-                ]
-            reverse = sort_order == "desc"
-            findings.sort(key=lambda f: f.get(sort_by, ""), reverse=reverse)
-            return findings[offset : offset + limit]
         return []
 
     def get_findings_missing_enrichment(
         self, limit: int = 100, max_age_hours: Optional[int] = None
     ) -> List[Dict]:
-        """Findings stored but never enriched (ai_enrichment IS NULL). DB-only —
-        JSON-fallback daemons skip backfill."""
+        """Findings stored but never enriched (ai_enrichment IS NULL)."""
         if not self._db_available or not self._db_service:
             return []
         try:
@@ -259,34 +178,6 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error counting findings from DB: {e}")
                 return 0
-        elif self._use_json_fallback:
-            findings = self._load_findings_json()
-            if severity:
-                findings = [f for f in findings if f.get("severity") == severity]
-            if data_source:
-                findings = [f for f in findings if f.get("data_source") == data_source]
-            if cluster_id is not None:
-                findings = [f for f in findings if f.get("cluster_id") == cluster_id]
-            if min_anomaly_score is not None:
-                findings = [
-                    f
-                    for f in findings
-                    if f.get("anomaly_score", 0) >= min_anomaly_score
-                ]
-            if status:
-                findings = [f for f in findings if f.get("status") == status]
-            if search_query:
-                q = search_query.lower()
-                findings = [
-                    f
-                    for f in findings
-                    if (
-                        q in f.get("finding_id", "").lower()
-                        or q in str(f.get("entity_context", "")).lower()
-                        or q in f.get("description", "").lower()
-                    )
-                ]
-            return len(findings)
         return 0
 
     def get_finding(self, finding_id: str) -> Optional[Dict]:
@@ -299,12 +190,58 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error getting finding from DB: {e}")
                 return None
-        elif self._use_json_fallback:
-            findings = self._load_findings_json()
-            for f in findings:
-                if f.get("finding_id") == finding_id:
-                    return f
         return None
+
+    def get_findings_by_technique(
+        self, technique_id: str, limit: Optional[int] = None
+    ) -> List[Dict]:
+        """Findings predicting ``technique_id`` from the child table. DB only."""
+        if not self._db_available or not self._db_service:
+            return []
+        try:
+            findings = self._db_service.get_findings_by_technique(
+                technique_id, limit=limit
+            )
+            return FindingSchema.dump_many(findings)
+        except Exception as e:
+            logger.error(f"Error getting findings by technique from DB: {e}")
+            return []
+
+    def get_technique_max_confidence(self) -> Dict[str, float]:
+        if not self._db_available or not self._db_service:
+            return {}
+        try:
+            return self._db_service.get_technique_max_confidence()
+        except Exception as e:
+            logger.error(f"Error getting technique max confidence from DB: {e}")
+            return {}
+
+    def get_technique_severity_counts(
+        self,
+        min_confidence: float = 0.0,
+        start_time=None,
+        end_time=None,
+    ) -> list:
+        if not self._db_available or not self._db_service:
+            return []
+        try:
+            return self._db_service.get_technique_severity_counts(
+                min_confidence=min_confidence,
+                start_time=start_time,
+                end_time=end_time,
+            )
+        except Exception as e:
+            logger.error(f"Error getting technique severity counts from DB: {e}")
+            return []
+
+    def get_technique_occurrence_counts(self) -> Dict[str, int]:
+        if not self._db_available or not self._db_service:
+            return {}
+        try:
+            return self._db_service.get_technique_occurrence_counts()
+        except Exception as e:
+            logger.error(f"Error getting technique occurrence counts from DB: {e}")
+            return {}
 
     def create_finding(self, finding_data: Dict) -> Optional[Dict]:
         if self._demo_mode and self._demo_service:
@@ -314,8 +251,8 @@ class DatabaseDataService:
                 finding = self._db_service.create_finding(
                     finding_id=finding_data.get("finding_id"),
                     mitre_predictions=finding_data.get("mitre_predictions", {}),
-                    anomaly_score=float(finding_data.get("anomaly_score", 0.0)),
-                    timestamp=finding_data.get("timestamp", utcnow()),
+                    anomaly_score=_optional_score(finding_data.get("anomaly_score")),
+                    timestamp=finding_data.get("timestamp") or None,
                     data_source=finding_data.get("data_source", "imported"),
                     description=finding_data.get("description"),
                     entity_context=finding_data.get("entity_context"),
@@ -328,11 +265,6 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error creating finding in DB: {e}")
                 return None
-        elif self._use_json_fallback:
-            findings = self._load_findings_json()
-            findings.append(finding_data)
-            if self._save_findings_json(findings):
-                return finding_data
         return None
 
     def update_finding(self, finding_id: str, **updates) -> bool:
@@ -344,17 +276,6 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error updating finding in DB: {e}")
                 return False
-        elif self._use_json_fallback:
-            findings = self._load_findings_json()
-            for f in findings:
-                if f.get("finding_id") == finding_id:
-                    f.update(updates)
-                    return self._save_findings_json(findings)
-        return False
-
-    def save_findings(self, findings: List[Dict]) -> bool:
-        if self._use_json_fallback:
-            return self._save_findings_json(findings)
         return False
 
     def get_cases(self, limit: int = 10000) -> List[Dict]:
@@ -367,9 +288,6 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error getting cases from DB: {e}")
                 return []
-        elif self._use_json_fallback:
-            cases = self._load_cases_json()
-            return cases[:limit]
         return []
 
     def get_case(self, case_id: str) -> Optional[Dict]:
@@ -382,11 +300,6 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error getting case from DB: {e}")
                 return None
-        elif self._use_json_fallback:
-            cases = self._load_cases_json()
-            for c in cases:
-                if c.get("case_id") == case_id:
-                    return c
         return None
 
     def create_case(
@@ -396,13 +309,21 @@ class DatabaseDataService:
         priority: str = "medium",
         description: str = "",
         status: str = "open",
+        case_id: Optional[str] = None,
     ) -> Optional[Dict]:
         if self._demo_mode and self._demo_service:
             return self._demo_service.create_case(
-                title, finding_ids, priority, description, status
+                title, finding_ids, priority, description, status, case_id
             )
 
-        case_id = f"case-{datetime.now().strftime('%Y-%m-%d')}-{uuid.uuid4().hex[:8]}"
+        # Minted here unless the caller brought one. A caller that can derive a
+        # stable id -- an agent handoff, whose document arrives twice -- gets an
+        # idempotent create out of it, because cases.case_id is the primary key and
+        # the second insert loses rather than opening a second case.
+        if case_id is None:
+            case_id = (
+                f"case-{datetime.now().strftime('%Y-%m-%d')}-{uuid.uuid4().hex[:8]}"
+            )
 
         if self._db_available:
             try:
@@ -418,24 +339,6 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error creating case in DB: {e}")
                 return None
-        elif self._use_json_fallback:
-            now = utcnow().isoformat()
-            case_data = {
-                "case_id": case_id,
-                "title": title,
-                "description": description,
-                "finding_ids": finding_ids,
-                "status": status,
-                "priority": priority,
-                "created_at": now,
-                "updated_at": now,
-                "notes": [],
-                "timeline": [{"timestamp": now, "event": "Case created"}],
-            }
-            cases = self._load_cases_json()
-            cases.append(case_data)
-            if self._save_cases_json(cases):
-                return case_data
         return None
 
     def update_case(self, case_id: str, **updates) -> bool:
@@ -447,13 +350,6 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error updating case in DB: {e}")
                 return False
-        elif self._use_json_fallback:
-            cases = self._load_cases_json()
-            for c in cases:
-                if c.get("case_id") == case_id:
-                    c.update(updates)
-                    c["updated_at"] = utcnow().isoformat()
-                    return self._save_cases_json(cases)
         return False
 
     def delete_case(self, case_id: str) -> bool:
@@ -465,10 +361,6 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error deleting case from DB: {e}")
                 return False
-        elif self._use_json_fallback:
-            cases = self._load_cases_json()
-            cases = [c for c in cases if c.get("case_id") != case_id]
-            return self._save_cases_json(cases)
         return False
 
     def get_findings_by_case(self, case_id: str) -> List[Dict]:
@@ -502,14 +394,6 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error getting findings for case from DB: {e}")
                 return []
-        elif self._use_json_fallback:
-            # Get case and lookup findings
-            case = self.get_case(case_id)
-            if case and "finding_ids" in case:
-                findings = self._load_findings_json()
-                return [
-                    f for f in findings if f.get("finding_id") in case["finding_ids"]
-                ]
         return []
 
     def add_finding_to_case(self, case_id: str, finding_id: str) -> bool:
@@ -531,22 +415,6 @@ class DatabaseDataService:
             except Exception as e:
                 logger.error(f"Error adding finding to case in DB: {e}")
                 return False
-        elif self._use_json_fallback:
-            cases = self._load_cases_json()
-            for c in cases:
-                if c.get("case_id") == case_id:
-                    if "finding_ids" not in c:
-                        c["finding_ids"] = []
-                    if finding_id not in c["finding_ids"]:
-                        c["finding_ids"].append(finding_id)
-                        c["updated_at"] = utcnow().isoformat()
-                    return self._save_cases_json(cases)
-            return False
-        return False
-
-    def save_cases(self, cases: List[Dict]) -> bool:
-        if self._use_json_fallback:
-            return self._save_cases_json(cases)
         return False
 
     def export_findings(self, output_path: Path, fmt: str = "json") -> bool:
@@ -713,10 +581,10 @@ class DatabaseDataService:
                                     mitre_predictions=finding.get(
                                         "mitre_predictions", {}
                                     ),
-                                    anomaly_score=float(
-                                        finding.get("anomaly_score", 0.0)
+                                    anomaly_score=_optional_score(
+                                        finding.get("anomaly_score")
                                     ),
-                                    timestamp=finding.get("timestamp", utcnow()),
+                                    timestamp=finding.get("timestamp") or None,
                                     data_source=finding.get("data_source", "s3_import"),
                                     entity_context=finding.get("entity_context"),
                                     evidence_links=finding.get("evidence_links"),
@@ -732,13 +600,6 @@ class DatabaseDataService:
                             errors.append(
                                 f"Finding {finding.get('finding_id')}: {str(e)}"
                             )
-
-                elif self._use_json_fallback:
-                    # Sync to JSON file
-                    if self._save_findings_json(s3_findings):
-                        findings_synced = len(s3_findings)
-                    else:
-                        errors.append("Failed to save findings to JSON file")
             else:
                 logger.warning(f"No findings found in S3 at {findings_path}")
 
@@ -779,13 +640,6 @@ class DatabaseDataService:
                                 f"Error syncing case {case.get('case_id')}: {e}"
                             )
                             errors.append(f"Case {case.get('case_id')}: {str(e)}")
-
-                elif self._use_json_fallback:
-                    # Sync to JSON file
-                    if self._save_cases_json(s3_cases):
-                        cases_synced = len(s3_cases)
-                    else:
-                        errors.append("Failed to save cases to JSON file")
             else:
                 logger.warning(f"No cases found in S3 at {cases_path}")
 

@@ -139,14 +139,7 @@ def _ingest(payload: Dict[str, Any]) -> Dict[str, Any]:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Unable to transform Cloudy event payload",
         )
-    try:
-        ok = service.ingestion_service.ingest_finding(finding)
-    except Exception as exc:
-        logger.exception("Cloudy event ingestion failed")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ingestion error: {exc}",
-        )
+    ok = service.ingestion_service.ingest_finding(finding)
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

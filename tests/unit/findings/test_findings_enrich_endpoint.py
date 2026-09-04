@@ -8,7 +8,8 @@ tests pin both, so the extraction is provably behaviour-preserving:
 * cached hit short-circuits (and ``force_regenerate`` bypasses it)
 * ``NoProviderConfigured`` → 503 carrying the structured ``NO_PROVIDER_DETAIL``
   payload the chat drawer matches on — *not* a bare string
-* ``ProviderUnavailable`` → 503, any other failure → 500
+* ``ProviderUnavailable`` → 503; other failures propagate so the global
+  handler can render 500 ``Internal server error`` without ``str(e)``
 * the success envelope is ``{finding_id, cached: False, enrichment}``
 
 They also cover ``_resolve_provider``'s error mapping, which is where the old
@@ -25,9 +26,9 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(REPO))
 
-from fastapi import HTTPException  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
-from services.api.routers import findings as findings_api  # noqa: E402
 from core.findings.enrichment import (  # noqa: E402
     EmptyProviderResponse,
     FindingNotFound,
@@ -35,6 +36,8 @@ from core.findings.enrichment import (  # noqa: E402
     ProviderUnavailable,
 )
 from core.findings.enrichment import service as enrichment_service  # noqa: E402
+from services.api.errors import register_exception_handlers  # noqa: E402
+from services.api.routers import findings as findings_api  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -216,29 +219,38 @@ async def test_finding_not_found_from_the_module_is_404(stub_data_service, monke
     assert exc_info.value.status_code == 404
 
 
-async def test_empty_provider_response_is_500(stub_data_service, monkeypatch):
+async def test_empty_provider_response_propagates(stub_data_service, monkeypatch):
     _stub_enrich(
         monkeypatch,
         raises=EmptyProviderResponse("LLM provider returned an empty response"),
     )
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(EmptyProviderResponse):
         await findings_api.get_or_generate_enrichment(FINDING_ID, False)
 
-    assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == (
-        "Failed to generate enrichment: LLM provider returned an empty response"
-    )
 
-
-async def test_unexpected_failure_is_500(stub_data_service, monkeypatch):
+async def test_unexpected_failure_propagates(stub_data_service, monkeypatch):
     _stub_enrich(monkeypatch, raises=RuntimeError("gateway exploded"))
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(RuntimeError, match="gateway exploded"):
         await findings_api.get_or_generate_enrichment(FINDING_ID, False)
 
-    assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == "Failed to generate enrichment: gateway exploded"
+
+def test_unexpected_failure_does_not_leak_to_the_client(stub_data_service, monkeypatch):
+    _stub_enrich(monkeypatch, raises=RuntimeError("gateway exploded"))
+
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.add_api_route(
+        "/enrich/{finding_id}",
+        findings_api.get_or_generate_enrichment,
+        methods=["POST"],
+    )
+    response = TestClient(app).post(f"/enrich/{FINDING_ID}")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+    assert "gateway exploded" not in response.text
 
 
 # ---------------------------------------------------------------------------

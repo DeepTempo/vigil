@@ -242,6 +242,19 @@ class SplunkService:
             logger.error(f"Error executing search: {e}")
             return None
 
+    @staticmethod
+    def _earliest_from_hours(hours: int) -> str:
+        """Turn a look-back window in hours into a valid Splunk earliest_time.
+
+        Callers pass a very large ``hours`` to mean "all time" (the tool's
+        all-time sentinel is 876000h). Splunk rejects such an offset as
+        ``Invalid earliest_time``, so map an absurd or non-positive window to
+        Splunk's all-time epoch ``"0"`` instead.
+        """
+        if not hours or hours <= 0 or hours >= 87600:  # ~10 years -> all time
+            return "0"
+        return f"-{hours}h"
+
     def search_by_ip(self, ip_address: str, hours: int = 24) -> Optional[List[Dict]]:
         """
         Search for events related to an IP address.
@@ -253,8 +266,8 @@ class SplunkService:
         Returns:
             List of events or None
         """
-        query = f'"{ip_address}" | head 1000'
-        return self.search(query, earliest_time=f"-{hours}h")
+        query = f'search index=* "{ip_address}" | head 1000'
+        return self.search(query, earliest_time=self._earliest_from_hours(hours))
 
     def search_by_hash(self, file_hash: str, hours: int = 24) -> Optional[List[Dict]]:
         """
@@ -267,8 +280,8 @@ class SplunkService:
         Returns:
             List of events or None
         """
-        query = f'"{file_hash}" | head 1000'
-        return self.search(query, earliest_time=f"-{hours}h")
+        query = f'search index=* "{file_hash}" | head 1000'
+        return self.search(query, earliest_time=self._earliest_from_hours(hours))
 
     def search_by_username(
         self, username: str, hours: int = 24
@@ -283,8 +296,11 @@ class SplunkService:
         Returns:
             List of events or None
         """
-        query = f'user="{username}" OR username="{username}" OR account="{username}" | head 1000'
-        return self.search(query, earliest_time=f"-{hours}h")
+        query = (
+            f'search index=* (user="{username}" OR username="{username}" '
+            f'OR account="{username}") | head 1000'
+        )
+        return self.search(query, earliest_time=self._earliest_from_hours(hours))
 
     def search_by_hostname(
         self, hostname: str, hours: int = 24
@@ -300,7 +316,7 @@ class SplunkService:
             List of events or None
         """
         query = (
-            f'host="{hostname}" OR hostname="{hostname}" OR dest="{hostname}" '
-            "| head 1000"
+            f'search index=* (host="{hostname}" OR hostname="{hostname}" '
+            f'OR dest="{hostname}") | head 1000'
         )
-        return self.search(query, earliest_time=f"-{hours}h")
+        return self.search(query, earliest_time=self._earliest_from_hours(hours))

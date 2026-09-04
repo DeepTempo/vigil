@@ -1,0 +1,190 @@
+"""VIGIL_CONTEXT_PATH must prefix cookies, CSRF exemptions, and mounted routes.
+
+Importing ``services.api.main`` with a non-empty context path would bake
+``_CONTEXT_PATH`` into this process and hide every ``/api/`` route from
+``tests/security/test_route_auth_coverage.py``. These tests never set the
+env var for that module: cookies/CSRF read settings at call time, and
+router prefix is exercised through ``mount_routers``.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+
+import pytest
+from fastapi import FastAPI, Response
+from fastapi.testclient import TestClient
+
+os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-not-for-prod")
+
+pytestmark = pytest.mark.unit
+
+
+def _set_cookie_headers(headers) -> list[str]:
+    getter = getattr(headers, "get_list", None) or getattr(headers, "getlist")
+    return getter("set-cookie")
+
+
+def _cookie_paths(response: Response) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for header in _set_cookie_headers(response.headers):
+        name = header.split("=", 1)[0]
+        match = re.search(r";\s*Path=([^;]*)", header, re.I)
+        if match:
+            found[name] = match.group(1)
+    return found
+
+
+def _mounted_paths(app: FastAPI) -> list[str]:
+    paths: list[str] = []
+
+    def visit(obj) -> None:
+        if type(obj).__name__ == "_IncludedRouter":
+            for candidate in obj.effective_candidates():
+                visit(candidate)
+            return
+        path = getattr(obj, "path", None)
+        if isinstance(path, str):
+            paths.append(getattr(obj, "path_format", None) or path)
+
+    for route in app.routes:
+        visit(route)
+    return paths
+
+
+@pytest.mark.parametrize(
+    "prefix, access, refresh",
+    [
+        ("", "/", "/api/auth/refresh"),
+        ("/", "/", "/api/auth/refresh"),
+        ("/vigil", "/vigil/", "/vigil/api/auth/refresh"),
+        ("/vigil/", "/vigil/", "/vigil/api/auth/refresh"),
+    ],
+)
+def test_auth_cookie_paths_follow_context_path(monkeypatch, prefix, access, refresh):
+    from core.auth.auth_cookies import (
+        ACCESS_COOKIE_NAME,
+        REFRESH_COOKIE_NAME,
+        clear_auth_cookies,
+        set_auth_cookies,
+    )
+    from core.config import get_settings
+
+    monkeypatch.setenv("VIGIL_CONTEXT_PATH", prefix)
+    get_settings.cache_clear()
+
+    set_response = Response()
+    set_auth_cookies(set_response, "access-token", "refresh-token")
+    assert _cookie_paths(set_response) == {
+        ACCESS_COOKIE_NAME: access,
+        REFRESH_COOKIE_NAME: refresh,
+    }
+
+    clear_response = Response()
+    clear_auth_cookies(clear_response)
+    assert _cookie_paths(clear_response) == {
+        ACCESS_COOKIE_NAME: access,
+        REFRESH_COOKIE_NAME: refresh,
+    }
+
+
+@pytest.mark.parametrize(
+    "raw, context_path, expected",
+    [
+        (None, "", ("/api/webhooks/", "/api/ingest/")),
+        (None, "/vigil", ("/vigil/api/webhooks/", "/vigil/api/ingest/")),
+        (
+            "/api/webhooks/,/api/ingest/",
+            "/vigil",
+            ("/vigil/api/webhooks/", "/vigil/api/ingest/"),
+        ),
+        ("/vigil/api/webhooks/", "/vigil", ("/vigil/api/webhooks/",)),
+        ("/api/webhooks/", "/api", ("/api/api/webhooks/",)),
+    ],
+)
+def test_csrf_exempt_paths_follow_context_path(raw, context_path, expected):
+    from services.api.middleware.csrf import _parse_exempt_paths
+
+    assert _parse_exempt_paths(raw, context_path) == expected
+
+
+def test_csrf_middleware_prefixes_helm_defaults_from_settings(monkeypatch):
+    """Helm leaves VIGIL_CSRF_EXEMPT_PATHS app-root relative; only the
+    context path is set. That is production ``add_middleware(CSRFMiddleware)``."""
+    from core.config import get_settings
+    from services.api.middleware.csrf import CSRFMiddleware
+
+    monkeypatch.setenv("VIGIL_CONTEXT_PATH", "/vigil")
+    monkeypatch.setenv("VIGIL_CSRF_EXEMPT_PATHS", "/api/webhooks/,/api/ingest/")
+    get_settings.cache_clear()
+
+    middleware = CSRFMiddleware(FastAPI(), enabled=True)
+    assert middleware._is_exempt("/vigil/api/webhooks/darktrace")
+    assert middleware._is_exempt("/vigil/api/ingest/upload")
+    assert not middleware._is_exempt("/api/webhooks/darktrace")
+    assert not middleware._is_exempt("/vigil/api/cases")
+
+
+def test_csrf_exempt_matching_requires_the_prefix():
+    from services.api.middleware.csrf import CSRFMiddleware, _parse_exempt_paths
+
+    inner = FastAPI()
+    middleware = CSRFMiddleware(
+        inner,
+        enabled=True,
+        exempt_paths=_parse_exempt_paths(None, "/vigil"),
+    )
+    assert middleware._is_exempt("/vigil/api/webhooks/darktrace")
+    assert middleware._is_exempt("/vigil/api/ingest/upload")
+    assert not middleware._is_exempt("/api/webhooks/darktrace")
+    assert not middleware._is_exempt("/vigil/api/cases")
+
+
+def test_csrf_cookie_path_follows_context_path(monkeypatch):
+    from core.config import get_settings
+    from services.api.middleware.csrf import CSRF_COOKIE_NAME, CSRFMiddleware
+
+    monkeypatch.setenv("VIGIL_CONTEXT_PATH", "/vigil")
+    get_settings.cache_clear()
+
+    app = FastAPI()
+    app.add_middleware(CSRFMiddleware, enabled=True, report_only=False)
+
+    @app.get("/vigil/")
+    def root():
+        return {"ok": True}
+
+    response = TestClient(app).get("/vigil/")
+    cookie = next(
+        c
+        for c in _set_cookie_headers(response.headers)
+        if c.startswith(CSRF_COOKIE_NAME)
+    )
+    match = re.search(r";\s*Path=([^;]*)", cookie, re.I)
+    assert match is not None
+    assert match.group(1) == "/vigil/"
+
+
+def test_mount_routers_prefixes_api_routes():
+    from services.api.discovery import mount_routers
+
+    app = FastAPI()
+    mount_routers(app, context_path="/vigil")
+    paths = _mounted_paths(app)
+
+    assert any(p.startswith("/vigil/api/") for p in paths)
+    assert any(p.startswith("/vigil/api/auth") for p in paths)
+    assert not any(p.startswith("/api/") and not p.startswith("/vigil/") for p in paths)
+    assert not any(p == "/metrics" or p.startswith("/metrics") for p in paths)
+
+
+def test_mount_routers_empty_prefix_keeps_root_api_paths():
+    from services.api.discovery import mount_routers
+
+    app = FastAPI()
+    mount_routers(app, context_path="")
+    paths = _mounted_paths(app)
+
+    assert any(p.startswith("/api/") for p in paths)
+    assert not any(p.startswith("/vigil/") for p in paths)

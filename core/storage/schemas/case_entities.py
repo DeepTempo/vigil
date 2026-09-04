@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from core.storage.schemas.base import JsonList, OptDateTime, ORMSchema, StrList
 
@@ -23,6 +23,32 @@ class SLAPolicySchema(ORMSchema):
     is_default: Optional[bool] = None
     created_at: OptDateTime = None
     updated_at: OptDateTime = None
+
+
+class CaseSLAStatusSchema(BaseModel):
+    """Computed SLA status from ``CaseSLAService.get_sla_status``.
+
+    Distinct from ``CaseSLASchema`` (the persisted CaseSLA row). GET
+    ``/cases/{id}/sla`` returns this dict at the top level — not wrapped,
+    and not the row dump.
+    """
+
+    case_id: str
+    sla_policy_id: Optional[str] = None
+    response_due: Optional[str] = None
+    resolution_due: Optional[str] = None
+    response_remaining_seconds: Optional[float] = None
+    resolution_remaining_seconds: Optional[float] = None
+    response_percent_elapsed: float = 0.0
+    resolution_percent_elapsed: float = 0.0
+    response_completed: bool
+    resolution_completed: bool
+    response_sla_met: Optional[bool] = None
+    resolution_sla_met: Optional[bool] = None
+    is_breached: bool
+    breach_type: Optional[str] = None
+    is_paused: Optional[bool] = None
+    health_status: str
 
 
 class CaseSLASchema(ORMSchema):

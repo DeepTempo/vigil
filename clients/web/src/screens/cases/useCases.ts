@@ -1,11 +1,37 @@
 import { useCallback, useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { casesApi, findingsApi } from '../../services/api'
-import { mapApiCase, mapApiFinding, type ApiCase, type ApiFinding } from '../../data/mappers'
+import { mapApiCase, mapApiFinding, type ApiFinding } from '../../data/mappers'
 import type { CaseRow, Finding } from '../../data/data'
 import type { Activity, ResolutionStep } from './CaseSections'
 
 export type Phase = 'loading' | 'ready' | 'error'
+
+function strField(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined
+}
+
+function asActivities(raw: unknown[]): Activity[] {
+  return raw.map((item) => {
+    const o = item && typeof item === 'object' ? (item as Record<string, unknown>) : {}
+    return {
+      description: strField(o.description),
+      activity_type: strField(o.activity_type),
+      timestamp: strField(o.timestamp),
+    }
+  })
+}
+
+function asResolutionSteps(raw: unknown[]): ResolutionStep[] {
+  return raw.map((item) => {
+    const o = item && typeof item === 'object' ? (item as Record<string, unknown>) : {}
+    return {
+      description: strField(o.description),
+      action_taken: strField(o.action_taken),
+      result: strField(o.result),
+    }
+  })
+}
 
 export function useCases() {
   const [rows, setRows] = useState<CaseRow[]>([])
@@ -22,8 +48,7 @@ export function useCases() {
       .getAll()
       .then((res) => {
         if (cancelled) return
-        const list = (res.data?.cases || []) as ApiCase[]
-        setRows(list.map(mapApiCase))
+        setRows(res.data.cases.map(mapApiCase))
         setPhase('ready')
       })
       .catch((e) => {
@@ -90,46 +115,39 @@ export function useCaseDetail(id: string | null) {
       .getById(id)
       .then(async (res) => {
         if (cancelled) return
-        const data = res.data as ApiCase & {
-          created_at?: string
-          activities?: Activity[]
-          resolution_steps?: ResolutionStep[]
-        }
+        const data = res.data
         setRow(mapApiCase(data))
-        setActivities(data.activities || [])
-        setResolutionSteps(data.resolution_steps || [])
+        setActivities(asActivities(data.activities ?? []))
+        setResolutionSteps(asResolutionSteps(data.resolution_steps ?? []))
         const d = data.created_at ? new Date(data.created_at) : null
         setCreated(d && !Number.isNaN(d.getTime()) ? format(d, 'MMM d, yyyy · HH:mm') : '—')
         setTimeline(
-          (data.timeline || [])
-            .filter((t) => t.event)
-            .map((t) => {
-              const td = t.timestamp ? new Date(t.timestamp) : null
+          (data.timeline ?? [])
+            .map((item) => {
+              const o = item && typeof item === 'object' ? (item as Record<string, unknown>) : {}
+              const event = strField(o.event)
+              if (!event) return null
+              const td = o.timestamp && typeof o.timestamp === 'string' ? new Date(o.timestamp) : null
               return {
-                event: t.event as string,
+                event,
                 time: td && !Number.isNaN(td.getTime()) ? format(td, 'MMM d · HH:mm') : '—',
               }
-            }),
+            })
+            .filter((t): t is TimelineEntry => t !== null),
         )
-        // GET /cases/{id} returns full finding objects (include_findings=True),
-        // so prefer those — accurate, uncapped severity counts in one request.
-        // Fall back to per-id fetches for the JSON/demo path that only carries
-        // finding_ids (cap to keep that fallback light).
-        let all: Finding[]
-        if (data.findings && data.findings.length) {
-          all = data.findings.map((f) => mapApiFinding(f as ApiFinding))
-        } else {
-          const ids = (data.finding_ids || []).slice(0, 8)
-          const settled = await Promise.all(
-            ids.map((fid) =>
-              findingsApi
-                .getById(fid)
-                .then((r) => mapApiFinding(r.data as ApiFinding))
-                .catch(() => null),
-            ),
-          )
-          all = settled.filter((f): f is Finding => f !== null)
-        }
+        // GET /cases/{id} dumps CaseSchema (finding_ids only), even though
+        // DatabaseDataService.get_case loads findings first. Fetch the linked
+        // findings separately; cap the list to keep the request light.
+        const ids = (data.finding_ids || []).slice(0, 8)
+        const settled = await Promise.all(
+          ids.map((fid) =>
+            findingsApi
+              .getById(fid)
+              .then((r) => mapApiFinding(r.data as ApiFinding))
+              .catch(() => null),
+          ),
+        )
+        const all = settled.filter((f): f is Finding => f !== null)
         if (cancelled) return
         setLinked(all)
         setSev(countSev(all))

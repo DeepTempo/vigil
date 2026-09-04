@@ -1,12 +1,12 @@
 """Unit tests for services/elastic_ingestion.py."""
 
 import json
-import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from core.integrations.elastic.ingestion import ElasticIngestion
+import pytest
 
+from core.integrations.elastic.ingestion import ElasticIngestion
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "fixtures"
 
@@ -19,11 +19,15 @@ def sample_alerts():
 
 @pytest.fixture
 def ingestion():
-    with patch("core.integrations.elastic.ingestion.get_integration_config") as mock_cfg:
-        mock_cfg.return_value = {
+    with patch("core.integrations.elastic.ingestion.resolve") as mock_resolve:
+        mock_resolve.return_value = {
             "elasticsearch_url": "https://es.test:9200",
             "kibana_url": "https://kibana.test:5601",
             "api_key": "test-key",
+            "username": None,
+            "password": None,
+            "index_pattern": None,
+            "verify_ssl": None,
         }
         svc = ElasticIngestion()
         # Prevent actual IngestionService init
@@ -81,6 +85,44 @@ class TestTransformAlert:
         assert finding is None
 
 
+class TestGetElasticService:
+
+    def test_resolved_api_key_reaches_the_client(self, ingestion):
+        svc = ingestion._get_elastic_service()
+        assert svc is not None
+        assert svc.api_key == "test-key"
+        assert svc.verify_ssl is True
+        assert svc.index_pattern == ".alerts-security.alerts-default"
+
+    def test_returns_none_without_elasticsearch_url(self):
+        with patch("core.integrations.elastic.ingestion.resolve") as mock_resolve:
+            mock_resolve.return_value = {
+                "elasticsearch_url": None,
+                "api_key": "test-key",
+                "verify_ssl": None,
+            }
+            ingestion = ElasticIngestion()
+            ingestion.ingestion_service = MagicMock()
+            assert ingestion._get_elastic_service() is None
+
+    def test_verify_ssl_false_is_preserved(self):
+        with patch("core.integrations.elastic.ingestion.resolve") as mock_resolve:
+            mock_resolve.return_value = {
+                "elasticsearch_url": "https://es.test:9200",
+                "kibana_url": None,
+                "api_key": "test-key",
+                "username": None,
+                "password": None,
+                "index_pattern": None,
+                "verify_ssl": False,
+            }
+            ingestion = ElasticIngestion()
+            ingestion.ingestion_service = MagicMock()
+            svc = ingestion._get_elastic_service()
+            assert svc is not None
+            assert svc.verify_ssl is False
+
+
 class TestFetchAlerts:
 
     @pytest.mark.asyncio
@@ -131,9 +173,7 @@ class TestUpdateUpstreamAlertStatus:
         ingestion._elastic_service = mock_svc
 
         await ingestion.update_upstream_alert_status("a1", "in_progress")
-        mock_svc.update_alert_status.assert_called_once_with(
-            ["a1"], "acknowledged"
-        )
+        mock_svc.update_alert_status.assert_called_once_with(["a1"], "acknowledged")
 
     @pytest.mark.asyncio
     async def test_returns_false_when_no_service(self, ingestion):

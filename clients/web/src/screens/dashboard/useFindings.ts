@@ -63,10 +63,6 @@ interface FindingsSummary {
   total?: number
   by_severity?: Record<string, number>
 }
-interface CasesSummary {
-  total?: number
-  by_status?: Record<string, number>
-}
 
 /** the summary endpoints, so these are true totals and not the capped list */
 export function useDashboardKpis() {
@@ -84,7 +80,7 @@ export function useDashboardKpis() {
         .then(([fRes, cRes]) => {
           if (cancelled) return
           const f = (fRes.data || {}) as FindingsSummary
-          const c = (cRes.data || {}) as CasesSummary
+          const c = cRes.data
           setKpis({
             findingsTotal: f.total ?? 0,
             findingsCritical: f.by_severity?.critical ?? 0,

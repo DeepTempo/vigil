@@ -52,14 +52,14 @@ describe("what the caller asked about is on the board", () => {
     const started = await newLedger({ hypotheses: ["one"], operatorHypotheses: [ASKED] });
 
     const [checkpoint] = [...started.ledger.projection.checkpoints.values()];
-    expect(checkpoint!.question).toBe("Approve and start this hunt on 2 hypothesis(es), 1 from your request?");
+    expect(checkpoint!.question).toBe("Approve and start this run on 2 hypothesis(es), 1 from your request?");
   });
 
   it("says nothing about the caller when they asked about nothing", async () => {
     const started = await newLedger({ hypotheses: ["one"] });
 
     const [checkpoint] = [...started.ledger.projection.checkpoints.values()];
-    expect(checkpoint!.question).toBe("Approve and start this hunt on 1 hypothesis(es)?");
+    expect(checkpoint!.question).toBe("Approve and start this run on 1 hypothesis(es)?");
   });
 
   // A contender, not a base rate: the null must beat it like any other, so a hunt

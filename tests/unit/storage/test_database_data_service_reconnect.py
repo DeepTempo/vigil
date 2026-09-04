@@ -1,19 +1,17 @@
 """Tests for DatabaseDataService recovery from transient Postgres outages.
 
-Before the fix, a Postgres outage at backend startup would set
-`_use_json_fallback = True` permanently, trapping the singleton in
-JSON-file-fallback for the rest of the process lifetime even after
-Postgres came back. These tests verify the rate-limited auto-reconnect.
+These tests verify the rate-limited auto-reconnect when the initial
+connection fails.
 """
 
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from core.storage.database_data_service import DatabaseDataService
 
 
-def _make_service_in_fallback() -> DatabaseDataService:
+def _make_disconnected_service() -> DatabaseDataService:
     """Construct a service that failed its initial DB connection."""
     with patch(
         "core.storage.database_data_service.init_database",
@@ -21,12 +19,11 @@ def _make_service_in_fallback() -> DatabaseDataService:
     ):
         svc = DatabaseDataService()
     assert svc._db_connected is False
-    assert svc._use_json_fallback is True
     return svc
 
 
 def test_db_available_retries_when_disconnected_after_interval():
-    svc = _make_service_in_fallback()
+    svc = _make_disconnected_service()
     # Pretend the cooldown has elapsed so the next read triggers a retry.
     svc._last_reconnect_attempt = 0.0
 
@@ -40,11 +37,10 @@ def test_db_available_retries_when_disconnected_after_interval():
         fake_init.assert_called_once()
 
     assert svc._db_connected is True
-    assert svc._use_json_fallback is False
 
 
 def test_db_available_rate_limits_reconnect_attempts():
-    svc = _make_service_in_fallback()
+    svc = _make_disconnected_service()
     # Force a recent attempt so the cooldown should suppress the next try.
     svc._last_reconnect_attempt = float("inf")
 

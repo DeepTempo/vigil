@@ -25,13 +25,13 @@ cap sees a row.
 tell it apart from an entity with a short history unless it is told.
 
 ``concluded_at <= as_of`` is a freshness filter and nothing more, never a
-substitute for logging the rows. ``25_episodic_read_log.sql`` says why on the
+substitute for logging the rows. ``27_episodic_read_log.sql`` says why on the
 column that carries it.
 
 The log is written here, inside the query, rather than at either call site, so a
 read through ``/internal/tools/invoke`` and a direct ``execute_backend_tool``
 leave the same record. What it is for, and why it alone is retained, is stated on
-the table in ``infra/database/init/25_episodic_read_log.sql``.
+the table in ``infra/database/init/27_episodic_read_log.sql``.
 """
 
 from __future__ import annotations

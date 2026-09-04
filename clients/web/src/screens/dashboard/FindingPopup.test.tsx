@@ -30,6 +30,30 @@ function openFinding(entityContext: Record<string, unknown>) {
   return render(<FindingPopup id="f-source-1" onClose={vi.fn()} />)
 }
 
+describe('FindingPopup missing source fields', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('renders Unrated, Not provided, and Source time unavailable when those fields are missing', async () => {
+    vi.mocked(findingsApi.getById).mockResolvedValueOnce({
+      data: {
+        finding_id: 'f-null',
+        severity: null,
+        timestamp: null,
+        anomaly_score: null,
+        status: 'new',
+        mitre_predictions: {},
+        entity_context: {},
+      },
+    } as never)
+
+    render(<FindingPopup id="f-null" onClose={vi.fn()} />)
+
+    expect(await screen.findByText('Unrated')).toBeInTheDocument()
+    expect(screen.getByText('Not provided')).toBeInTheDocument()
+    expect(screen.getByText('Source time unavailable')).toBeInTheDocument()
+  })
+})
+
 describe('FindingPopup source evidence', () => {
   beforeEach(() => vi.clearAllMocks())
 

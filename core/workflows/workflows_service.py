@@ -19,7 +19,18 @@ logger = logging.getLogger(__name__)
 # agent layer's vocabulary, so they are stated here once rather than inline.
 COMPOSE_RUN_KIND = "compose"
 HUNT_RUN_KIND = "hunt"
+ROOT_CAUSE_RUN_KIND = "root_cause"
+# Both drive the same hypothesis loop and read the same projection: a hunt asks
+# whether a threat is real, a root-cause run works backward from a confirmed one to
+# how it began. Everything that gates on "is this the hunt loop?" tests this set, so
+# the two stay in lockstep and root-cause never silently loses telemetry_search.
+HUNT_LIKE_RUN_KINDS = frozenset({HUNT_RUN_KIND, ROOT_CAUSE_RUN_KIND})
 WORKFLOW_SCHEME = "workflow:"
+
+
+def is_hunt_like(run_kind: Optional[str]) -> bool:
+    """True when a run_kind drives the hunt hypothesis loop (hunt or root-cause)."""
+    return run_kind in HUNT_LIKE_RUN_KINDS
 
 
 # None rather than a number, so a caller that says nothing leaves the definition's
@@ -133,7 +144,7 @@ def _not_a_claim(statement: str) -> bool:
 def _nothing_to_run(
     workflow: "WorkflowDefinition", parameters: Optional[Dict[str, Any]] = None
 ) -> str:
-    if workflow.run_kind == HUNT_RUN_KIND:
+    if is_hunt_like(workflow.run_kind):
         if workflow.metadata.get("hypotheses"):
             return ""
         asked = _asked_hypotheses(parameters)
@@ -250,6 +261,10 @@ class WorkflowDefinition:
             # The console reads this to know a run takes a turn count rather than
             # walking phases, instead of keying off the workflow id.
             "run_kind": self.run_kind,
+            # Derived, so the console asks whether a definition drives the
+            # hypothesis loop rather than listing the kinds that do. A new
+            # hunt-like kind joins HUNT_LIKE_RUN_KINDS and every client follows.
+            "hunt_like": is_hunt_like(self.run_kind),
         }
         if include_body:
             result["body"] = self.body
@@ -453,6 +468,11 @@ class WorkflowsService:
         workflow_id: str,
         parameters: Dict[str, Any],
         triggered_by: Optional[str] = None,
+        # Who started it, when that is not the same fact as what started it.
+        # triggered_by doubled as both until a caller had a reason to key on it:
+        # a root-cause run's is the handoff it traces back from, which is a join
+        # key and reads as nonsense in the "started by" an operator is shown.
+        actor: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Start a workflow as a compose run on the agent layer.
 
@@ -537,7 +557,7 @@ class WorkflowsService:
                     or None,
                 }
             ),
-            enqueued_by=triggered_by or "api",
+            enqueued_by=actor or triggered_by or "api",
         )
         try:
             job_id = await enqueue_run(job)

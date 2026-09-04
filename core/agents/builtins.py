@@ -405,13 +405,14 @@ Confidence scoring:
             "list_findings",
             "get_finding",
             "list_cases",
+            "list_completed_hunts",
             "recall_entity",
         ],
         "max_tokens": 4096,
         "enable_thinking": False,
         "extra_principles": "- Document for compliance audits\n- Map findings to framework controls\n- Prioritize high-risk violations\n- Memory: recall_entity on entities under review; read-only, and it orients your search rather than deciding its outcome",
         "methodology": """<methodology>
-1. Gather evidence via MCP tools
+1. Gather evidence via MCP tools; for an assessment window call list_completed_hunts
 2. Identify policy violations and assess severity
 3. Map to frameworks: NIST CSF, ISO 27001, CIS Controls, PCI-DSS, HIPAA, GDPR, SOC 2
 4. Evaluate control effectiveness

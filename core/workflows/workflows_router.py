@@ -408,12 +408,12 @@ async def get_workflow_run(
 # A hunt writes no phase rows: it has beliefs to report, not steps. The agent
 # layer owns them, so they are read from it rather than folded here.
 def _is_hunt(workflows: WorkflowsService, workflow_id: Optional[str]) -> bool:
-    from core.workflows.workflows_service import HUNT_RUN_KIND
+    from core.workflows.workflows_service import is_hunt_like
 
     if not workflow_id:
         return False
     definition = workflows.get_workflow(str(workflow_id))
-    return definition is not None and definition.run_kind == HUNT_RUN_KIND
+    return definition is not None and is_hunt_like(definition.run_kind)
 
 
 @router.post("/workflows/runs/{run_id}/resume")

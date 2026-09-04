@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS episodic_read_log (
     id          bigserial   PRIMARY KEY,
     ts          timestamptz NOT NULL DEFAULT now(),
     -- Deliberately open text and not a CHECK, unlike every domain in
-    -- 22_episodic_memory.sql: the callers are a hunt worker, an evaluation
+    -- 26_episodic_memory.sql: the callers are a hunt worker, an evaluation
     -- harness, a Case-side reader and whatever asks next, and a closed list here
     -- would turn a new kind of caller into a failed read rather than a logged
     -- one. Defaulted at 'unknown' because an unattributed read is still worth

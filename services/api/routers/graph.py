@@ -196,16 +196,17 @@ async def get_technique_graph(
     """
     data_service = DatabaseDataService()
 
-    # Get findings with this technique
-    all_findings = data_service.get_findings(limit=limit * 2)
-    findings = []
-
-    for finding in all_findings:
-        mitre_predictions = finding.get("mitre_predictions", {})
-        if technique_id in mitre_predictions:
-            findings.append(finding)
-            if len(findings) >= limit:
-                break
+    if data_service.is_using_database():
+        findings = data_service.get_findings_by_technique(technique_id, limit=limit)
+    else:
+        all_findings = data_service.get_findings(limit=limit * 2)
+        findings = []
+        for finding in all_findings:
+            mitre_predictions = finding.get("mitre_predictions", {})
+            if technique_id in mitre_predictions:
+                findings.append(finding)
+                if len(findings) >= limit:
+                    break
 
     if not findings:
         return GraphData(

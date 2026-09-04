@@ -12,7 +12,13 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from core.llm.providers.registry import get_registry, infer_provider_type
-from core.storage.models import Case, CaseClosureInfo, Finding, LLMInteractionLog
+from core.storage.models import (
+    Case,
+    CaseClosureInfo,
+    Finding,
+    FindingMitrePrediction,
+    LLMInteractionLog,
+)
 from core.threat_intel.mitre_lookup import get_time_range, resolve_technique
 
 logger = logging.getLogger(__name__)
@@ -519,65 +525,41 @@ async def get_attack_time_heatmap(
 async def get_mitre_technique_distribution(
     db: Session, start_time: datetime, end_time: datetime, limit: int = 10
 ) -> List[Dict[str, Any]]:
-    """Get distribution of MITRE ATT&CK techniques from findings."""
+    """Get distribution of MITRE ATT&CK techniques from findings.
 
-    findings = (
-        db.query(Finding).filter(Finding.created_at.between(start_time, end_time)).all()
+    Counts child-table rows only. Nested / list-shaped JSONB maps were never a
+    findings column contract; numeric ``{key: confidence}`` values are what
+    create/update persist and what the backfill copies.
+    """
+
+    rows = (
+        db.query(
+            FindingMitrePrediction.technique_id,
+            func.count(FindingMitrePrediction.finding_id),
+        )
+        .join(Finding, Finding.finding_id == FindingMitrePrediction.finding_id)
+        .filter(Finding.created_at.between(start_time, end_time))
+        .group_by(FindingMitrePrediction.technique_id)
+        .order_by(func.count(FindingMitrePrediction.finding_id).desc())
+        .limit(limit)
+        .all()
     )
 
-    technique_counts: dict[str, int] = {}
-    technique_meta: dict[str, tuple[str, str]] = {}
-
-    def _record(tech):
-        tid, name, tactic = resolve_technique(tech)
-        if not tid:
-            return
-        technique_counts[tid] = technique_counts.get(tid, 0) + 1
-        if tid not in technique_meta:
-            technique_meta[tid] = (name, tactic)
-
-    for finding in findings:
-        if not finding.mitre_predictions:
+    techniques_list = []
+    for tech_id, count in rows:
+        resolved_id, name, tactic = resolve_technique(tech_id)
+        if not resolved_id:
             continue
+        techniques_list.append(
+            {
+                "techniqueId": resolved_id,
+                "techniqueName": name,
+                "tactic": tactic,
+                "count": count,
+            }
+        )
 
-        predictions = finding.mitre_predictions
-
-        if isinstance(predictions, dict):
-            if predictions and all(
-                isinstance(v, (int, float)) for v in predictions.values()
-            ):
-                # Standard format: {tactic_or_technique_id: confidence}
-                for tech_id in predictions.keys():
-                    _record(tech_id)
-            else:
-                if "techniques" in predictions:
-                    nested = predictions["techniques"]
-                elif "predicted_techniques" in predictions:
-                    nested = predictions["predicted_techniques"]
-                else:
-                    nested = [predictions]
-
-                for tech in nested:
-                    if isinstance(tech, dict):
-                        _record(tech)
-        elif isinstance(predictions, list):
-            for tech in predictions:
-                if isinstance(tech, dict):
-                    _record(tech)
-
-    techniques_list = [
-        {
-            "techniqueId": tech_id,
-            "techniqueName": technique_meta[tech_id][0],
-            "tactic": technique_meta[tech_id][1],
-            "count": count,
-        }
-        for tech_id, count in technique_counts.items()
-    ]
-
-    techniques_list.sort(key=lambda x: x["count"], reverse=True)
-
-    return techniques_list[:limit]
+    return techniques_list
 
 
 def _cost_time_series_from_bifrost(start_time, end_time) -> Optional[Dict[str, Any]]:

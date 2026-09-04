@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { archFor, registeredKinds } from "../../arch/registry.js";
+import { archFor, isHuntLike, registeredKinds } from "../../arch/registry.js";
 import { buildSpec, SpecError, type SpecPaths } from "../../core/spec.js";
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
@@ -49,8 +49,8 @@ function loadArchOnly(body: string, handled: readonly string[] = ["EXAMINE", "CO
 }
 
 describe("the registry resolves a run kind to an arch", () => {
-  it("registers the four shipped arches and nothing else", () => {
-    expect(registeredKinds()).toEqual(["chat", "compose", "hunt", "investigate"]);
+  it("registers the shipped arches and nothing else", () => {
+    expect(registeredKinds()).toEqual(["chat", "compose", "hunt", "investigate", "root_cause"]);
   });
 
   // Adding an agent type is an arch file and an entry. Nothing in the worker
@@ -64,6 +64,20 @@ describe("the registry resolves a run kind to an arch", () => {
   // A kind in the union with no arch behind it is the failure this prevents.
   it("refuses a run kind nothing is registered for", () => {
     expect(() => archFor("tally")).toThrow(/no architecture is registered for run_kind tally/);
+  });
+
+  // Read off the entry rather than listed anywhere, so a kind that shares the hunt
+  // loop is hunt-like by having been registered with it. Everything that gates on
+  // "is this the hunt loop?" asks this, which is what stops one caller being widened
+  // for a new kind and the next three being found later, one bug at a time.
+  it("answers which kinds run the hunt loop from what they were registered with", () => {
+    expect(isHuntLike("hunt")).toBe(true);
+    expect(isHuntLike("root_cause")).toBe(true);
+    expect(isHuntLike("investigate")).toBe(false);
+    expect(isHuntLike("compose")).toBe(false);
+    expect(isHuntLike("chat")).toBe(false);
+    // Registered for nothing at all, so it drives no loop rather than throwing.
+    expect(isHuntLike("tally")).toBe(false);
   });
 });
 

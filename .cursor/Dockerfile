@@ -44,6 +44,50 @@ RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 
 ########################################################
+# HELM
+########################################################
+
+# Pin matches .github/workflows/helm-chart.yml so `helm template` matches CI.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && HELM_VERSION=v3.15.2 \
+    && cd /tmp \
+    && curl --retry 3 --retry-delay 5 -fsSL -O "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" \
+    && curl --retry 3 --retry-delay 5 -fsSL -O "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" \
+    && sha256sum -c "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" \
+    && tar -xzf "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" \
+    && mv "linux-${ARCH}/helm" /usr/local/bin/helm \
+    && rm -rf "/tmp/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" \
+              "/tmp/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" \
+              "/tmp/linux-${ARCH}" \
+    && helm version --short
+
+########################################################
+# AGENT-BROWSER (live tests)
+########################################################
+
+# The factory asks every implementer to exercise its change live, with a
+# browser where there is a UI. agent-browser is a native binary; the release
+# asset is used rather than the npm package, whose wrapper wants Node 24 while
+# this repo's CI and frontend pin Node 18. Pinned like Helm above.
+# `install --with-deps` is run as root for Chrome's shared libraries; the
+# browser download itself lands per-user under ~/.agent-browser, so the ubuntu
+# user fetches its own copy below and root's is discarded.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && case "$ARCH" in amd64) AB_ARCH=x64 ;; arm64) AB_ARCH=arm64 ;; *) echo "unsupported arch $ARCH" && exit 1 ;; esac \
+    && AB_VERSION=v0.36.0 \
+    && curl --retry 3 --retry-delay 5 -fsSL -o /usr/local/bin/agent-browser \
+       "https://github.com/vercel-labs/agent-browser/releases/download/${AB_VERSION}/agent-browser-linux-${AB_ARCH}" \
+    && chmod +x /usr/local/bin/agent-browser \
+    && agent-browser --version \
+    && apt-get update \
+    && agent-browser install --with-deps \
+    && rm -rf /root/.agent-browser /var/lib/apt/lists/*
+
+# Chrome's user-namespace sandbox is unavailable under Ubuntu 24.04's AppArmor
+# defaults and inside VMs; without this every launch dies before DevTools starts.
+ENV AGENT_BROWSER_ARGS="--no-sandbox"
+
+########################################################
 # CONFIG UBUNTU USER
 ########################################################
 
@@ -62,3 +106,6 @@ RUN echo "ubuntu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu
 RUN echo "ubuntu:ubuntu" | chpasswd
 
 USER ubuntu
+
+# Chrome for Testing, into /home/ubuntu/.agent-browser (system libraries are already in place).
+RUN agent-browser install

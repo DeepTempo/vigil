@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { basePath } from '../config/basePath'
 
 /**
  * Client for the Skills API (GitHub issue #82).
@@ -61,7 +62,7 @@ export interface SkillImportResult {
 }
 
 const client = axios.create({
-  baseURL: '/api/skills',
+  baseURL: `${basePath}/api/skills`,
   headers: { 'Content-Type': 'application/json' },
 })
 
