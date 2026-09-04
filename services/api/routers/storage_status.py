@@ -118,10 +118,8 @@ async def check_storage_health():
         from core.storage.database_data_service import DatabaseDataService
 
         service = DatabaseDataService()
-        is_healthy = True
         demo_mode = is_demo_mode()
 
-        # Test basic operations
         try:
             findings = service.get_findings()
             cases = service.get_cases()
@@ -134,7 +132,7 @@ async def check_storage_health():
                 backend = "none"
 
             return {
-                "healthy": is_healthy,
+                "healthy": backend != "none",
                 "backend": backend,
                 "demo_mode": demo_mode,
                 "findings_count": len(findings),
@@ -142,7 +140,11 @@ async def check_storage_health():
                 "message": (
                     "Demo mode active with sample data"
                     if demo_mode
-                    else "Storage backend is functioning normally"
+                    else (
+                        "Storage backend is functioning normally"
+                        if backend != "none"
+                        else "PostgreSQL is not connected"
+                    )
                 ),
             }
 

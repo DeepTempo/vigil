@@ -550,7 +550,7 @@ def test_concurrent_callers_inspect_and_log_once(drifted_manager, caplog):
     assert len(errors) == 1, f"expected a single ERROR, got {len(errors)}"
 
 
-def test_strict_mode_is_not_swallowed_into_json_fallback(
+def test_strict_mode_is_not_swallowed_on_schema_drift(
     drifted_db, monkeypatch, postgres_available
 ):
     """DatabaseDataService must not swallow an explicit schema-drift refusal.

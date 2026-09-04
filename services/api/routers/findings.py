@@ -28,7 +28,6 @@ ROUTER_META = RouterMeta(
     auth=Auth.REQUIRED,
 )
 logger = logging.getLogger(__name__)
-# Use DatabaseDataService which automatically uses PostgreSQL if available, falls back to JSON
 data_service = DatabaseDataService()
 
 
