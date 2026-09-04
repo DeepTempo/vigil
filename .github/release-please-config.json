@@ -24,6 +24,7 @@
   "packages": {
     ".": {
       "package-name": "vigil",
+      "release-as": "0.6.0",
       "include-component-in-tag": false,
       "version-file": "VERSION",
       "changelog-path": "CHANGELOG.md",
