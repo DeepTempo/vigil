@@ -310,7 +310,7 @@ class Run<T, Kinds extends Record<string, unknown>> {
         tail = [
           "Emit your answer now as JSON matching the schema.",
           "Your previous emission was cut off mid-JSON because it ran past the output ceiling.",
-          "Keep every string field short. State the conclusion and cite evidence ids -- do not restate what the evidence says.",
+          "Keep every string field short. State a conclusion and cite ids rather than restating what they hold.",
         ].join("\n\n");
         if (tighter !== undefined) {
           this.tightened = tighter;
