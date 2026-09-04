@@ -47,6 +47,27 @@ def _override_mcp_client(client, fake_client):
         client.app.dependency_overrides.pop(provide_mcp_client, None)
 
 
+@contextmanager
+def _override_registry(client, registry):
+    from core.deps import provide_mcp_registry
+
+    client.app.dependency_overrides[provide_mcp_registry] = lambda: registry
+    try:
+        yield
+    finally:
+        client.app.dependency_overrides.pop(provide_mcp_registry, None)
+
+
+def _connected_client(server_name, tools):
+    fake_client = MagicMock()
+    fake_client.connect_to_server = AsyncMock(return_value=True)
+    fake_client.get_last_error = MagicMock(return_value=None)
+    fake_client.disconnect_from_server = AsyncMock(return_value=True)
+    fake_client.tools_cache = {server_name: tools}
+    fake_client.mcp_service.servers = {}
+    return fake_client
+
+
 @pytest.fixture
 def fake_server_known():
     """Patch mcp_service so ``deeptempo-findings`` is a known, settable server."""
@@ -74,12 +95,16 @@ class TestEnableTransactional:
     def test_enable_triggers_connect_and_reports_connected(
         self, client, fake_server_known
     ):
+        from core.integrations.mcp.registry import MCPRegistry
+
         fake_client = MagicMock()
         fake_client.connect_to_server = AsyncMock(return_value=True)
         fake_client.get_last_error = MagicMock(return_value=None)
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
-        with _override_mcp_client(client, fake_client):
+        with _override_mcp_client(client, fake_client), _override_registry(
+            client, MCPRegistry()
+        ):
             r = client.put(
                 "/api/mcp/servers/deeptempo-findings/enabled",
                 json={"enabled": True},
@@ -98,6 +123,8 @@ class TestEnableTransactional:
     def test_enable_with_missing_creds_reports_error_not_raising(
         self, client, fake_server_known
     ):
+        from core.integrations.mcp.registry import MCPRegistry
+
         # Simulate the credential-missing / FileNotFoundError / etc. case.
         fake_client = MagicMock()
         fake_client.connect_to_server = AsyncMock(return_value=False)
@@ -106,7 +133,9 @@ class TestEnableTransactional:
         )
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
-        with _override_mcp_client(client, fake_client):
+        with _override_mcp_client(client, fake_client), _override_registry(
+            client, MCPRegistry()
+        ):
             r = client.put(
                 "/api/mcp/servers/virustotal/enabled",
                 json={"enabled": True},
@@ -121,11 +150,15 @@ class TestEnableTransactional:
         assert "VIRUSTOTAL_API_KEY" in (body["error"] or "")
 
     def test_disable_triggers_disconnect(self, client, fake_server_known):
+        from core.integrations.mcp.registry import MCPRegistry
+
         fake_client = MagicMock()
         fake_client.connect_to_server = AsyncMock(return_value=True)
         fake_client.disconnect_from_server = AsyncMock(return_value=True)
 
-        with _override_mcp_client(client, fake_client):
+        with _override_mcp_client(client, fake_client), _override_registry(
+            client, MCPRegistry()
+        ):
             r = client.put(
                 "/api/mcp/servers/deeptempo-findings/enabled",
                 json={"enabled": False},
@@ -140,6 +173,85 @@ class TestEnableTransactional:
             "deeptempo-findings"
         )
         fake_client.connect_to_server.assert_not_called()
+
+    def test_enable_writes_tools_to_the_registry_without_a_refresh(
+        self, client, fake_server_known
+    ):
+        from core.integrations.mcp.registry import MCPRegistry
+
+        registry = MCPRegistry()
+        fake_client = _connected_client(
+            "deeptempo-findings",
+            [{"name": "search", "description": "x", "inputSchema": {}}],
+        )
+
+        with _override_mcp_client(client, fake_client), _override_registry(
+            client, registry
+        ):
+            r = client.put(
+                "/api/mcp/servers/deeptempo-findings/enabled",
+                json={"enabled": True},
+            )
+
+        assert r.status_code == 200, r.text
+        assert r.json()["connected"] is True
+        assert [t["name"] for t in registry.get_all_tools()] == [
+            "deeptempo-findings_search"
+        ]
+
+    def test_disable_removes_tools_from_the_registry_without_a_refresh(
+        self, client, fake_server_known
+    ):
+        from core.integrations.mcp.registry import MCPRegistry
+
+        registry = MCPRegistry()
+        registry.register_server(
+            "deeptempo-findings",
+            {},
+            [{"name": "search", "description": "x", "inputSchema": {}}],
+        )
+        fake_client = _connected_client("deeptempo-findings", [])
+
+        with _override_mcp_client(client, fake_client), _override_registry(
+            client, registry
+        ):
+            r = client.put(
+                "/api/mcp/servers/deeptempo-findings/enabled",
+                json={"enabled": False},
+            )
+
+        assert r.status_code == 200, r.text
+        assert r.json()["enabled"] is False
+        assert registry.get_all_tools() == []
+
+    def test_registry_write_failure_does_not_change_the_response(
+        self, client, fake_server_known
+    ):
+        from core.integrations.mcp.registry import MCPRegistry
+
+        registry = MCPRegistry()
+        fake_client = _connected_client(
+            "deeptempo-findings",
+            [{"name": "search", "description": "x", "inputSchema": {}}],
+        )
+
+        with _override_mcp_client(client, fake_client), _override_registry(
+            client, registry
+        ), patch(
+            "services.api.routers.mcp.register_connected",
+            side_effect=RuntimeError("registry down"),
+        ):
+            r = client.put(
+                "/api/mcp/servers/deeptempo-findings/enabled",
+                json={"enabled": True},
+            )
+
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["success"] is True
+        assert body["enabled"] is True
+        assert body["connected"] is True
+        assert body["error"] is None
 
 
 @pytest.mark.integration

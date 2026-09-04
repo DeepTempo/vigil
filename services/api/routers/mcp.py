@@ -12,7 +12,8 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from core.deps import provide_mcp_client
+from core.deps import provide_mcp_client, provide_mcp_registry
+from core.integrations.mcp.registry import MCPRegistry, deactivate, register_connected
 from core.integrations.mcp.service import MCPService
 from core.routing import Auth, RouterMeta
 from core.storage.models import User
@@ -76,6 +77,14 @@ class _ServiceProxy:
 mcp_service = _ServiceProxy()
 
 
+def _best_effort_registry(action, *args) -> None:
+    """A registry write must not change the enable endpoint's status or body."""
+    try:
+        action(*args)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("MCP registry write failed (non-fatal): %s", exc)
+
+
 class ServerEnabledRequest(BaseModel):
     """Request body for enabling/disabling a server."""
 
@@ -129,6 +138,7 @@ async def set_server_enabled(
     request: ServerEnabledRequest,
     current_user: User = Depends(get_current_active_user),
     mcp_client=Depends(provide_mcp_client),
+    registry: MCPRegistry = Depends(provide_mcp_registry),
 ):
     """Enable or disable an MCP server and apply the change at runtime.
 
@@ -176,7 +186,11 @@ async def set_server_enabled(
                 connected = await mcp_client.connect_to_server(
                     server_name, persistent=True
                 )
-                if not connected:
+                if connected:
+                    _best_effort_registry(
+                        register_connected, registry, mcp_client, server_name
+                    )
+                else:
                     error = mcp_client.get_last_error(server_name)
                     missing_credentials = mcp_client.get_missing_credentials(
                         server_name
@@ -197,6 +211,7 @@ async def set_server_enabled(
                 logger.debug(
                     "Disconnect for %s failed (non-fatal): %s", server_name, exc
                 )
+        _best_effort_registry(deactivate, registry, server_name)
 
     return {
         "success": True,
