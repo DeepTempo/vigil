@@ -46,6 +46,15 @@ from core.storage.models.config import (
     ThreatIndicator,
     UserPreference,
 )
+from core.storage.models.episodic import (
+    EpisodicDistilFailure,
+    EpisodicDistilMarker,
+    EpisodicGap,
+    EpisodicReadLog,
+    EpisodicSighting,
+    EpisodicVerdict,
+    EpisodicVerdictSource,
+)
 from core.storage.models.finding import Finding, FindingMitrePrediction
 from core.storage.models.workflow import (
     ApprovalAction,
@@ -84,6 +93,13 @@ __all__ = [
     "Conversation",
     "CustomAgent",
     "CustomWorkflow",
+    "EpisodicDistilFailure",
+    "EpisodicDistilMarker",
+    "EpisodicGap",
+    "EpisodicReadLog",
+    "EpisodicSighting",
+    "EpisodicVerdict",
+    "EpisodicVerdictSource",
     "FederationSource",
     "Finding",
     "FindingMitrePrediction",

@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 from core.agents.projections import pack_completed_hunts
 from core.findings.similarity import similar_findings
+from core.memory.recall_contract import RECALL_TOOL
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,22 @@ _INTEL_TOOLS: Dict[str, Callable[[Args], Any]] = {
     "lookup_indicators": _indicator_lookup,
 }
 
+
+# Episodic memory (#732). One mapping and not a list of rows, so
+# tools_router._rows does not slice the Sightings, Verdicts and Gaps into rows of
+# their own and lose which list each came from. The import is deferred as the
+# other families' are: this module is imported to answer "is this a backend
+# tool", which must not drag a database session factory in behind it.
+def _recall(args: Args) -> Any:
+    from core.memory.recall import recall_entity
+
+    return recall_entity(args)
+
+
+_MEMORY_TOOLS: Dict[str, Callable[[Args], Any]] = {
+    RECALL_TOOL: _recall,
+}
+
 _APPROVAL_TOOLS: Dict[str, Callable[[Any, Args], Any]] = {
     "list_pending_approvals": lambda service, args: [
         asdict(action)
@@ -297,6 +314,9 @@ async def execute_backend_tool(
 
     if tool_name in _INTEL_TOOLS:
         return _INTEL_TOOLS[tool_name](args), True
+
+    if tool_name in _MEMORY_TOOLS:
+        return _MEMORY_TOOLS[tool_name](args), True
 
     if tool_name in _APPROVAL_TOOLS:
         from core.response.approval_service import ApprovalService

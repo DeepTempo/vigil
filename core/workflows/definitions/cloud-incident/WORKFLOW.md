@@ -17,7 +17,7 @@ phases:
   - id: evidence-gathering
     agent: investigator
     name: "Cloud Evidence Gathering"
-    tools: [get_finding, list_findings, nearest_neighbors, search_detections]
+    tools: [get_finding, list_findings, nearest_neighbors, search_detections, recall_entity]
     instructions: |
       Root-cause analysis in cloud environments: collect audit logs, enumerate
       affected resources, and determine control-plane vs data-plane scope.
@@ -50,7 +50,7 @@ phases:
   - id: correlation
     agent: correlator
     name: "Cross-Cloud Correlation"
-    tools: [list_findings, create_case, get_technique_rollup, nearest_neighbors]
+    tools: [list_findings, create_case, get_technique_rollup, nearest_neighbors, recall_entity]
     instructions: |
       Link cloud events across providers, accounts and tenants. Identify identity
       blast-radius and cross-account or cross-tenant pivot attempts.
@@ -79,7 +79,7 @@ phases:
   - id: attack-mapping
     agent: mitre_analyst
     name: "Cloud ATT&CK Mapping"
-    tools: [get_finding, get_technique_rollup, create_attack_layer]
+    tools: [get_finding, get_technique_rollup, create_attack_layer, recall_entity]
     instructions: |
       Map cloud TTPs to MITRE ATT&CK, emphasising cloud-specific techniques and
       kill-chain progression in multi-tenant environments.
@@ -108,7 +108,7 @@ phases:
   - id: containment
     agent: responder
     name: "Cloud Containment & Response"
-    tools: [create_approval_action, update_case, get_finding]
+    tools: [create_approval_action, update_case, get_finding, recall_entity]
     approval_required: true
     instructions: |
       Execute provider-aware containment with confidence scoring and approval
@@ -145,7 +145,7 @@ phases:
   - id: report
     agent: reporter
     name: "Cloud Incident Report"
-    tools: [get_case, list_findings, create_attack_layer]
+    tools: [get_case, list_findings, create_attack_layer, recall_entity]
     instructions: |
       Produce a cloud-focused incident report with executive, technical and
       compliance sections.

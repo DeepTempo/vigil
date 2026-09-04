@@ -777,12 +777,25 @@ function NewCaseDialog({ open, onClose, onCreated }: { open: boolean; onClose: (
   )
 }
 
+/** What a closer says a Case turned out to be. `duplicate` is bookkeeping rather
+ *  than a determination, so it records a category and mints no verdict. */
+const CLOSURE_CATEGORIES = [
+  { value: 'resolved', label: 'Resolved' },
+  { value: 'false_positive', label: 'False positive' },
+  { value: 'duplicate', label: 'Duplicate' },
+  { value: 'unable_to_resolve', label: 'Unable to resolve' },
+] as const
+
+type ClosureCategory = (typeof CLOSURE_CATEGORIES)[number]['value']
+
 function EditCaseDialog({ open, c, onClose, onSaved }: { open: boolean; c: CaseRow | null; onClose: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState('')
   const [priority, setPriority] = useState('medium')
   const [status, setStatus] = useState('open')
   const [assignee, setAssignee] = useState('')
   const [description, setDescription] = useState('')
+  const [category, setCategory] = useState<ClosureCategory>('resolved')
+  const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -793,23 +806,50 @@ function EditCaseDialog({ open, c, onClose, onSaved }: { open: boolean; c: CaseR
       setStatus(c.status)
       setAssignee(c.ownerName && c.ownerName !== '—' ? c.ownerName : '')
       setDescription(c.desc || '')
+      setCategory('resolved')
+      setReason('')
       setErr('')
     }
   }, [open, c])
 
+  // Only a Case crossing into closed is being closed. Re-saving one that is
+  // already closed is an edit, and re-stamping it would move the closure's date
+  // and re-derive its verdict for a typo fix.
+  const closing = status === 'closed' && c?.status !== 'closed'
+
   const submit = async () => {
     if (!c) return
     if (!title.trim()) { setErr('Title is required.'); return }
+    // The determination the epic exists for. "It is benign" with nothing behind it
+    // is the one claim nobody can weigh later, so it is the one reason required.
+    if (closing && category === 'false_positive' && !reason.trim()) {
+      setErr('Say why this is a false positive — it becomes the reason on the record.')
+      return
+    }
     setBusy(true)
     setErr('')
     try {
+      // The status is left off when closing: the close endpoint sets it, and a
+      // PATCH carrying it too would stamp a second, unstated closure over the
+      // category chosen here.
       await casesApi.update(c.id, {
         title: title.trim(),
         priority,
-        status,
+        ...(closing ? {} : { status }),
         assignee: assignee.trim() || undefined,
         description: description.trim() || undefined,
       })
+      // Second, so a close that fails leaves the edits saved and the Case open,
+      // rather than closed under a title that never landed.
+      if (closing) {
+        const said = reason.trim() || undefined
+        await casesApi.closeCase(c.id, {
+          closure_category: category,
+          ...(category === 'false_positive'
+            ? { false_positive_reason: said }
+            : { closure_notes: said }),
+        })
+      }
       onSaved()
       onClose()
     } catch (e) {
@@ -840,6 +880,32 @@ function EditCaseDialog({ open, c, onClose, onSaved }: { open: boolean; c: CaseR
             ]} />
           </label>
         </div>
+        {closing && (
+          <>
+            <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wide text-tx-3">
+              <span>What it turned out to be</span>
+              <Select value={category} onSelect={(v) => setCategory(v as ClosureCategory)} options={[...CLOSURE_CATEGORIES]} />
+            </label>
+            <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wide text-tx-3">
+              <span>{category === 'false_positive' ? 'Why it is benign' : 'Reason'}</span>
+              <textarea
+                className={inputCls}
+                rows={3}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder={category === 'false_positive'
+                  ? 'The scanner runs from that host every Sunday…'
+                  : 'Optional — what a reader should know about how this ended.'}
+                style={{ resize: 'vertical' }}
+              />
+              <span className="text-[11.5px] font-normal normal-case tracking-normal text-tx-3 leading-[1.45]">
+                {category === 'duplicate'
+                  ? 'Recorded on the case as bookkeeping. A duplicate is not a finding about the estate, so it adds nothing to memory.'
+                  : 'Kept as the reason on the record, and read back as why this case ended.'}
+              </span>
+            </label>
+          </>
+        )}
         <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wide text-tx-3">
           <span>Assignee</span>
           <input className={inputCls} placeholder="name or email" value={assignee} onChange={(e) => setAssignee(e.target.value)} />

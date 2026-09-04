@@ -114,6 +114,9 @@ CAPABILITIES: Dict[str, Tuple[Candidate, ...]] = {
     ),
     "findings_search": (Candidate(None, ("search_findings",)),),
     "similar_findings": (Candidate(None, ("nearest_neighbors",)),),
+    # One candidate and no fallback: episodic memory is Vigil's own tier, so a
+    # deployment either carries it or has no history to offer.
+    "entity_recall": (Candidate(None, ("recall_entity",)),),
 }
 
 
@@ -126,6 +129,11 @@ CAPABILITY_BOUNDS: Dict[str, Dict[str, int]] = {
     "indicator_lookup": {"timeout_ms": 60_000, "max_rows": 200},
     "findings_search": {"timeout_ms": 30_000, "max_rows": 200},
     "similar_findings": {"timeout_ms": 30_000, "max_rows": 200},
+    # A read of our own Postgres, so the findings timeout is generous. The row
+    # cap is stated because the bounds model requires one, not because it bites:
+    # recall answers with one envelope, and the injected `limit` is in
+    # RECALL_IGNORED_ARGS because memory caps each list itself.
+    "entity_recall": {"timeout_ms": 30_000, "max_rows": 200},
 }
 
 
@@ -169,8 +177,8 @@ def _candidate_names(capability: str) -> Tuple[str, ...]:
     )
 
 
-# An agent's prompt is rendered now rather than read from a file: the memory-palace
-# block depends on what is connected, so a stored copy would describe another run.
+# An agent's prompt is rendered now rather than read from a file: the memory block
+# depends on the agent's own grant, so a stored copy would describe another agent.
 def _prompt_for(agent_id: str) -> str:
     from core.agents.manager import SOCAgentLibrary
 
@@ -320,6 +328,9 @@ HUNT_CAPABILITIES = (
     "similar_findings",
     "telemetry_search",
     "indicator_lookup",
+    # Bound on the run rather than granted to every role: `needs` in the arch is
+    # what decides who holds it, and the lead and critic are not granted it.
+    "entity_recall",
 )
 
 # A hunt is bounded by iterations rather than phases, and each one costs a lead

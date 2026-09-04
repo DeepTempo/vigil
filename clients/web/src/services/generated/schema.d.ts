@@ -8504,16 +8504,35 @@ export interface components {
             api_key: string;
         };
         /**
+         * ClosureCategory
+         * @description What closing the Case determined.
+         *
+         *     ``UNSPECIFIED`` is the one that is not a determination. It exists because
+         *     the console closes a Case by setting its status and asks for no category,
+         *     and the alternative to recording that plainly is either dropping the close
+         *     from memory or picking a determination on the analyst's behalf. Recorded, it
+         *     reads as what it is — closed, no reason stated — and becomes an inconclusive
+         *     Verdict rather than a claim nobody made.
+         * @enum {string}
+         */
+        ClosureCategory: "resolved" | "false_positive" | "duplicate" | "unable_to_resolve" | "unspecified";
+        /**
          * ClosureInfo
          * @description Close case with metadata.
+         *
+         *     No ``closed_by``: who closed it is the authenticated principal, not
+         *     something a client says about itself. Episodic memory reads it as Trust
+         *     (#733), and a client-supplied name would let any caller claim an analyst
+         *     concluded.
          */
         ClosureInfo: {
-            /** Closed By */
-            closed_by: string;
-            /** Closure Category */
-            closure_category: string;
+            closure_category: components["schemas"]["ClosureCategory"];
+            /** Closure Notes */
+            closure_notes?: string | null;
             /** Executive Summary */
             executive_summary?: string | null;
+            /** False Positive Reason */
+            false_positive_reason?: string | null;
             /** Lessons Learned */
             lessons_learned?: string | null;
             /** Recommendations */
@@ -9314,6 +9333,10 @@ export interface components {
             finding_ids: unknown[];
             /** Hypothesis */
             hypothesis?: string | null;
+            /** Hypothesis Subjects */
+            hypothesis_subjects?: {
+                [key: string]: string[];
+            } | null;
             /**
              * Priority
              * @default medium
@@ -11066,6 +11089,10 @@ export interface components {
             finding_id?: string | null;
             /** Hypothesis */
             hypothesis?: string | null;
+            /** Hypothesis Subjects */
+            hypothesis_subjects?: {
+                [key: string]: string[];
+            } | null;
             /** Iterations */
             iterations?: number | null;
             /** Max Cost Usd */

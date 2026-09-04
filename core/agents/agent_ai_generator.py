@@ -162,7 +162,9 @@ class AgentAIGenerator:
                     "## Base Prompt Shape\n"
                     "Your `role`, `extra_principles`, and `methodology` fields are "
                     "rendered into this template (Vigil preserves the "
-                    "entity-recognition and memory-palace directives):\n\n"
+                    "entity-recognition directives, and adds a read-only "
+                    "memory block when the agent is granted recall_entity):"
+                    "\n\n"
                     f"{base_prompt_shape}"
                 ),
                 (

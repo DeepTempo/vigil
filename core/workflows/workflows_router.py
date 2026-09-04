@@ -54,6 +54,10 @@ class WorkflowExecuteRequest(BaseModel):
     case_id: Optional[str] = None
     context: Optional[str] = None
     hypothesis: Optional[str] = None
+    # What each stated claim is about, keyed by the claim itself. Nothing here is
+    # inferred: `host`, `user` and `process` have no shape a reader could find in a
+    # sentence, so a subject is declared or a Verdict is recalled by nobody.
+    hypothesis_subjects: Optional[Dict[str, List[str]]] = None
     # Turns, not model calls. Bounded so a typo cannot enqueue an hour of spend.
     iterations: Optional[int] = Field(default=None, ge=1, le=40)
     # What the caller will spend on this question, which is not a property of the

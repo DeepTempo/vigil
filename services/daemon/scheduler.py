@@ -363,7 +363,19 @@ class TaskScheduler:
         if expired:
             logger.info("Cleanup expired %d unanswered approvals", expired)
 
-        return {"cutoff_date": cutoff.isoformat(), "approvals_expired": expired}
+        # The episodic read log (#732), the one part of the memory tier with a
+        # retention policy. Off-thread for the same reason the sweep above is.
+        from core.memory.recall import expire_read_log
+
+        reads = await asyncio.to_thread(expire_read_log, cutoff)
+        if reads:
+            logger.info("Cleanup removed %d episodic read log rows", reads)
+
+        return {
+            "cutoff_date": cutoff.isoformat(),
+            "approvals_expired": expired,
+            "read_log_removed": reads,
+        }
 
     async def _run_sandbox_poll(self):
         """Advance pending sandbox submissions to completed reports."""

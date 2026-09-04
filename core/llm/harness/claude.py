@@ -252,7 +252,7 @@ You have comprehensive tools to manage ALL aspects of cases during investigation
 - Categories: resolved, false_positive, duplicate, unable_to_resolve
 - Document root cause, lessons learned, recommendations
 - Include executive summary
-- Use: `close_case(case_id, closure_category, closed_by, root_cause, lessons_learned, ...)`
+- Use: `close_case(case_id, closure_category, closed_by, root_cause, lessons_learned, false_positive_reason, closure_notes, ...)`
 
 **11. RESOLUTION STEPS**
 - Document remediation actions taken

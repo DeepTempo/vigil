@@ -62,6 +62,7 @@ from core.agents.queue import build_start_job, enqueue_run
 from core.integrations.mcp.client import process_mcp_client
 from core.response.approval_service import ApprovalService
 from core.response.checkpoints import raise_for_checkpoint
+from core.workflows.hypothesis_subjects import kept_subjects
 from services.daemon.plan_generator import (
     count_steps,
     generate_case_review_context,
@@ -187,6 +188,7 @@ class Orchestrator:
                 asyncio.create_task(self._intake_loop(shutdown_event)),
                 asyncio.create_task(self._supervision_loop(shutdown_event)),
                 asyncio.create_task(self._review_loop(shutdown_event)),
+                asyncio.create_task(self._distil_loop(shutdown_event)),
             ]
 
             while not shutdown_event.is_set() and self._enabled:
@@ -321,6 +323,7 @@ class Orchestrator:
         finding_ids = item.get("finding_ids", [])
         case_id = item.get("case_id")
         hypothesis = item.get("hypothesis")
+        hypothesis_subjects = item.get("hypothesis_subjects")
 
         findings = []
         if self._data_service and finding_ids:
@@ -337,6 +340,7 @@ class Orchestrator:
             priority=item.get("priority", "medium"),
             case_id=case_id,
             hypothesis=hypothesis,
+            hypothesis_subjects=hypothesis_subjects,
             shutdown_event=shutdown_event,
         )
 
@@ -348,6 +352,7 @@ class Orchestrator:
         priority: str,
         case_id: Optional[str] = None,
         hypothesis: Optional[str] = None,
+        hypothesis_subjects: Optional[Dict[str, List[str]]] = None,
         shutdown_event: Optional[asyncio.Event] = None,
     ):
         """Core investigation creation logic."""
@@ -375,9 +380,15 @@ class Orchestrator:
         # opened to test reaches its board as a hypothesis, not as prose in the brief.
         if hypothesis:
             self.workdir.write_file(inv_id, "hypotheses.txt", hypothesis)
-
-        for finding in findings:
-            self.shared_intel.register_entities(inv_id, finding)
+        # What each of those claims is about, keyed by the claim. Stated by the
+        # caller or absent: nothing here reads a finding and guesses, because a
+        # guessed subject and a stated one are the same bytes downstream, and a
+        # Verdict recalled under an entity that was never in the claim is worse
+        # than one recalled under nothing.
+        if hypothesis and hypothesis_subjects:
+            self.workdir.write_file(
+                inv_id, "hypothesis_subjects.json", json.dumps(hypothesis_subjects)
+            )
 
         can_start_now = (
             not self.config.dry_run
@@ -428,6 +439,7 @@ class Orchestrator:
         }
 
         self._save_investigation(inv_record)
+        self.shared_intel.register_investigation(inv_id, findings)
         self.stats["investigations_created"] += 1
         if _inv_created is not None:
             _inv_created.add(1)
@@ -628,24 +640,41 @@ class Orchestrator:
                         "Orchestrator stopped while the run was in flight",
                     )
 
+    # An empty map rather than None, because a JSON null reaches the agent layer
+    # as a value where a missing key reads as unset.
+    def _hypothesis_subjects(
+        self, inv_id: str, stated: List[str]
+    ) -> Dict[str, List[str]]:
+        held = self.workdir.read_file(inv_id, "hypothesis_subjects.json")
+        if not held:
+            return {}
+        try:
+            declared = json.loads(held)
+        except ValueError:
+            logger.warning("%s has an unreadable hypothesis_subjects.json", inv_id)
+            return {}
+        return kept_subjects(declared, stated)
+
     async def _enqueue_investigation(self, inv_record: Dict) -> None:
         inv_id = inv_record["investigation_id"]
         run_id = inv_record.get("run_id") or run_id_for(inv_id)
+        # One per line, as the console's run modal sends them. Empty for a workflow
+        # that walks phases and has no board to put them on.
+        hypotheses = [
+            line.strip()
+            for line in (
+                self.workdir.read_file(inv_id, "hypotheses.txt") or ""
+            ).splitlines()
+            if line.strip()
+        ]
         request = {
             # The workflow resolves both layers, so no config path travels beside it.
             "playbook": f"workflow:{inv_record['workflow_id']}",
             "config": "",
             "arch": "",
             "prompt": self.workdir.read_file(inv_id, "context.md") or "",
-            # One per line, as the console's run modal sends them. Empty for a workflow
-            # that walks phases and has no board to put them on.
-            "hypotheses": [
-                line.strip()
-                for line in (
-                    self.workdir.read_file(inv_id, "hypotheses.txt") or ""
-                ).splitlines()
-                if line.strip()
-            ],
+            "hypotheses": hypotheses,
+            "hypothesis_subjects": self._hypothesis_subjects(inv_id, hypotheses),
             # ORCHESTRATOR_MAX_COST and ORCHESTRATOR_MAX_RUNTIME keep their meaning
             # as the ceilings the budget seam refuses the next call at.
             "overrides": {
@@ -775,6 +804,94 @@ class Orchestrator:
 
             await self._sleep(shutdown_event, self.config.loop_interval)
 
+    # Its own loop rather than a step of the supervision one: the Distils are not
+    # supervising anything, they read terminals and closures the rest of the
+    # system has already left behind. Slower than the others because nothing
+    # waits on either — memory is read at the start of the next run, so a write
+    # that lands minutes later is a write that lands in time.
+    async def _distil_loop(self, shutdown_event: asyncio.Event):
+        """Turn finished hunts and closed cases into episodic memory (#731, #733)."""
+        from core.memory.distil import distil_once
+
+        while not shutdown_event.is_set():
+            try:
+                if not self._enabled:
+                    await self._sleep(shutdown_event, 10)
+                    continue
+
+                # Both on this tick rather than in a loop of its own: neither is
+                # supervising anything, both poll for work already finished, and
+                # a second loop would be a second interval to keep in step.
+                await self._case_distil_tick()
+
+                written = await distil_once()
+                if written["investigations"]:
+                    logger.info(
+                        "Distilled %s investigation(s): %s sightings, %s verdicts, %s gaps",
+                        written["investigations"],
+                        written["sightings"],
+                        written["verdicts"],
+                        written["gaps"],
+                    )
+                # Surfaced here and not only where they happened: one refusal in
+                # a log is a line nobody reads, and a tick that wrote nothing
+                # because everything failed must not look like a tick with
+                # nothing to do.
+                if written["refused"] or written["unreadable"] or written["failed"]:
+                    logger.warning(
+                        "Distil left %s investigation(s) undistilled: "
+                        "%s refused, %s unreadable, %s failed",
+                        written["refused"] + written["unreadable"] + written["failed"],
+                        written["refused"],
+                        written["unreadable"],
+                        written["failed"],
+                    )
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                # Logged and retried rather than swallowed into a quiet stop: a
+                # Distil that dies silently is a memory that reads as empty
+                # rather than as broken, and empty is what an entity nobody has
+                # looked at also reads as.
+                logger.error(f"Distil loop error: {e}", exc_info=True)
+
+            await self._sleep(shutdown_event, self.config.loop_interval)
+
+    async def _case_distil_tick(self):
+        """Turn closed Cases into Verdicts (#733).
+
+        Its own method so that a failure here costs the Case Distil and not the
+        hunt one: they write different rows from different sources, and a
+        closure this job cannot map must not stop a finished hunt reaching
+        memory.
+        """
+        from core.memory.case_distil import case_distil_once
+
+        try:
+            written = await case_distil_once()
+        except Exception as e:
+            logger.error(f"Case Distil error: {e}", exc_info=True)
+            return
+
+        if written["cases"]:
+            logger.info(
+                "Distilled %s closed case(s): %s verdicts",
+                written["cases"],
+                written["verdicts"],
+            )
+        if written["withdrawn"]:
+            logger.info(
+                "Withdrew %s Verdict(s) from reopened case(s)", written["withdrawn"]
+            )
+        if written["refused"] or written["failed"]:
+            logger.warning(
+                "Case Distil left %s case(s) undistilled: %s refused, %s failed",
+                written["refused"] + written["failed"],
+                written["refused"],
+                written["failed"],
+            )
+
     async def _review_investigation(self, inv_id: str):
         """Review a completed investigation's results."""
         state = self.workdir.read_state(inv_id)
@@ -792,7 +909,7 @@ class Orchestrator:
             if _inv_completed is not None:
                 _inv_completed.add(1)
             self.stats["reviews_completed"] += 1
-            self.shared_intel.unregister_investigation(inv_id)
+            self.shared_intel.close_investigation(inv_id, state.get("case_id"))
             self._persist_investigation_to_palace(inv_id, state)
 
             self.workdir.append_log(

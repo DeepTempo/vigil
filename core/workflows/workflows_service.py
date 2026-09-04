@@ -10,6 +10,7 @@ import yaml
 
 from core.agents.queue import new_run_id
 from core.workflows.custom_workflow_service import CustomWorkflowService
+from core.workflows.hypothesis_subjects import kept_subjects
 from core.workflows.workflow_run_service import WorkflowRunService
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,15 @@ def _omit_unset(request: Dict[str, Any]) -> Dict[str, Any]:
 def _asked_hypotheses(parameters: Optional[Dict[str, Any]]) -> List[str]:
     stated = (parameters or {}).get("hypothesis") or ""
     return [line.strip() for line in str(stated).splitlines() if line.strip()]
+
+
+# None rather than an empty map, because this one goes through `_omit_unset`:
+# a key carrying nothing would reach the harness as a statement that the claims
+# are about nothing.
+def _asked_hypothesis_subjects(
+    parameters: Optional[Dict[str, Any]], asked: List[str]
+) -> Optional[Dict[str, List[str]]]:
+    return kept_subjects((parameters or {}).get("hypothesis_subjects"), asked) or None
 
 
 # A hunt argues the null against a claim, and neither "idk" nor "credential access"
@@ -519,6 +529,7 @@ class WorkflowsService:
         if not run_id:
             return {"success": False, "error": "Could not persist run (DB unavailable)"}
 
+        asked = _asked_hypotheses(parameters)
         job = build_start_job(
             run_id=run_id,
             # The definition's, not a constant: threat-hunt drives the hypothesis
@@ -534,7 +545,10 @@ class WorkflowsService:
                     "prompt": self._build_target_context(parameters),
                     # On the job, not in the playbook: the reference names a definition
                     # every run of it shares.
-                    "hypotheses": _asked_hypotheses(parameters),
+                    "hypotheses": asked,
+                    "hypothesis_subjects": _asked_hypothesis_subjects(
+                        parameters, asked
+                    ),
                     "iterations": _asked_iterations(parameters),
                     "overrides": _asked_overrides(parameters),
                     # True only: _omit_unset keeps None out, so an unset flag leaves the

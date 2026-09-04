@@ -699,6 +699,13 @@ class CaseClosureInfo(Base):
 
     # Closure metadata
     closed_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Which kind of actor concluded, recorded at the close rather than inferred
+    # from the name afterwards. This is what episodic memory reads as Trust, and
+    # a name cannot answer it: an agent closing as "soc-automation" and a person
+    # closing as "nestor" are indistinguishable to a lookup.
+    closed_by_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="agent", server_default="agent"
+    )
     closure_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Timestamps

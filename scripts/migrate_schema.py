@@ -47,6 +47,20 @@ def get_connection_url():
 
 MIGRATIONS = []
 
+def _table_exists(conn, name):
+    """Whether a table is there to be altered.
+
+    Column migrations run after create_all has made any missing tables, but a
+    table can still be absent -- an older database that predates it, a partial
+    restore. ALTER on a missing table aborts the transaction all of these share,
+    so every step after it fails too, reporting a schema problem that is not
+    there.
+    """
+    return conn.execute(
+        text("SELECT to_regclass(:name)"), {"name": name}
+    ).scalar() is not None
+
+
 def migration(description):
     """Decorator to register a migration step."""
     def decorator(fn):
@@ -168,6 +182,75 @@ def create_missing_tables(conn):
         ])
     else:
         logger.info("  All tables already exist")
+
+
+# ---------------------------------------------------------------------------
+# Episodic memory
+# ---------------------------------------------------------------------------
+
+# Which kind of actor closed a Case (#733). Read as a Verdict's Trust, and a
+# name cannot answer it -- an agent closing as "soc-automation" and a person
+# closing as "nestor" are the same shape of string. Existing rows default to
+# `agent`: `analyst` is the highest-trust record the system produces, and a
+# close nobody can attribute has not earned it.
+@migration("Add closed_by_kind column to case_closure_info")
+def add_case_closure_actor(conn):
+    if not _table_exists(conn, 'case_closure_info'):
+        return
+    conn.execute(text("""
+        ALTER TABLE case_closure_info
+        ADD COLUMN IF NOT EXISTS closed_by_kind TEXT NOT NULL DEFAULT 'agent';
+    """))
+    conn.execute(text("""
+        ALTER TABLE case_closure_info
+        DROP CONSTRAINT IF EXISTS case_closure_info_closed_by_kind_check;
+    """))
+    conn.execute(text("""
+        ALTER TABLE case_closure_info
+        ADD CONSTRAINT case_closure_info_closed_by_kind_check
+            CHECK (closed_by_kind IN ('analyst', 'agent'));
+    """))
+
+
+# The runs a marker accounts for (#731), and the origin pair a Case has no value
+# for (#733). A Case is closed and never run, so its marker's origin is absent;
+# the CHECK ties that absence to the kind, so neither shape can be half-written.
+@migration("Widen episodic_distil_markers for Case-authored Verdicts")
+def widen_episodic_distil_markers(conn):
+    if not _table_exists(conn, 'episodic_distil_markers'):
+        return
+    conn.execute(text("""
+        ALTER TABLE episodic_distil_markers
+        ADD COLUMN IF NOT EXISTS origin_run_ids UUID[] NOT NULL
+            DEFAULT ARRAY[]::uuid[];
+    """))
+    # Dropped first, not IF NOT EXISTS: a database created before #731 already
+    # holds an index of this name over origin_run_id, and IF NOT EXISTS would
+    # see the name taken and leave the poll's `@>` containment unindexed.
+    conn.execute(text("DROP INDEX IF EXISTS idx_episodic_markers_origin;"))
+    conn.execute(text("""
+        CREATE INDEX idx_episodic_markers_origin
+        ON episodic_distil_markers USING GIN (origin_run_ids);
+    """))
+    conn.execute(text("""
+        ALTER TABLE episodic_distil_markers
+        ALTER COLUMN origin_run_id DROP NOT NULL;
+    """))
+    conn.execute(text("""
+        ALTER TABLE episodic_distil_markers
+        ALTER COLUMN origin_seq DROP NOT NULL;
+    """))
+    conn.execute(text("""
+        ALTER TABLE episodic_distil_markers
+        DROP CONSTRAINT IF EXISTS episodic_distil_markers_origin_matches_kind;
+    """))
+    conn.execute(text("""
+        ALTER TABLE episodic_distil_markers
+        ADD CONSTRAINT episodic_distil_markers_origin_matches_kind CHECK (
+            (investigation_kind = 'hunt') = (origin_run_id IS NOT NULL)
+            AND (origin_run_id IS NULL) = (origin_seq IS NULL)
+        );
+    """))
 
 
 # ---------------------------------------------------------------------------

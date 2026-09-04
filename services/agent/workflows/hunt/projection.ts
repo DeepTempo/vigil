@@ -1,4 +1,5 @@
 import { openCheckpoint, type OpenCheckpoint } from "../../contracts/events.js";
+import { recalledPayloadOf, type RecallPayload } from "../../contracts/memory.js";
 import { fold, type HuntEvent, type Projection } from "./ledger.js";
 import { citedTechniques, isGap, sensorAttested } from "./strength.js";
 import { renderReport, type HuntReport } from "./report.js";
@@ -52,6 +53,14 @@ export interface HuntProjection {
   // Every move the Hunt Lead made and why, newest first: the standings say what a
   // hunt believes, never how it got there.
   moves: MoveView[];
+  // What the run opened on: the episodic rows it read at start, off its own ledger
+  // rather than from a fresh read -- memory has moved since, and a panel that
+  // re-read it would show the reader something the hunt never saw (ADR 0015).
+  //
+  // Null means the run never asked, which is not the same as asking and finding
+  // nothing: that is a payload of empty lists. A payload carrying `unavailable` is
+  // a third thing again, a read that could not be served. The console says which.
+  recall: RecallPayload | null;
 }
 
 // next_steps normalised to strings here, so every reader downstream gets one shape:
@@ -159,7 +168,7 @@ export function huntProjection(runId: string, events: readonly HuntEvent[]): Hun
       .map((record) => evidenceView(record, view.links)),
     open_checkpoint: open === undefined ? null : openCheckpoint(open),
     report,
-    report_markdown: report === null ? null : renderReport(report, view, narrativeIn(events)),
+    report_markdown: report === null ? null : renderReport(report, view, narrativeIn(events), recalledPayloadOf(events)),
     narrative: narrativeView(narrativeIn(events)),
     handoffs: events.filter((event) => event.kind === "handoff").map((event) => event.payload as Handoff),
     open_questions: [...view.questions.values()]
@@ -172,6 +181,7 @@ export function huntProjection(runId: string, events: readonly HuntEvent[]): Hun
         spawned_iteration,
       })),
     moves: [...view.decisions].reverse().slice(0, MOVES_SHOWN).map(moveView),
+    recall: recalledPayloadOf(events),
   };
 }
 

@@ -151,6 +151,10 @@ export function fold(events: readonly HuntEvent[]): Projection {
       case "finalize":
       case "spend":
       case "narrative":
+      // Recall is an input to the run's decisions and never a belief of the hunt's:
+      // a fold that read episodic rows would make this projection depend on what
+      // other runs concluded, and the fold is one run's own account of itself.
+      case "recall":
         // None is state: the narrative is an account of the fold, so it cannot also be
         // an input to it.
         break;

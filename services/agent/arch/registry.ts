@@ -3,6 +3,7 @@ import type { AgentEvent, RunKind } from "../contracts/events.js";
 import type { Notes } from "../core/memory.js";
 import type { State } from "../core/seams.js";
 import { SpecError, type Owned } from "../core/spec.js";
+import { huntDistil } from "../workflows/hunt/distil.js";
 import type { HuntKinds } from "../workflows/hunt/ledger.js";
 import { huntProjection } from "../workflows/hunt/projection.js";
 import { huntNotes } from "../workflows/hunt/recall.js";
@@ -27,6 +28,10 @@ export interface ArchEntry {
   // What a reader outside this process is told about a run of this kind. Absent
   // means there is nothing to report but the terminal the ledger already carries.
   projection?: (runId: string, events: readonly AgentEvent<Record<never, never>>[]) => unknown;
+  // What episodic memory is told about a finished run of this kind; the fold
+  // itself says why it is not the projection. Absent means a run of this kind is
+  // not distilled, which is the honest default rather than empty rows.
+  distil?: (runId: string, events: readonly AgentEvent<Record<never, never>>[]) => unknown;
 }
 
 // The hunt lead-loop, minus its arch prompt. Both `hunt` and `root_cause` run this
@@ -45,7 +50,14 @@ const HUNT_LOOP: Omit<ArchEntry, "arch"> = {
 };
 
 const REGISTERED: Partial<Record<RunKind, ArchEntry>> = {
-  hunt: { arch: packaged("threathunt.yaml"), ...HUNT_LOOP },
+  // distil is not in HUNT_LOOP: huntDistil stamps investigation_kind "hunt", and
+  // that is the only kind episodic memory accepts for a run. Sharing it would
+  // file root-cause runs under a kind they are not.
+  hunt: {
+    arch: packaged("threathunt.yaml"),
+    ...HUNT_LOOP,
+    distil: (runId, events) => huntDistil(runId, events as readonly AgentEvent<HuntKinds>[]),
+  },
   // root-cause is a hunt run backward: only rootcause.yaml differs, framing the
   // lead's job as tracing a confirmed compromise to its origin. Sharing HUNT_LOOP
   // keeps the kind honest rather than borrowing "hunt".

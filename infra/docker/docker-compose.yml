@@ -541,7 +541,7 @@ services:
     environment:
       - SPLUNK_START_ARGS=--accept-license
       - SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com
-      - SPLUNK_PASSWORD=changeme123
+      - SPLUNK_PASSWORD=${SPLUNK_PASSWORD:-changeme123}
       - SPLUNK_HEC_TOKEN=00000000-0000-0000-0000-000000000000
     ports:
       - "8000:8000"   # Web UI (host 6990 is taken by the agent worker health port)

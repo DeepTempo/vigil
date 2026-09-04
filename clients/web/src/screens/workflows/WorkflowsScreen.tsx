@@ -418,7 +418,52 @@ function looksUnfinished(line: string): boolean {
   return line.endsWith(':') || /^[a-z]/.test(line)
 }
 
-function HypothesisPreview({ text }: { text: string }) {
+/** The ten kinds a key can carry, held to the hunt's own closed set by the spec
+ *  loader, which refuses anything else rather than coercing it. Spelled here so
+ *  the operator is told before submitting, and ratcheted against
+ *  `workflows/hunt/types.ts` by `test_recall_contract_agrees` — a list that
+ *  drifts tells them a key is fine that no reader will ever query. */
+const ENTITY_TYPES = ['ip', 'domain', 'host', 'url', 'email', 'hash', 'arn', 'aws_key', 'user', 'process']
+
+/** `type:value`, comma separated — the form the hunt already writes an entity in.
+ *  Split on the first colon, because a url value carries its own. */
+function parsedSubjects(raw: string): { keys: string[]; bad: string[] } {
+  const keys: string[] = []
+  const bad: string[] = []
+  for (const piece of raw.split(',').map((one) => one.trim()).filter((one) => one !== '')) {
+    const at = piece.indexOf(':')
+    const kind = at < 1 ? '' : piece.slice(0, at).trim().toLowerCase()
+    const value = at < 1 ? '' : piece.slice(at + 1).trim()
+    if (value !== '' && ENTITY_TYPES.includes(kind)) keys.push(`${kind}:${value}`)
+    else bad.push(piece)
+  }
+  return { keys, bad }
+}
+
+/** What each belief is about, keyed by the belief itself. Editing a statement drops
+ *  its subjects, which is the honest outcome: they were about the older claim. */
+function subjectsAsked(text: string, held: Record<string, string>): Record<string, string[]> {
+  const asked: Record<string, string[]> = {}
+  for (const belief of parsedHypotheses(text)) {
+    const { keys } = parsedSubjects(held[belief] ?? '')
+    if (keys.length > 0) asked[belief] = keys
+  }
+  return asked
+}
+
+function malformedSubjects(text: string, held: Record<string, string>): string[] {
+  return parsedHypotheses(text).flatMap((belief) => parsedSubjects(held[belief] ?? '').bad)
+}
+
+function HypothesisPreview({
+  text,
+  subjects,
+  onSubject,
+}: {
+  text: string
+  subjects: Record<string, string>
+  onSubject: (belief: string, raw: string) => void
+}) {
   const beliefs = parsedHypotheses(text)
   if (beliefs.length === 0) return null
   const suspect = beliefs.filter(looksUnfinished).length
@@ -430,12 +475,30 @@ function HypothesisPreview({ text }: { text: string }) {
         account as the claim to beat.
       </div>
       <ol className="hyp-preview-list">
-        {beliefs.map((belief, at) => (
-          <li key={at} className={looksUnfinished(belief) ? 'suspect' : undefined}>
-            <span className="hyp-preview-n">H{at + 1}</span>
-            <span>{belief}</span>
-          </li>
-        ))}
+        {beliefs.map((belief, at) => {
+          const raw = subjects[belief] ?? ''
+          const { bad } = parsedSubjects(raw)
+          return (
+            <li key={at} className={looksUnfinished(belief) ? 'suspect' : undefined}>
+              <span className="hyp-preview-n">H{at + 1}</span>
+              <span className="hyp-preview-belief">
+                <span>{belief}</span>
+                <input
+                  className={bad.length > 0 ? 'hyp-preview-subject bad' : 'hyp-preview-subject'}
+                  value={raw}
+                  onChange={(e) => onSubject(belief, e.target.value)}
+                  placeholder="About — host:dev-830, ip:45.77.53.176"
+                  aria-label={`What H${at + 1} is about`}
+                />
+                {bad.length > 0 && (
+                  <span className="hyp-preview-bad">
+                    {bad.join(', ')} — each subject is type:value, where type is one of {ENTITY_TYPES.join(', ')}.
+                  </span>
+                )}
+              </span>
+            </li>
+          )
+        })}
       </ol>
       {suspect > 0 && (
         <div className="hyp-preview-warn">
@@ -468,6 +531,7 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
   const [caseId, setCaseId] = useState('')
   const [context, setContext] = useState('')
   const [hypothesis, setHypothesis] = useState('')
+  const [subjects, setSubjects] = useState<Record<string, string>>({})
   const [approve, setApprove] = useState(false)
   const [iterations, setIterations] = useState('')
   const [maxCost, setMaxCost] = useState('')
@@ -515,9 +579,12 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
     ...(context.trim() && { context: context.trim() }),
     ...(hypothesis.trim() && { hypothesis: hypothesis.trim() }),
   }
+  const asked = subjectsAsked(hypothesis, subjects)
+  const malformed = malformedSubjects(hypothesis, subjects)
   // A turn count says how long to run, never what to run on, so it is not a target.
   const withTurns = {
     ...params,
+    ...(isHuntLike && Object.keys(asked).length > 0 && { hypothesis_subjects: asked }),
     ...(isHuntLike && !turnsBad && iterations.trim() && { iterations: turns }),
     ...(isHuntLike && !costBad && maxCost.trim() && { max_cost_usd: cost }),
     ...(isHuntLike && approve && { approve_hypotheses: true }),
@@ -529,6 +596,12 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
   const run = async () => {
     if (needsHypothesis) {
       setError('This run tests a claim you state. Put at least one in Hypothesis — the benign account is added for you.')
+      return
+    }
+    // Refused rather than dropped: a subject that does not reach the run is a
+    // verdict nobody can recall later, and silence about it is the worst outcome.
+    if (malformed.length > 0) {
+      setError(`Not an entity key: ${malformed.join(', ')}. Each subject is type:value — host:dev-830, ip:45.77.53.176.`)
       return
     }
     setStarting(true)
@@ -570,10 +643,16 @@ export function RunModal({ wf, onStarted, onClose }: { wf: Workflow; onStarted: 
           placeholder="Credentials taken from HOST-42 were reused on another host…"
           textarea
           hint={isHuntLike
-            ? 'One belief per line, each a claim the run can argue against. The benign account is added for you as the claim to beat.'
+            ? 'One belief per line, each a claim the run can argue against. The benign account is added for you as the claim to beat. Say what each one is about below, so its verdict can be found again by that host or address.'
             : undefined}
         />
-        {isHuntLike && <HypothesisPreview text={hypothesis} />}
+        {isHuntLike && (
+          <HypothesisPreview
+            text={hypothesis}
+            subjects={subjects}
+            onSubject={(belief, raw) => setSubjects((held) => ({ ...held, [belief]: raw }))}
+          />
+        )}
         {isHuntLike && (
           <Field
             label="Iterations"
@@ -776,6 +855,56 @@ interface HuntNarrative {
   written_at: string
 }
 
+/** What a run read out of episodic memory before it started. Mirrors the recall
+ *  contract in services/agent/contracts/memory.ts; the fields this panel does not
+ *  show are omitted rather than restated. */
+interface RecalledFrom {
+  investigation_kind: string
+  investigation_id: string
+  concluded_at: string
+}
+interface RecalledWindow { first_seen: string; last_seen: string }
+interface RecalledVerdict extends RecalledFrom {
+  hypothesis_id: string
+  statement: string
+  outcome: string
+  rationale: string
+  subject_entities: string[]
+  /** A conclusion resting only on fields an adversary could have written is not one
+   *  to lean on, which is why it is called out rather than left in the rationale. */
+  attacker_influenceable_only: boolean
+  trust: string
+  window: RecalledWindow
+  window_source: string
+}
+interface RecalledGap extends RecalledFrom {
+  hypothesis_id: string
+  statement: string
+  disposition: string
+  reason: string
+  subject_entities: string[]
+}
+interface RecalledSighting extends RecalledFrom {
+  entity_key: string
+  source_system: string
+  hit_count: number
+  attacker_influenceable: boolean
+  window: RecalledWindow
+}
+interface DroppedRows { per_key_cap: number; overall_cap: number }
+/** The journaled read. `unavailable` means it could not be served; empty lists mean
+ *  it ran and found nothing, which is a fact about the entities rather than about
+ *  memory. The panel must not render the two alike. */
+interface HuntRecall {
+  keys: string[]
+  as_of: string
+  unavailable?: string
+  sightings?: RecalledSighting[]
+  verdicts?: RecalledVerdict[]
+  gaps?: RecalledGap[]
+  dropped?: { sightings: DroppedRows; verdicts: DroppedRows; gaps: DroppedRows }
+}
+
 interface HuntHandoff {
   case_id: string
   hypothesis_id: string
@@ -830,6 +959,10 @@ interface HuntView {
   handoffs?: HuntHandoff[]
   moves?: HuntMove[]
   open_questions?: HuntQuestion[]
+  /** Off the run's own ledger, never a fresh read: memory has moved since, and a
+   *  panel that re-read it would show what the hunt never saw. Absent when the run
+   *  never asked -- older runs, and runs whose beliefs named no entity. */
+  recall?: HuntRecall | null
 }
 interface WfRunDetail extends WfRun {
   result_summary?: string | null
@@ -1084,7 +1217,7 @@ function StopRun({ runId, onStopped }: { runId: string; onStopped: () => void })
   )
 }
 
-type HuntTab = 'hyp' | 'evidence' | 'moves' | 'frontier' | 'gaps' | 'esc' | 'report' | 'next'
+type HuntTab = 'memory' | 'hyp' | 'evidence' | 'moves' | 'frontier' | 'gaps' | 'esc' | 'report' | 'next'
 
 /** Views of one run as tabs rather than stacked tables. A view with nothing in it
  *  is not offered rather than offered empty. */
@@ -1099,9 +1232,16 @@ function HuntTabs({ d, hunt, onReload }: { d: WfRunDetail; hunt: HuntView; onRel
   const moves = hunt.moves ?? []
   const frontier = hunt.open_questions ?? []
   const steps = hunt.narrative?.next_steps ?? []
+  const memory = hunt.recall ?? null
+  const remembered = memory === null ? null : recalledCount(memory)
   const tabs: [HuntTab, string, number | null][] = [
     ['hyp', 'Hypotheses', hunt.hypotheses.length],
     ...(hunt.evidence_count > 0 ? ([['evidence', 'Evidence', hunt.evidence_count]] as [HuntTab, string, number][]) : []),
+    // After what this run gathered, because it is not one of that: memory is what
+    // earlier investigations left behind, and reading it first invites it to be
+    // taken for a finding of this hunt's own. Absent entirely when the run never
+    // asked, so an older run does not grow an empty tab.
+    ...(memory !== null ? ([['memory', 'Memory', remembered]] as [HuntTab, string, number | null][]) : []),
     ...(moves.length > 0 ? ([['moves', 'Moves', moves.length]] as [HuntTab, string, number][]) : []),
     ...(frontier.length > 0 ? ([['frontier', 'Frontier', frontier.length]] as [HuntTab, string, number][]) : []),
     ...(gaps.length > 0 ? ([['gaps', 'Gaps', gaps.length]] as [HuntTab, string, number][]) : []),
@@ -1121,6 +1261,7 @@ function HuntTabs({ d, hunt, onReload }: { d: WfRunDetail; hunt: HuntView; onRel
           </button>
         ))}
       </div>
+      {shown === 'memory' && memory !== null && <HuntMemory recall={memory} />}
       {shown === 'hyp' && <HuntStandings hunt={hunt} />}
       {shown === 'evidence' && <HuntEvidenceTable found={found} total={hunt.evidence_count} />}
       {shown === 'moves' && <HuntMoves moves={moves} />}
@@ -1172,6 +1313,7 @@ function HuntAccount({ hunt, report, gaps, onGo, rewrite }: { hunt: HuntView; re
     <div className="hunt-account">
       <p className="hunt-lede">{account.summary}</p>
       <VerdictStrip hunt={hunt} onGo={onGo} />
+      <OpenedOn hunt={hunt} onGo={onGo} />
       <Incidents md={account.what_happened} />
       <div className="hunt-account-foot">
         <span className="muted text-[11.5px]">
@@ -1219,6 +1361,28 @@ function Incidents({ md }: { md: string }) {
           </section>
         )
       })}
+    </div>
+  )
+}
+
+/** One line on the account: what the run started from. The account says what
+ *  happened; the markdown carries the same fact, but this branch renders the
+ *  narrative rather than the report, so without this the read is invisible here. */
+function OpenedOn({ hunt, onGo }: { hunt: HuntView; onGo: (tab: HuntTab) => void }) {
+  const recall = hunt.recall ?? null
+  if (recall === null) return null
+  const asked = recall.keys.length === 0 ? 'no entities' : recall.keys.join(', ')
+  const found = recalledCount(recall)
+
+  return (
+    <div className="muted text-[11.5px]" style={{ marginTop: 8 }}>
+      {found === null
+        ? <>Episodic memory could not be read, so this hunt opened on nothing.</>
+        : found === 0
+          ? <>No earlier investigation had looked at <span className="mono">{asked}</span>.</>
+          : <>Opened on {found} record{found === 1 ? '' : 's'} earlier investigations left about <span className="mono">{asked}</span>.</>}
+      {' '}
+      <button className="btn ghost text-[11px]" onClick={() => onGo('memory')}>Memory ▸</button>
     </div>
   )
 }
@@ -1854,6 +2018,174 @@ function OpenCheckpoint({ hunt }: { hunt: HuntView }) {
 
 /** Questions the hunt could not answer. Its own section because "not there" and
  *  "could not look" read identically otherwise, and only one clears a hypothesis. */
+/** Rows across all three kinds. Null when the read could not be served: a zero there
+ *  would read as "memory holds nothing about these entities", which is what an
+ *  answered read that came back empty says. */
+function recalledCount(recall: HuntRecall): number | null {
+  if (recall.unavailable !== undefined) return null
+  return (recall.verdicts?.length ?? 0) + (recall.gaps?.length ?? 0) + (recall.sightings?.length ?? 0)
+}
+
+function fmtWindow(w: RecalledWindow): string {
+  return w.first_seen === w.last_seen ? fmtStarted(w.first_seen) : `${fmtStarted(w.first_seen)} → ${fmtStarted(w.last_seen)}`
+}
+
+/** Which investigation left the row, not which run read it: one read returns rows
+ *  from many, and a Case is not a hunt. */
+function RecalledFromCell({ row }: { row: RecalledFrom }) {
+  return (
+    <>
+      <span className="mono text-[11px]">{row.investigation_id}</span>
+      <div className="muted text-[11px]">{row.investigation_kind}, concluded {fmtStarted(row.concluded_at)}</div>
+    </>
+  )
+}
+
+/** Per kind and per reason: a per-key cap says one entity had more history than its
+ *  share, an overall cap says the read was simply broad, and summing them keeps the
+ *  number while discarding the half a reader would act on. */
+function droppedNote(recall: HuntRecall): string | null {
+  const dropped = recall.dropped
+  if (dropped === undefined) return null
+  const held: string[] = []
+  for (const kind of ['verdicts', 'gaps', 'sightings'] as const) {
+    const rows = dropped[kind]
+    if (rows === undefined) continue
+    if (rows.per_key_cap > 0) held.push(`${rows.per_key_cap} ${kind} past one entity's share`)
+    if (rows.overall_cap > 0) held.push(`${rows.overall_cap} ${kind} past the read's own limit`)
+  }
+  return held.length === 0 ? null : `Some history was not carried: ${held.join(', ')}.`
+}
+
+/** What the hunt was shown before its first decision. Rendered from the payload the
+ *  run journaled, so this is the record it actually opened on — re-reading memory
+ *  here would show a neighbourhood that has moved since. */
+function HuntMemory({ recall }: { recall: HuntRecall }) {
+  const asked = recall.keys.length === 0 ? 'no entities' : recall.keys.join(', ')
+
+  if (recall.unavailable !== undefined) {
+    return (
+      <div style={{ marginTop: 12 }}>
+        <h4>What this hunt knew going in</h4>
+        <div className="text-[12.5px]">Episodic memory could not be read, so the hunt ran without it.</div>
+        <div className="muted text-[11.5px] mt-2">{recall.unavailable}</div>
+        <div className="muted text-[11.5px] mt-2">
+          It would have asked about <span className="mono">{asked}</span>. Nothing this hunt concluded rests on what
+          earlier investigations found.
+        </div>
+      </div>
+    )
+  }
+
+  const verdicts = recall.verdicts ?? []
+  const gaps = recall.gaps ?? []
+  const sightings = recall.sightings ?? []
+  const dropped = droppedNote(recall)
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <h4>What this hunt knew going in</h4>
+      <div className="muted text-[11.5px] mb-2">
+        Read on <span className="mono">{asked}</span>, as of {fmtStarted(recall.as_of)}. The state of memory read by
+        the hunt when opened.
+      </div>
+
+      {verdicts.length + gaps.length + sightings.length === 0 && (
+        <div className="muted text-[12.5px] py-2">
+          Nothing had been concluded about {recall.keys.length === 1 ? 'this entity' : 'these entities'} before this
+          hunt. The read ran and came back empty: this is the first investigation on record to look.
+        </div>
+      )}
+
+      {verdicts.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <h4>Settled by earlier investigations ({verdicts.length})</h4>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Outcome</th><th>Claim</th><th>Subjects</th><th>From</th></tr></thead>
+              <tbody>
+                {verdicts.map((v) => (
+                  <tr key={`${v.investigation_id}|${v.hypothesis_id}`}>
+                    <td className="tight">{v.outcome}</td>
+                    <td>
+                      {v.statement}
+                      {v.rationale && <div className="muted text-[11px]">{v.rationale}</div>}
+                      {v.attacker_influenceable_only && (
+                        <div className="muted text-[11px]">Rests only on evidence an adversary could have written.</div>
+                      )}
+                      <div className="muted text-[11px]">
+                        activity {fmtWindow(v.window)}{v.window_source === 'asserted' ? ' (asserted)' : ''} · {v.trust}
+                      </div>
+                    </td>
+                    <td className="mono tight text-[11px]">{v.subject_entities.join(', ')}</td>
+                    <td className="tight"><RecalledFromCell row={v} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {gaps.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <h4>Left unanswered by earlier investigations ({gaps.length})</h4>
+          <div className="muted text-[11.5px] mb-2">Asked before and never settled — an open question, not a finding.</div>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Claim</th><th>Why it stands open</th><th>Subjects</th><th>From</th></tr></thead>
+              <tbody>
+                {gaps.map((g) => (
+                  <tr key={`${g.investigation_id}|${g.hypothesis_id}`}>
+                    <td>{g.statement}</td>
+                    {/* Not tight: the disposition is one word but the reason under it is a
+                        sentence, and nowrap on a sentence takes the whole row -- which leaves
+                        the claim beside it a column one character wide. */}
+                    <td>
+                      {g.disposition}
+                      {g.reason && <div className="muted text-[11px]">{g.reason}</div>}
+                    </td>
+                    <td className="mono tight text-[11px]">{g.subject_entities.join(', ')}</td>
+                    <td className="tight"><RecalledFromCell row={g} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {sightings.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <h4>Seen by earlier investigations ({sightings.length})</h4>
+          <div className="muted text-[11.5px] mb-2">Where an entity turned up before. A lead, not a conclusion.</div>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Entity</th><th>Source</th><th>Hits</th><th>Window</th><th>From</th></tr></thead>
+              <tbody>
+                {sightings.map((one) => (
+                  <tr key={`${one.investigation_id}|${one.entity_key}|${one.source_system}`}>
+                    <td className="mono tight text-[11px]">
+                      {one.entity_key}
+                      {one.attacker_influenceable && <div className="muted text-[11px]">attacker-influenceable</div>}
+                    </td>
+                    <td className="muted tight">{one.source_system}</td>
+                    <td className="muted tight">{one.hit_count}</td>
+                    <td className="muted tight text-[11px]">{fmtWindow(one.window)}</td>
+                    <td className="tight"><RecalledFromCell row={one} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {dropped !== null && <div className="muted text-[11px] mt-2">{dropped}</div>}
+    </div>
+  )
+}
+
 function HuntGaps({ gaps }: { gaps: HuntGap[] }) {
   if (gaps.length === 0) return null
   const asked = groupedGaps(gaps)
@@ -2363,7 +2695,7 @@ function AgentEditModal({ agentId, onClose, onSaved }: { agentId: string | null;
 
           {/* Prompt fragments */}
           <div className="pt-1.5 text-[11px] font-semibold tracking-[0.06em] uppercase text-tx-3">Prompt fragments</div>
-          <p className="text-[11.5px] text-tx-3 -mt-2">Rendered into the Vigil base prompt (preserves mempalace + entity-recognition directives).</p>
+          <p className="text-[11.5px] text-tx-3 -mt-2">Rendered into the Vigil base prompt (preserves entity-recognition directives; adds read-only memory when recall_entity is granted).</p>
           <Field label="Role *" value={form.role} onChange={(v) => set('role', v)} hint={'Renders as: "You are a SOC {role} in the Vigil SOC platform."'} />
           <Field label="Extra principles" value={form.extra_principles} onChange={(v) => set('extra_principles', v)} textarea />
           <Field label="Methodology" value={form.methodology} onChange={(v) => set('methodology', v)} textarea />

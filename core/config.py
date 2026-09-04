@@ -126,8 +126,8 @@ class Settings(BaseSettings):
     vigil_context_path: str = ""
     vigil_frontend_url: str = ""
     mempalace_palace_path: Optional[str] = None
-    # Call sites disagree on the default (shared_intel off, orchestrator on), so
-    # this stays tri-state and each site supplies its own fallback.
+    # Tri-state so the orchestrator can treat unset as on and still honour an
+    # explicit false for emergency disable.
     mempalace_daemon_enabled: Optional[bool] = None
 
     # Database. DATABASE_URL is not a field: Settings.extra is ignore so the

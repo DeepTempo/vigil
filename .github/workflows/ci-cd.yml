@@ -416,7 +416,7 @@ jobs:
         ports:
           - 6379:6379
     env:
-      DATABASE_URL: postgres://test:test@localhost:5432/agent_test
+      AGENT_TEST_DATABASE_URL: postgres://test:test@localhost:5432/agent_test
       REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v7

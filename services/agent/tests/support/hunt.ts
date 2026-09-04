@@ -33,6 +33,8 @@ const LEAD = { prompt: "lead", description: "the hunt lead", output_schema: {}, 
 export interface SpecOverrides {
   hypotheses?: string[];
   operatorHypotheses?: string[];
+  // Keyed by statement, as the run modal sends them.
+  operatorHypothesisSubjects?: Record<string, Entity[]>;
   // Positional against hypotheses, the same way the resolver builds it.
   attackTechniques?: string[];
   budgets?: Budgets;
@@ -78,6 +80,7 @@ export function huntSpecFor(overrides: SpecOverrides = {}): HuntSpec {
     digest: {},
     hypotheses,
     operator_hypotheses: overrides.operatorHypotheses ?? [],
+    operator_hypothesis_subjects: overrides.operatorHypothesisSubjects ?? {},
     attack_techniques: overrides.attackTechniques ?? [],
     data_domains: [],
     enrichment: DEFAULT_ENRICHMENT,

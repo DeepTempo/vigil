@@ -15,6 +15,12 @@ ROOT="$PWD"
 # The backend checks this on every /internal call. Empty on either side answers
 # 503, so a run fails before its first model call rather than at the seam.
 AGENT_INTERNAL_TOKEN="$(sed -n 's/^AGENT_INTERNAL_TOKEN=//p' .env | head -1)"
+# Unquoted, because the backend reads .env through dotenv and gets the value
+# without them: a token carrying a literal `"` at each end is a different string,
+# and every /internal call answers 401 rather than 503 -- a run that fails at the
+# seam while both sides insist they were configured.
+AGENT_INTERNAL_TOKEN="${AGENT_INTERNAL_TOKEN%\"}"; AGENT_INTERNAL_TOKEN="${AGENT_INTERNAL_TOKEN#\"}"
+AGENT_INTERNAL_TOKEN="${AGENT_INTERNAL_TOKEN%\'}"; AGENT_INTERNAL_TOKEN="${AGENT_INTERNAL_TOKEN#\'}"
 if [ -z "$AGENT_INTERNAL_TOKEN" ]; then
     echo "AGENT_INTERNAL_TOKEN is unset in .env; every /internal call would answer 503" >&2
     exit 1

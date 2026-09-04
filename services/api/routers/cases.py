@@ -14,6 +14,7 @@ from core.cases.case_evidence_service import CaseEvidenceService
 from core.cases.case_ioc_service import CaseIOCService
 from core.cases.case_notification_service import WATCHER_NOTIFICATION_TYPES
 from core.cases.case_sla_service import CaseSLAService
+from core.cases.closure import ClosedByKind, ClosureCategory
 from core.reporting.report_service import REPORTLAB_AVAILABLE, ReportService
 from core.routing import Auth, RouterMeta, UnitOfWorkSession
 from core.storage.database_data_service import DatabaseDataService
@@ -268,8 +269,45 @@ def _get_ingestion_service(source: str):
     return None
 
 
+def _record_status_close(session, case_id: str, closed_by: str) -> None:
+    """Record who closed a Case that was closed by editing its status.
+
+    This is how the console closes a Case: it PATCHes the status and asks for no
+    category. Left unrecorded, the close that matters most -- a person looked and
+    said no -- reaches episodic memory as nothing at all, because there is no
+    closure row for the Case Distil to read a category or an actor from.
+
+    The category is ``unspecified``, which is not a determination and does not
+    pretend to be one: it says the Case was closed and no reason was stated, and
+    becomes an inconclusive Verdict rather than a claim nobody made. It goes
+    through ``close_case`` like every other close, so this path stops the SLA
+    resolution clock and indexes the Case's IOCs as the others do, and cannot
+    overwrite a determination an earlier close already stated.
+
+    This lands in the request's own transaction while the status change went
+    through ``data_service`` in its own, so a failure here 500s with the Case
+    already closed and no closure row. The Distil reads that as a close with no
+    stated reason -- the Verdict is still written, at Trust ``agent`` rather
+    than ``analyst``. Degraded, and never a Case that closed and vanished.
+    """
+    from core.cases.case_workflow_service import CaseWorkflowService
+
+    CaseWorkflowService().close_case(
+        session,
+        case_id,
+        closure_category=ClosureCategory.UNSPECIFIED,
+        closed_by=closed_by,
+        closed_by_kind=ClosedByKind.ANALYST,
+    )
+
+
 @router.patch("/{case_id}", response_model=CaseSuccessResponse)
-async def update_case(case_id: str, case_data: CaseUpdate):
+async def update_case(
+    case_id: str,
+    case_data: CaseUpdate,
+    session: UnitOfWorkSession,
+    current_user: User = Depends(get_current_user),
+):
     """
     Update an existing case.
 
@@ -303,10 +341,22 @@ async def update_case(case_id: str, case_data: CaseUpdate):
         )
         updates["notes"] = notes
 
+    # Read before the write, because what makes this a close is the transition:
+    # re-PATCHing `closed` onto an already-closed Case is an edit, and stamping
+    # it would move the closure's date and re-derive its Verdict for nothing.
+    was_closed = (data_service.get_case(case_id) or {}).get("status") == "closed"
+
     success = data_service.update_case(case_id, **updates)
 
     if not success:
         raise HTTPException(status_code=404, detail="Case not found or update failed")
+
+    if updates.get("status") == "closed" and not was_closed:
+        _record_status_close(session, case_id, current_user.username)
+    elif was_closed and updates.get("status") not in (None, "closed"):
+        from core.cases.case_workflow_service import CaseWorkflowService
+
+        CaseWorkflowService().reopen_case(session, case_id)
 
     # Fire upstream SIEM status sync when status changes
     if case_data.status is not None:
@@ -934,18 +984,30 @@ async def get_relationships(case_id: str, session: UnitOfWorkSession):
 
 # Case Closure
 class ClosureInfo(BaseModel):
-    """Close case with metadata."""
+    """Close case with metadata.
 
-    closure_category: str
-    closed_by: str
+    No ``closed_by``: who closed it is the authenticated principal, not
+    something a client says about itself. Episodic memory reads it as Trust
+    (#733), and a client-supplied name would let any caller claim an analyst
+    concluded.
+    """
+
+    closure_category: ClosureCategory
     root_cause: Optional[str] = None
     lessons_learned: Optional[str] = None
     recommendations: Optional[str] = None
     executive_summary: Optional[str] = None
+    false_positive_reason: Optional[str] = None
+    closure_notes: Optional[str] = None
 
 
 @router.post("/{case_id}/close", response_model=CaseCloseResponse)
-async def close_case(case_id: str, data: ClosureInfo, session: UnitOfWorkSession):
+async def close_case(
+    case_id: str,
+    data: ClosureInfo,
+    session: UnitOfWorkSession,
+    current_user: User = Depends(get_current_user),
+):
     """Close case with closure metadata."""
 
     from core.cases.case_workflow_service import CaseWorkflowService
@@ -954,14 +1016,25 @@ async def close_case(case_id: str, data: ClosureInfo, session: UnitOfWorkSession
         session,
         case_id,
         closure_category=data.closure_category,
-        closed_by=data.closed_by,
+        closed_by=current_user.username,
+        closed_by_kind=ClosedByKind.ANALYST,
         root_cause=data.root_cause,
         lessons_learned=data.lessons_learned,
         recommendations=data.recommendations,
         executive_summary=data.executive_summary,
+        false_positive_reason=data.false_positive_reason,
+        closure_notes=data.closure_notes,
     )
     if not closure:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    # The PATCH route has always told the upstream SIEM when a status changed, and
+    # this one never did: a Case closed here, by either MCP tool or by a merge,
+    # stayed open in the SIEM that raised it. Best-effort and fire-and-forget, as
+    # it is there -- the close is recorded either way.
+    import asyncio
+
+    asyncio.ensure_future(_sync_upstream_status(case_id, "closed"))
     return {"success": True, "closure": CaseClosureInfoSchema.dump(closure)}
 
 

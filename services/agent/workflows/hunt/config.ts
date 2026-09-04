@@ -1,4 +1,5 @@
-import { callsPerIteration, DEFAULT_BUDGETS, type Budgets } from "./types.js";
+import { callsPerIteration, DEFAULT_BUDGETS, type Budgets, type Entity } from "./types.js";
+import { fromText, key, parseKey } from "./entities.js";
 import { SpecError, type Counts, type RunSpec } from "../../core/spec.js";
 import { checkpointsFrom, DEFAULT_CHECKPOINTS, type Checkpoints } from "./checkpoints.js";
 
@@ -146,6 +147,9 @@ export interface HuntSpec extends RunSpec {
   // The caller's own, kept apart from the definition's so the console can show an
   // operator that the thing they asked about is a thing being tested.
   operator_hypotheses: string[];
+  // Their subjects, by statement. Parsed here so an unusable key is refused where
+  // the spec is built, rather than reaching the ledger as an entity nothing means.
+  operator_hypothesis_subjects: Record<string, Entity[]>;
   // The vocabulary a worker's citation is gated against, not a label per hypothesis.
   // Empty gates nothing rather than refusing everything.
   attack_techniques: string[];
@@ -168,6 +172,29 @@ function validateCeilings(termination: Termination, budgets: Budgets): void {
     throw new SpecError(`thresholds.hard_max_wall_ms is below budgets.max_wall_ms (${budgets.max_wall_ms})`);
 }
 
+// Silently dropping an unparseable key would leave a Verdict about nothing and no
+// trace of why. The caller is told instead: a subject they meant to name is the
+// whole reason the claim can be recalled later.
+function subjectsOf(held: unknown): Record<string, Entity[]> {
+  if (held === undefined || held === null) return {};
+  if (typeof held !== "object" || Array.isArray(held)) {
+    throw new SpecError("operator_hypothesis_subjects must map a statement to its subject keys");
+  }
+
+  const parsed: Record<string, Entity[]> = {};
+  for (const [statement, keys] of Object.entries(held as Record<string, unknown>)) {
+    if (!Array.isArray(keys)) throw new SpecError(`the subjects of "${statement}" are not a list`);
+    const subjects: Entity[] = [];
+    for (const raw of keys) {
+      const entity = parseKey(String(raw));
+      if (entity === undefined) throw new SpecError(`${String(raw)} is not a type:value entity key`);
+      if (!subjects.some((held) => held.type === entity.type && held.value === entity.value)) subjects.push(entity);
+    }
+    if (subjects.length > 0) parsed[statement] = subjects;
+  }
+  return parsed;
+}
+
 export function huntSpec(spec: RunSpec): HuntSpec {
   const held = spec.sections;
   validateThresholds(spec.thresholds);
@@ -179,10 +206,33 @@ export function huntSpec(spec: RunSpec): HuntSpec {
     hypothesis_loop: held["hypothesis_loop"] === true,
     hypotheses: Array.isArray(held["hypotheses"]) ? (held["hypotheses"] as string[]) : [],
     operator_hypotheses: Array.isArray(held["operator_hypotheses"]) ? (held["operator_hypotheses"] as string[]) : [],
+    operator_hypothesis_subjects: subjectsOf(held["operator_hypothesis_subjects"]),
     attack_techniques: Array.isArray(held["attack_techniques"]) ? (held["attack_techniques"] as string[]) : [],
     data_domains: Array.isArray(held["data_domains"]) ? (held["data_domains"] as string[]) : [],
     enrichment: { ...DEFAULT_ENRICHMENT, ...(held["enrichment"] as object | undefined) },
     checkpoints: { ...DEFAULT_CHECKPOINTS, ...checkpointsFrom(held["checkpoints"]) },
     termination: terminationOf(spec),
   };
+}
+
+// What the run's episodic read is keyed on, deduped and sorted so the same hunt
+// asks the same question in the same order.
+//
+// Declared subjects first, and only for statements actually being put up: a
+// subject keyed to a statement the caller then edited away is not what this hunt
+// is about, which is the same rule core/workflows/hypothesis_subjects.py applies
+// on the other side.
+//
+// Extraction is the fallback rather than the rule, because a declared key was
+// typed by a person and parsed where an unusable one is still refused. It is not
+// no fallback at all: a scheduled hunt declares no subjects -- the scheduler
+// queues a hypothesis and nothing else -- so the autonomous path would otherwise
+// never read memory. A key read out of a statement can be beside the point rather
+// than wrong, which spends prefix budget and, because recall only reorders what to
+// look at, can never move a verdict.
+export function recallKeysOf(spec: HuntSpec): readonly string[] {
+  const declared = spec.operator_hypotheses.flatMap((statement) => spec.operator_hypothesis_subjects[statement] ?? []);
+  const named = () => [...spec.operator_hypotheses, ...spec.hypotheses].flatMap((statement) => fromText(statement));
+  const held = declared.length > 0 ? declared : named();
+  return [...new Set(held.map(key))].sort();
 }

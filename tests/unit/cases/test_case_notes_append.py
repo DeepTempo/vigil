@@ -9,12 +9,18 @@ read-modify-write as ``add_case_activity``: load, append
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
 
 pytestmark = pytest.mark.unit
+
+# The endpoint takes a session and a principal since #733, because a status edit
+# to `closed` records who closed it. Neither is exercised by a notes append.
+SESSION = MagicMock()
+ANALYST = SimpleNamespace(username="nestor")
 
 
 def _patch_data_service(monkeypatch, *, case, update=None):
@@ -46,7 +52,9 @@ async def test_patch_appends_a_note_entry(monkeypatch):
     }
     cases, captured = _patch_data_service(monkeypatch, case=existing)
 
-    result = await cases.update_case("c1", CaseUpdate(notes="analyst comment"))
+    result = await cases.update_case(
+        "c1", CaseUpdate(notes="analyst comment"), SESSION, ANALYST
+    )
 
     assert result == {"success": True}
     notes = captured["updates"]["notes"]
@@ -64,7 +72,7 @@ async def test_patch_notes_starts_a_list_when_case_has_none(monkeypatch):
         monkeypatch, case={"case_id": "c1", "notes": None}
     )
 
-    await cases.update_case("c1", CaseUpdate(notes="first"))
+    await cases.update_case("c1", CaseUpdate(notes="first"), SESSION, ANALYST)
 
     notes = captured["updates"]["notes"]
     assert len(notes) == 1
@@ -79,7 +87,9 @@ async def test_patch_keeps_other_fields_when_appending_notes(monkeypatch):
         monkeypatch, case={"case_id": "c1", "notes": []}
     )
 
-    await cases.update_case("c1", CaseUpdate(title="retitled", notes="wrapped"))
+    await cases.update_case(
+        "c1", CaseUpdate(title="retitled", notes="wrapped"), SESSION, ANALYST
+    )
 
     updates = captured["updates"]
     assert updates["title"] == "retitled"
@@ -96,7 +106,7 @@ async def test_patch_notes_404_when_case_missing(monkeypatch):
     monkeypatch.setattr(cases.data_service, "update_case", MagicMock())
 
     with pytest.raises(HTTPException) as exc:
-        await cases.update_case("missing", CaseUpdate(notes="nope"))
+        await cases.update_case("missing", CaseUpdate(notes="nope"), SESSION, ANALYST)
 
     assert exc.value.status_code == 404
     cases.data_service.update_case.assert_not_called()

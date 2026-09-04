@@ -413,6 +413,10 @@ dbInit:
     - 23_drop_finding_embedding.sql
     - 24_finding_mitre_predictions.sql
     - 25_nullable_finding_score_timestamp.sql
+    - 26_episodic_memory.sql
+    - 27_episodic_read_log.sql
+    - 28_case_closure_actor.sql
+    - 29_episodic_distil_failures.sql
   resources:
     requests:
       cpu: 50m
