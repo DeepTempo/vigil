@@ -9,7 +9,7 @@
 # Vigil SOC - Requirements
 
 # Core
-numpy>=1.26.0
+numpy>=2.5.2
 pyarrow>=15.0.0
 ijson>=3.5.1
 anthropic>=0.45.0
