@@ -2,8 +2,7 @@
 
 Backs the cross-device chat history for the console chat dock. A
 ``Conversation``'s id IS the frontend ``session_id``, so reopening a
-conversation lets the in-process ``SessionManager`` restore live context and
-continue the same session. This store is separate from
+conversation continues the same session. This store is separate from
 ``llm_interaction_logs`` (the compliance audit log), which stays the
 system-of-record and is never touched here.
 

@@ -147,8 +147,7 @@ def recommend_tool_response_budget(rows: Iterable[Dict]) -> Dict[str, object]:
 
     Looks at tool_result text lengths across the window. A too-tight
     budget costs analysis quality (truncation markers appear mid-evidence);
-    a too-loose one burns input tokens. Per-tool overrides in
-    ``ClaudeService.TOOL_RESPONSE_BUDGETS`` handle the outliers.
+    a too-loose one burns input tokens.
     """
     sizes: List[int] = []
     for row in rows:
@@ -174,10 +173,9 @@ def recommend_tool_response_budget(rows: Iterable[Dict]) -> Dict[str, object]:
         "current_default": 8000,
         "recommended_default": max(2000, int(round(_p95(sizes) / 1000.0)) * 1000),
         "notes": (
-            "Recommendation = p95 rounded to nearest 1k. Per-tool overrides "
-            "for legitimately-large tools (get_raw_logs, splunk_search, etc.) "
-            "are in ClaudeService.TOOL_RESPONSE_BUDGETS — tune those "
-            "separately by examining the top offenders for tool_name."
+            "Recommendation = p95 rounded to nearest 1k. Tune large tools "
+            "(get_raw_logs, splunk_search, etc.) separately by examining "
+            "the top offenders for tool_name."
         ),
     }
 

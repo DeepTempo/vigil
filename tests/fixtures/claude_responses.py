@@ -97,26 +97,6 @@ MOCK_AUTH_ERROR = {
     }
 }
 
-# Multi-turn conversation history
-MOCK_CONVERSATION_HISTORY = [
-    {
-        "role": "user",
-        "content": "What is finding f-20260109-test123?"
-    },
-    {
-        "role": "assistant",
-        "content": "Let me retrieve that finding for you."
-    },
-    {
-        "role": "user",
-        "content": "What MITRE techniques are involved?"
-    },
-    {
-        "role": "assistant",
-        "content": "This finding involves MITRE technique T1071.001 (Application Layer Protocol: Web Protocols)."
-    }
-]
-
 # Investigation workflow response
 MOCK_INVESTIGATION_RESPONSE = {
     "id": "msg_01Investigation789",

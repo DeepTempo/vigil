@@ -13,7 +13,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from core.llm.harness.claude import ClaudeService
 from tests.fixtures.claude_responses import (
     MOCK_AUTH_ERROR,
-    MOCK_CONVERSATION_HISTORY,
     MOCK_RATE_LIMIT_ERROR,
 )
 
@@ -30,7 +29,6 @@ class TestClaudeServiceInitialization:
 
         assert service.enable_thinking is False
         assert service.thinking_budget == 10000
-        assert service._session_mgr.sessions == {}
         assert service.default_system_prompt is not None
 
     @patch("core.llm.harness.claude.get_secret")
@@ -182,65 +180,6 @@ class TestClaudeServicePrompts:
 
         assert "available_mcp_tools" in prompt
         assert "deeptempo-findings" in prompt
-
-
-class TestClaudeServiceSessionManagement:
-    """Test session management for multi-turn conversations."""
-
-    @patch("core.llm.harness.claude.get_secret")
-    def test_create_session(self, mock_get_secret):
-        """Test creating a new session."""
-        mock_get_secret.return_value = "test-api-key-123"
-
-        service = ClaudeService()
-        session_id = "test-session-123"
-
-        # Add messages to session
-        service._session_mgr.sessions[session_id] = MOCK_CONVERSATION_HISTORY.copy()
-
-        assert session_id in service._session_mgr.sessions
-        assert len(service._session_mgr.sessions[session_id]) == 4
-
-    @patch("core.llm.harness.claude.get_secret")
-    def test_clear_session(self, mock_get_secret):
-        """Test clearing a session."""
-        mock_get_secret.return_value = "test-api-key-123"
-
-        service = ClaudeService()
-        session_id = "test-session-123"
-
-        # Add messages to session
-        service._session_mgr.sessions[session_id] = MOCK_CONVERSATION_HISTORY.copy()
-
-        # Clear session
-        if session_id in service._session_mgr.sessions:
-            del service._session_mgr.sessions[session_id]
-
-        assert session_id not in service._session_mgr.sessions
-
-    @patch("core.llm.harness.claude.get_secret")
-    def test_session_isolation(self, mock_get_secret):
-        """Test that sessions are isolated from each other."""
-        mock_get_secret.return_value = "test-api-key-123"
-
-        service = ClaudeService()
-
-        session1_id = "session-1"
-        session2_id = "session-2"
-
-        service._session_mgr.sessions[session1_id] = [
-            {"role": "user", "content": "Message 1"}
-        ]
-        service._session_mgr.sessions[session2_id] = [
-            {"role": "user", "content": "Message 2"}
-        ]
-
-        assert len(service._session_mgr.sessions[session1_id]) == 1
-        assert len(service._session_mgr.sessions[session2_id]) == 1
-        assert (
-            service._session_mgr.sessions[session1_id]
-            != service._session_mgr.sessions[session2_id]
-        )
 
 
 class TestClaudeServiceAPIInteraction:
@@ -415,39 +354,3 @@ class TestClaudeServiceThinkingMode:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
-# Dropped with the loop these covered (#631), and where the guarantee moved:
-#
-# TestProcessMixedToolUse, TestProcessMixedToolUseEdgeCases — the three tool
-#   dispatchers are one dispatcher in the agent layer. Covered by
-#   services/agent/tests/core/{stream,dispatch}.test.ts, which assert the same
-#   thing the harness way: an ungranted tool is refused, a result is wrapped and
-#   scanned exactly once, and bad arguments are a defect in the call.
-#
-# TestChatAndStreamCombinedTools — chat() is a one-shot with no tools, and which
-#   tools a run may reach is the registry's answer now. See
-#   services/agent/tests/chat/workflow.test.ts, "grants the lead every tool the
-#   config declared".
-#
-# TestDualToolLoading, TestTokenEstimationEdgeCases — _estimate_tokens is gone
-#   with the context-reduction helpers #622 replaced. The budget is a seam that
-#   reserves before it spends: services/agent/tests/core/budget.test.ts.
-
-# Dropped with the tool machinery they covered (#632), and where each went:
-#
-# TestLoadMcpToolsCache and the test_load_mcp_tools_* cases — the loader moved off
-#   the LLM client entirely. Constructing a ClaudeService no longer discovers MCP
-#   tools; startup calls registry.populate_from_cache(). Four of these were ported
-#   rather than dropped -- in-memory fallback, malformed cache, no event loop, and
-#   the declared input_schema -- and live in
-#   tests/unit/integrations/test_mcp_registry_population.py.
-#
-# TestClaudeServiceMCPTools — use_mcp_tools / use_backend_tools are gone with the
-#   loader. A one-shot completion carries no tools at all.
-#
-# TestEmptyToolSetsPassNoneToApi — chat() never sends a tools key now, which is
-#   the stronger form of the same claim.
-#
-# TestExecuteBackendTool — the daemon loop that called it was deleted in #629, and
-#   openai.py, which held the surviving copies, went in #632. Tool dispatch is the
-#   harness's: services/agent/tests/core/{stream,dispatch}.test.ts.

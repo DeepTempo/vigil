@@ -10,28 +10,6 @@ from typing import Any, Dict, List, Optional, Union
 from core.llm.defaults import DEFAULT_MODEL
 from core.secrets import get_secret
 
-# GH #89 — resolve the summarization model via ai_model_configs with a safe
-# fallback to the historical hardcoded default. Defined at module scope so
-# the registry import stays lazy and tests can monkeypatch it trivially.
-_SUMMARIZATION_DEFAULT = DEFAULT_MODEL
-
-
-def _resolve_summarization_model() -> str:
-    try:
-        from core.llm.providers.registry import get_registry
-
-        resolved = get_registry().resolve_model_for_component("summarization")
-        if resolved is not None:
-            return resolved[1]
-    except (
-        Exception
-    ) as exc:  # noqa: BLE001 — never let model resolution break summarization
-        logging.getLogger(__name__).debug(
-            "summarization model resolution failed, using default: %s", exc
-        )
-    return _SUMMARIZATION_DEFAULT
-
-
 # Import backend tool support
 try:
     from core.llm.tool_schemas import ALL_TOOLS as BACKEND_TOOLS
@@ -71,10 +49,6 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
-from core.chat.context_manager import ContextManager  # noqa: E402
-
-# Sub-module imports (lazy to avoid circular deps at module load)
-from core.chat.session_manager import SessionManager  # noqa: E402
 from core.detections.detection_rules_service import DetectionRulesService  # noqa: E402
 from core.integrations.mcp.client import process_mcp_client  # noqa: E402
 from core.integrations.mcp.registry import MCPRegistry  # noqa: E402
@@ -117,11 +91,8 @@ class ClaudeService:
         self.enable_thinking = enable_thinking
         self.thinking_budget = thinking_budget
 
-        self._session_mgr = SessionManager()
-        self._context_mgr = ContextManager()
         self.default_system_prompt = self._get_default_system_prompt()
         self._load_api_key()
-        self._context_mgr.update_clients(self.client, self.async_client)
 
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt with Claude 4.5 best practices."""
@@ -671,10 +642,6 @@ Your goal is to help SOC analysts work more efficiently by leveraging all availa
                 session.add(row)
         except Exception as exc:
             logger.warning(f"LLMInteractionLog persist failed (non-fatal): {exc}")
-
-    # Back-compat class attributes — delegated to ContextManager.
-    TOOL_RESPONSE_BUDGETS: Dict[str, int] = ContextManager.TOOL_RESPONSE_BUDGETS
-    MAX_TOOL_RESPONSE_TOKENS = ContextManager.MAX_TOOL_RESPONSE_TOKENS
 
     def chat(
         self,
