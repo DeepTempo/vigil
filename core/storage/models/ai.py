@@ -230,9 +230,8 @@ class Conversation(Base):
 
     The Claude.ai-style history store for the console chat dock: a
     listable, reopenable conversation owned by an analyst. The primary key
-    IS the frontend ``session_id`` so reopening a conversation lets the
-    in-process ``SessionManager`` (and its MemPalace files) restore live
-    context and continue the same session.
+    IS the frontend ``session_id`` so reopening a conversation continues
+    the same session.
 
     This is distinct from ``llm_interaction_logs``, which remains the
     per-API-call compliance audit log (system-of-record). Deleting a
