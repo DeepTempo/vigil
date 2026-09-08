@@ -1,7 +1,6 @@
 """Unit tests for core.platform.runtime_config (GH #84 PR-F).
 
-Covers the DB → env → default resolution order and the in-process cache
-behavior used by ClaudeService / AgentRunner consumers.
+Covers the DB → env → default resolution order and the in-process cache.
 """
 
 from __future__ import annotations
@@ -200,23 +199,3 @@ class TestCacheBehavior:
             runtime_config.clear_cache()
             runtime_config.get_ai_operations_setting("history_window", 20)
             assert m.call_count == 2
-
-
-class TestConsumerIntegration:
-    """End-to-end checks that the ClaudeService / AgentRunner helpers now
-    honor the DB-backed settings, not just env vars.
-    """
-
-
-# Three consumers dropped with the helpers they exercised (#631). The plumbing
-# they went through -- DB over env over default, coercion, caching -- is covered
-# above and unchanged; only these consumers moved:
-#
-#   thinking_budget      -> nobody. agent_runner held the only consumer and is
-#                           gone with #629; retiring the setting is #642.
-#   history_window       -> the fold in services/agent/core/context.ts, which
-#                           holds both edges instead of keeping a flat tail.
-#   prompt_cache_enabled -> nothing. ADR 0011 traded cache_control away: the
-#                           OpenAI surface caches on a byte-identical prefix, so
-#                           there is no marker to place and no switch to kill.
-#   tool_response_budget -> result_cap, applied where a result is rendered.
