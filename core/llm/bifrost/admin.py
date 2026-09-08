@@ -552,6 +552,14 @@ async def _do_sync_all_provider_models() -> Dict[str, Any]:
     if db_manager._engine is None:
         db_manager.initialize()
 
+    # Before reading the rows: mirror Bifrost's own providers into them. A key
+    # configured in Bifrost alone has no row to be discovered through, so
+    # without this the loop below cannot see it at all — see
+    # ``core.llm.bifrost.mirror``. Best-effort; never fails the sync.
+    from core.llm.bifrost.mirror import reconcile_all
+
+    await reconcile_all()
+
     # Group active providers by type and collect the rows we need to
     # fetch (we don't hold the session open across awaits).
     rows_by_type: Dict[str, list] = {}
@@ -764,8 +772,137 @@ async def _fetch_meta_for_row(
         # though the UI dropdown populated fine.
         return await discovery.fetch_ollama_models(base_url, allow_loopback=True)
 
+    if provider_type in _CATALOG_PROVIDER_TYPES:
+        # No upstream to query — the gateway's own datasheet is the catalogue.
+        return await fetch_catalogue_models(provider_type)
+
     logger.debug("Bifrost sync: unsupported provider_type %s", provider_type)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Gateway catalogue (providers with no upstream fetcher)
+# ---------------------------------------------------------------------------
+
+# Bifrost carries a synced model datasheet at ``/api/models/details`` — the
+# catalogue its own dashboard lists. It is the only catalogue available for a
+# provider ``discovery.py`` cannot query, which today means vertex: Vertex
+# refuses ListModels under API-key and ADC auth, so there is no upstream to
+# ask. That is the same wall that makes a vertex key unverifiable — see
+# ``key_is_routable`` in core/llm/bifrost/mirror.py.
+#
+# Reading it is not a second LLM path: it is capability discovery against the
+# gateway we already route through, the same carve-out ``discovery.py``
+# documents for querying provider catalogues directly.
+_CATALOG_PROVIDER_TYPES = frozenset({"vertex"})
+
+# What the row's ``default_model`` should floor to, per provider type. That
+# field is only a floor — it is what the picker shows when discovery yields
+# nothing (#409) and what dispatch uses when a caller names no model; the
+# operator's real choice is the ``chat_default`` assignment. So it needs to be
+# *a* working chat model, not the right one, and preferring a mid-tier general
+# model keeps the floor cheap rather than pinning the priciest id in a
+# 136-model catalogue. First one present wins; absent all of them, the
+# catalogue's first entry.
+_CATALOG_DEFAULT_PREFERENCE: Dict[str, tuple] = {
+    "vertex": ("gemini-2.5-flash", "gemini-2.0-flash", "claude-sonnet-4-5"),
+}
+
+
+def _is_chat_catalogue_entry(entry: Dict[str, Any]) -> bool:
+    """True when a datasheet entry is a chat model rather than another modality.
+
+    Vertex serves imagen, veo, chirp, OCR and embeddings out of the same
+    catalogue. A chat model is one that can emit tokens, so the presence of
+    ``max_output_tokens`` is the discriminator; embedding ids carry an input
+    limit only and are also caught by name, since their families are the one
+    set ``discovery.py`` already knows how to spot.
+    """
+    from core.llm.providers.discovery import is_embedding_model_id
+
+    name = entry.get("name") or ""
+    if not name or is_embedding_model_id(name):
+        return False
+    return bool(entry.get("max_output_tokens"))
+
+
+async def fetch_catalogue_models(provider_type: str) -> Optional[List[Any]]:
+    """Return Bifrost's own catalogue for ``provider_type`` as ``ModelMeta``.
+
+    Returns None when the catalogue is unreachable or holds no chat models, so
+    the caller falls back to its bootstrap list rather than caching a blank.
+    """
+    from core.llm.providers.discovery import ModelMeta
+
+    url = f"{_bifrost_base_url()}/api/models/details"
+    try:
+        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
+            resp = await client.get(
+                url, params={"provider": provider_type, "limit": 1000}
+            )
+            resp.raise_for_status()
+            entries = resp.json().get("models") or []
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        logger.warning("Bifrost catalogue fetch failed for %s: %s", provider_type, exc)
+        return None
+
+    meta = [
+        ModelMeta(
+            id=e["name"],
+            display_name=e["name"],
+            context_window=int(e.get("max_input_tokens") or 0),
+            # The list endpoint carries no capability flags (they live on the
+            # per-model ``/parameters`` route, one call each). Tool use is the
+            # one Vigil depends on and every chat family Vertex serves —
+            # Claude, Gemini, Mistral, Llama — supports it, so default it True
+            # for the same reason ``_anthropic_caps`` does. Thinking and vision
+            # are left unset rather than guessed, since nothing depends on them.
+            capabilities={"supports_tools": True},
+        )
+        for e in entries
+        if _is_chat_catalogue_entry(e)
+    ]
+    if not meta:
+        logger.warning(
+            "Bifrost catalogue for %s held no chat models (%d entries)",
+            provider_type,
+            len(entries),
+        )
+        return None
+    return meta
+
+
+async def default_model_for_provider_type(provider_type: str) -> str:
+    """Pick the ``default_model`` a mirrored provider row should floor to.
+
+    Prefers the bootstrap list ``registry`` already declares for the type —
+    that is the codebase's existing statement of which id to reach for when
+    nothing else is known — and only consults the gateway catalogue for a type
+    with no bootstrap list. Never returns empty: the column is NOT NULL, and a
+    row that fails to insert is worse than one flooring to a global default.
+    """
+    from core.llm.defaults import DEFAULT_MODEL
+    from core.llm.providers.registry import _FALLBACK_MODELS_BY_PROVIDER
+
+    bootstrap = _FALLBACK_MODELS_BY_PROVIDER.get(provider_type) or ()
+    if bootstrap:
+        return bootstrap[0]
+
+    meta = await fetch_catalogue_models(provider_type)
+    if meta:
+        ids = {m.id for m in meta}
+        for preferred in _CATALOG_DEFAULT_PREFERENCE.get(provider_type, ()):
+            if preferred in ids:
+                return preferred
+        return meta[0].id
+
+    logger.warning(
+        "No catalogue or bootstrap model for provider type %s — flooring the "
+        "mirrored row to %s",
+        provider_type,
+        DEFAULT_MODEL,
+    )
+    return DEFAULT_MODEL
 
 
 def sync_after_ollama_start() -> dict:
