@@ -25,26 +25,71 @@ import {
 import { useBifrostProviders, useProviderModels, bifrostError } from './useBifrost'
 import {
   bifrostApi,
+  isMasked,
   secretText,
   COMMON_PROVIDERS,
+  type KeyVerdict,
   type BifrostKey,
   type BifrostKeyWrite,
 } from '../../services/bifrostApi'
 import type { SectionProps } from './types'
 
-function KeyStatusChip({ status }: { status?: string }) {
-  if (status === 'success') return <span className="status closed">Healthy</span>
-  if (!status || status === 'unknown') return <span className="chip">Unverified</span>
+// The label comes from the backend's verdict (core/llm/bifrost/mirror.py), which
+// is the only thing that knows whether a `list_models_failed` was a refusal or a
+// check that could never have run. `status` is the fallback for a key the
+// verdict call didn't cover — showing "Rejected" for a key that routes fine sent
+// people looking for a fault that isn't there.
+function KeyStatusChip({ status, description, verdict }: {
+  status?: string
+  description?: string
+  verdict?: KeyVerdict
+}) {
+  const health = verdict?.health ?? (status === 'success' ? 'healthy' : undefined)
+  if (health === 'healthy') return <span className="status closed">Healthy</span>
+  if (health === 'unverified' || !status || status === 'unknown') {
+    return <span className="chip">Unverified</span>
+  }
+  if (health === 'unverifiable') {
+    return (
+      <span className="chip" title={description}>
+        Unverifiable
+      </span>
+    )
+  }
   return (
-    <span className="chip" style={{ color: 'var(--crit)' }} title={status}>
+    <span className="chip" style={{ color: 'var(--crit)' }} title={description || status}>
       {status === 'list_models_failed' ? 'Rejected' : status}
     </span>
   )
 }
 
+/** Did the backend judge this freshly-written key a real failure?
+    Re-reads the verdict rather than the hook's copy, which the save has just
+    invalidated. A verdict we can't fetch is not reported as a fault — the key
+    is stored either way, and the table's chip will show the truth on reload. */
+async function keyRejected(keyId: string | undefined): Promise<boolean> {
+  if (!keyId) return false
+  try {
+    const { data } = await bifrostApi.routability()
+    return data.keys?.[keyId]?.health === 'rejected'
+  } catch {
+    return false
+  }
+}
+
 export default function AiProvidersPanel({ notify }: SectionProps) {
-  const { providers, keys, phase, error, reload, saveKey, removeKey, addProvider, removeProvider } =
-    useBifrostProviders()
+  const {
+    providers,
+    keys,
+    verdicts,
+    phase,
+    error,
+    reload,
+    saveKey,
+    removeKey,
+    addProvider,
+    removeProvider,
+  } = useBifrostProviders()
   const [expanded, setExpanded] = useState<string | null>(null)
   const [editing, setEditing] = useState<{ provider: string; key: BifrostKey | null } | null>(null)
   const [addingProvider, setAddingProvider] = useState(false)
@@ -189,7 +234,7 @@ export default function AiProvidersPanel({ notify }: SectionProps) {
                               ? 'All'
                               : `${k.models?.length || 0} allowed`}
                           </td>
-                          <td><KeyStatusChip status={k.status} /></td>
+                          <td><KeyStatusChip status={k.status} description={k.description} verdict={verdicts.keys[k.id]} /></td>
                           <td style={{ textAlign: 'right' }}>
                             <div className="inline-flex gap-1.5">
                               <button
@@ -254,12 +299,17 @@ export default function AiProvidersPanel({ notify }: SectionProps) {
             setEditing(null)
             setExpanded(editing.provider)
             // Bifrost validates the credential upstream as it stores it, so its
-            // verdict is the only test result there is — surface it verbatim.
-            if (saved?.status && saved.status !== 'success' && saved.status !== 'unknown') {
-              notify('err', `Key stored, but Bifrost reports "${saved.status}" — check the credential.`)
-            } else {
-              notify('ok', 'Key saved.')
-            }
+            // verdict is the only test result there is. Ask the backend what
+            // that verdict means rather than reading `status` here: a
+            // `list_models_failed` the gateway could never have passed is not a
+            // fault to report, and only one place knows the difference.
+            const rejected = await keyRejected(saved?.id)
+            notify(
+              rejected ? 'err' : 'ok',
+              rejected
+                ? `Key stored, but Bifrost reports "${saved?.status}" — check the credential.`
+                : 'Key saved.',
+            )
           }}
         />
       )}
@@ -302,14 +352,22 @@ export function KeyDialog({
   // Vertex takes either a bare API key or a service-account JSON scoped by
   // project/region — so it gets a mode switch and its own fields.
   const isVertex = provider === 'vertex'
+  const storedProject = secretText(existing?.vertex_key_config?.project_id)
+  const storedRegion = secretText(existing?.vertex_key_config?.region)
   const [vertexAuth, setVertexAuth] = useState<'service_account' | 'api_key'>(
-    existing?.vertex_key_config?.project_id ? 'service_account' : 'api_key',
+    storedProject ? 'service_account' : 'api_key',
   )
 
   const [name, setName] = useState(existing?.name || `${provider}-key`)
   const [secret, setSecret] = useState('')
-  const [projectId, setProjectId] = useState(existing?.vertex_key_config?.project_id ?? '')
-  const [region, setRegion] = useState(existing?.vertex_key_config?.region ?? '')
+  // Bifrost masks project/region on read like any other stored field, so a
+  // masked one starts blank behind its own mask as a placeholder — the same
+  // "leave blank to keep" contract the service-account JSON already has.
+  // Seeding the input with the mask instead put "[object Object]" in the box
+  // (the wrapper is not a string) and, once unwrapped, would have written the
+  // mask back as the project id.
+  const [projectId, setProjectId] = useState(isMasked(storedProject) ? '' : storedProject)
+  const [region, setRegion] = useState(isMasked(storedRegion) ? '' : storedRegion)
   const [weight, setWeight] = useState(existing?.weight ?? 1)
   const [enabled, setEnabled] = useState(existing?.enabled ?? true)
   const [allowAll, setAllowAll] = useState(existing ? existing.models?.includes('*') !== false : true)
@@ -328,11 +386,11 @@ export function KeyDialog({
         models: allowAll ? ['*'] : chosen,
       }
       if (isVertex && vertexAuth === 'service_account') {
-        // The service-account JSON is omitted when left blank; the backend
-        // substitutes the stored copy into both auth_credentials and value.
+        // Every field is omitted when left blank; the backend substitutes its
+        // stored copy, and for the credential mirrors it into `value` too.
         base.vertex_key_config = {
-          project_id: projectId.trim() || undefined,
-          region: region.trim() || undefined,
+          ...(projectId.trim() ? { project_id: projectId.trim() } : {}),
+          ...(region.trim() ? { region: region.trim() } : {}),
           ...(secret.trim() ? { auth_credentials: secret.trim() } : {}),
         }
       } else if (secret.trim()) {
@@ -364,7 +422,10 @@ export function KeyDialog({
         </Field>
         {isVertex ? (
           <>
-            <Field label="Authentication" hint="Vertex accepts either a plain API key or a service-account key.">
+            <Field
+              label="Authentication"
+              hint="An API key only works against Vertex express mode — an AI Studio key belongs under the gemini provider instead. A service account is what a standard Vertex project takes."
+            >
               <div className="inline-flex gap-1.5">
                 {(
                   [
@@ -389,11 +450,33 @@ export function KeyDialog({
             {vertexAuth === 'service_account' ? (
               <>
                 <div className="settings-grid-2" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
-                  <Field label="Project ID" hint="The GCP project that owns the Vertex AI endpoint.">
-                    <TextInput value={projectId} onChange={(e) => setProjectId(e.target.value)} placeholder="my-gcp-project" />
+                  <Field
+                    label="Project ID"
+                    hint={
+                      storedProject
+                        ? 'Leave blank to keep the stored project.'
+                        : 'The GCP project that owns the Vertex AI endpoint.'
+                    }
+                  >
+                    <TextInput
+                      value={projectId}
+                      onChange={(e) => setProjectId(e.target.value)}
+                      placeholder={storedProject || 'my-gcp-project'}
+                    />
                   </Field>
-                  <Field label="Region" hint="Vertex location, e.g. us-central1.">
-                    <TextInput value={region} onChange={(e) => setRegion(e.target.value)} placeholder="us-central1" />
+                  <Field
+                    label="Region"
+                    hint={
+                      storedRegion
+                        ? 'Leave blank to keep the stored region.'
+                        : 'Vertex location, e.g. us-central1.'
+                    }
+                  >
+                    <TextInput
+                      value={region}
+                      onChange={(e) => setRegion(e.target.value)}
+                      placeholder={storedRegion || 'us-central1'}
+                    />
                   </Field>
                 </div>
                 <Field
@@ -401,7 +484,7 @@ export function KeyDialog({
                   hint={
                     existing
                       ? 'Leave blank to keep the stored service account — paste a new one only to rotate it.'
-                      : 'The full service-account key JSON. Stored encrypted in Vigil’s secret store and pushed to the gateway.'
+                      : 'The service-account key file — the one whose "type" is "service_account". A gcloud application-default login file is also accepted, but it is your own login and stops working on your org’s reauth schedule. Stored encrypted in Vigil’s secret store and pushed to the gateway.'
                   }
                 >
                   <textarea
