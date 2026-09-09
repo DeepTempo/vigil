@@ -872,6 +872,23 @@ async def fetch_catalogue_models(provider_type: str) -> Optional[List[Any]]:
     return meta
 
 
+async def _first_pulled_ollama_model() -> Optional[str]:
+    """The first model this host has actually pulled, or None if it can't say.
+
+    ``base_url`` is left to ``fetch_ollama_models``' own default: a mirrored row
+    carries none, since Bifrost owns the routing, and the loopback default is
+    what a single-machine install runs.
+    """
+    from core.llm.providers import discovery
+
+    try:
+        models = await discovery.fetch_ollama_models(None, allow_loopback=True)
+    except Exception as exc:  # noqa: BLE001 - the caller has a fallback
+        logger.debug("Could not list pulled Ollama models: %s", exc)
+        return None
+    return models[0].id if models else None
+
+
 async def default_model_for_provider_type(provider_type: str) -> str:
     """Pick the ``default_model`` a mirrored provider row should floor to.
 
@@ -887,6 +904,16 @@ async def default_model_for_provider_type(provider_type: str) -> str:
     bootstrap = _FALLBACK_MODELS_BY_PROVIDER.get(provider_type) or ()
     if bootstrap:
         return bootstrap[0]
+
+    # Ollama declares no bootstrap list on purpose — a self-hosted server serves
+    # whatever was pulled onto it, and nothing else. Asking it is the only way to
+    # name a model that will answer: the gateway's catalogue for ollama is its
+    # generic library, most of which is not on this host, and taking the first
+    # entry from it floored the mirrored row to a model chat then 404'd on.
+    if provider_type == "ollama":
+        pulled = await _first_pulled_ollama_model()
+        if pulled:
+            return pulled
 
     meta = await fetch_catalogue_models(provider_type)
     if meta:

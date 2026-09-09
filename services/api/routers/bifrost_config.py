@@ -90,6 +90,16 @@ def _scope_ref(key_id: str) -> str:
     return f"llm_key_{key_id}_vertex_scope"
 
 
+def _ollama_ref(key_id: str) -> str:
+    """Where an Ollama key's endpoint URL is kept.
+
+    Same reason as ``_scope_ref``: not a secret, but Bifrost masks it on read
+    and offers no way to get it back, so an edit that only changes the weight
+    would otherwise hand the gateway a mask in place of the endpoint.
+    """
+    return f"llm_key_{key_id}_ollama_url"
+
+
 def _stored_scope(key_id: Optional[str]) -> Dict[str, str]:
     if not key_id:
         return {}
@@ -154,6 +164,67 @@ def _resolve_vertex_scope(vertex: Dict[str, Any], key_id: Optional[str]) -> None
         )
 
 
+def _resolve_ollama_url(ollama: Dict[str, Any], key_id: Optional[str]) -> None:
+    """Fill in the endpoint an Ollama write left out, in place.
+
+    ``env.OLLAMA_URL`` and friends pass straight through — a reference is not a
+    mask, and the seeded key is only editable at all because Bifrost returns
+    ``env_var`` unmasked. Anything else masked or absent falls back to our own
+    copy, and a key first configured outside Vigil has none, so that case asks
+    rather than pointing the gateway at nothing.
+    """
+    supplied = ollama.get("url")
+    if supplied and not _is_masked(supplied):
+        return
+    stored = get_secret(_ollama_ref(key_id)) if key_id else None
+    if not stored:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This Ollama key needs its server URL. Bifrost masks it on read "
+                "and will not reveal it, so a key first configured outside Vigil "
+                "has to have it retyped once."
+            ),
+        )
+    ollama["url"] = stored
+
+
+def _resolve_optional_token(body: Dict[str, Any], key_id: Optional[str]) -> None:
+    """Carry a bearer token through a write that didn't retype it, in place.
+
+    Ollama's own server takes no credential, but the gateway does send
+    ``value`` as ``Authorization: Bearer`` when one is set — which is what
+    reaches an Ollama put behind an authenticating proxy. So the token is
+    optional here, unlike every provider handled by ``_resolve_key_value``:
+    absent with nothing stored means "no auth", not "you forgot the key".
+
+    The console states the mode, so the two empty cases are not the same and
+    are told apart by whether the field is there at all. An *omitted* value is
+    "keep what is stored", so a weight edit does not silently strip the token
+    off a key that needs one. An *empty* value is the operator choosing No
+    auth, and has to survive — substituting the stored token there would make
+    the switch back impossible.
+    """
+    if "value" not in body:
+        stored = get_secret(_secret_ref(key_id)) if key_id else None
+        if stored:
+            body["value"] = stored
+        return
+    supplied = body["value"]
+    if not supplied:
+        return
+    if not _is_masked(supplied):
+        return
+    # A mask is the console echoing what it was shown, which it does not do for
+    # this field — but a third-party client might, and storing the mask as a
+    # token would send the gateway off with a credential of asterisks.
+    stored = get_secret(_secret_ref(key_id)) if key_id else None
+    if stored:
+        body["value"] = stored
+    else:
+        body.pop("value", None)
+
+
 def _resolve_key_value(body: Dict[str, Any], key_id: Optional[str]) -> None:
     """Put a usable credential on ``body``, in place.
 
@@ -174,7 +245,10 @@ def _resolve_key_value(body: Dict[str, Any], key_id: Optional[str]) -> None:
     * **Ollama** carries a URL the operator typed under ``ollama_key_config``,
       not a secret we mask or store — so such a write needs no substitution.
     """
-    if isinstance(body.get("ollama_key_config"), dict):
+    ollama = body.get("ollama_key_config")
+    if isinstance(ollama, dict):
+        _resolve_ollama_url(ollama, key_id)
+        _resolve_optional_token(body, key_id)
         return
 
     vertex = body.get("vertex_key_config")
@@ -324,6 +398,25 @@ def _persist_key_secret(
             if key_id:
                 delete_secret(_secret_ref(key_id))
                 delete_secret(_scope_ref(key_id))
+                delete_secret(_ollama_ref(key_id))
+            return
+        # An ollama key carries no credential at all — its endpoint takes the
+        # place of one, and is kept for the same reason the vertex scope is.
+        ollama = (body or {}).get("ollama_key_config")
+        if isinstance(ollama, dict):
+            ref_id = _written_key_id(key_id, upstream)
+            url = ollama.get("url")
+            if ref_id and url and not _is_masked(url):
+                set_secret(_ollama_ref(ref_id), url)
+            # The bearer token, when the deployment has one, is a real secret
+            # and is kept like any other. Its absence is normal here, and an
+            # explicit empty one is No auth — drop the copy so a later edit
+            # does not resurrect a token the operator turned off.
+            token = (body or {}).get("value")
+            if ref_id and token and not _is_masked(token):
+                set_secret(_secret_ref(ref_id), token)
+            elif ref_id and "value" in (body or {}) and not token:
+                delete_secret(_secret_ref(ref_id))
             return
         # A vertex service-account key sends no `value` at all (see
         # _resolve_key_value), so its credential is read off the vertex block.
@@ -334,15 +427,7 @@ def _persist_key_secret(
             value = (body or {}).get("value")
         if not value or _is_masked(value):
             return
-        ref_id = key_id
-        if not ref_id:
-            # The keys subresource returns the UUID as ``id``; ``/api/keys``
-            # spells the same value ``key_id``. Accept either.
-            try:
-                created = upstream.json()
-                ref_id = created.get("id") or created.get("key_id")
-            except Exception:
-                ref_id = None
+        ref_id = _written_key_id(key_id, upstream)
         if not ref_id:
             logger.warning(
                 "Bifrost proxy: key write returned no key_id; secret not mirrored"
@@ -352,6 +437,19 @@ def _persist_key_secret(
         _persist_vertex_scope(ref_id, body)
     except Exception as exc:  # noqa: BLE001 - never fail an accepted write
         logger.warning("Bifrost proxy: could not mirror key secret: %s", exc)
+
+
+def _written_key_id(key_id: Optional[str], upstream: httpx.Response) -> Optional[str]:
+    """The id to file a key's stored fields under, on a create or an update."""
+    if key_id:
+        return key_id
+    # The keys subresource returns the UUID as ``id``; ``/api/keys`` spells the
+    # same value ``key_id``. Accept either.
+    try:
+        created = upstream.json()
+        return created.get("id") or created.get("key_id")
+    except Exception:
+        return None
 
 
 def _persist_vertex_scope(key_id: str, body: Optional[Dict[str, Any]]) -> None:

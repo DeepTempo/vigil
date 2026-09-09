@@ -27,6 +27,7 @@ import {
   bifrostApi,
   isMasked,
   secretText,
+  secretEnvRef,
   COMMON_PROVIDERS,
   type KeyVerdict,
   type BifrostKey,
@@ -352,10 +353,28 @@ export function KeyDialog({
   // Vertex takes either a bare API key or a service-account JSON scoped by
   // project/region — so it gets a mode switch and its own fields.
   const isVertex = provider === 'vertex'
+  // Ollama's credential is an endpoint, which Bifrost keeps under its own
+  // block — a write that omits the block blanks it, so this branch always
+  // sends one. A token is separate and usually absent, hence the mode switch:
+  // the bare server takes no credential, but the gateway does send `value` as
+  // a bearer token when one is set, which is what reaches a server behind an
+  // authenticating proxy.
+  const isOllama = provider === 'ollama'
+  const storedUrl = secretText(existing?.ollama_key_config?.url)
+  const storedToken = secretText(existing?.value)
+  // A seeded key resolves its URL from OLLAMA_URL. The value reads back masked
+  // but the reference does not, so an edit that leaves the field blank can hand
+  // the reference back rather than a mask Bifrost would store verbatim.
+  const storedUrlEnv = secretEnvRef(existing?.ollama_key_config?.url)
   const storedProject = secretText(existing?.vertex_key_config?.project_id)
   const storedRegion = secretText(existing?.vertex_key_config?.region)
   const [vertexAuth, setVertexAuth] = useState<'service_account' | 'api_key'>(
     storedProject ? 'service_account' : 'api_key',
+  )
+  // A key Bifrost holds no token for reads back as an empty `value`, which is
+  // the unauthenticated case — the common one, so it leads.
+  const [ollamaAuth, setOllamaAuth] = useState<'none' | 'api_key'>(
+    storedToken ? 'api_key' : 'none',
   )
 
   const [name, setName] = useState(existing?.name || `${provider}-key`)
@@ -366,6 +385,12 @@ export function KeyDialog({
   // Seeding the input with the mask instead put "[object Object]" in the box
   // (the wrapper is not a string) and, once unwrapped, would have written the
   // mask back as the project id.
+  // A create defaults to the reference, not a literal: the deployment already
+  // states where Ollama is, from the side that has to reach it. The shipped
+  // compose sets OLLAMA_URL=http://host.docker.internal:11434 for exactly that.
+  const [url, setUrl] = useState(
+    existing ? (isMasked(storedUrl) ? '' : storedUrl) : 'env.OLLAMA_URL',
+  )
   const [projectId, setProjectId] = useState(isMasked(storedProject) ? '' : storedProject)
   const [region, setRegion] = useState(isMasked(storedRegion) ? '' : storedRegion)
   const [weight, setWeight] = useState(existing?.weight ?? 1)
@@ -385,7 +410,19 @@ export function KeyDialog({
         enabled,
         models: allowAll ? ['*'] : chosen,
       }
-      if (isVertex && vertexAuth === 'service_account') {
+      if (isOllama) {
+        // Blank on an edit means "keep what's there": hand back the env
+        // reference when there is one, and otherwise omit the field so the
+        // backend substitutes its stored copy.
+        const kept = url.trim() || storedUrlEnv
+        if (kept) base.ollama_key_config = { url: kept }
+        // The mode is the instruction, so the two blank cases differ: an empty
+        // `value` under No auth says "there is no token", while omitting the
+        // field under API key says "keep the stored one". Sending nothing in
+        // both would make switching back to No auth impossible.
+        if (ollamaAuth === 'none') base.value = ''
+        else if (secret.trim()) base.value = secret.trim()
+      } else if (isVertex && vertexAuth === 'service_account') {
         // Every field is omitted when left blank; the backend substitutes its
         // stored copy, and for the credential mirrors it into `value` too.
         base.vertex_key_config = {
@@ -409,7 +446,11 @@ export function KeyDialog({
 
   // A create needs a credential; a service-account vertex create also needs
   // project + region.
-  const missingCredential = !existing && !secret.trim()
+  // Ollama asks for a URL where every other provider asks for a secret, and
+  // for a token too only when the operator says the endpoint wants one.
+  const missingCredential = !existing && !(isOllama ? url.trim() : secret.trim())
+  const missingOllamaToken =
+    isOllama && ollamaAuth === 'api_key' && !existing && !secret.trim()
   const missingVertexScope =
     isVertex && vertexAuth === 'service_account' && !existing && (!projectId.trim() || !region.trim())
 
@@ -420,7 +461,68 @@ export function KeyDialog({
         <Field label="Key name" hint="Must be unique across the gateway.">
           <TextInput value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        {isVertex ? (
+        {isOllama ? (
+          <>
+            <Field
+              label="Authentication"
+              hint="Ollama's own server takes no credential, which is the single-machine case. Pick API key only when the endpoint below sits behind something that authenticates; the gateway sends it as a bearer token."
+            >
+              <div className="inline-flex gap-1.5">
+                {(
+                  [
+                    ['none', 'No auth'],
+                    ['api_key', 'API key'],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`btn ${ollamaAuth === mode ? 'primary' : 'ghost'}`}
+                    onClick={() => {
+                      setOllamaAuth(mode)
+                      setSecret('')
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field
+              label="Server URL"
+              hint={
+                storedUrl
+                  ? `Leave blank to keep the stored endpoint${storedUrlEnv ? ` (${storedUrlEnv})` : ''}.`
+                  : 'Resolved by the gateway, not by your browser — and Vigil runs Ollama on the host while the gateway runs in Docker, so a literal here needs the host’s name from inside the container (http://host.docker.internal:11434), not localhost. env.OLLAMA_URL defers to whatever the deployment already set.'
+              }
+            >
+              <TextInput
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder={storedUrlEnv || storedUrl || 'env.OLLAMA_URL'}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </Field>
+            {ollamaAuth === 'api_key' && (
+              <Field
+                label="API key"
+                hint={
+                  storedToken
+                    ? 'Leave blank to keep the stored token.'
+                    : 'Whatever the proxy in front of Ollama expects. Stored encrypted in Vigil’s secret store and pushed to the gateway.'
+                }
+              >
+                <PasswordInput
+                  value={secret}
+                  onChange={(e) => setSecret(e.target.value)}
+                  placeholder={storedToken ? '•••••••• (unchanged)' : ''}
+                  autoComplete="new-password"
+                />
+              </Field>
+            )}
+          </>
+        ) : isVertex ? (
           <>
             <Field
               label="Authentication"
@@ -553,7 +655,9 @@ export function KeyDialog({
         <button className="btn ghost" onClick={onClose} disabled={saving}>Cancel</button>
         <button
           className="btn primary"
-          disabled={saving || !name.trim() || missingCredential || missingVertexScope}
+          disabled={
+            saving || !name.trim() || missingCredential || missingVertexScope || missingOllamaToken
+          }
           onClick={submit}
         >
           <Icon name="check2" /> {saving ? 'Saving…' : 'Save'}

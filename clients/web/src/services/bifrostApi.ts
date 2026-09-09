@@ -79,6 +79,17 @@ export function isMasked(v: BifrostSecret | string | undefined): boolean {
   return secretText(v).includes('*')
 }
 
+/** The `env.FOO` reference behind a field Bifrost resolves from the environment,
+    or '' when the field holds a literal.
+
+    Unlike the value, `env_var` comes back unmasked — so a field the operator did
+    not retype can be written back as its reference rather than as the mask. That
+    is the only way to edit a seeded key (whose URL is `env.OLLAMA_URL`) without
+    knowing what the environment resolved it to. */
+export function secretEnvRef(v: BifrostSecret | string | undefined): string {
+  return typeof v === 'object' && v?.from_env ? v.env_var || '' : ''
+}
+
 export interface BifrostKeyWrite {
   name: string
   weight: number
@@ -89,6 +100,9 @@ export interface BifrostKeyWrite {
   use_for_batch_api?: boolean
   /** Vertex only — sent instead of a bare `value`. */
   vertex_key_config?: VertexKeyConfig
+  /** Ollama only — its credential is an endpoint, not a secret. Omit to keep
+      the stored URL. */
+  ollama_key_config?: { url: string }
 }
 
 export interface BifrostModel {
