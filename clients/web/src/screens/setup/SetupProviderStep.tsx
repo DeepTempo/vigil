@@ -13,10 +13,11 @@ import { Field } from '../../shared/ui'
 import { Banner } from '../../shared/formKit'
 import { useBifrostProviders, bifrostError } from '../settings/useBifrost'
 import { KeyDialog } from '../settings/AiProvidersPanel'
-import { COMMON_PROVIDERS, keyIsRoutable } from '../../services/bifrostApi'
+import { bifrostApi, COMMON_PROVIDERS } from '../../services/bifrostApi'
 
 export default function SetupProviderStep({ onSaved }: { onSaved: () => void }) {
-  const { providers, keys, phase, error, reload, saveKey, addProvider } = useBifrostProviders()
+  const { providers, keys, verdicts, phase, error, reload, saveKey, addProvider } =
+    useBifrostProviders()
   const [newProvider, setNewProvider] = useState('')
   const [busy, setBusy] = useState(false)
   const [localErr, setLocalErr] = useState<string | null>(null)
@@ -65,7 +66,7 @@ export default function SetupProviderStep({ onSaved }: { onSaved: () => void }) 
         <div className="flex flex-col gap-1.5">
           {providers.map((p) => {
             const pk = keys[p.name] || []
-            const routable = pk.some(keyIsRoutable)
+            const routable = verdicts.providers[p.name] ?? false
             return (
               <div
                 key={p.name}
@@ -132,12 +133,20 @@ export default function SetupProviderStep({ onSaved }: { onSaved: () => void }) 
             const saved = await saveKey(addingKeyFor, null, data)
             setAddingKeyFor(null)
             // Bifrost validates the credential as it stores it and reports the
-            // verdict as status. "success" and "unknown" both advance setup —
-            // "unknown" is expected for providers it can't list-verify (vertex).
-            // Only a genuine failure (e.g. list_models_failed) is surfaced.
-            if (saved?.status && saved.status !== 'success' && saved.status !== 'unknown') {
+            // verdict as status, but only the backend knows whether a
+            // `list_models_failed` was a refusal or a check that could never
+            // have run — vertex is always the latter, and flagging it told
+            // people to check a credential that routes fine. Ask, don't guess.
+            let rejected = false
+            try {
+              const { data: r } = await bifrostApi.routability()
+              rejected = saved?.id ? r.keys?.[saved.id]?.health === 'rejected' : false
+            } catch {
+              rejected = false
+            }
+            if (rejected) {
               setLocalErr(
-                `Key stored, but Bifrost reports "${saved.status}" — check the credential.`,
+                `Key stored, but Bifrost reports "${saved?.status}" — check the credential.`,
               )
               reload()
             } else {

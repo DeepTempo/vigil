@@ -247,17 +247,73 @@ def _select_active_provider(provider_id: Optional[str]):
     return provider
 
 
-def _router_model(provider, requested_model: Optional[str]) -> str:
-    """Model id to send to a non-Anthropic provider.
+# Provider types that can answer a ``claude-*`` id. Anthropic direct, plus the
+# two clouds that resell the models -- Vertex and Bedrock. Used only when the
+# catalogue is unknown; a known catalogue answers the question outright.
+_SERVES_CLAUDE = frozenset({"anthropic", "vertex", "bedrock"})
 
-    A stale Claude selection (e.g. ``chat_default`` seeded to a ``claude-*`` id)
-    would 404 at Bifrost when the active provider is Ollama/OpenAI — pin it to
-    the provider's own default model instead.
+
+def _router_model(provider, requested_model: Optional[str]) -> str:
+    """Model id to send, pinned to the provider's default if it can't serve it.
+
+    A stale selection — ``chat_default`` left pointing at a model the active
+    provider never had — would 404 at Bifrost, so it falls back to the
+    provider's own default.
+
+    The test is whether the provider's catalogue holds the model, not what type
+    the provider is. The earlier version asked "is this Anthropic?" and pinned
+    every ``claude-*`` id elsewhere, which was right for Ollama and OpenAI and
+    wrong for Vertex: Google resells Claude, so a Claude id there is a real
+    selection. It was discarded before it ever reached the gateway, and the
+    substitute's failure was what surfaced — an error about Gemini for a
+    request the operator had pointed at Claude.
+
+    The catalogue is only known once something has populated the cache, so an
+    unknown one falls back to the single thing that can be said without it: a
+    ``claude-*`` id cannot be served by a provider that does not carry Claude
+    at all. Which providers those are is an allowlist rather than a test for
+    Anthropic, since Google and AWS resell Claude too.
     """
     model = requested_model or provider.default_model
-    if model.startswith("claude-") and provider.provider_type != "anthropic":
+    if model == provider.default_model:
+        return model
+
+    catalogue = _provider_catalogue(provider)
+    if catalogue is not None:
+        if model in catalogue:
+            return model
+        logger.info(
+            "Model %s is not in %s's catalogue — falling back to %s",
+            model,
+            provider.provider_id,
+            provider.default_model,
+        )
+        return provider.default_model
+
+    if model.startswith("claude-") and provider.provider_type not in _SERVES_CLAUDE:
+        logger.info(
+            "Provider %s does not serve Claude — falling back to %s",
+            provider.provider_id,
+            provider.default_model,
+        )
         return provider.default_model
     return model
+
+
+def _provider_catalogue(provider) -> Optional[set]:
+    """Model ids this provider can route, or None when that isn't known.
+
+    Reads the same cache that fills the console's model picker, so a model the
+    operator could select is a model this accepts.
+    """
+    try:
+        from core.llm.providers.registry import _MODEL_LIST_CACHE
+
+        cached = _MODEL_LIST_CACHE.get(provider.provider_id)
+        return set(cached) if cached else None
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("catalogue lookup failed for %s: %s", provider.provider_id, exc)
+        return None
 
 
 class ContentBlock(BaseModel):
@@ -366,7 +422,12 @@ async def chat_stream(
         "run_id": run_id_for(session_id),
         "turns": _turns_of(request.messages),
         "system_prompt": system_prompt or "",
-        "config": chat_config(request.model, tools, mcp_tools),
+        # The provider rides alongside the model so the gateway routes to the
+        # account this request resolved to, rather than to whichever provider
+        # claims the bare model name first.
+        "config": chat_config(
+            request.model, tools, mcp_tools, provider=active_provider.provider_type
+        ),
     }
     if request.parent_run_id:
         payload["parent_run_id"] = request.parent_run_id
