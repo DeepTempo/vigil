@@ -1236,6 +1236,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bifrost/routability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Routability
+         * @description Per-key and per-provider "can this actually route?".
+         *
+         *     One call answers what used to take 1 + N proxy round trips — the setup gate
+         *     listed providers, then every provider's keys, on its critical path.
+         */
+        get: operations["get_api_bifrost_routability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bifrost/{path}": {
         parameters: {
             query?: never;
@@ -13152,6 +13175,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_bifrost_routability: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
