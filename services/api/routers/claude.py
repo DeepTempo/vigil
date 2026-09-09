@@ -247,6 +247,12 @@ def _select_active_provider(provider_id: Optional[str]):
     return provider
 
 
+# Provider types that can answer a ``claude-*`` id. Anthropic direct, plus the
+# two clouds that resell the models -- Vertex and Bedrock. Used only when the
+# catalogue is unknown; a known catalogue answers the question outright.
+_SERVES_CLAUDE = frozenset({"anthropic", "vertex", "bedrock"})
+
+
 def _router_model(provider, requested_model: Optional[str]) -> str:
     """Model id to send, pinned to the provider's default if it can't serve it.
 
@@ -262,19 +268,31 @@ def _router_model(provider, requested_model: Optional[str]) -> str:
     substitute's failure was what surfaced — an error about Gemini for a
     request the operator had pointed at Claude.
 
-    An empty or unavailable catalogue keeps the requested model rather than
-    overriding it: not knowing what a provider serves is not evidence that it
-    serves nothing, and Bifrost's own error beats a silent substitution.
+    The catalogue is only known once something has populated the cache, so an
+    unknown one falls back to the single thing that can be said without it: a
+    ``claude-*`` id cannot be served by a provider that does not carry Claude
+    at all. Which providers those are is an allowlist rather than a test for
+    Anthropic, since Google and AWS resell Claude too.
     """
     model = requested_model or provider.default_model
     if model == provider.default_model:
         return model
 
     catalogue = _provider_catalogue(provider)
-    if catalogue and model not in catalogue:
+    if catalogue is not None:
+        if model in catalogue:
+            return model
         logger.info(
             "Model %s is not in %s's catalogue — falling back to %s",
             model,
+            provider.provider_id,
+            provider.default_model,
+        )
+        return provider.default_model
+
+    if model.startswith("claude-") and provider.provider_type not in _SERVES_CLAUDE:
+        logger.info(
+            "Provider %s does not serve Claude — falling back to %s",
             provider.provider_id,
             provider.default_model,
         )
